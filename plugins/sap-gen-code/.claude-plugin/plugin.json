@@ -1,0 +1,22 @@
+{
+  "name": "sap-gen-code",
+  "version": "0.1.0",
+  "description": "ABAP code generation pipeline: convert design docs, extract structured data, validate process/DDIC, generate ABAP, check quality, and auto-fix issues",
+  "author": {
+    "name": "KexiHe",
+    "email": "hello@sapdev.ai",
+    "url": "https://sapdev.ai"
+  },
+  "license": "GPL-3.0",
+  "keywords": [
+    "sap",
+    "abap",
+    "code-generation",
+    "design-docs",
+    "validation",
+    "ddic",
+    "naming-conventions",
+    "fm-check",
+    "auto-fix"
+  ]
+}

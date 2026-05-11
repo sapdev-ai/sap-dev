@@ -1,0 +1,174 @@
+{
+    "userConfig":  {
+                       "sap_dev_mode":  {
+                                            "description":  "Preferred SAP login/automation mode. Controls which skill variant is selected first when multiple implementations exist for the same task. Allowed values: 'GUI' (SAP GUI Scripting), 'RFC' (SAP.Functions COM via RFC), 'BDC' (BDC recordings replayed via SHDB). Default: 'GUI'. Fallback chains: GUI -> RFC -> BDC, RFC -> BDC -> GUI, BDC -> RFC -> GUI.",
+                                            "sensitive":  false,
+                                            "value":  ""
+                                        },
+                       "sap_dev_transport_request":  {
+                                                         "description":  "Default SAP transport request number for development work (e.g. 'DEVK900001'). Behaviour depends on way_to_get_transport_request. If blank, use skill sap-transport-request (or sap-se01) to create a new transport request.",
+                                                         "sensitive":  false,
+                                                         "value":  ""
+                                                     },
+                       "way_to_get_transport_request":  {
+                                                            "description":  "How skills obtain a transport request when one is needed. Allowed values: 'DEFAULT' (always reuse sap_dev_transport_request; ask only if blank), 'ASK' (ask each time and offer to save as default), 'CREATE_NEW' (always create a new TR via sap-se01 without asking). Default: 'DEFAULT'.",
+                                                            "sensitive":  false,
+                                                            "value":  ""
+                                                        },
+                       "rule_of_tr_description":  {
+                                                      "description":  "How TR short descriptions are generated when a new TR is created. Allowed values: 'ASK' (prompt user each time), 'PATTERN' (render tr_description_template with placeholders), 'FIXED' (use tr_description_template literally), 'RANDOM' (generate a random 60-char string). Default: 'ASK'.",
+                                                      "sensitive":  false,
+                                                      "value":  ""
+                                                  },
+                       "tr_description_template":  {
+                                                       "description":  "Template used by rule_of_tr_description. For PATTERN: a string with placeholders {YYYYMMDD} {HHMMSS} {USER} {OBJECT_TYPE} {OBJECT_DESCRIPTION} {RANDOM4} (e.g. '{YYYYMMDD}_{OBJECT_TYPE}_{OBJECT_DESCRIPTION}'). For FIXED: the literal description text. Ignored when rule_of_tr_description is ASK or RANDOM. Final result is truncated to 60 chars.",
+                                                       "sensitive":  false,
+                                                       "value":  ""
+                                                   },
+                       "sap_dev_package":  {
+                                               "description":  "SAP development package for development work (e.g. 'ZDEV_PACKAGE'). If blank, use skill sap-se21 to create a new package.",
+                                               "sensitive":  false,
+                                               "value":  ""
+                                           },
+                       "sap_dev_function_group":  {
+                                                      "description":  "SAP development function module group for development work (e.g. 'ZDEV_FM_GROUP'). If blank, use skill sap-se21 to create a new function module group.",
+                                                      "sensitive":  false,
+                                                      "value":  ""
+                                                  },
+                       "sap_logon_description":  {
+                                                     "description":  "SAP Logon pad entry name (e.g. 'DEV_100'). If blank, uses connection string instead.",
+                                                     "sensitive":  false,
+                                                     "value":  ""
+                                                 },
+                       "sap_application_server":  {
+                                                      "description":  "SAP application server hostname or IP (e.g. '10.0.0.1')",
+                                                      "sensitive":  false,
+                                                      "value":  ""
+                                                  },
+                       "sap_system_number":  {
+                                                 "description":  "SAP system number, 2 digits (e.g. '00')",
+                                                 "sensitive":  false,
+                                                 "value":  ""
+                                             },
+                       "sap_client":  {
+                                          "description":  "SAP client number, 3 digits (e.g. '100')",
+                                          "sensitive":  false,
+                                          "value":  ""
+                                      },
+                       "sap_user":  {
+                                        "description":  "SAP logon username",
+                                        "sensitive":  false,
+                                        "value":  ""
+                                    },
+                       "sap_password":  {
+                                            "description":  "SAP logon password",
+                                            "sensitive":  true,
+                                            "value":  ""
+                                        },
+                       "sap_language":  {
+                                            "description":  "SAP logon language, 2 letters (e.g. 'EN', 'JA')",
+                                            "sensitive":  false,
+                                            "value":  ""
+                                        },
+                       "work_dir":  {
+                                        "description":  "Working directory for all SAP dev operations. Subdirectories (temp, custom, design_docs, source_code) are auto-created when skills run. Default: C:\\sap_dev_work",
+                                        "sensitive":  false,
+                                        "value":  ""
+                                    },
+                       "custom_url":  {
+                                          "description":  "Custom overrides directory. Place custom abap_naming_rules.tsv here to override defaults. If blank, uses {work_dir}\\custom.",
+                                          "sensitive":  false,
+                                          "value":  ""
+                                      },
+                       "design_docs_url":  {
+                                               "description":  "Design documentation directory. If blank, uses {work_dir}\\design_docs.",
+                                               "sensitive":  false,
+                                               "value":  ""
+                                           },
+                       "source_code_url":  {
+                                               "description":  "Source code repository directory. If blank, uses {work_dir}\\source_code.",
+                                               "sensitive":  false,
+                                               "value":  ""
+                                           },
+                       "template_language":  {
+                                                 "description":  "Preferred language for customer-facing templates (customer_brief.md, spec_template.xlsx, etc.). Allowed values: 'EN', 'JA', 'ZH'. If blank, falls back to sap_language. If sap_language is also blank, defaults to 'EN'. Resolution chain: see CLAUDE.md 'Template Language Resolution'.",
+                                                 "sensitive":  false,
+                                                 "value":  ""
+                                             },
+                       "fm_cache_enabled":  {
+                                                "description":  "Cache FM signatures from RPY_FUNCTIONMODULE_READ_NEW. When true, sap-gen-abap pre-fetches FMs mentioned in the spec and reuses cached signatures across runs. Allowed values: 'true' / 'false'. Default: 'true'.",
+                                                "sensitive":  false,
+                                                "value":  ""
+                                            },
+                       "fm_cache_dir":  {
+                                            "description":  "FM signature cache directory. If blank, uses {work_dir}\\cache\\fm_signatures. Cache is partitioned per SAP system as <CACHE_DIR>\\<server>_<sysnr>_<client>\\<FM_NAME>.tsv.",
+                                            "sensitive":  false,
+                                            "value":  ""
+                                        },
+                       "fm_cache_ttl_std_days":  {
+                                                     "description":  "TTL (in days) for SAP standard FM signature cache (BAPI_*, RFC_*, etc.). Stable across patches; long TTL is fine. Default: '30'.",
+                                                     "sensitive":  false,
+                                                     "value":  ""
+                                                 },
+                       "fm_cache_ttl_z_days":  {
+                                                   "description":  "TTL (in days) for Z*/Y* FM signature cache (customer namespace). Customer FMs change during development; short TTL avoids stale signatures. Default: '1'.",
+                                                   "sensitive":  false,
+                                                   "value":  ""
+                                               },
+                       "log_enabled":  {
+                                           "description":  "Master switch for skill logging. Allowed values: 'true' / 'false'. Default: 'true'.",
+                                           "sensitive":  false,
+                                           "value":  ""
+                                       },
+                       "log_level":  {
+                                         "description":  "Minimum level recorded. Allowed values: 'DEBUG', 'INFO', 'WARN', 'ERROR', 'OFF'. Default: 'INFO'.",
+                                         "sensitive":  false,
+                                         "value":  ""
+                                     },
+                       "log_dir":  {
+                                       "description":  "Directory for log files. If blank, uses {work_dir}\\logs.",
+                                       "sensitive":  false,
+                                       "value":  ""
+                                   },
+                       "log_file_pattern":  {
+                                                "description":  "Log filename template. Placeholders: {YYYYMMDD} {YYYYMM} {HHMMSS} {HHMM} {RUN_ID} {SKILL} {USER} {SYSTEM}. Default: 'sap-dev-{YYYYMMDD}.log' (one file per day, all runs merged). For per-run files: 'sap-dev-{YYYYMMDD}-{HHMMSS}-{SKILL}.log' or 'sap-dev-{YYYYMMDD}-{RUN_ID}.log'.",
+                                                "sensitive":  false,
+                                                "value":  ""
+                                            },
+                       "log_retention_days":  {
+                                                  "description":  "Delete log files older than N days. 0 = keep forever. Default: 30.",
+                                                  "sensitive":  false,
+                                                  "value":  ""
+                                              },
+                       "log_format":  {
+                                          "description":  "Log record format on disk. Allowed values: 'JSONL' (one JSON object per line, default), 'TSV' (tab-separated, fixed columns), 'TEXT' (human-readable single line).",
+                                          "sensitive":  false,
+                                          "value":  ""
+                                      },
+                       "log_console_echo":  {
+                                                "description":  "Mirror each record to stdout/stderr in addition to writing the file. Allowed values: 'true' / 'false'. Default: 'false'.",
+                                                "sensitive":  false,
+                                                "value":  ""
+                                            },
+                       "log_max_size_mb":  {
+                                               "description":  "Rotate the active log file when it reaches N megabytes. Rotated files become {name}.1, {name}.2, ... up to log_max_backups. 0 = no size-based rotation. Default: 10.",
+                                               "sensitive":  false,
+                                               "value":  ""
+                                           },
+                       "log_max_backups":  {
+                                               "description":  "Number of rotated backups to keep when log_max_size_mb triggers. Default: 5.",
+                                               "sensitive":  false,
+                                               "value":  ""
+                                           },
+                       "log_redact_keys":  {
+                                               "description":  "Comma-separated list of param/extra keys whose values are masked as '***' in log records. Defaults to 'sap_password,password,passwd,pwd,token,secret,api_key'.",
+                                               "sensitive":  false,
+                                               "value":  ""
+                                           },
+                       "sap_gui_security_warmup_done":  {
+                                                            "description":  "Set to true after sap-dev-init Step 1b successfully persists SAP GUI Security trust for {work_dir}. Subsequent runs skip the warmup when true.",
+                                                            "sensitive":  false,
+                                                            "value":  ""
+                                                        }
+                   }
+}

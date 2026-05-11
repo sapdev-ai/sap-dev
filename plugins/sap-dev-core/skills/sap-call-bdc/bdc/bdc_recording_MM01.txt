@@ -1,0 +1,29 @@
+                                        	0000	T	MM01                                                                                                                                	BS AA X   F
+SAPLMGMM                                	0060	X	                                                                                                                                    	
+                                        	0000	 	BDC_CURSOR                                                                                                                          	RMMG1-MBRSH
+                                        	0000	 	BDC_OKCODE                                                                                                                          	ENTR
+                                        	0000	 	RMMG1-MATNR                                                                                                                         	ZZZTEST01
+                                        	0000	 	RMMG1-MBRSH                                                                                                                         	M
+                                        	0000	 	RMMG1-MTART                                                                                                                         	Z000
+SAPLMGMM                                	0070	X	                                                                                                                                    	
+                                        	0000	 	BDC_CURSOR                                                                                                                          	MSICHTAUSW-DYTXT(01)
+                                        	0000	 	BDC_OKCODE                                                                                                                          	=ENTR
+                                        	0000	 	MSICHTAUSW-KZSEL(01)                                                                                                                	X
+SAPLMGMM                                	4004	X	                                                                                                                                    	
+                                        	0000	 	BDC_OKCODE                                                                                                                          	/00
+                                        	0000	 	BDC_SUBSCR                                                                                                                          	SAPLMGMM                                2004TABFRA1
+                                        	0000	 	BDC_SUBSCR                                                                                                                          	SAPLMGD1                                1002SUB1
+                                        	0000	 	MAKT-MAKTX                                                                                                                          	test
+                                        	0000	 	BDC_SUBSCR                                                                                                                          	SAPLMGD1                                2001SUB2
+                                        	0000	 	BDC_CURSOR                                                                                                                          	MARA-MEINS
+                                        	0000	 	MARA-MEINS                                                                                                                          	PC
+                                        	0000	 	BDC_SUBSCR                                                                                                                          	SAPLMGD1                                2561SUB3
+                                        	0000	 	BDC_SUBSCR                                                                                                                          	SAPLMGD1                                2007SUB4
+                                        	0000	 	BDC_SUBSCR                                                                                                                          	SAPLMGD1                                2005SUB5
+                                        	0000	 	BDC_SUBSCR                                                                                                                          	SAPLMGD1                                2011SUB6
+                                        	0000	 	BDC_SUBSCR                                                                                                                          	SAPLMGD1                                2033SUB7
+                                        	0000	 	BDC_SUBSCR                                                                                                                          	SAPLMGD1                                0001SUB8
+                                        	0000	 	BDC_SUBSCR                                                                                                                          	SAPLMGD1                                0001SUB9
+                                        	0000	 	BDC_SUBSCR                                                                                                                          	SAPLMGD1                                0001SUB10
+SAPLSPO1                                	0300	X	                                                                                                                                    	
+                                        	0000	 	BDC_OKCODE                                                                                                                          	=YES

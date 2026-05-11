@@ -1,0 +1,24 @@
+# Default rules for /sap-docs-convert.
+# Override per customer at {custom_url}\spec_conversion_rules.tsv
+#
+# Columns:
+#   CATEGORY  - field_rename | type_rename | flag_mapping | schema_migration
+#   FROM      - source token (legacy value)
+#   TO        - target token (canonical value); for flag_mapping use KEY1=VAL1;KEY2=VAL2
+#   SCOPE     - optional comma-separated file list (empty = apply everywhere)
+#   NOTES     - optional free-text comment, ignored by the engine
+#
+# Lines starting with '#' and blank lines are skipped.
+# Cell separator is TAB, NOT spaces.
+CATEGORY	FROM	TO	SCOPE	NOTES
+field_rename	FELDNAME	FIELDNAME		Legacy German column heading from older specs
+field_rename	KEY_FLAG	KEY	_tables.txt
+field_rename	INIT_FLAG	INITIAL	_tables.txt
+field_rename	REF_TABLE	ReferenceTable	_tables.txt
+field_rename	REF_FIELD	Ref.Field	_tables.txt
+type_rename	CHAR(N)	CHAR		Strip parentheses around length
+type_rename	STRING255	CHAR 255	_domains.txt,_dataElements.txt	Flatten to fixed-length
+type_rename	NUMC(N)	NUMC
+type_rename	DEC(N,M)	DEC
+flag_mapping	PK	KEY=X;INITIAL=X	_tables.txt	Primary-key shorthand
+flag_mapping	NN	INITIAL=X	_tables.txt	NOT NULL shorthand

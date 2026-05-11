@@ -1,0 +1,51 @@
+# Build artefacts / dependencies
+node_modules/
+__pycache__/
+dist/
+.astro/
+
+# Environment / local config
+.env
+.env.*
+*.env
+.claude/worktrees/
+.claude/settings.local.json
+
+# Temp & scratch
+Temp/
+*.tmp
+*.bak
+*.log
+
+# Office artefacts — block ad-hoc files but ALLOW the official templates
+*.xlsx
+!plugins/sap-dev-core/shared/templates/spec_template.xlsx
+!plugins/sap-dev-core/shared/templates/spec_template_JA.xlsx
+!plugins/sap-dev-core/shared/templates/customer_brief_sample.xlsx
+*.pptx
+*.docx
+# PowerPoint / Excel lock files
+~$*
+
+# Skill runtime artefacts (per-run state, generated runners, work-folder snapshots)
+*.upload.txt
+# SAP NCo 3.1 dev trace — should land in {work_dir}\logs (sap_rfc_lib.ps1
+# redirects via SetCurrentDirectory) but defensive in case CWD is wrong.
+dev_nco_rfc.log
+dev_*.log
+.pre-convert/
+sap_*_run.json
+sap_*_run.ps1
+sap_*_run.vbs
+se16n_params.txt
+se16n_*.txt
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Internal docs (not for public repo)
+docs/email-templates.md
+
+# Legacy explicit gitignores — kept for safety even though *.xlsx covers them
+Temp/サンプル設計書.xlsx

@@ -1,0 +1,113 @@
+# =============================================================================
+# sap_bdc_transaction.ps1  -  Execute BDC via ABAP4_CALL_TRANSACTION over NCo
+#
+# Reads SHDB recording file (tab-delimited fixed-width), builds BDCDATA,
+# calls ABAP4_CALL_TRANSACTION, collects MESS_TAB messages, writes results.
+#
+# Tokens:
+#   %%SAP_SERVER%% %%SAP_SYSNR%% %%SAP_CLIENT%%
+#   %%SAP_USER%%   %%SAP_PASSWORD%% %%SAP_LANGUAGE%%
+#   %%TCODE%%       Transaction code
+#   %%BDC_FILE%%    Path to SHDB recording
+#   %%DISMODE%%     A/E/N/P
+#   %%UPDMODE%%     A/S/L
+#   %%RESULT_FILE%% Path to write results
+# =============================================================================
+
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$ErrorActionPreference = 'Stop'
+
+$TCODE         = "%%TCODE%%"
+$BDC_FILE      = "%%BDC_FILE%%"
+$DISMODE       = "%%DISMODE%%"
+$UPDMODE       = "%%UPDMODE%%"
+$RESULT_FILE   = "%%RESULT_FILE%%"
+
+$global:resultLines = @()
+function Add-Line([string]$s) { $global:resultLines += $s }
+function Finish([string]$status) {
+    $sb = New-Object System.Text.StringBuilder
+    [void]$sb.AppendLine("STATUS:`t$status")
+    [void]$sb.AppendLine("TCODE:`t$TCODE")
+    [void]$sb.AppendLine("DISMODE:`t$DISMODE")
+    [void]$sb.AppendLine("UPDMODE:`t$UPDMODE")
+    [void]$sb.AppendLine("TIMESTAMP:`t$(Get-Date)")
+    [void]$sb.AppendLine("")
+    [void]$sb.AppendLine("TCODE`tDYNAME`tDYNUMB`tMSGTYP`tMSGSPRA`tMSGID`tMSGNR`tMSGV1`tMSGV2`tMSGV3`tMSGV4`tENV`tFLDNAME")
+    foreach ($l in $global:resultLines) { if ($l -ne "") { [void]$sb.AppendLine($l) } }
+    [System.IO.File]::WriteAllText($RESULT_FILE, $sb.ToString(), [System.Text.Encoding]::UTF8)
+    Write-Host $status
+}
+
+. "%%RFC_LIB_PS1%%"
+$g_dest = Connect-SapRfc -Server   "%%SAP_SERVER%%" `
+                         -Sysnr    "%%SAP_SYSNR%%" `
+                         -Client   "%%SAP_CLIENT%%" `
+                         -User     "%%SAP_USER%%" `
+                         -Password "%%SAP_PASSWORD%%" `
+                         -Language "%%SAP_LANGUAGE%%" `
+                         -DestName "SAPDEV_BDC"
+if (-not $g_dest) { Finish "ERROR: RFC connection failed."; exit 1 }
+
+if (-not (Test-Path $BDC_FILE)) { Finish "ERROR: BDC file not found: $BDC_FILE"; exit 1 }
+
+# Parse SHDB recording
+$bdcRows = @()
+foreach ($line in Get-Content -LiteralPath $BDC_FILE) {
+    if ([string]::IsNullOrWhiteSpace($line)) { continue }
+    if ($line.TrimStart().StartsWith("#")) { continue }
+    $arr = $line.Split("`t")
+    if ($arr.Length -lt 3) { continue }
+    $col2 = $arr[2].Trim()
+    if ($col2 -eq "X") {
+        $bdcRows += [pscustomobject]@{ Kind = "S"; Program = $arr[0].Trim(); Dynpro = $arr[1].Trim(); Fnam = ""; Fval = "" }
+    } elseif ($col2 -ne "T" -and $arr.Length -ge 4) {
+        $fnam = $arr[3].Trim()
+        if ($fnam -ne "") {
+            $fval = if ($arr.Length -ge 5) { $arr[4].Trim() } else { "" }
+            $bdcRows += [pscustomobject]@{ Kind = "F"; Program = ""; Dynpro = ""; Fnam = $fnam; Fval = $fval }
+        }
+    }
+}
+if ($bdcRows.Count -eq 0) { Finish "ERROR: No valid BDC records found in: $BDC_FILE"; exit 1 }
+Write-Host ("INFO: Parsed " + $bdcRows.Count + " BDC rows from $BDC_FILE")
+
+try {
+    $fn = $g_dest.Repository.CreateFunction("ABAP4_CALL_TRANSACTION")
+    $fn.SetValue("TCODE",       $TCODE)
+    $fn.SetValue("SKIP_SCREEN", " ")
+    $fn.SetValue("MODE_VAL",    $DISMODE)
+    $fn.SetValue("UPDATE_VAL",  $UPDMODE)
+    $bdcTbl = $fn.GetTable("USING_TAB")
+    foreach ($r in $bdcRows) {
+        $bdcTbl.Append() | Out-Null
+        if ($r.Kind -eq "S") {
+            $bdcTbl.SetValue("PROGRAM",  $r.Program)
+            $bdcTbl.SetValue("DYNPRO",   $r.Dynpro)
+            $bdcTbl.SetValue("DYNBEGIN", "X")
+        } else {
+            $bdcTbl.SetValue("FNAM", $r.Fnam)
+            $bdcTbl.SetValue("FVAL", $r.Fval)
+        }
+    }
+    Write-Host "INFO: Calling transaction $TCODE (DISMODE=$DISMODE, UPDMODE=$UPDMODE)..."
+    $fn.Invoke($g_dest)
+} catch {
+    Finish "ERROR: Transaction call failed: $($_.Exception.Message)"
+    try { [SAP.Middleware.Connector.RfcDestinationManager]::RemoveDestination($g_rfcParams) | Out-Null } catch {}
+    exit 1
+}
+
+# Collect messages
+$msgs = $fn.GetTable("MESS_TAB")
+$msgCount = $msgs.RowCount
+for ($i = 0; $i -lt $msgCount; $i++) {
+    $msgs.CurrentIndex = $i
+    $cols = @("TCODE","DYNAME","DYNUMB","MSGTYP","MSGSPRA","MSGID","MSGNR","MSGV1","MSGV2","MSGV3","MSGV4","ENV","FLDNAME")
+    $vals = $cols | ForEach-Object { try { $msgs.GetString($_) } catch { "" } }
+    Add-Line ($vals -join "`t")
+}
+
+try { [SAP.Middleware.Connector.RfcDestinationManager]::RemoveDestination($g_rfcParams) | Out-Null } catch {}
+Finish "SUCCESS: Transaction $TCODE executed. $msgCount message(s)."
+exit 0

@@ -1,0 +1,37 @@
+DATATYPE	DESCRIPTION	FIXED_LENGTH	MAX_LENGTH	DECIMALS_ALLOWED	SIGN_ALLOWED	OBSOLETE	NOTES
+ACCP	Posting Period YYYYMM	6				Posting period in format YYYYMM
+CHAR	Character String		1333			Length required; variable up to 1333
+CLNT	Client	3				Client key; length always 3
+CUKY	Currency key for currency fields	5				Currency key; length always 5
+CURR	Currency Field in BCD Format		17	X	X		Requires CUKY reference field in same structure
+DATN	Date in format YYYYMMDD (native HANA type DATE)	8				Native HANA DATE type
+DATS	Date in Format YYYYMMDD	8				Date YYYYMMDD; length always 8
+DEC	Packed Number in BCD Format		31	X	X		Decimals: 0 to min(LENGTH,14)
+DECFLOAT16	Floating point number (native HANA type SMALLDECIMAL)	16				Native HANA SMALLDECIMAL
+DECFLOAT34	Floating point number (native HANA type DECIMAL)	34				Native HANA DECIMAL
+DF16_DEC	Decimal floating point number saved in BCD format	16	X			BCD format; length always 16
+DF16_RAW	Decimal floating point number saved as binary number	8				Binary number; length always 8
+DF16_SCL	Decimal floating point number with scaling (obsolete)	16				X	Obsolete; do not use
+DF34_DEC	Decimal floating point number saved in BCD format	34	X			BCD format; length always 34
+DF34_RAW	Decimal floating point number saved as binary number	16				Binary number; length always 16
+DF34_SCL	Decimal floating point number with scaling (obsolete)	34				X	Obsolete; do not use
+FLTP	Floating Point Number	16		X	X		IEEE 754 double precision; length always 16
+GEOM_EWKB	Geometry (EWKB representation)					Geometry EWKB; no fixed length
+INT1	1-Byte Integer, 0 to 255	3				0 to 255; sign not applicable
+INT2	2-byte integer, -32768 to 32767	5				Length always 5
+INT4	4-byte integer, -2147483648 to +2147483647	10				Length always 10
+INT8	8-Byte Integer	19				Length always 19
+LANG	Language key	1				Language key; length always 1
+LCHR	Long Character String		16383			Rarely used in modern ABAP
+LRAW	Long Byte String		16383			Long byte sequence
+NUMC	Numerical Text		255			Digits only; no arithmetic operations
+PREC	Obsolete Data Type				X	Obsolete; do not use
+QUAN	Quantity Field in BCD Format		17	X	X		Requires UNIT reference field in same structure
+RAW	Byte Sequence		255			Byte sequence; length required
+RAWSTRING	Byte String (BLOB)					BLOB; no length required
+SSTRING	Character String		1333			Short text string
+TIMN	Time in format HHMMSS (native HANA type TIME)	6				Native HANA TIME type
+TIMS	Time in Format HHMMSS	6				Time HHMMSS; length always 6
+UNIT	Unit key of a quantity field	3				Unit key; length always 3
+UTCLONG	Time stamp (native HANA type TIMESTAMP)	21				UTC timestamp; length always 21
+VARC	Obsolete Data Type				X	Obsolete; do not use

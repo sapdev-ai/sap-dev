@@ -1,0 +1,34 @@
+SCOPE	DATA_KIND	PREFIX	EXAMPLE	DESCRIPTION
+LOCAL	VARIABLE	lv_	lv_count	Local scalar variable
+LOCAL	STRUCTURE	ls_	ls_header	Local structure / work area
+LOCAL	TABLE	lt_	lt_items	Local internal table
+LOCAL	CONSTANT	lc_	lc_max	Local constant
+LOCAL	OBJECT	lo_	lo_alv	Local object reference
+LOCAL	REFERENCE	lr_	lr_data	Local data reference
+GLOBAL	VARIABLE	gv_	gv_mode	Global scalar variable
+GLOBAL	STRUCTURE	gs_	gs_config	Global structure / work area
+GLOBAL	TABLE	gt_	gt_output	Global internal table
+GLOBAL	CONSTANT	gc_	gc_yes	Global constant
+GLOBAL	OBJECT	go_	go_grid	Global object reference
+GLOBAL	REFERENCE	gr_	gr_data	Global data reference
+PARAM	IMPORTING	iv_	iv_matnr	FORM USING / METHOD IMPORTING (scalar)
+PARAM	IMPORTING_STRUCT	is_	is_header	FORM USING / METHOD IMPORTING (structure)
+PARAM	IMPORTING_TABLE	it_	it_items	FORM USING / METHOD IMPORTING (table)
+PARAM	EXPORTING	ev_	ev_result	METHOD EXPORTING (scalar)
+PARAM	EXPORTING_STRUCT	es_	es_header	METHOD EXPORTING (structure)
+PARAM	EXPORTING_TABLE	et_	et_items	METHOD EXPORTING (table)
+PARAM	CHANGING	cv_	cv_count	FORM CHANGING / METHOD CHANGING (scalar)
+PARAM	CHANGING_STRUCT	cs_	cs_header	FORM CHANGING (structure)
+PARAM	CHANGING_TABLE	ct_	ct_items	FORM CHANGING (table)
+PARAM	RETURNING	rv_	rv_result	METHOD RETURNING value
+SELECTION	PARAMETER	p_	p_bukrs	Selection screen PARAMETER
+SELECTION	SELECT_OPTION	s_	s_matnr	Selection screen SELECT-OPTIONS
+FIELD_SYMBOL	VARIABLE	<lv_	<lv_val>	Field symbol for scalar
+FIELD_SYMBOL	STRUCTURE	<ls_	<ls_row>	Field symbol for structure
+FIELD_SYMBOL	TABLE	<lt_	<lt_tab>	Field symbol for table
+MEMBER	VARIABLE	gv_	gv_model	Class attribute (DATA / CLASS-DATA inside a class) - scalar
+MEMBER	STRUCTURE	gs_	gs_header	Class attribute - structure / work area
+MEMBER	TABLE	gt_	gt_items	Class attribute - internal table
+MEMBER	CONSTANT	gc_	gc_max	Class attribute - constant
+MEMBER	OBJECT	go_	go_helper	Class attribute - object reference
+MEMBER	REFERENCE	gr_	gr_data	Class attribute - data reference

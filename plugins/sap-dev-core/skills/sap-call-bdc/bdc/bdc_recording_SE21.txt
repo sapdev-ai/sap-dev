@@ -1,0 +1,12 @@
+                                        	0000	T	SE21                                                                                                                                    	BS AA X   F
+SAPLPBSRV                               	0100	X
+                                        	0000	 	BDC_CURSOR                                                                                                                          	PBSRVSCR-PACKNAME
+                                        	0000	 	BDC_OKCODE                                                                                                                          	=CREA
+                                        	0000	 	PBSRVSCR-PACKNAME                                                                                                                   	%%PACKAGE%%
+SAPLSCOMPKDTL                           	0100	X
+                                        	0000	 	BDC_CURSOR                                                                                                                          	SCOMPKDTLN-CTEXT
+                                        	0000	 	BDC_OKCODE                                                                                                                          	=SAVE
+                                        	0000	 	SCOMPKDTLN-CTEXT                                                                                                                    	%%DESCRIPTION%%
+SAPLSTRD                                	0300	X
+                                        	0000	 	BDC_OKCODE                                                                                                                          	=CONT
+                                        	0000	 	KO008-TRKORR                                                                                                                        	%%TRANSPORT%%

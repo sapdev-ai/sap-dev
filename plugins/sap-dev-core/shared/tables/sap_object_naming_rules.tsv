@@ -1,0 +1,18 @@
+OBJECT_TYPE	PATTERN	EXAMPLE	DESCRIPTION
+PACKAGE	^Z[A-Z0-9_]*$	ZHK_DEV	Customer-namespace package
+PROGRAM	^Z[A-Z0-9_]*$	ZHKMM015R01	Customer-namespace program (max 40 chars per SAP)
+SUBROUTINE	^F_[A-Z0-9_]+$	F_GET_DATA	FORM (subroutine) starts with F_
+FUNCTION_GROUP	^ZFG[A-Z0-9_]*$	ZFGSALES	Function group starts with ZFG (industry convention)
+FUNCTION_MODULE	^Z_[A-Z0-9_]+$	Z_GET_CUSTOMER	Function module starts with Z_ (industry convention)
+GLOBAL_CLASS	^ZCL_[A-Z0-9_]+$	ZCL_HELPER	Global class starts with ZCL_ (industry convention)
+METHOD	^M_[A-Z0-9_]+$	M_GET_DATA	Method of global class starts with M_ (industry convention)
+DDIC_DOMAIN	^Z[A-Z0-9_]*$	ZHKDM_KEY15	Customer-namespace domain (max 30 chars per SAP)
+DDIC_DATAELEMENT	^Z[A-Z0-9_]*$	ZHKDE_KEY151	Customer-namespace data element (max 30 chars per SAP)
+DDIC_STRUCTURE	^Z[A-Z0-9_]*$	ZHKDS_ORDER	Customer-namespace structure (max 30 chars per SAP)
+DDIC_TABLE	^Z[A-Z0-9_]*$	ZHKFIXEDVALS15	Customer-namespace table (max 30 chars per SAP)
+DDIC_VIEW	^Z[A-Z0-9_]*$	ZHKDV_ORDER	Customer-namespace view (max 30 chars per SAP)
+DDIC_SEARCHHELP	^Z[A-Z0-9_]*$	ZHKDH_CUST	Customer-namespace search help (max 30 chars per SAP)
+DDIC_LOCKOBJECT	^EZ[A-Z0-9_]*$	EZHKDL_ORDER	Lock object: SAP-mandated E prefix + Z (max 30 chars)
+DDIC_TYPEGROUP	^Z[A-Z0-9_]{0,7}$	ZHKGCM	Type group: Z + up to 7 chars = 8 total (SAP limit)
+DDIC_TABLETYPE	^Z[A-Z0-9_]*$	ZHKDC_ORDERS	Customer-namespace table type (max 30 chars per SAP)
+MESSAGE_CLASS	^Z[A-Z0-9_]{0,19}$	ZHK15	Message class: Z + up to 19 chars = 20 total (SAP limit)
