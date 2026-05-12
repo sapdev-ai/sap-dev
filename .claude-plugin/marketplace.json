@@ -12,7 +12,7 @@
     "version": "0.1.0",
     "last_updated": "2026-05-12",
     "total_plugins": 3,
-    "total_skills": 47,
+    "total_skills": 49,
     "categories": [
       "tooling"
     ]
@@ -35,7 +35,9 @@
         "./skills/sap-function-group",
         "./skills/sap-gui-diagnose",
         "./skills/sap-gui-object-details",
+        "./skills/sap-gui-probe",
         "./skills/sap-gui-record",
+        "./skills/sap-gui-skill-scaffold",
         "./skills/sap-log-analyze",
         "./skills/sap-login",
         "./skills/sap-rfc-wrapper-class",
@@ -79,7 +81,9 @@
         "dpapi",
         "function-group",
         "gui-object-details",
+        "gui-probe",
         "gui-scripting",
+        "gui-skill-scaffold",
         "log-analyze",
         "login",
         "rfc",

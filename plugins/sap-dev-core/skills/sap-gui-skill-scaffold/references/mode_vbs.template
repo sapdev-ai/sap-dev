@@ -1,0 +1,74 @@
+' =============================================================================
+' sap_{{SKILL_NAME_LOWER}}_{{MODE}}.vbs
+' -----------------------------------------------------------------------------
+' Scaffolded {{SCAFFOLD_TIMESTAMP}} by /sap-gui-skill-scaffold.
+' Source probe : {{SOURCE_PROBE_FOLDER}}
+' Source scenario: {{SOURCE_SCENARIO}}
+'
+' Parameters (replaced by the PowerShell wrapper before cscript runs):
+{{PARAM_DOC}}
+'
+' Run via: 32-bit cscript //NoLogo (SAP GUI Scripting COM requires 32-bit).
+' Requires an active SAP GUI session positioned at SAP Easy Access.
+' =============================================================================
+Option Explicit
+
+' --- attach to active SAP GUI session ---------------------------------------
+Dim oSAP, oApp, oCon, oSess
+On Error Resume Next
+Set oSAP = GetObject("SAPGUI")
+If Err.Number <> 0 Or oSAP Is Nothing Then
+    WScript.Echo "ERROR: SAP GUI not running"
+    WScript.Quit 2
+End If
+Set oApp = oSAP.GetScriptingEngine
+If Err.Number <> 0 Or oApp Is Nothing Then
+    WScript.Echo "ERROR: SAP GUI scripting engine unavailable"
+    WScript.Quit 2
+End If
+On Error GoTo 0
+If oApp.Children.Count = 0 Then
+    WScript.Echo "ERROR: no SAP GUI connection (run /sap-login first)"
+    WScript.Quit 2
+End If
+Set oCon = oApp.Children(0)
+If oCon.Children.Count = 0 Then
+    WScript.Echo "ERROR: SAP GUI connection has no session"
+    WScript.Quit 2
+End If
+Set oSess = oCon.Children(0)
+
+' --- helper: dismiss a popup if one is open ---------------------------------
+Function IsPopupOpen(sess)
+    On Error Resume Next
+    Dim w : Set w = sess.findById("wnd[1]", False)
+    On Error GoTo 0
+    IsPopupOpen = Not (w Is Nothing)
+End Function
+
+' --- helper: read status-bar MessageType (language-independent) -------------
+Function StatusBarType(sess)
+    On Error Resume Next
+    Dim s : Set s = sess.findById("wnd[0]/sbar", False)
+    On Error GoTo 0
+    If s Is Nothing Then
+        StatusBarType = ""
+    Else
+        StatusBarType = s.MessageType
+    End If
+End Function
+
+' --- begin scenario actions -------------------------------------------------
+{{ACTION_LINES}}
+' --- end scenario actions ---------------------------------------------------
+
+' Final status-bar check -- E or A means the last action failed even though no
+' VBS exception was raised. Surface this rather than reporting false success.
+Dim sbType : sbType = StatusBarType(oSess)
+If sbType = "E" Or sbType = "A" Then
+    WScript.Echo "ERROR: status-bar reported MessageType=" & sbType
+    WScript.Quit 3
+End If
+
+WScript.Echo "DONE"
+WScript.Quit 0

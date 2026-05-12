@@ -11,7 +11,7 @@ Initial public release. Early-access status — APIs and skill arguments may cha
 - Central marketplace catalog at `.claude-plugin/marketplace.json`.
 - JSON Schemas for `marketplace.json` and per-plugin `plugin.json` under `schemas/`.
 
-### sap-dev-core (34 skills + `abap-developer` agent)
+### sap-dev-core (36 skills + `abap-developer` agent)
 - SAP GUI Scripting login + DPAPI-encrypted credential storage (`sap-login`).
 - BDC execution via RFC `ABAP4_CALL_TRANSACTION` (`sap-call-bdc`).
 - Add-on table maintenance via SE16/SM30 (`sap-update-addon`).
@@ -19,7 +19,7 @@ Initial public release. Early-access status — APIs and skill arguments may cha
 - Object lifecycle helpers: `sap-activate-object`, `sap-change-package`, `sap-check-fix`, `sap-transport-request`, `sap-function-group`, `sap-where-used-list`.
 - Dev-environment lifecycle: `sap-dev-init`, `sap-dev-status`, `sap-dev-clean`.
 - Quality + observability: `sap-atc` (4-stage ATC pipeline with Object Set + Run Series + Run Monitor + Manage Results), `sap-log-analyze`.
-- GUI utilities: `sap-gui-record`, `sap-gui-object-details`, `sap-gui-diagnose`.
+- GUI utilities: `sap-gui-record`, `sap-gui-object-details`, `sap-gui-diagnose`, `sap-gui-probe` (drives a transaction step-by-step against a natural-language scenario, dumps each screen via the object-details engine, and emits a synthesized replay VBS — skill-authoring aid), `sap-gui-skill-scaffold` (consumes N probe folders for the same TCD and emits a ready-to-test mode-aware skill draft via cross-probe diff).
 - RFC wrapper generators: `sap-rfc-wrapper-class`, `sap-rfc-wrapper-fm`.
 - `abap-developer` agent: BUILD / FIX / DEPLOY orchestrator that reads a Customer Brief and dispatches the workbench skills.
 

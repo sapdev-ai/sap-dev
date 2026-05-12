@@ -1,0 +1,72 @@
+# =============================================================================
+# sap_gui_probe_dump.ps1
+# -----------------------------------------------------------------------------
+# Token-substitutes the sap-gui-object-details VBS template and runs it via
+# 32-bit cscript to dump the currently visible SAP GUI screen.
+#
+# This is a thin wrapper -- the dump engine lives in sap-gui-object-details.
+# The probe skill reuses it verbatim rather than forking a copy.
+#
+# Usage:
+#   powershell -ExecutionPolicy Bypass -File sap_gui_probe_dump.ps1 `
+#       -OutputFile <abs-path> `
+#       [-Mode tree|menu|type|id|wnd] `        # default tree
+#       [-Filter <text>] `                      # required for type/id/wnd
+#       [-Window <0-5>] `                       # restrict to one window
+#       [-MaxDepth <n>]                          # default 10
+#
+# Output: last line of stdout is "DONE" or "ERROR: <text>" (forwarded from
+# the underlying VBS). The dump itself goes to -OutputFile (UTF-16LE).
+# =============================================================================
+
+[CmdletBinding()]
+param(
+    [Parameter(Mandatory = $true)]
+    [string] $OutputFile,
+
+    [ValidateSet('tree','menu','type','id','wnd')]
+    [string] $Mode = 'tree',
+
+    [string] $Filter = '',
+    [string] $Window = '',
+    [int]    $MaxDepth = 10
+)
+
+# Locate the sap-gui-object-details VBS template (sibling skill in the same plugin).
+$thisDir   = Split-Path -Parent $MyInvocation.MyCommand.Path        # ...\sap-gui-probe\references
+$skillsDir = Split-Path -Parent (Split-Path -Parent $thisDir)        # ...\skills
+$templateVbs = Join-Path $skillsDir 'sap-gui-object-details\references\sap_gui_object_details.vbs'
+
+if (-not (Test-Path $templateVbs)) {
+    Write-Error "sap-gui-object-details VBS template not found at: $templateVbs"
+    exit 1
+}
+
+# Emit the substituted VBS to a sibling temp file (one per dump so the caller
+# can keep them for forensics if desired).
+$outDir = Split-Path -Parent $OutputFile
+if (-not (Test-Path $outDir)) {
+    New-Item -ItemType Directory -Path $outDir -Force | Out-Null
+}
+
+$stamp     = Get-Date -Format 'yyyyMMddHHmmssfff'
+$runtimeVbs = Join-Path $outDir ("_dump_" + $stamp + ".vbs")
+
+$content = Get-Content $templateVbs -Raw
+$content = $content.Replace('%%MODE%%',        $Mode)
+$content = $content.Replace('%%FILTER%%',      $Filter)
+$content = $content.Replace('%%WINDOW%%',      $Window)
+$content = $content.Replace('%%MAX_DEPTH%%',   "$MaxDepth")
+$content = $content.Replace('%%OUTPUT_FILE%%', $OutputFile)
+
+Set-Content -Path $runtimeVbs -Value $content -Encoding Unicode
+
+# 32-bit cscript is required for SAP GUI Scripting COM bindings.
+$cscript = 'C:\Windows\SysWOW64\cscript.exe'
+& $cscript //NoLogo $runtimeVbs
+$rc = $LASTEXITCODE
+
+# Best-effort cleanup of the runtime VBS so the run folder stays scannable.
+Remove-Item -Path $runtimeVbs -ErrorAction SilentlyContinue
+
+exit $rc
