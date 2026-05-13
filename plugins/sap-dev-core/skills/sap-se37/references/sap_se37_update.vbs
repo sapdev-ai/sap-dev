@@ -455,8 +455,8 @@ If Err.Number = 0 And Not (oSyntaxGrid Is Nothing) Then
     nSyntaxRows = oSyntaxGrid.RowCount
     Err.Clear
     If nSyntaxRows > 0 Then
-        bSyntaxOK = False
-        WScript.Echo "ERROR: Syntax check found " & (nSyntaxRows \ 2) & " error(s):"
+        Dim nErrorCount
+        nErrorCount = 0
         Dim iSynRow
         For iSynRow = 0 To nSyntaxRows - 1
             Dim sSynType, sSynLine, sSynText
@@ -469,15 +469,33 @@ If Err.Number = 0 And Not (oSyntaxGrid Is Nothing) Then
             Err.Clear
             sSynText = oSyntaxGrid.getCellValue(iSynRow, "TEXT")
             Err.Clear
+            ' MSGTYPE "@5C\QError@" or contains "E" = real error; warnings/info are not blocking
+            Dim bIsError
+            bIsError = (InStr(sSynType, "Error") > 0 Or sSynType = "E" Or InStr(sSynType, "5C") > 0)
+            If bIsError Then nErrorCount = nErrorCount + 1
             ' Only output rows that have actual text
             If sSynText <> "" Then
-                If sSynLine <> "" Then
-                    WScript.Echo "  Line " & sSynLine & ": " & sSynText
+                If bIsError Then
+                    If sSynLine <> "" Then
+                        WScript.Echo "ERROR: Line " & sSynLine & ": " & sSynText
+                    Else
+                        WScript.Echo "ERROR:     -> " & sSynText
+                    End If
                 Else
-                    WScript.Echo "    -> " & sSynText
+                    If sSynLine <> "" Then
+                        WScript.Echo "WARNING: Line " & sSynLine & ": " & sSynText
+                    Else
+                        WScript.Echo "WARNING:     -> " & sSynText
+                    End If
                 End If
             End If
         Next
+        If nErrorCount > 0 Then
+            bSyntaxOK = False
+            WScript.Echo "ERROR: Syntax check found " & nErrorCount & " error(s)."
+        Else
+            WScript.Echo "INFO: Syntax check passed with " & nSyntaxRows & " warning(s) only."
+        End If
     Else
         WScript.Echo "INFO: Syntax check passed — no findings."
     End If
