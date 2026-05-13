@@ -426,15 +426,20 @@ After this step, `sap_dev_package` must contain a valid package name. If the ski
 ## Step 4 — Get or Create Function Group
 
 Run **`/sap-function-group`** to ensure the function group exists. The
-skill is mode-aware and dispatches per `userConfig.sap_dev_mode`:
+skill is mode-aware: `userConfig.sap_dev_mode` selects which sub-flow
+runs first, with the other sub-flow used only if the first is
+unavailable. **Do not override the user's `sap_dev_mode`** — pass it
+through and let the skill honour it.
 
-- **RFC sub-flow** (preferred): RFC check on TLIBG, then
-  `RS_FUNCTION_POOL_INSERT` to create. Args:
-  `<FUGR> "<short text>"` (package and transport read from settings).
-- **GUI sub-flow** (fallback): GUI-driven creation via SE37 "Goto >
-  Function Groups > Create Group". Defaults the package and transport
-  to the values from Steps 2 and 3 when not given. Args:
-  `<FUGR> "<short text>" <package> <transport>`.
+- **RFC sub-flow**: RFC check on TLIBG, then `RS_FUNCTION_POOL_INSERT`
+  to create. Args: `<FUGR> "<short text>"` (package and transport read
+  from settings). Used when `sap_dev_mode = RFC`, or when
+  `sap_dev_mode` is unset / `BDC` and NCo 3.1 is available.
+- **GUI sub-flow**: GUI-driven creation via SE37 "Goto > Function
+  Groups > Create Group". Defaults the package and transport to the
+  values from Steps 2 and 3 when not given. Args:
+  `<FUGR> "<short text>" <package> <transport>`. Used when
+  `sap_dev_mode = GUI`, or when RFC is not available.
 
 ### Resolve the function-group name
 

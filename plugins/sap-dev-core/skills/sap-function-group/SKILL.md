@@ -28,7 +28,7 @@ Task: $ARGUMENTS
 
 ## Operation × transport matrix
 
-| Operation | RFC path | GUI path | Default chain |
+| Operation | RFC path | GUI path | Fallback chain (when `sap_dev_mode` unset) |
 |---|---|---|---|
 | **Check existence** | `RFC_READ_TABLE TLIBG` | implied by SE37 navigation | RFC → GUI |
 | **Create + activate** | `RS_FUNCTION_POOL_INSERT` (creates active FG in one call) | SE37 *Goto > Function Groups > Create* + activate | RFC → GUI |
@@ -37,8 +37,8 @@ Task: $ARGUMENTS
 | **Delete** | no clean RFC API | delegate to `/sap-se38` with `PROGRAM_NAME = SAPL<FG>` | GUI only |
 
 `--activate-only` and `--delete` always force the GUI path. Everything
-else respects `userConfig.sap_dev_mode` (`RFC` / `GUI`); when unset,
-fall through the default chain.
+else follows the **mode precedence in Step 2** — `sap_dev_mode` takes
+priority over the fallback chain when set.
 
 ---
 
@@ -122,13 +122,23 @@ For GUI paths: ensure an SAP GUI session is open (`/sap-login`).
 
 If neither RFC nor GUI is configured, ask the user to fix `settings.json`.
 
-**Mode selection.**
+**Mode selection (precedence — highest first):**
 
-- Read `userConfig.sap_dev_mode`. Default `GUI`.
-- For each operation, if the requested operation has a path for the
-  preferred mode, use it; else fall through per the matrix above.
-- Operator can also force a path with `--rfc` / `--gui` (advisory; not
-  yet enforced in the VBS templates — log the choice).
+1. **Operator override** (`--rfc` / `--gui` argument): use that path. If
+   the operation has no implementation for the requested mode, **stop
+   with an error** — do not silently fall back.
+2. **`userConfig.sap_dev_mode` is `RFC` or `GUI`**: use that path if the
+   operation has an implementation for it. If not (e.g. `GUI` requested
+   for "Check PROGDIR state" which is RFC-only), fall through to the
+   next available path in the fallback chain **and log the fallthrough**
+   so the operator sees their preference was overridden.
+3. **`sap_dev_mode` blank or unset**: use the fallback chain in the
+   matrix above (typically RFC → GUI for read/check, GUI for things RFC
+   can't do).
+
+When honouring an explicit `sap_dev_mode`, do **NOT** also "try the
+other path first as a default" — that defeats the purpose of the
+setting.
 
 ---
 
