@@ -34,7 +34,7 @@ Task: $ARGUMENTS
 
 ## Step 0 — Resolve Work Directory
 
-Read sap-dev-core's settings.json (go 2 levels up from `<SKILL_DIR>` to the plugin root, then `settings.json`). Read `work_dir`.
+**Settings reads/writes follow `shared/rules/settings_lookup.md`** — merge `settings.local.json` over `settings.json` per-key on the `.value` field; writes always go to `settings.local.json`. Resolve sap-dev-core paths: 2 levels up from `<SKILL_DIR>` to the plugin root, then `settings.json` and (if present) `settings.local.json`. Read `work_dir`.
 
 | Setting | Default if blank |
 |---|---|
@@ -69,7 +69,7 @@ Parse `$ARGUMENTS`:
 | `OBJECT_TYPE=<...>` | Object type the caller is deploying (`REPORT`, `TABLE`, `FM`, `CLASS`, `MSGCLASS`, …). Forwarded to `/sap-se01` for description rendering. |
 | `OBJECT_DESCRIPTION=<...>` | Object name being deployed. Forwarded to `/sap-se01`. |
 
-Read from sap-dev-core `settings.json` `userConfig`:
+Read from the merged sap-dev-core `userConfig` (per `shared/rules/settings_lookup.md` — `settings.local.json` overrides `settings.json` per-key on the `.value` field):
 
 | Setting | Default if blank/unknown |
 |---|---|
@@ -157,7 +157,7 @@ the new policy for the rest of the session.
 
 ## Step 2 — Read SAP Connection Parameters
 
-Read SAP connection parameters from `$USER_CONFIG` (settings.json of sap-dev-core):
+Read SAP connection parameters from the merged sap-dev-core settings (per `shared/rules/settings_lookup.md` — `settings.local.json` overrides `settings.json` per-key on the `.value` field):
 
 | Setting key | Maps to token | Example |
 |---|---|---|

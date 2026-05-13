@@ -29,7 +29,7 @@ Task: $ARGUMENTS
 
 ## Step 0 — Resolve Work Directory
 
-Read sap-dev-core's settings.json. Read `work_dir` (default `C:\sap_dev_work`).
+**Settings reads/writes follow `<SAP_DEV_CORE_SHARED_DIR>/rules/settings_lookup.md`** — merge `settings.local.json` over `settings.json` per-key on the `.value` field; writes always go to `settings.local.json`. Read `work_dir` (default `C:\sap_dev_work`).
 Set `{WORK_TEMP}` = `{work_dir}\temp` and ensure it exists:
 
 ```bash

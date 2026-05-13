@@ -3,6 +3,34 @@
 Thanks for your interest. The full design rationale lives in `CLAUDE.md`; this
 file is the human-oriented short version.
 
+## First-time setup (per developer)
+
+Personal SAP credentials live in `plugins/sap-dev-core/settings.local.json`,
+which is gitignored. The tracked `settings.json` is the schema only — all its
+`value` fields are blank. Reads merge local over schema; writes from skills
+always target the local file. See `docs/settings-local-faq.md` for the full
+Q&A.
+
+After cloning, run **one** of:
+
+```powershell
+# Option A — guided bootstrap (recommended)
+pwsh ./scripts/dev-setup.ps1
+# Prompts for server / system / client / user / password / language;
+# DPAPI-encrypts the password; writes everything to settings.local.json.
+
+# Option B — let /sap-login build the file interactively
+#   (inside Claude Code)
+/sap-login
+
+# Option C — copy the schema and edit by hand
+copy plugins\sap-dev-core\settings.json plugins\sap-dev-core\settings.local.json
+notepad plugins\sap-dev-core\settings.local.json
+```
+
+To re-prompt for every field (e.g., switching SAP systems):
+`pwsh ./scripts/dev-setup.ps1 -Force`.
+
 ## Repository layout
 
 ```

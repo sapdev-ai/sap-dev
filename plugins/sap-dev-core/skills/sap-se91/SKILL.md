@@ -35,7 +35,7 @@ Task: $ARGUMENTS
 
 ## Step 0 — Resolve Work Directory
 
-Read sap-dev-core's settings.json (go 2 levels up from `<SKILL_DIR>` to the plugin root, then `settings.json`). Read `work_dir`, `custom_url`.
+**Settings reads/writes follow `shared/rules/settings_lookup.md`** — merge `settings.local.json` over `settings.json` per-key on the `.value` field; writes always go to `settings.local.json`. Resolve sap-dev-core paths: 2 levels up from `<SKILL_DIR>` to the plugin root, then `settings.json` and (if present) `settings.local.json`. Read `work_dir`, `custom_url`.
 
 | Setting | Default if blank |
 |---|---|
@@ -183,7 +183,7 @@ It uses RFC_READ_TABLE via SAP NCo 3.1 (requires 32-bit PowerShell).
 
 ### Sub-step A: Get SAP connection details
 
-Read SAP connection parameters from sap-dev-core's settings.json.
+Read SAP connection parameters from the merged sap-dev-core settings (per `<SAP_DEV_CORE_SHARED_DIR>/rules/settings_lookup.md`). The `sap_password` value typically comes from `settings.local.json` and is a `dpapi:...` blob — decrypt via `sap_dpapi.ps1` before use.
 Resolve path: go 2 levels up from `<SKILL_DIR>` (skill → skills/ → plugin root), then `settings.json`.
 
 | Setting key | Maps to | Example |

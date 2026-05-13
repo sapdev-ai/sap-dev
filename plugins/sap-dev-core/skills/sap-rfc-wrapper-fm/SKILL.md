@@ -31,7 +31,7 @@ Task: $ARGUMENTS
 
 ## Step 0 — Resolve Work Directory
 
-Read sap-dev-core's settings.json (go 3 levels up from `<SKILL_DIR>`, then into `sap-dev-core\settings.json`).
+**Settings reads/writes follow `<SAP_DEV_CORE_SHARED_DIR>/rules/settings_lookup.md`** — merge `settings.local.json` over `settings.json` per-key on the `.value` field; writes always go to `settings.local.json`. Resolve cross-plugin paths: 3 levels up from `<SKILL_DIR>`, then into `sap-dev-core\settings.json` and (if present) `sap-dev-core\settings.local.json`.
 
 | Setting | Default if blank |
 |---|---|
@@ -61,7 +61,7 @@ powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_
 - First token = **target FM name** (required, UPPERCASE)
 - Remaining tokens = optional `param=value` pairs for IMPORTING parameters
 
-Read SAP connection settings from sap-dev-core's settings.json:
+Read SAP connection settings from the merged sap-dev-core settings (per `<SAP_DEV_CORE_SHARED_DIR>/rules/settings_lookup.md` — `settings.local.json` overrides `settings.json` per-key):
 
 | Setting key | Fills token |
 |---|---|

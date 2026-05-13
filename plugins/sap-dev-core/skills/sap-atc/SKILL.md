@@ -76,7 +76,7 @@ Final PASS / FAIL emitted with the findings.tsv path when available.
 
 ## Step 0 — Resolve Work Directory
 
-Read `sap-dev-core/settings.json`. `{WORK_TEMP} = work_dir\temp`.
+**Settings reads/writes follow `shared/rules/settings_lookup.md`** — merge `settings.local.json` over `settings.json` per-key on the `.value` field; writes always go to `settings.local.json`. Read `work_dir`. `{WORK_TEMP} = work_dir\temp`.
 
 ```bash
 cmd /c if not exist "{WORK_TEMP}" mkdir "{WORK_TEMP}"

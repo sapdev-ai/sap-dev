@@ -101,12 +101,14 @@ function Connect-SapRfc {
     #   else {work_dir}\logs (default work_dir = C:\sap_dev_work)
     if (-not $script:_SapRfc_LogDirSet) {
         try {
-            $settingsPath = Join-Path (Split-Path -Parent $PSCommandPath) '..\..\settings.json'
+            # Settings read merges settings.json + settings.local.json — see
+            # sap_settings_lib.ps1.
+            $settingsLib = Join-Path (Split-Path -Parent $PSCommandPath) 'sap_settings_lib.ps1'
+            if (Test-Path $settingsLib) { . $settingsLib }
             $cfgWork = ''; $cfgLog = ''
-            if (Test-Path $settingsPath) {
-                $cfg = Get-Content -Raw $settingsPath | ConvertFrom-Json
-                $cfgWork = $cfg.userConfig.work_dir.value
-                $cfgLog  = $cfg.userConfig.log_dir.value
+            if (Get-Command Get-SapSettingValue -ErrorAction SilentlyContinue) {
+                $cfgWork = Get-SapSettingValue 'work_dir' ''
+                $cfgLog  = Get-SapSettingValue 'log_dir'  ''
             }
             if ([string]::IsNullOrWhiteSpace($cfgWork)) { $cfgWork = 'C:\sap_dev_work' }
             if ([string]::IsNullOrWhiteSpace($cfgLog))  { $cfgLog  = (Join-Path $cfgWork 'logs') }

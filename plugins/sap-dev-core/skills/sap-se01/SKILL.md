@@ -53,8 +53,7 @@ Steps 0 – 7 below are the CREATE flow.
 
 ## Step 0 — Resolve Work Directory and Settings
 
-Read sap-dev-core's settings.json (go 2 levels up from `<SKILL_DIR>` to the
-plugin root, then `settings.json`). Read:
+**Settings reads/writes follow `shared/rules/settings_lookup.md`** — merge `settings.local.json` over `settings.json` per-key on the `.value` field; writes always go to `settings.local.json`. Resolve sap-dev-core paths: 2 levels up from `<SKILL_DIR>` to the plugin root, then `settings.json` and (if present) `settings.local.json`. Read:
 
 | Setting | Default if blank |
 |---|---|

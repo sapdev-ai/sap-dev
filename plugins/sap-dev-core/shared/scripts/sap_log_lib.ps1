@@ -32,10 +32,11 @@ $script:SapLogLevels   = @{ DEBUG = 10; INFO = 20; WARN = 30; ERROR = 40; OFF = 
 function Get-SapLogSettings {
     if ($null -ne $script:SapLogSettings) { return $script:SapLogSettings }
 
-    # Locate sap-dev-core/settings.json:  this script lives at
+    # Settings read merges settings.json + settings.local.json — see
+    # sap_settings_lib.ps1. This script lives at
     # <root>\plugins\sap-dev-core\shared\scripts\sap_log_lib.ps1
-    $coreRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
-    $settingsPath = Join-Path $coreRoot 'settings.json'
+    $settingsLib = Join-Path $PSScriptRoot 'sap_settings_lib.ps1'
+    if (Test-Path $settingsLib) { . $settingsLib }
 
     $cfg = @{
         Enabled       = $true
@@ -51,54 +52,51 @@ function Get-SapLogSettings {
         RedactKeys    = @('sap_password','password','passwd','pwd','token','secret','api_key')
     }
 
-    if (Test-Path $settingsPath) {
+    if (Get-Command Get-SapSettingValue -ErrorAction SilentlyContinue) {
         try {
-            $json = Get-Content $settingsPath -Raw | ConvertFrom-Json
-            $uc   = $json.userConfig
+            $workDir = Get-SapSettingValue 'work_dir' 'C:\sap_dev_work'
 
-            $workDir = if ($uc.work_dir -and $uc.work_dir.value) { $uc.work_dir.value } else { 'C:\sap_dev_work' }
+            $v = Get-SapSettingValue 'log_enabled' ''
+            if ($v) { $cfg.Enabled = $v.ToLower() -eq 'true' }
 
-            if ($uc.log_enabled -and $uc.log_enabled.value) {
-                $cfg.Enabled = ([string]$uc.log_enabled.value).ToLower() -eq 'true'
-            }
-            if ($uc.log_level -and $uc.log_level.value) {
-                $cfg.Level = ([string]$uc.log_level.value).ToUpper()
+            $v = Get-SapSettingValue 'log_level' ''
+            if ($v) {
+                $cfg.Level = $v.ToUpper()
                 if ($script:SapLogLevels.ContainsKey($cfg.Level)) {
                     $cfg.LevelNum = $script:SapLogLevels[$cfg.Level]
                 }
             }
-            if ($uc.log_dir -and $uc.log_dir.value) {
-                $cfg.Dir = $uc.log_dir.value
-            } else {
-                $cfg.Dir = Join-Path $workDir 'logs'
-            }
-            if ($uc.log_file_pattern -and $uc.log_file_pattern.value) {
-                $cfg.Pattern = $uc.log_file_pattern.value
-            }
-            if ($uc.log_retention_days -and $uc.log_retention_days.value) {
-                $n = 0
-                if ([int]::TryParse($uc.log_retention_days.value, [ref]$n)) { $cfg.RetentionDays = $n }
-            }
-            if ($uc.log_format -and $uc.log_format.value) {
-                $f = ([string]$uc.log_format.value).ToUpper()
+
+            $v = Get-SapSettingValue 'log_dir' ''
+            if ($v) { $cfg.Dir = $v } else { $cfg.Dir = Join-Path $workDir 'logs' }
+
+            $v = Get-SapSettingValue 'log_file_pattern' ''
+            if ($v) { $cfg.Pattern = $v }
+
+            $v = Get-SapSettingValue 'log_retention_days' ''
+            if ($v) { $n = 0; if ([int]::TryParse($v, [ref]$n)) { $cfg.RetentionDays = $n } }
+
+            $v = Get-SapSettingValue 'log_format' ''
+            if ($v) {
+                $f = $v.ToUpper()
                 if ($f -in 'JSONL','TSV','TEXT') { $cfg.Format = $f }
             }
-            if ($uc.log_console_echo -and $uc.log_console_echo.value) {
-                $cfg.ConsoleEcho = ([string]$uc.log_console_echo.value).ToLower() -eq 'true'
-            }
-            if ($uc.log_max_size_mb -and $uc.log_max_size_mb.value) {
-                $n = 0
-                if ([int]::TryParse($uc.log_max_size_mb.value, [ref]$n)) { $cfg.MaxSizeMB = $n }
-            }
-            if ($uc.log_max_backups -and $uc.log_max_backups.value) {
-                $n = 0
-                if ([int]::TryParse($uc.log_max_backups.value, [ref]$n)) { $cfg.MaxBackups = $n }
-            }
-            if ($uc.log_redact_keys -and $uc.log_redact_keys.value) {
-                $cfg.RedactKeys = @(([string]$uc.log_redact_keys.value).Split(',') | ForEach-Object { $_.Trim().ToLower() } | Where-Object { $_ })
+
+            $v = Get-SapSettingValue 'log_console_echo' ''
+            if ($v) { $cfg.ConsoleEcho = $v.ToLower() -eq 'true' }
+
+            $v = Get-SapSettingValue 'log_max_size_mb' ''
+            if ($v) { $n = 0; if ([int]::TryParse($v, [ref]$n)) { $cfg.MaxSizeMB = $n } }
+
+            $v = Get-SapSettingValue 'log_max_backups' ''
+            if ($v) { $n = 0; if ([int]::TryParse($v, [ref]$n)) { $cfg.MaxBackups = $n } }
+
+            $v = Get-SapSettingValue 'log_redact_keys' ''
+            if ($v) {
+                $cfg.RedactKeys = @($v.Split(',') | ForEach-Object { $_.Trim().ToLower() } | Where-Object { $_ })
             }
         } catch {
-            # Fall back to defaults silently - logging must never break a skill
+            # Fall back to defaults silently — logging must never break a skill.
             $cfg.Dir = 'C:\sap_dev_work\logs'
         }
     } else {

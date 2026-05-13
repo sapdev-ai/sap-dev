@@ -26,8 +26,7 @@ Task: $ARGUMENTS
 
 ## Step 0 — Resolve work directory + scaffold folder
 
-Read sap-dev-core's `settings.json` (2 levels up from `<SKILL_DIR>`). Read
-`work_dir`. Default: `C:\sap_dev_work`.
+**Settings reads/writes follow `shared/rules/settings_lookup.md`** — merge `settings.local.json` over `settings.json` per-key on the `.value` field. Resolve sap-dev-core paths: 2 levels up from `<SKILL_DIR>`, then `settings.json` and (if present) `settings.local.json`. Read `work_dir`. Default: `C:\sap_dev_work`.
 
 Derive:
 - `{WORK_TEMP}`       = `{work_dir}\temp`

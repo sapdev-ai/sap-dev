@@ -48,14 +48,18 @@ Function LogGetSettings()
     cfg("MaxBackups")  = 5
     cfg("RedactKeys")  = "sap_password,password,passwd,pwd,token,secret,api_key"
 
-    ' Locate sap-dev-core/settings.json:  this script lives at
-    ' <root>\plugins\sap-dev-core\shared\scripts\sap_log_lib.vbs
+    ' Locate sap-dev-core/settings.json + settings.local.json. This script
+    ' lives at <root>\plugins\sap-dev-core\shared\scripts\sap_log_lib.vbs.
+    ' Concatenation order = local FIRST, main second, so the LogJsonValue
+    ' extractor (which returns the first match) naturally picks up local
+    ' overrides on a per-key basis.
     Dim oFSO : Set oFSO = CreateObject("Scripting.FileSystemObject")
     Dim sScriptPath
     On Error Resume Next
     sScriptPath = WScript.ScriptFullName
     On Error GoTo 0
     Dim sSettings : sSettings = ""
+    Dim sLocalSettings : sLocalSettings = ""
     If Len(sScriptPath) > 0 Then
         ' Walk up two levels (shared\scripts -> shared -> sap-dev-core)
         Dim sDir : sDir = oFSO.GetParentFolderName(oFSO.GetParentFolderName(oFSO.GetParentFolderName(sScriptPath)))
@@ -68,12 +72,25 @@ Function LogGetSettings()
         For Each c In aCandidates
             If oFSO.FileExists(c) Then sSettings = c : Exit For
         Next
+        Dim aLocalCandidates : aLocalCandidates = Array( _
+            sDir & "\settings.local.json", _
+            oFSO.GetParentFolderName(sDir) & "\sap-dev-core\settings.local.json")
+        Dim cl
+        For Each cl In aLocalCandidates
+            If oFSO.FileExists(cl) Then sLocalSettings = cl : Exit For
+        Next
     End If
 
     If sSettings <> "" Then
-        Dim sJson, oFile
+        Dim sJson, oFile, sLocalJson
+        sLocalJson = ""
+        If sLocalSettings <> "" Then
+            Set oFile = oFSO.OpenTextFile(sLocalSettings, 1, False, -1)
+            sLocalJson = oFile.ReadAll
+            oFile.Close
+        End If
         Set oFile = oFSO.OpenTextFile(sSettings, 1, False, -1)  ' read as Unicode/auto
-        sJson = oFile.ReadAll
+        sJson = sLocalJson & vbCrLf & oFile.ReadAll
         oFile.Close
 
         Dim sWork  : sWork  = LogJsonValue(sJson, "work_dir")

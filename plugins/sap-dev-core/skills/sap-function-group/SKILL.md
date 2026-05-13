@@ -44,9 +44,7 @@ fall through the default chain.
 
 ## Step 0 — Resolve Work Directory and Defaults
 
-Read sap-dev-core's `settings.json` (go 2 levels up from `<SKILL_DIR>` to
-the plugin root, then `settings.json`). Read `work_dir`,
-`sap_dev_package`, `sap_dev_transport_request`, `sap_dev_mode`.
+**Settings reads/writes follow `shared/rules/settings_lookup.md`** — merge `settings.local.json` over `settings.json` per-key on the `.value` field; writes always go to `settings.local.json`. Resolve sap-dev-core paths: 2 levels up from `<SKILL_DIR>` to the plugin root, then `settings.json` and (if present) `settings.local.json`. Read `work_dir`, `sap_dev_package`, `sap_dev_transport_request`, `sap_dev_mode`.
 
 | Setting | Default if blank |
 |---|---|

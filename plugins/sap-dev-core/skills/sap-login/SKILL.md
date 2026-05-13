@@ -33,7 +33,7 @@ Task: $ARGUMENTS
 
 ## Step 0 — Resolve Work Directory
 
-Read sap-dev-core's settings.json (go 2 levels up from `<SKILL_DIR>` to the plugin root, then `settings.json`). Read `work_dir`, `custom_url`.
+**Settings reads/writes follow `shared/rules/settings_lookup.md`** — merge `settings.local.json` over `settings.json` per-key on the `.value` field; writes always go to `settings.local.json`. Resolve sap-dev-core paths: 2 levels up from `<SKILL_DIR>` to the plugin root, then `settings.json` and (if present) `settings.local.json`. Read `work_dir`, `custom_url`.
 
 | Setting | Default if blank |
 |---|---|
@@ -77,11 +77,49 @@ then into `sap-dev-core\shared`.
 
 | STATUS line | Meaning | Action |
 |---|---|---|
-| `STATUS: LOGGED_IN` | Authenticated session found | Report session info (SYSTEM, CLIENT, USER, LANGUAGE, CODEPAGE from output). **Done — skip Steps 2-5.** |
+| `STATUS: LOGGED_IN` | Authenticated session found | Report session info (SYSTEM, CLIENT, USER, LANGUAGE, CODEPAGE from output), then check credential persistence — see **Step 1.5** below. |
 | `STATUS: LOGIN_SCREEN` | Connection exists, needs authentication | Proceed to Step 2. The login VBS will reuse this session. |
 | `STATUS: NO_SESSION` | SAP GUI running, no sessions | Proceed to Step 2 |
 | `STATUS: NO_GUI` | SAP GUI / SAP Logon not running | Proceed to Step 2. The login VBS will start SAP Logon. |
 | `STATUS: NO_SCRIPTING` | Scripting engine unavailable | Tell user to enable scripting: SAP Logon > Options > Scripting > Enable Scripting |
+
+### Step 1.5 — Session detected: offer to persist credentials
+
+Reached when Step 1 returned `STATUS: LOGGED_IN`. The session is usable
+for GUI/BDC paths immediately, but downstream RFC-based skills
+(`/sap-transport-request`, `/sap-check-fm`, `/sap-rfc-wrapper-*`, RFC
+variants of `/sap-function-group`, `/sap-se21`, etc.) still need a
+saved `sap_password` in `settings.local.json` to run unattended.
+
+Read the merged settings (per `shared/rules/settings_lookup.md`):
+- If `sap_password.value` is **non-empty** → credentials already saved.
+  **Done — skip Steps 2-5.**
+- If `sap_password.value` is **empty** → ask the operator explicitly,
+  e.g. via AskUserQuestion:
+
+  > "Active SAP session detected (USER@SYSTEM/CLIENT from Step 1).
+  > Your credentials are not yet saved to `settings.local.json`.
+  >
+  > Save your password now (DPAPI-encrypted) so future skills — especially
+  > RFC-based ones like `/sap-transport-request` — can run unattended?
+  >
+  > **yes** to save (you'll be prompted for the password only),
+  > anything else to skip (RFC skills will need a re-login later)."
+
+  - **If yes**: SYSTEM, CLIENT, USER, LANGUAGE are already known from
+    Step 1's STATUS output; only the password needs to be prompted.
+    Read it as a SecureString, encrypt via `sap_dpapi.ps1` (Step 5a in
+    spirit), then call `Set-SapUserSetting` for each of
+    `sap_application_server` (or `sap_logon_description`),
+    `sap_system_number`, `sap_client`, `sap_user`, `sap_password`
+    (encrypted), `sap_language`. Confirm save. **Done.**
+  - **If no / anything else**: Print a one-line warning and exit
+    successfully — the session is still usable for GUI/BDC paths:
+
+    > "OK, skipping credential save. RFC-based skills will fail until
+    > you re-run /sap-login and accept the credential save."
+
+    **Done — skip Steps 2-5.**
 
 ---
 
@@ -89,7 +127,13 @@ then into `sap-dev-core\shared`.
 
 Only reached if Step 1 did not find an authenticated session.
 
-Read SAP connection parameters from `$USER_CONFIG` (settings.json of sap-dev-core):
+Read SAP connection parameters from the **merged view** of
+`settings.json` + `settings.local.json` (per Rule 7 in `CLAUDE.md`). In
+PowerShell, dot-source `<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1`
+and use `Get-SapSettingValue '<key>' ''`. Claude-driven Read-tool flows
+should read `settings.local.json` first (if it exists) and fall back to
+`settings.json` for any key whose `value` is blank in the local file. The
+expected keys are:
 
 | Setting key | Description | Example |
 |---|---|---|
@@ -258,25 +302,29 @@ cmd /c del {WORK_TEMP}\sap_login_run.vbs & del {WORK_TEMP}\sap_login_run.ps1 & d
 
 **Ask the operator explicitly** before persisting — never auto-save:
 
-> Save the password to `settings.json` (DPAPI-encrypted, bound to
+> Save the password to `settings.local.json` (DPAPI-encrypted, bound to
 > your Windows user account)? **yes** to save, anything else to skip.
 
-If the operator says yes, encrypt and persist:
+If the operator says yes, encrypt and persist via the settings helper.
+**Writes ALWAYS target `settings.local.json` — never `settings.json`**
+(Rule 7 in `CLAUDE.md`):
 
-```bash
+```powershell
 # 1. Encrypt the plaintext via the shared DPAPI helper.
 powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_dpapi.ps1" -Action protect -Value "<plaintext>"
 #    → stdout: dpapi:AQAAAN...
+
+# 2. Persist to settings.local.json via the merge helper.
+. "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1"
+Set-SapUserSetting 'sap_password' 'dpapi:AQAAAN...'
 ```
 
-Capture the `dpapi:` line and write it to `settings.json` via
-`/update-config` (or by direct edit of the `userConfig.sap_password.value`
-field). Both produce the same on-disk result; `/update-config` is the
-preferred path because it preserves JSON formatting:
-
-```
-/update-config userConfig.sap_password = "dpapi:AQAAAN..."
-```
+The helper creates `settings.local.json` (and the `sap_password` key) if
+they don't yet exist, and never modifies the tracked `settings.json`.
+Same pattern applies to persisting any other userConfig key the operator
+provides interactively (`sap_application_server`, `sap_user`,
+`sap_logon_description`, etc.) — always `Set-SapUserSetting`, never a
+direct edit of `settings.json`.
 
 **DO NOT** echo the plaintext back to the user, and do not write the
 plaintext to any log. The shared `sap_log_lib.ps1` already redacts

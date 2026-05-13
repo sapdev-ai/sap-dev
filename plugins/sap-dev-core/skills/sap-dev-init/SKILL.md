@@ -22,7 +22,7 @@ Task: $ARGUMENTS
 
 ## Step 0 — Resolve Work Directory and Mode
 
-Read sap-dev-core's settings.json (go 2 levels up from `<SKILL_DIR>` to the plugin root, then `settings.json`). Read `work_dir`, `custom_url`, `sap_dev_mode`.
+**Settings reads/writes follow `shared/rules/settings_lookup.md`** — merge `settings.local.json` over `settings.json` per-key on the `.value` field; writes always go to `settings.local.json`. Resolve sap-dev-core paths: 2 levels up from `<SKILL_DIR>` to the plugin root, then `settings.json` and (if present) `settings.local.json`. Read `work_dir`, `custom_url`, `sap_dev_mode`.
 
 | Setting | Default if blank |
 |---|---|
@@ -96,30 +96,62 @@ powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_
 
 ---
 
-## Step 1 — Check Prerequisites
+## Step 1 — Check Authentication State
 
-Read SAP connection parameters from `$USER_CONFIG`:
+Authentication can be satisfied two ways: an **active SAP GUI session**
+(usable for GUI/BDC variants) or **saved credentials** in
+`settings.local.json` (usable for RFC variants). Some downstream skills
+need one, some need the other, some need both.
 
-| Setting | Required |
-|---|---|
-| `sap_application_server` | Yes |
-| `sap_client` | Yes |
-| `sap_user` | Yes |
-| `sap_password` | Yes |
+### Step 1.0 — Determine what auth this run needs
 
-If any required setting is missing, tell the user:
-> "SAP connection is not configured. Please run `/sap-login` first or configure sap-dev-core settings."
+From the mode dispatch in Step 0:
+- `needs_session`  = the planned skill set contains any **GUI or BDC**
+                     variant (anything other than pure RFC).
+- `needs_creds`    = the planned skill set contains any **RFC** variant
+                     (RFC requires `sap_user` + `sap_password` in the
+                     merged settings — there is no session-fallback for
+                     RFC).
 
-Stop if connection is not configured.
+`/sap-dev-init`'s default plan typically needs both: GUI to drive
+SE21/SE38 and (when NCo 3.1 is available) RFC for the
+`/sap-transport-request` fast-path.
 
-Also read these settings (may be blank):
+### Step 1.1 — Probe current state
+
+- `has_session` = run
+  `cscript //NoLogo "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_check_gui_login_status.vbs"`
+  and check whether `STATUS: LOGGED_IN` is emitted.
+- `has_creds`   = read merged settings (per
+  `shared/rules/settings_lookup.md`); both `sap_user.value` and
+  `sap_password.value` must be non-empty.
+
+### Step 1.2 — Decide
+
+| `needs_session` | `needs_creds` | `has_session` | `has_creds` | Action |
+|:-:|:-:|:-:|:-:|---|
+| ✓ | ✓ | ✓ | ✓ | **Proceed to Step 2.** All set. |
+| ✓ | ✓ | ✓ | ✗ | Invoke `/sap-login`. Credentials are missing — `/sap-login` Step 1.5 will detect the existing session and offer to persist credentials. After it returns, re-probe `has_creds`; if still ✗, **stop** with: "RFC-based steps require saved credentials. Re-run `/sap-login` and accept the credential save when prompted." |
+| ✓ | ✓ | ✗ | ✓ | Invoke `/sap-login`. Session is missing — `/sap-login` will run its full login flow against the saved credentials. After it returns, re-probe `has_session`; if still ✗, **stop** with the underlying error from `/sap-login`. |
+| ✓ | ✓ | ✗ | ✗ | Invoke `/sap-login`. Both missing — `/sap-login` will prompt, save, and log in (its standard first-run flow). After it returns, re-probe both; if either still ✗, **stop** with a clear message. |
+| ✓ | ✗ | ✓ | – | **Proceed to Step 2.** Session covers all needed paths. |
+| ✓ | ✗ | ✗ | ✓ | Invoke `/sap-login` to start a session from saved credentials. Re-probe; **stop** if still no session. |
+| ✗ | ✓ | – | ✓ | **Proceed to Step 2.** Credentials cover all needed paths. |
+| ✗ | ✓ | – | ✗ | Invoke `/sap-login`. Re-probe `has_creds`; **stop** if still ✗. |
+
+The "after returns, re-probe" pattern is important: `/sap-login` may
+short-circuit on an existing session without prompting for credentials,
+so we cannot assume credentials exist just because `/sap-login`
+exited 0. Always verify the state we actually need.
+
+### Step 1.3 — Read settings for downstream steps
+
+Once Step 1.2 has resolved authentication, read these from the merged
+settings (may be blank — Steps 2-5 will create them as needed):
+
 - `sap_dev_transport_request`
 - `sap_dev_package`
 - `sap_dev_function_group`
-
-### Step 1a — Ensure a session exists for GUI / BDC paths
-
-If the planned skill set in Step 0 contains any GUI or BDC variant (i.e. anything other than pure RFC), ensure an active SAP GUI session by running `/sap-login` first. RFC-only paths can skip this. The RFC variants generate VBS that connects via `SAP.Functions` and do not require a GUI session.
 
 ---
 
@@ -298,8 +330,7 @@ skills) to use.
 
 ### Step 2a — Ask for the TR sourcing policy
 
-Read `way_to_get_transport_request` from sap-dev-core `settings.json`. If it
-is **blank or invalid**, ask the user (e.g. via AskUserQuestion):
+Read `way_to_get_transport_request` from the merged sap-dev-core settings (per `shared/rules/settings_lookup.md` — `settings.local.json` overrides `settings.json` per-key). If it is **blank or invalid**, ask the user (e.g. via AskUserQuestion):
 
 > How should sap-dev skills obtain a transport request when one is needed?
 > 1. `DEFAULT` — Always reuse the saved default TR (`sap_dev_transport_request`); ask only if blank or no longer modifiable.

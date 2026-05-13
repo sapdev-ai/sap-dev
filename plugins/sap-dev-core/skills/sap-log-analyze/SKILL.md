@@ -37,7 +37,7 @@ Flags:
 
 ## Step 0 — Resolve Work Directory & Log Directory
 
-Read `plugins/sap-dev-core/settings.json`:
+**Settings reads/writes follow `shared/rules/settings_lookup.md`** — merge `plugins/sap-dev-core/settings.local.json` over `plugins/sap-dev-core/settings.json` per-key on the `.value` field; writes always go to the local file. Read:
 - `work_dir` — defaults to `C:\sap_dev_work`
 - `log_dir`  — defaults to `{work_dir}\logs`
 
