@@ -44,7 +44,7 @@ if (-not (Test-Path $ABAP_FILE)) {
 }
 
 # ---- Load the source (strip comments per line; preserve line numbers) -------
-$rawLines = Get-Content -LiteralPath $ABAP_FILE
+$rawLines = Get-Content -LiteralPath $ABAP_FILE -Encoding UTF8
 $lines = @()
 for ($i = 0; $i -lt $rawLines.Count; $i++) {
     $raw = $rawLines[$i]

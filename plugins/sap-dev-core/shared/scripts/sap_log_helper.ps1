@@ -53,7 +53,7 @@ function Save-State {
 function Load-State {
     param([string]$Path)
     if (-not (Test-Path -LiteralPath $Path)) { return $null }
-    $s = Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json
+    $s = Get-Content -LiteralPath $Path -Raw -Encoding UTF8 | ConvertFrom-Json
     return [pscustomobject]@{
         Skill       = $s.Skill
         RunId       = $s.RunId
