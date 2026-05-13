@@ -584,23 +584,108 @@ Else
     WScript.Echo "INFO: Check passed."
 End If
 
-' ------ 7. Activate (Ctrl+F3) ----------------------------------------------
-WScript.Echo "INFO: Activating..."
-oSession.findById("wnd[0]").sendVKey 27
-WScript.Sleep 2000
-
-' Dismiss all activation popups
+' Dismiss any popup that appeared during check (e.g. "Object checked" info popup)
 On Error Resume Next
-For nPopupLoop = 1 To 10
-    WScript.Sleep 500
+For nPopupLoop = 1 To 5
+    WScript.Sleep 400
     If InStr(oSession.ActiveWindow.Id, "wnd[1]") > 0 Then
         oSession.findById("wnd[1]").sendVKey VKEY_ENTER
-        WScript.Sleep 500
+        WScript.Sleep 400
         Err.Clear
     Else
         Err.Clear
         Exit For
     End If
+Next
+On Error GoTo 0
+
+' ------ 7. Activate (Ctrl+F3) ----------------------------------------------
+WScript.Echo "INFO: Activating..."
+On Error Resume Next
+oSession.findById("wnd[0]").sendVKey 27
+WScript.Sleep 3000
+
+' Robust activation popup handler (handles ODE, 3-button SPOP, 2-button SPOP).
+' SPOP with 3 buttons = "Warning during activation: display activation log?"
+' -> Press OPTION2 (No) to skip log viewer and let activation continue.
+' SPOP with 2 buttons = generic activation confirmation -> Press OPTION1 (Yes).
+' ODE (KO007) = Object Directory Entry -> fill package + transport from script constants.
+Dim iActLoop, sActWin2, sActWnd2, posWnd2
+For iActLoop = 1 To 8
+    sActWin2 = oSession.ActiveWindow.Id
+    If Right(sActWin2, 6) = "wnd[0]" Then Exit For
+
+    posWnd2 = InStrRev(sActWin2, "/wnd[")
+    If posWnd2 > 0 Then
+        sActWnd2 = Mid(sActWin2, posWnd2 + 1)
+    Else
+        sActWnd2 = sActWin2
+    End If
+    Dim bPos2 : bPos2 = InStr(sActWnd2, "/")
+    If bPos2 > 0 Then sActWnd2 = Left(sActWnd2, bPos2 - 1)
+
+    Dim sActTitle2 : sActTitle2 = ""
+    Err.Clear
+    sActTitle2 = oSession.ActiveWindow.Text
+    Err.Clear
+    WScript.Echo "INFO: Activation popup " & iActLoop & " on " & sActWnd2 & " title='" & sActTitle2 & "'"
+
+    Dim ko007a : Set ko007a = Nothing
+    Err.Clear
+    Set ko007a = oSession.findById(sActWnd2 & "/usr/ctxtKO007-L_DEVCLASS")
+    If Err.Number = 0 And Not (ko007a Is Nothing) Then
+        If SAP_PACKAGE <> "" And UCase(SAP_PACKAGE) <> "$TMP" Then
+            WScript.Echo "INFO:   -> ODE popup; filling package " & SAP_PACKAGE
+            ko007a.Text = SAP_PACKAGE
+            oSession.findById(sActWnd2 & "/tbar[0]/btn[0]").press
+            WScript.Sleep 1000
+            Err.Clear
+            If SAP_TRANSPORT <> "" Then
+                Dim ko008a : Set ko008a = Nothing
+                Set ko008a = oSession.findById(sActWnd2 & "/usr/ctxtKO008-TRKORR")
+                If Err.Number = 0 And Not (ko008a Is Nothing) Then
+                    ko008a.Text = SAP_TRANSPORT
+                    oSession.findById(sActWnd2 & "/tbar[0]/btn[0]").press
+                    WScript.Sleep 1200
+                End If
+            End If
+            Err.Clear
+        Else
+            WScript.Echo "INFO:   -> ODE popup; pressing Local Object"
+            oSession.findById(sActWnd2 & "/tbar[0]/btn[7]").press
+            WScript.Sleep 1200
+        End If
+        Err.Clear
+    Else
+        Err.Clear
+        Dim oS2 : Set oS2 = Nothing
+        Dim oS3 : Set oS3 = Nothing
+        Set oS2 = oSession.findById(sActWnd2 & "/usr/btnSPOP-OPTION2")
+        Set oS3 = oSession.findById(sActWnd2 & "/usr/btnSPOP-OPTION3")
+        If Err.Number = 0 And Not (oS2 Is Nothing) And Not (oS3 Is Nothing) Then
+            WScript.Echo "INFO:   -> 3-button SPOP; pressing OPTION2 (No/Skip log)"
+            oS2.press
+            WScript.Sleep 1500
+            Err.Clear
+        Else
+            Err.Clear
+            Dim oS1 : Set oS1 = Nothing
+            Set oS1 = oSession.findById(sActWnd2 & "/usr/btnSPOP-OPTION1")
+            If Err.Number = 0 And Not (oS1 Is Nothing) Then
+                WScript.Echo "INFO:   -> 2-button SPOP; pressing OPTION1"
+                oS1.press
+                WScript.Sleep 1000
+                Err.Clear
+            Else
+                Err.Clear
+                WScript.Echo "INFO:   -> Generic popup; pressing Enter"
+                oSession.findById(sActWnd2).sendVKey VKEY_ENTER
+                WScript.Sleep 800
+                Err.Clear
+            End If
+        End If
+    End If
+    WScript.Sleep 600
 Next
 On Error GoTo 0
 
@@ -611,7 +696,7 @@ sFinalMsg  = oSession.findById("wnd[0]/sbar").Text
 sFinalType = oSession.findById("wnd[0]/sbar").MessageType
 On Error GoTo 0
 
-If sFinalType = "E" Then
+If sFinalType = "E" Or sFinalType = "A" Then
     WScript.Echo "WARNING: Activation may have errors - " & sFinalMsg
 Else
     WScript.Echo "INFO: SAP status: " & sFinalMsg
