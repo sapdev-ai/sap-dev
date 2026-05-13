@@ -8,7 +8,7 @@ description: |
   or direct connection string (OpenConnectionByConnectionString).
   Checks for existing sessions first without generating any VBS.
   Prerequisites: SAP GUI installed, SAP GUI Scripting enabled (client + server).
-argument-hint: "[SAP Logon description override]"
+argument-hint: "[SAP Logon description override] [--remember]"
 ---
 
 # SAP GUI Login Skill
@@ -28,12 +28,15 @@ Task: $ARGUMENTS
 | `sap-dev-core/shared/scripts/sap_login.vbs` | *(template)* | SAP GUI login VBScript |
 | `sap-dev-core/shared/scripts/sap_rfc_connect.ps1` | *(template)* | SAP NCo 3.1 RFC connection PowerShell |
 | `sap-dev-core/shared/scripts/sap_dpapi.ps1` | *(none — static)* | DPAPI encrypt/decrypt for `sap_password` at rest in `settings.json`. CLI mode: `-Action protect|unprotect -Value <text>`. |
+| `sap-dev-core/shared/scripts/sap_rfc_system_info.ps1` | *(none — direct invoke)* | RFC_SYSTEM_INFO + CVERS query. Step 6.2 calls this to capture `server_release_marker`, `software_components`. |
+| `sap-dev-core/shared/tables/sap_release_markers.tsv` | *(none — read by sap_rfc_system_info.ps1)* | (component, release range) → canonical marker lookup. |
+| `<SKILL_DIR>/references/sap_login_capture_active_session.vbs` | *(none — static)* | GUI-side capture for Step 6.1. Emits a flat JSON record or `MULTI:<array>` when multiple connections are open. |
 
 ---
 
 ## Step 0 — Resolve Work Directory
 
-**Settings reads/writes follow `shared/rules/settings_lookup.md`** — merge `settings.local.json` over `settings.json` per-key on the `.value` field; writes always go to `settings.local.json`. Resolve sap-dev-core paths: 2 levels up from `<SKILL_DIR>` to the plugin root, then `settings.json` and (if present) `settings.local.json`. Read `work_dir`, `custom_url`.
+Read sap-dev-core's settings.json (go 2 levels up from `<SKILL_DIR>` to the plugin root, then `settings.json`). Read `work_dir`, `custom_url`.
 
 | Setting | Default if blank |
 |---|---|
@@ -77,49 +80,11 @@ then into `sap-dev-core\shared`.
 
 | STATUS line | Meaning | Action |
 |---|---|---|
-| `STATUS: LOGGED_IN` | Authenticated session found | Report session info (SYSTEM, CLIENT, USER, LANGUAGE, CODEPAGE from output), then check credential persistence — see **Step 1.5** below. |
+| `STATUS: LOGGED_IN` | Authenticated session found | Report session info (SYSTEM, CLIENT, USER, LANGUAGE, CODEPAGE from output). **Done — skip Steps 2-5.** |
 | `STATUS: LOGIN_SCREEN` | Connection exists, needs authentication | Proceed to Step 2. The login VBS will reuse this session. |
 | `STATUS: NO_SESSION` | SAP GUI running, no sessions | Proceed to Step 2 |
 | `STATUS: NO_GUI` | SAP GUI / SAP Logon not running | Proceed to Step 2. The login VBS will start SAP Logon. |
 | `STATUS: NO_SCRIPTING` | Scripting engine unavailable | Tell user to enable scripting: SAP Logon > Options > Scripting > Enable Scripting |
-
-### Step 1.5 — Session detected: offer to persist credentials
-
-Reached when Step 1 returned `STATUS: LOGGED_IN`. The session is usable
-for GUI/BDC paths immediately, but downstream RFC-based skills
-(`/sap-transport-request`, `/sap-check-fm`, `/sap-rfc-wrapper-*`, RFC
-variants of `/sap-function-group`, `/sap-se21`, etc.) still need a
-saved `sap_password` in `settings.local.json` to run unattended.
-
-Read the merged settings (per `shared/rules/settings_lookup.md`):
-- If `sap_password.value` is **non-empty** → credentials already saved.
-  **Done — skip Steps 2-5.**
-- If `sap_password.value` is **empty** → ask the operator explicitly,
-  e.g. via AskUserQuestion:
-
-  > "Active SAP session detected (USER@SYSTEM/CLIENT from Step 1).
-  > Your credentials are not yet saved to `settings.local.json`.
-  >
-  > Save your password now (DPAPI-encrypted) so future skills — especially
-  > RFC-based ones like `/sap-transport-request` — can run unattended?
-  >
-  > **yes** to save (you'll be prompted for the password only),
-  > anything else to skip (RFC skills will need a re-login later)."
-
-  - **If yes**: SYSTEM, CLIENT, USER, LANGUAGE are already known from
-    Step 1's STATUS output; only the password needs to be prompted.
-    Read it as a SecureString, encrypt via `sap_dpapi.ps1` (Step 5a in
-    spirit), then call `Set-SapUserSetting` for each of
-    `sap_application_server` (or `sap_logon_description`),
-    `sap_system_number`, `sap_client`, `sap_user`, `sap_password`
-    (encrypted), `sap_language`. Confirm save. **Done.**
-  - **If no / anything else**: Print a one-line warning and exit
-    successfully — the session is still usable for GUI/BDC paths:
-
-    > "OK, skipping credential save. RFC-based skills will fail until
-    > you re-run /sap-login and accept the credential save."
-
-    **Done — skip Steps 2-5.**
 
 ---
 
@@ -127,13 +92,7 @@ Read the merged settings (per `shared/rules/settings_lookup.md`):
 
 Only reached if Step 1 did not find an authenticated session.
 
-Read SAP connection parameters from the **merged view** of
-`settings.json` + `settings.local.json` (per Rule 7 in `CLAUDE.md`). In
-PowerShell, dot-source `<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1`
-and use `Get-SapSettingValue '<key>' ''`. Claude-driven Read-tool flows
-should read `settings.local.json` first (if it exists) and fall back to
-`settings.json` for any key whose `value` is blank in the local file. The
-expected keys are:
+Read SAP connection parameters from `$USER_CONFIG` (settings.json of sap-dev-core):
 
 | Setting key | Description | Example |
 |---|---|---|
@@ -302,29 +261,25 @@ cmd /c del {WORK_TEMP}\sap_login_run.vbs & del {WORK_TEMP}\sap_login_run.ps1 & d
 
 **Ask the operator explicitly** before persisting — never auto-save:
 
-> Save the password to `settings.local.json` (DPAPI-encrypted, bound to
+> Save the password to `settings.json` (DPAPI-encrypted, bound to
 > your Windows user account)? **yes** to save, anything else to skip.
 
-If the operator says yes, encrypt and persist via the settings helper.
-**Writes ALWAYS target `settings.local.json` — never `settings.json`**
-(Rule 7 in `CLAUDE.md`):
+If the operator says yes, encrypt and persist:
 
-```powershell
+```bash
 # 1. Encrypt the plaintext via the shared DPAPI helper.
 powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_dpapi.ps1" -Action protect -Value "<plaintext>"
 #    → stdout: dpapi:AQAAAN...
-
-# 2. Persist to settings.local.json via the merge helper.
-. "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1"
-Set-SapUserSetting 'sap_password' 'dpapi:AQAAAN...'
 ```
 
-The helper creates `settings.local.json` (and the `sap_password` key) if
-they don't yet exist, and never modifies the tracked `settings.json`.
-Same pattern applies to persisting any other userConfig key the operator
-provides interactively (`sap_application_server`, `sap_user`,
-`sap_logon_description`, etc.) — always `Set-SapUserSetting`, never a
-direct edit of `settings.json`.
+Capture the `dpapi:` line and write it to `settings.json` via
+`/update-config` (or by direct edit of the `userConfig.sap_password.value`
+field). Both produce the same on-disk result; `/update-config` is the
+preferred path because it preserves JSON formatting:
+
+```
+/update-config userConfig.sap_password = "dpapi:AQAAAN..."
+```
 
 **DO NOT** echo the plaintext back to the user, and do not write the
 plaintext to any log. The shared `sap_log_lib.ps1` already redacts
@@ -340,6 +295,115 @@ Windows user / different machine / corrupted ciphertext)`. The skill
 will then prompt for the password fresh, and the operator can re-save
 on that new machine. This is the desired property: a leaked
 `settings.json` is useless without the matching Windows profile.
+
+---
+
+## Step 6 — Active-Session Capture (active-session pinning)
+
+After login + RFC verification, capture metadata about the just-attached SAP
+GUI session so downstream skills (`sap-gui-probe`, `sap-gui-object-details`,
+`sap-gui-skill-scaffold`, future deploy skills) can pin to the correct
+session and select version-appropriate VBS variants.
+
+The captured record is written to `{WORK_TEMP}\sap_active_session.json` and
+covers:
+
+| Field | Source |
+|---|---|
+| `session_path`, `system_name`, `client`, `user`, `language`, `application_server` | `sap_login_capture_active_session.vbs` (GUI side) |
+| `gui_version_raw`, `gui_major`, `gui_minor`, `gui_patch` | same VBS, via `oApp.MajorVersion` etc. |
+| `connection_string`, `pin_reason` | same VBS |
+| `server_kernel_release`, `server_release_family`, `server_release_marker`, `software_components` | `sap_rfc_system_info.ps1` (RFC side, via NCo) |
+| `recorded_at`, `recorded_by_skill` | written by the orchestrator |
+
+### 6.1 — Call the GUI-side capture VBS
+
+```bash
+cmd /c C:\Windows\SysWOW64\cscript.exe //NoLogo "<SKILL_DIR>\references\sap_login_capture_active_session.vbs"
+```
+
+Last line of stdout:
+- `{"session_path":"/app/con[0]/ses[0]", …}` — single connection auto-pinned, single-line JSON. Use directly.
+- `MULTI:[ {…cand0…}, {…cand1…}, … ]` — multiple connections detected. Each candidate carries `session_path`, `system_name`, `client`, `user`. Present an AskUserQuestion listing them; user picks one. Then re-invoke the VBS with the chosen session id:
+  ```bash
+  cmd /c C:\Windows\SysWOW64\cscript.exe //NoLogo "<SKILL_DIR>\references\sap_login_capture_active_session.vbs" "/app/con[1]/ses[0]"
+  ```
+  to get the canonical record for the pick.
+- `ERROR: <text>` — abort Step 6 (do not fail the whole login; skip Step 6 with a warning and let users continue without a pin).
+
+### 6.2 — Call the RFC-side system info PS1
+
+```bash
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_rfc_system_info.ps1" -Server "<server>" -Sysnr "<sysnr>" -Client "<client>" -User "<user>" -Password "<password>" -Language "<lang>"
+```
+
+Use the same credentials decrypted in Step 2. Last line is a JSON record containing the `server_*` and `software_components` fields. On error (NCo missing, RFC logon fail), warn and skip — the pin still works without server release info; the version-aware selector will fall back to default VBS.
+
+### 6.3a — Optional persistence: `--remember`
+
+If `$ARGUMENTS` contains `--remember` (case-insensitive, anywhere), persist
+the captured `session_path` to `settings.local.json` so future AI sessions
+can restore the pin without re-running `/sap-login`. Use the shared
+`sap_settings_lib.ps1` per **Rule 7 — Settings Merge Helper** in CLAUDE.md
+(writes ALWAYS go to `settings.local.json`, never to `settings.json`):
+
+```bash
+powershell -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1'; Set-SapUserSetting 'sap_pinned_session' '<session_path>'"
+```
+
+The persisted value is **only** the session path — not the full version
+record. Version info (`server_release_marker`, `gui_version_raw`, etc.) is
+re-captured on demand by consumer skills, because SAP can be patched between
+AI sessions. The `sap_pinned_session` key is a hint; the per-AI-session
+temp file (written in Step 6.3) remains the source of truth for
+version-aware decisions.
+
+Without `--remember`, do NOT write to `settings.local.json`. The pin lives
+only in `{WORK_TEMP}\sap_active_session.json` and disappears when the temp
+dir is cleaned (or, more typically, gets overwritten by the next
+`/sap-login`).
+
+If the user is on a system they want to make persistent, suggest:
+> Run `/sap-login --remember` to save this connection as your default for
+> future AI sessions. (You can clear it later with `Set-SapUserSetting
+> sap_pinned_session ''`.)
+
+### 6.3 — Merge and write
+
+Combine the GUI record + the RFC record + `recorded_at` (ISO 8601) + `recorded_by_skill` (`"sap-login"`) into a single JSON object and write to `{WORK_TEMP}\sap_active_session.json` (UTF-8). Example merged shape:
+
+```json
+{
+  "session_path": "/app/con[0]/ses[0]",
+  "system_name": "S4D", "client": "100", "user": "MICHAELLI",
+  "language": "EN", "application_server": "s4d.lan.example.com",
+  "gui_version_raw": "7.70.0.123", "gui_major": 7, "gui_minor": 70, "gui_patch": 0,
+  "server_kernel_release": "789",
+  "server_release_family": "S4HANA",
+  "server_release_marker": "S4HANA_2022",
+  "server_release_raw": "S/4HANA (S4CORE 107)",
+  "software_components": [
+    {"name": "SAP_BASIS", "release": "758"},
+    {"name": "S4CORE",    "release": "107"}
+  ],
+  "pin_reason": "auto-picked single connection",
+  "recorded_at": "2026-05-13T10:23:00",
+  "recorded_by_skill": "sap-login"
+}
+```
+
+This file is the source of truth for the rest of the AI session. Consumer skills MUST follow this resolution order in their own Step 0:
+
+1. Explicit `--session "<path>"` arg → use it.
+2. Else `{WORK_TEMP}\sap_active_session.json` exists → use its `session_path`.
+3. Else exactly one connection attached → silent default `/app/con[0]/ses[0]`.
+4. Else refuse with: *"multiple SAP GUI connections detected and no active session pinned; run `/sap-login` first to pick one."*
+
+### 6.4 — Failure modes (graceful degradation)
+
+- **Step 6.1 ERROR**: skip Step 6 entirely, log a warning, do not write the pin file. Behaviour falls back to today's implicit `/app/con[0]/ses[0]`.
+- **Step 6.2 ERROR**: still write the pin file with only the GUI fields populated. `server_release_marker` defaults to `UNKNOWN_NO_RFC`. The selector falls back to default VBS variants.
+- **Both steps OK but stale pin** (user closes the pinned session later): consumer skills call `oApp.findById(<session_path>, False)`. If `Nothing`, the consumer treats the pin as missing and applies rule 3/4 above.
 
 ---
 

@@ -38,7 +38,8 @@ Task: $ARGUMENTS
 
 ## Step 0 — Resolve work directory and run folder
 
-**Settings reads/writes follow `shared/rules/settings_lookup.md`** — merge `settings.local.json` over `settings.json` per-key on the `.value` field; writes always go to `settings.local.json`. Resolve sap-dev-core paths: 2 levels up from `<SKILL_DIR>` to the plugin root, then `settings.json` and (if present) `settings.local.json`. Read `work_dir`.
+Read sap-dev-core's `settings.json` (go 2 levels up from `<SKILL_DIR>` to the
+plugin root, then `settings.json`). Read `work_dir`.
 
 | Setting | Default if blank |
 |---|---|
@@ -68,6 +69,38 @@ powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_
 
 ---
 
+## Step 0.6 — Resolve active SAP GUI session
+
+Pick the SAP GUI session to drive. Resolution order (first hit wins):
+
+1. **Explicit `--session "/app/con[N]/ses[M]"` flag** in `$ARGUMENTS` → use it verbatim.
+2. **`{WORK_TEMP}\sap_active_session.json` exists** (written by `/sap-login` Step 6) → use its `session_path` field.
+3. **`userConfig.sap_pinned_session` (merged via `sap_settings_lib.ps1`) is non-empty** (written by `/sap-login --remember` in a previous AI session) → use that path AND auto-regenerate the temp pin file:
+   - Read the hint via the shared lib:
+     ```bash
+     powershell -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1'; Get-SapSettingValue 'sap_pinned_session'"
+     ```
+   - Run `sap_login_capture_active_session.vbs "<hinted_path>"` to re-capture GUI-side fields against the hinted session.
+   - Best-effort: invoke `sap_rfc_system_info.ps1` if RFC credentials are available; otherwise stamp the temp file with only the GUI fields and `server_release_marker = "UNKNOWN_NO_RFC"`.
+   - Write the merged record to `{WORK_TEMP}\sap_active_session.json`.
+   - If the hinted session no longer resolves via `findById`, clear the hint via `Set-SapUserSetting sap_pinned_session ''` (writes to `settings.local.json`) and fall through to step 4.
+4. **Exactly one connection attached** → silent default `/app/con[0]/ses[0]`. Preserves today's behaviour for single-connection users.
+5. **Multiple connections attached and no pin file** → refuse with: *"multiple SAP GUI connections detected and no active session pinned; run /sap-login first to pick one."* Log end Status=FAILED ErrorClass=NO_PIN.
+
+The resolved path is stored as `{SESSION_PATH}` and propagated to every subsequent step:
+- Dump calls in Step 2.1 / 2.7 pass `-SessionPath "{SESSION_PATH}"` to `sap_gui_probe_dump.ps1`.
+- Action JSONs in Step 2.3 include a `"session": "{SESSION_PATH}"` field, which `sap_gui_probe_action.vbs` resolves via `oApp.findById(...)`.
+
+Stale pin guard: if `findById({SESSION_PATH})` returns `Nothing` (the user closed the session), fall back through the same order starting at step 3. If step 4 fires, the probe aborts cleanly.
+
+Also stamp the probe's run state with version info copied from the pin file (if present):
+- `gui_version_raw`, `gui_major`
+- `server_release_marker`, `server_release_raw`, `system_name`, `client`
+
+These propagate into `sap_gui_probe_run.json` and the synthesized.vbs header.
+
+---
+
 ## Step 0.7 — Pre-flight: GUI session must be live
 
 Run the canonical login probe (no template substitution -- it's a static
@@ -92,6 +125,10 @@ The argument is opaque free text. You (Claude) parse it. Extract:
 2. **Mode flag** -- if `--auto` appears anywhere (case-insensitive), set
    `MODE = auto`. Otherwise `MODE = confirm`. Strip the flag from the
    working copy of the scenario.
+2b. **Session flag** -- if `--session "<path>"` or `--session <path>` (no
+    quotes) appears, capture `<path>` and strip the flag. Overrides the
+    Step 0.6 resolution and pins the probe to that session for every dump
+    and action call.
 3. **Flow summary** -- a one-line plan in your own words. Echo it to the
    user before Step 2 so they can correct course early. Example:
 
@@ -114,7 +151,7 @@ For each step until the scenario is complete or N > 30:
 ### 2.1 — Dump the current screen ("before")
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SKILL_DIR>\references\sap_gui_probe_dump.ps1" -Mode wnd -Filter 0 -OutputFile "{RUN_FOLDER}\step_NN_before.txt"
+powershell -ExecutionPolicy Bypass -File "<SKILL_DIR>\references\sap_gui_probe_dump.ps1" -Mode wnd -Filter 0 -OutputFile "{RUN_FOLDER}\step_NN_before.txt" -SessionPath "{SESSION_PATH}"
 ```
 
 `NN` is the zero-padded step counter (`01`, `02`, ...). Use `-Mode wnd -Filter 0`
@@ -152,12 +189,15 @@ Step 2.4 reads it for the write-keyword check on `PRESS`.
 
 ```json
 {
-  "verb":   "SET_TEXT",
-  "target": "wnd[0]/usr/ctxtRMMG1-MATNR",
-  "value":  "ZHKAMATVer7001",
-  "note":   "Enter material number"
+  "verb":    "SET_TEXT",
+  "target":  "wnd[0]/usr/ctxtRMMG1-MATNR",
+  "value":   "ZHKAMATVer7001",
+  "session": "/app/con[0]/ses[0]",
+  "note":    "Enter material number"
 }
 ```
+
+The `session` field is **optional**. When present, `sap_gui_probe_action.vbs` resolves it via `oApp.findById(...)`; when absent, the dispatcher falls back to the first connection's first session (preserves single-session behaviour). Step 2 of this skill always populates `session` from `{SESSION_PATH}` so every action runs against the pinned session.
 
 ### 2.4 — Classify the action
 

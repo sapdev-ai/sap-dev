@@ -86,12 +86,16 @@ Function ExtractInt(json, key, defaultVal)
     End If
 End Function
 
-Dim sVerb   : sVerb   = UCase(ExtractStr(sJson, "verb"))
-Dim sTarget : sTarget = ExtractStr(sJson, "target")
-Dim sValue  : sValue  = ExtractStr(sJson, "value")
-Dim nVkey   : nVkey   = ExtractInt(sJson, "vkey", -9999)
-Dim nRow    : nRow    = ExtractInt(sJson, "row",  -9999)
-Dim nSleep  : nSleep  = ExtractInt(sJson, "sleep", 800)
+Dim sVerb    : sVerb    = UCase(ExtractStr(sJson, "verb"))
+Dim sTarget  : sTarget  = ExtractStr(sJson, "target")
+Dim sValue   : sValue   = ExtractStr(sJson, "value")
+Dim nVkey    : nVkey    = ExtractInt(sJson, "vkey", -9999)
+Dim nRow     : nRow     = ExtractInt(sJson, "row",  -9999)
+Dim nSleep   : nSleep   = ExtractInt(sJson, "sleep", 800)
+' Optional session path -- enables one cscript per session for parallel probes.
+' Empty = default to first connection / first session (preserves single-session
+' behaviour). Format: "/app/con[0]/ses[1]".
+Dim sSession : sSession = ExtractStr(sJson, "session")
 
 If sVerb = "" Then
     WScript.Echo "ERROR: action.json missing 'verb'"
@@ -117,12 +121,33 @@ If oApp.Children.Count = 0 Then
     WScript.Echo "ERROR: no SAP GUI connection (run /sap-login first)"
     WScript.Quit 2
 End If
-Set oCon = oApp.Children(0)
-If oCon.Children.Count = 0 Then
-    WScript.Echo "ERROR: SAP GUI connection has no session"
-    WScript.Quit 2
+
+' Resolve target session. Priority:
+'   1) action JSON's "session" field (explicit pin from parallel scaffolder)
+'   2) default first connection / first session (backwards-compatible)
+If Len(Trim(sSession)) > 0 Then
+    On Error Resume Next
+    Set oSess = oApp.findById(sSession, False)
+    On Error GoTo 0
+    If oSess Is Nothing Then
+        WScript.Echo "ERROR: action 'session' path not found: " & sSession
+        WScript.Quit 2
+    End If
+    ' Walk up to the connection from the session id.
+    Dim partsS : partsS = Split(oSess.Id, "/")
+    If UBound(partsS) >= 2 Then
+        Set oCon = oApp.findById("/" & partsS(1) & "/" & partsS(2), False)
+    Else
+        Set oCon = oApp.Children(0)
+    End If
+Else
+    Set oCon = oApp.Children(0)
+    If oCon.Children.Count = 0 Then
+        WScript.Echo "ERROR: SAP GUI connection has no session"
+        WScript.Quit 2
+    End If
+    Set oSess = oCon.Children(0)
 End If
-Set oSess = oCon.Children(0)
 
 ' --- Dispatch -------------------------------------------------------------------
 Dim sErr : sErr = ""

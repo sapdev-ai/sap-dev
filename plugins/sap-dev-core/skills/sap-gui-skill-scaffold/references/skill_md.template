@@ -65,15 +65,27 @@ If `<MODE>` is missing or not in the list, stop with a helpful message.
 
 ## Step 2 — Run the mode VBS
 
-Token-substitute the mode's reference VBS and run it via 32-bit cscript:
+Use the version-aware variant selector to pick the right VBS for the active
+SAP system, then token-substitute and run via 32-bit cscript:
 
 ```powershell
-$skillDir   = '<SKILL_DIR>'
-$workTemp   = '{WORK_TEMP}'
-$mode       = 'THE_MODE'
-$paramsMap  = @{ {{PARAM_MAP_HINT}} }   # populated from Step 1 parsing
+$skillDir  = '<SKILL_DIR>'
+$workTemp  = '{WORK_TEMP}'
+$mode      = 'THE_MODE'
+$paramsMap = @{ {{PARAM_MAP_HINT}} }   # populated from Step 1 parsing
 
-$content = Get-Content "$skillDir\references\sap_{{SKILL_NAME_LOWER}}_$mode.vbs" -Raw
+# Ask the shared selector for the best-matching variant for the current
+# active-session pin. Falls back to default sap_<name>_<mode>.vbs if no
+# variant matches. The base name (no .vbs, no version tag) is what we pass.
+$variantPath = & "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_select_vbs_variant.ps1" `
+    -ReferencesDir "$skillDir\references" `
+    -BaseName "sap_{{SKILL_NAME_LOWER}}_$mode"
+if ($LASTEXITCODE -ne 0 -or -not $variantPath) {
+    Write-Error "no VBS variant available for mode=$mode; see selector output"
+    exit 1
+}
+
+$content = Get-Content $variantPath -Raw
 foreach ($k in $paramsMap.Keys) {
     $content = $content.Replace("%%$k%%", $paramsMap[$k])
 }
@@ -84,6 +96,17 @@ cmd /c C:\Windows\SysWOW64\cscript.exe //NoLogo "$workTemp\{{SKILL_NAME}}_run.vb
 
 Read the script's stdout. Last line is `DONE` (success) or `ERROR: <text>`
 (failure).
+
+**Why the selector?** This skill was scaffolded on a specific SAP release
+(see "Probed against" above). Other releases may move screens or menus.
+Shipping additional variants is the supported path:
+
+| Filename | When the selector picks it |
+|---|---|
+| `sap_{{SKILL_NAME_LOWER}}_<mode>.vbs` | default — used when no tagged variant matches |
+| `sap_{{SKILL_NAME_LOWER}}_<mode>.<release>.vbs` | when the active pin's `server_release_marker` matches `<release>` |
+| `sap_{{SKILL_NAME_LOWER}}_<mode>.<release>_GUI<MN>.vbs` | when both axes match (highest priority) |
+| `sap_{{SKILL_NAME_LOWER}}_<mode>.GUI<MN>.vbs` | when only the GUI version matches |
 
 ---
 

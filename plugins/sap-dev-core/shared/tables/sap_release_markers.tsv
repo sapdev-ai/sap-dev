@@ -1,0 +1,42 @@
+#	SAP release marker lookup table
+#	Maps (software component, release range) -> a canonical marker string used
+#	by sap_rfc_system_info.ps1 and sap_select_vbs_variant.ps1.
+#
+#	First-match-wins. Rows are evaluated in file order. The marker becomes
+#	the server_release_marker in {WORK_TEMP}\sap_active_session.json and the
+#	filename tag for version-specific VBS variants (e.g.,
+#	sap_se38_update.S4HANA_2022.vbs).
+#
+#	Columns:
+#	  component  - SAP software component name from table CVERS
+#	  release_lo - minimum release (inclusive). Numeric string compare.
+#	  release_hi - maximum release (inclusive). Empty = open-ended.
+#	  family     - high-level family: S4HANA, ECC, SAP_BASIS, NW (for fallback)
+#	  marker     - canonical tag emitted for this match
+#	  notes      - free text
+component	release_lo	release_hi	family	marker	notes
+S4CORE	100	101	S4HANA	S4HANA_1610	S/4HANA 1610 (initial on-prem release)
+S4CORE	102	102	S4HANA	S4HANA_1709	S/4HANA 1709
+S4CORE	103	103	S4HANA	S4HANA_1809	S/4HANA 1809
+S4CORE	104	104	S4HANA	S4HANA_1909	S/4HANA 1909
+S4CORE	105	105	S4HANA	S4HANA_2020	S/4HANA 2020
+S4CORE	106	106	S4HANA	S4HANA_2021	S/4HANA 2021
+S4CORE	107	107	S4HANA	S4HANA_2022	S/4HANA 2022
+S4CORE	108	108	S4HANA	S4HANA_2023	S/4HANA 2023
+S4CORE	109	999	S4HANA	S4HANA_NEW	S/4HANA newer than the table knows about
+SAP_APPL	600	600	ECC	ECC6_BASE	ECC 6.0 base
+SAP_APPL	602	602	ECC	ECC6_EHP2	ECC 6.0 EhP2
+SAP_APPL	603	603	ECC	ECC6_EHP3	ECC 6.0 EhP3
+SAP_APPL	604	604	ECC	ECC6_EHP4	ECC 6.0 EhP4
+SAP_APPL	605	605	ECC	ECC6_EHP5	ECC 6.0 EhP5
+SAP_APPL	606	606	ECC	ECC6_EHP6	ECC 6.0 EhP6
+SAP_APPL	616	616	ECC	ECC6_EHP6_HANA	ECC 6.0 EhP6 on HANA
+SAP_APPL	617	617	ECC	ECC6_EHP7	ECC 6.0 EhP7
+SAP_APPL	618	618	ECC	ECC6_EHP8	ECC 6.0 EhP8 (final EhP)
+SAP_BASIS	700	702	NW	NW70	NetWeaver 7.0 / 7.01 / 7.02
+SAP_BASIS	730	731	NW	NW73	NetWeaver 7.30 / 7.31
+SAP_BASIS	740	740	NW	NW74	NetWeaver 7.40
+SAP_BASIS	750	753	NW	NW75	NetWeaver 7.5x
+SAP_BASIS	754	755	NW	NW75_LATE	NetWeaver 7.54 / 7.55
+SAP_BASIS	756	758	NW	NW76	NetWeaver 7.56-7.58 (S/4HANA-era basis)
+SAP_BASIS	759	999	NW	NW_NEW	NetWeaver newer than the table knows about

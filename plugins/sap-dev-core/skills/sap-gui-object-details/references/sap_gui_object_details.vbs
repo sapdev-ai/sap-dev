@@ -34,11 +34,17 @@ Option Explicit
 
 Const DEFAULT_MAX_DEPTH = 10
 
-Dim MODE        : MODE        = "%%MODE%%"
-Dim FILTER      : FILTER      = "%%FILTER%%"
-Dim WINDOW_IDX  : WINDOW_IDX  = "%%WINDOW%%"
-Dim MAX_DEPTH_S : MAX_DEPTH_S = "%%MAX_DEPTH%%"
-Dim OUTPUT_FILE : OUTPUT_FILE = "%%OUTPUT_FILE%%"
+Dim MODE         : MODE         = "%%MODE%%"
+Dim FILTER       : FILTER       = "%%FILTER%%"
+Dim WINDOW_IDX   : WINDOW_IDX   = "%%WINDOW%%"
+Dim MAX_DEPTH_S  : MAX_DEPTH_S  = "%%MAX_DEPTH%%"
+Dim OUTPUT_FILE  : OUTPUT_FILE  = "%%OUTPUT_FILE%%"
+Dim SESSION_PATH : SESSION_PATH = "%%SESSION_PATH%%"
+' SESSION_PATH defaults to /app/con[0]/ses[0] when the calling wrapper does
+' not substitute the token (preserves single-session callers).
+If Trim(SESSION_PATH) = "" Or SESSION_PATH = "%%SESSION_PATH%%" Then
+    SESSION_PATH = "/app/con[0]/ses[0]"
+End If
 
 If Trim(MODE) = "" Then MODE = "tree"
 MODE = LCase(Trim(MODE))
@@ -71,11 +77,29 @@ If oApp Is Nothing Then
     WScript.Echo "ERROR: SAP Scripting engine not available (enable in RZ11 sapgui/user_scripting)."
     WScript.Quit 1
 End If
-Set oCon = oApp.Children(0)
-Set oSes = oCon.Children(0)
+' Resolve the target session via SESSION_PATH (e.g. "/app/con[0]/ses[0]").
+' Falls back to Children(0).Children(0) only if findById returned Nothing AND
+' the path was the default -- avoids silently retargeting when a caller asks
+' for a specific session that no longer exists.
+On Error Resume Next
+Set oSes = oApp.findById(SESSION_PATH, False)
+On Error GoTo 0
 If oSes Is Nothing Then
-    WScript.Echo "ERROR: No active SAP GUI session."
+    If SESSION_PATH = "/app/con[0]/ses[0]" And oApp.Children.Count > 0 Then
+        Set oCon = oApp.Children(0)
+        If oCon.Children.Count > 0 Then Set oSes = oCon.Children(0)
+    End If
+End If
+If oSes Is Nothing Then
+    WScript.Echo "ERROR: No active SAP GUI session at " & SESSION_PATH
     WScript.Quit 1
+End If
+' Recover the parent connection from the resolved session id.
+Dim sParts : sParts = Split(oSes.Id, "/")
+If UBound(sParts) >= 2 Then
+    Set oCon = oApp.findById("/" & sParts(1) & "/" & sParts(2), False)
+Else
+    Set oCon = oApp.Children(0)
 End If
 On Error GoTo 0
 

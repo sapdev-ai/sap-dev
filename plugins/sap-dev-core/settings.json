@@ -169,6 +169,11 @@
                                                             "description":  "Set to true after sap-dev-init Step 1b successfully persists SAP GUI Security trust for {work_dir}. Subsequent runs skip the warmup when true.",
                                                             "sensitive":  false,
                                                             "value":  ""
-                                                        }
+                                                        },
+                       "sap_pinned_session":  {
+                                                  "description":  "Persistent active-session hint, populated by '/sap-login --remember'. A SAP GUI Scripting session path like '/app/con[0]/ses[0]'. When the per-AI-session pin file at {WORK_TEMP}\\sap_active_session.json is missing or stale, consumer skills fall back to this hint and re-capture version info on the fly. Cleared automatically if findById can no longer resolve it. Leave blank to require an explicit /sap-login each AI session.",
+                                                  "sensitive":  false,
+                                                  "value":  ""
+                                              }
                    }
 }

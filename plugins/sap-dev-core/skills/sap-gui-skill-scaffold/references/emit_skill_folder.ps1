@@ -25,7 +25,13 @@ param(
     [Parameter(Mandatory = $true)]
     [string] $OutputDir,
 
-    [string] $Tcd = ''
+    [string] $Tcd = '',
+
+    # Optional server-release marker (e.g. "S4HANA_2022") read from the
+    # active-session pin. When supplied, emitted VBS filenames are tagged
+    # with .<marker>.vbs so the version-aware selector (sap_select_vbs_variant.ps1)
+    # can pick the right variant at execution time. Untagged when empty.
+    [string] $ServerMarker = ''
 )
 
 if (-not (Test-Path $MergeReport)) {
@@ -183,7 +189,11 @@ foreach ($p in $report.probes) {
     $vbs = $vbs.Replace('{{PARAM_DOC}}',            ($paramDoc -join "`r`n"))
     $vbs = $vbs.Replace('{{ACTION_LINES}}',         ($vbsActions -join "`r`n"))
 
-    $vbsPath = Join-Path $OutputDir ("references\sap_{0}_{1}.vbs" -f $skillFnBase, $mode)
+    if ($ServerMarker) {
+        $vbsPath = Join-Path $OutputDir ("references\sap_{0}_{1}.{2}.vbs" -f $skillFnBase, $mode, $ServerMarker)
+    } else {
+        $vbsPath = Join-Path $OutputDir ("references\sap_{0}_{1}.vbs" -f $skillFnBase, $mode)
+    }
     Set-Content -Path $vbsPath -Value $vbs -Encoding Unicode
 
     $probeId      = $p.id
@@ -200,7 +210,11 @@ $dispatchLines += "|---|---|---|"
 foreach ($mode in $modes) {
     $params = Get-ModeParameters -mode $mode -touchpoints $report.touchpoints
     $paramList = if ($params.Count -eq 0) { '(none)' } else { ($params.token | ForEach-Object { "``$_``" }) -join ', ' }
-    $vbsBase = "sap_${skillFnBase}_${mode}.vbs"
+    if ($ServerMarker) {
+        $vbsBase = "sap_${skillFnBase}_${mode}.${ServerMarker}.vbs"
+    } else {
+        $vbsBase = "sap_${skillFnBase}_${mode}.vbs"
+    }
     $dispatchLines += "| ``$mode`` | ``references\$vbsBase`` | $paramList |"
 }
 $dispatchTable = $dispatchLines -join "`r`n"
@@ -232,7 +246,7 @@ $provenanceBullets = $probeProvenance -join "`r`n"
 # ------------------------------------------------------------------------------
 $skillMd = Get-Content $tplSkill -Raw
 $skillMd = $skillMd.Replace('{{SKILL_NAME}}',                $SkillName)
-$skillMd = $skillMd.Replace('{{SKILL_NAME_LOWER}}',          $skillNameLower)
+$skillMd = $skillMd.Replace('{{SKILL_NAME_LOWER}}',          $skillFnBase)
 $skillMd = $skillMd.Replace('{{TCD}}',                       $(if ($Tcd) { $Tcd } else { '(unspecified TCD)' }))
 $skillMd = $skillMd.Replace('{{MODE_LIST}}',                 $modeList)
 $skillMd = $skillMd.Replace('{{DESCRIPTION_LINE}}',          $descLine)

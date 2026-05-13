@@ -29,7 +29,13 @@ param(
 
     [string] $Filter = '',
     [string] $Window = '',
-    [int]    $MaxDepth = 10
+    [int]    $MaxDepth = 10,
+
+    # Pinned SAP GUI session, e.g. "/app/con[0]/ses[1]". Default targets the
+    # first connection's first session (preserves today's behaviour). If the
+    # caller wants per-AI-session resolution they should look up the pin via
+    # {WORK_TEMP}\sap_active_session.json and pass session_path here.
+    [string] $SessionPath = '/app/con[0]/ses[0]'
 )
 
 # Locate the sap-gui-object-details VBS template (sibling skill in the same plugin).
@@ -53,11 +59,12 @@ $stamp     = Get-Date -Format 'yyyyMMddHHmmssfff'
 $runtimeVbs = Join-Path $outDir ("_dump_" + $stamp + ".vbs")
 
 $content = Get-Content $templateVbs -Raw
-$content = $content.Replace('%%MODE%%',        $Mode)
-$content = $content.Replace('%%FILTER%%',      $Filter)
-$content = $content.Replace('%%WINDOW%%',      $Window)
-$content = $content.Replace('%%MAX_DEPTH%%',   "$MaxDepth")
-$content = $content.Replace('%%OUTPUT_FILE%%', $OutputFile)
+$content = $content.Replace('%%MODE%%',         $Mode)
+$content = $content.Replace('%%FILTER%%',       $Filter)
+$content = $content.Replace('%%WINDOW%%',       $Window)
+$content = $content.Replace('%%MAX_DEPTH%%',    "$MaxDepth")
+$content = $content.Replace('%%OUTPUT_FILE%%',  $OutputFile)
+$content = $content.Replace('%%SESSION_PATH%%', $SessionPath)
 
 Set-Content -Path $runtimeVbs -Value $content -Encoding Unicode
 

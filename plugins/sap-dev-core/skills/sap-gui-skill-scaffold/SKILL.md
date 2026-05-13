@@ -26,7 +26,8 @@ Task: $ARGUMENTS
 
 ## Step 0 — Resolve work directory + scaffold folder
 
-**Settings reads/writes follow `shared/rules/settings_lookup.md`** — merge `settings.local.json` over `settings.json` per-key on the `.value` field. Resolve sap-dev-core paths: 2 levels up from `<SKILL_DIR>`, then `settings.json` and (if present) `settings.local.json`. Read `work_dir`. Default: `C:\sap_dev_work`.
+Read sap-dev-core's `settings.json` (2 levels up from `<SKILL_DIR>`). Read
+`work_dir`. Default: `C:\sap_dev_work`.
 
 Derive:
 - `{WORK_TEMP}`       = `{work_dir}\temp`
@@ -53,7 +54,9 @@ scaffold → probe call tree.
 
 ---
 
-## Step 0.7 — Pre-flight: GUI session
+## Step 0.7 — Pre-flight: GUI session + active-session pin
+
+First, confirm at least one SAP GUI session is attached:
 
 ```bash
 cmd /c C:\Windows\SysWOW64\cscript.exe //NoLogo "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_check_gui_login_status.vbs"
@@ -61,6 +64,25 @@ cmd /c C:\Windows\SysWOW64\cscript.exe //NoLogo "<SAP_DEV_CORE_SHARED_DIR>\scrip
 
 If status is not `LOGGED_IN`, stop and tell the user to run `/sap-login` first.
 Log end Status=FAILED ErrorClass=NO_SESSION.
+
+Second, resolve the **active-session pin** (same resolution order as
+`sap-gui-probe` Step 0.6):
+
+1. `{WORK_TEMP}\sap_active_session.json` exists → use its `session_path`.
+2. Else `userConfig.sap_pinned_session` (read via `sap_settings_lib.ps1` `Get-SapSettingValue`, which merges `settings.local.json` over `settings.json` per Rule 7) is non-empty (written by `/sap-login --remember` in a previous AI session) → use that path AND auto-regenerate the temp pin file by running `sap_login_capture_active_session.vbs "<hinted_path>"` to re-capture GUI fields, then merge with RFC-side info (best-effort if credentials available). If the hinted session no longer resolves, clear via `Set-SapUserSetting sap_pinned_session ''` and fall through.
+3. Else exactly one connection attached → silent default `/app/con[0]/ses[0]`.
+4. Else refuse with: *"multiple SAP GUI connections detected and no active session pinned; run `/sap-login` first."* Log end Status=FAILED ErrorClass=NO_PIN.
+
+The resolved path is `{PINNED_SESSION}`. Its parent connection (everything
+up to the final `/ses[N]`) is `{PINNED_CONNECTION}`. Both are referenced
+later — `{PINNED_CONNECTION}` for the `ensure_sessions.vbs` pool, and
+`{PINNED_SESSION}` as the default for serial-mode probes.
+
+Also copy version fields from the pin file into the scaffolder's run state
+and into the generated SKILL.md's "Probed against" header:
+- `gui_version_raw`, `gui_major`
+- `server_release_marker`, `server_release_raw`
+- `system_name`, `client`
 
 ---
 
@@ -88,6 +110,14 @@ Parse rules:
 5. **Optional `--tcd <TXN>`**: informational tag for the SKILL.md header. If
    omitted, derive from the first scenario via the same TXN-extraction
    heuristic /sap-gui-probe uses.
+6. **Optional `--parallel`**: run all scenario probes concurrently, one
+   SAP GUI session per probe sub-agent. See Step 2-Parallel below. Without
+   this flag, Step 2 runs serially against the pinned session (today's
+   behaviour).
+7. **Optional `--parallel-cap N`** (default 6): max concurrent probes.
+   Capped at 6 because SAP's default `rdisp/max_alt_modes` is 6 sessions
+   per connection. If `--parallel` is set and scenario count > cap, run
+   in batches of `cap`.
 
 After parsing:
 - If scenario count < 2, refuse with: *"scaffolding from one probe is just
@@ -125,6 +155,10 @@ Echo the parsed plan to the user before Step 2:
 
 ## Step 2 — Run /sap-gui-probe for each scenario
 
+The execution path branches on `--parallel`:
+
+### 2-Serial — default path (no `--parallel`)
+
 Use the Skill tool to invoke `/sap-gui-probe` with each scenario, in order.
 Always append `--auto` to the scenario string -- the scaffolder is
 non-interactive; the human authorised this whole run by typing the scenarios.
@@ -144,6 +178,84 @@ Log end Status=FAILED ErrorClass=PROBE_FAILED ErrorMsg="<scenario index>".
 The failed probe's run folder is still on disk for the user to inspect; the
 partial probes that succeeded are also kept. Do NOT proceed to merge --
 a partial scaffold is worse than no scaffold.
+
+### 2-Parallel — `--parallel` path
+
+Active when `--parallel` is set on the invocation.
+
+**2.0 — Pre-flight session pool.** Read `{WORK_TEMP}\sap_active_session.json`
+to get the pinned `session_path`. Derive the connection prefix
+(`/app/con[<idx>]`). Determine required session count:
+`required = min(scenario_count, parallel_cap)` (default cap = 6).
+
+Run the ensure-sessions helper to spawn the missing sessions and reset
+every existing session to SAP Easy Access:
+
+```bash
+cmd /c C:\Windows\SysWOW64\cscript.exe //NoLogo "<SKILL_DIR>\references\ensure_sessions.vbs" "/app/con[0]" <required>
+```
+
+Last line is `SESSIONS: <existing> -> <total>`. If `<total>` < `<required>`,
+SAP capped at its max — log a warning and proceed with the smaller batch
+size (subsequent batches reuse the same sessions).
+
+**2.1 — Build task descriptors.** One per scenario:
+
+```
+descriptor_i = {
+  scenario : "<scenario_i text>",
+  mode     : "<derived mode label>",
+  session  : "/app/con[<idx>]/ses[i]",
+  index    : i
+}
+```
+
+`i` starts at 0 and counts up. Don't reuse session 0 unless the user
+explicitly pinned it via Step 0.6 — keeping ses[0] free of probe activity
+makes manual inspection / debugging easier. If the pinned session is
+ses[0], use ses[0..N-1]; otherwise use ses[<pinned_idx>..<pinned_idx>+N-1].
+
+**2.2 — Spawn N general-purpose Task sub-agents** in a single tool message.
+Each sub-agent's prompt is self-contained:
+
+> You are probe runner #i of N for a sap-gui-skill-scaffold run. Your
+> assigned SAP GUI session is `<session>`. Invoke `/sap-gui-probe` with
+> this argument string verbatim:
+>
+>     <scenario> --auto --session <session>
+>
+> When the skill finishes successfully, return ONLY the absolute path of
+> the resulting run folder as the LAST line of your message (no extra
+> prose after it).
+>
+> If the probe fails or is abandoned, return the literal token
+> `FAILED:<short reason>` as the last line.
+>
+> Do not touch any other SAP GUI session. Do not invoke unrelated skills.
+
+**2.3 — Collect results.** Wait for all N sub-agents to return. Parse each
+agent's last non-empty line:
+- absolute folder path → success, append to probe list with the matching mode label.
+- `FAILED:<reason>` → record the failure for this scenario index.
+
+**2.4 — Failure policy.** If ANY sub-agent returned FAILED, abort the
+whole scaffold. Log end Status=FAILED ErrorClass=PROBE_FAILED
+ErrorMsg="<failed indices>". Successful probe folders remain on disk.
+
+**2.5 — Batching.** If `scenario_count > parallel_cap`, repeat 2.1–2.4 in
+batches of size `parallel_cap`. Sessions persist across batches; ses[i]
+is reused for scenario `cap+i`, etc. Between batches, run
+`ensure_sessions.vbs` again (no-op for session count, but it re-issues `/n`
+to clean up state from the previous batch).
+
+**Concurrency notes:**
+- Each cscript process binds to exactly one session via the `session` field
+  in its action JSON. No mid-script switching.
+- SAP GUI Scripting's `session.LockSessionUI` is per-session, so concurrent
+  probes don't fight each other.
+- Each probe writes to its own folder; no shared writeable state.
+- Cost: each sub-agent has its own context window — roughly N× the token
+  cost of the serial path. Use `--parallel` for time savings on 4+ scenarios.
 
 ---
 
@@ -176,8 +288,17 @@ Last line of stdout: `MERGE OK: probes=<N> touchpoints=<M> parameters=<P> modeSp
 ## Step 4 — Emit the skill folder
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SKILL_DIR>\references\emit_skill_folder.ps1" -MergeReport "{SCAFFOLD_FOLDER}\_merge_report.json" -SkillName "<new-skill-name>" -OutputDir "{SCAFFOLD_FOLDER}" -Tcd "<TXN>"
+powershell -ExecutionPolicy Bypass -File "<SKILL_DIR>\references\emit_skill_folder.ps1" -MergeReport "{SCAFFOLD_FOLDER}\_merge_report.json" -SkillName "<new-skill-name>" -OutputDir "{SCAFFOLD_FOLDER}" -Tcd "<TXN>" -ServerMarker "<server_release_marker-from-pin-or-empty>"
 ```
+
+`-ServerMarker` is the `server_release_marker` field from
+`{WORK_TEMP}\sap_active_session.json` (e.g. `S4HANA_2022`, `ECC6_EHP8`).
+When non-empty, every emitted mode VBS is named
+`sap_<name>_<mode>.<marker>.vbs` so the version-aware selector
+(`shared/scripts/sap_select_vbs_variant.ps1`) picks it on matching systems
+and falls back to the default `.vbs` on non-matching ones. When the pin
+doesn't have a marker (RFC failed or no pin file), pass empty string and
+filenames stay untagged.
 
 The script reads the merge report and writes, into `{SCAFFOLD_FOLDER}`:
 
