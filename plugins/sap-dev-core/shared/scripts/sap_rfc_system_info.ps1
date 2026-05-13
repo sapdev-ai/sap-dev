@@ -74,31 +74,58 @@ try {
     # ---------------------------------------------------------------------------
     # Step 3 — CVERS  (software-component releases)
     # ---------------------------------------------------------------------------
-    $cvers = @{}
+    # Track per-component lookup outcomes so the caller can distinguish
+    # "component not installed" (legitimately missing — e.g. S4CORE absent on
+    # ECC, SAP_APPL absent on S/4HANA) from "RFC call failed" (auth missing
+    # on CVERS / S_TABU_DIS, RFC_READ_TABLE blocked by S_RFC, transient NCo
+    # error). The old empty catch made these two outcomes indistinguishable
+    # which is why MICHAELLI's pin came back with software_components=[] and
+    # the operator had no diagnostic trail to follow.
+    $cvers     = @{}
+    $cversErrs = @{}
     $components = @('SAP_BASIS','S4CORE','SAP_APPL','S4CEXT','SAP_HR')
     foreach ($comp in $components) {
         try {
-            $fn = New-RfcReadTable -Destination $dest -QueryTable 'CVERS'
-            Add-RfcField  -Func $fn -FieldName 'COMPONENT'
-            Add-RfcField  -Func $fn -FieldName 'RELEASE'
-            Add-RfcField  -Func $fn -FieldName 'EXTRELEASE'
-            Add-RfcOption -Func $fn -Text ("COMPONENT EQ '" + $comp + "'")
+            $fn = New-RfcReadTable -Destination $dest -Table 'CVERS'
+            Add-RfcField  $fn 'COMPONENT'
+            Add-RfcField  $fn 'RELEASE'
+            Add-RfcField  $fn 'EXTRELEASE'
+            Add-RfcOption $fn ("COMPONENT EQ '" + $comp + "'")
             $fn.Invoke($dest)
             $rows = $fn.GetTable('DATA')
             if ($rows.RowCount -gt 0) {
-                # WA = pipe-padded fixed-width row; split by spaces collapses
+                # WA is the row content concatenated with the DELIMITER ('|')
+                # between fields, each space-padded to its declared width
+                # (CVERS: COMPONENT char30, RELEASE char10, EXTRELEASE char10).
+                # Split on the delimiter — simpler and correct than the
+                # previous off-by-one Substring math which left the '|'
+                # separator inside the release value ('|104' instead of '104'),
+                # causing the marker lookup to miss every S4CORE/SAP_BASIS row.
                 $wa = "$($rows[0].GetValue('WA'))"
-                # CVERS fields: COMPONENT char30, RELEASE char10, EXTRELEASE char10
-                $compName = $wa.Substring(0, [Math]::Min(30, $wa.Length)).TrimEnd()
-                $release  = if ($wa.Length -ge 40) { $wa.Substring(30, 10).TrimEnd() } else { '' }
+                $parts = $wa -split '\|'
+                $compName = if ($parts.Count -ge 1) { $parts[0].TrimEnd() } else { '' }
+                $release  = if ($parts.Count -ge 2) { $parts[1].Trim() } else { '' }
                 $cvers[$comp] = [pscustomobject]@{
                     name    = $compName
                     release = $release
                 }
             }
+            # RowCount==0 is fine and silent — component genuinely not installed.
         } catch {
-            # Ignore missing components; not every system has S4CORE / S4CEXT.
+            # Surface the underlying error so the operator can tell the
+            # difference between "CVERS auth missing" and "component absent".
+            # Goes to Write-Host (host stream 6), NOT stdout, so the JSON
+            # payload on stdout stays clean for the caller VBS to parse.
+            $msg = $_.Exception.Message
+            $cversErrs[$comp] = $msg
+            Write-Host "WARN: CVERS lookup failed for ${comp}: $msg"
         }
+    }
+    if ($cversErrs.Count -gt 0 -and $cvers.Count -eq 0) {
+        Write-Host ("WARN: every CVERS lookup raised an error; release-marker " +
+                    "resolution will fall back to kernel only. Most likely " +
+                    "cause: missing S_TABU_DIS for table-class SS, or missing " +
+                    "S_RFC for function group SDTX (RFC_READ_TABLE).")
     }
 
     # ---------------------------------------------------------------------------
@@ -155,6 +182,23 @@ try {
             if ($resolved) { break }
         }
     }
+
+    # Kernel-only fallback: tried before the absolute UNKNOWN_KERNEL_<n>
+    # bucket. The lookup table has synthetic KERNEL rows that map kernel
+    # release ranges to ambiguous markers like S4HANA_1909_OR_NW754, which
+    # preserves enough information for variant selectors to glob-match.
+    # See shared/tables/sap_release_markers.tsv for the rationale.
+    if (-not $resolved -and $kernelRelease) {
+        $resolved = Try-ResolveMarker -component 'KERNEL' -release $kernelRelease
+        if ($resolved) {
+            Write-Host ("INFO: resolved via kernel fallback (kernel=" +
+                        "$kernelRelease -> $($resolved.marker)) because CVERS " +
+                        "returned no usable component rows.")
+        }
+    }
+
+    # Last-ditch fallback: no CVERS rows AND no kernel match. Marker still
+    # records the kernel so downstream selectors at least have a stable tag.
     if (-not $resolved) {
         $resolved = [pscustomobject]@{ family = 'UNKNOWN'; marker = "UNKNOWN_KERNEL_$kernelRelease" }
     }
@@ -168,6 +212,29 @@ try {
         $componentList += [pscustomobject]@{
             name    = $cvers[$k].name
             release = $cvers[$k].release
+        }
+    }
+
+    # Record the resolution path so the operator can tell, just from the pin
+    # file, whether they're on a confident S4CORE match or an ambiguous
+    # kernel fallback. Variant selectors can branch on this if they need to.
+    $resolvedVia = if ($cvers.ContainsKey('S4CORE')) {
+        'S4CORE'
+    } elseif ($cvers.ContainsKey('SAP_APPL')) {
+        'SAP_APPL'
+    } elseif ($cvers.ContainsKey('SAP_BASIS')) {
+        'SAP_BASIS'
+    } elseif ($resolved.family -ne 'UNKNOWN' -or $resolved.marker -notlike 'UNKNOWN_KERNEL_*') {
+        'KERNEL_FALLBACK'
+    } else {
+        'NONE'
+    }
+
+    $cversErrList = @()
+    foreach ($k in $cversErrs.Keys) {
+        $cversErrList += [pscustomobject]@{
+            component = $k
+            error     = $cversErrs[$k]
         }
     }
 
@@ -189,7 +256,9 @@ try {
                                    } else {
                                        "kernel $kernelRelease"
                                    }
+        server_release_resolved_via = $resolvedVia
         software_components      = $componentList
+        cvers_errors             = $cversErrList
         captured_at              = (Get-Date -Format 'yyyy-MM-ddTHH:mm:ss')
     }
 

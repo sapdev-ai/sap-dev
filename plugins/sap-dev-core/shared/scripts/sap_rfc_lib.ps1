@@ -171,17 +171,21 @@ function Disconnect-SapRfc {
 }
 
 # Append a FIELDS row (FIELDNAME=<name>) to an RFC_READ_TABLE function call.
+# NOTE: every NCo method call must be cast to [void] or piped to Out-Null —
+# IRfcStructure.SetValue() etc. return the structure (fluent API) and PS
+# captures the return value into the function's output pipeline, so callers
+# get an Object[] instead of the table they expected.
 function Add-RfcField($fn, [string]$name) {
     $tbl = $fn.GetTable("FIELDS")
-    $tbl.Append() | Out-Null
-    $tbl.SetValue("FIELDNAME", $name)
+    [void]$tbl.Append()
+    [void]$tbl.SetValue("FIELDNAME", $name)
 }
 
 # Append an OPTIONS row (TEXT=<where>) to an RFC_READ_TABLE function call.
 function Add-RfcOption($fn, [string]$where) {
     $tbl = $fn.GetTable("OPTIONS")
-    $tbl.Append() | Out-Null
-    $tbl.SetValue("TEXT", $where)
+    [void]$tbl.Append()
+    [void]$tbl.SetValue("TEXT", $where)
 }
 
 # Forbidden tables for RFC_READ_TABLE. See header comment for rationale.
@@ -229,7 +233,19 @@ function New-RfcReadTable {
     )
     Assert-RfcReadTableAllowed -QueryTable $Table
     $fn = $Destination.Repository.CreateFunction("RFC_READ_TABLE")
-    $fn.SetValue("QUERY_TABLE", $Table)
-    $fn.SetValue("DELIMITER",   $Delimiter)
-    return $fn
+    # SetValue must be cast to [void] — NCo's IRfcFunction.SetValue returns
+    # the function itself (fluent API), which PowerShell otherwise captures
+    # into this function's output pipeline. That polluted return is what
+    # caused the historic "$fn is an Object[]" cascade where callers ended
+    # up calling GetTable() on an array and got cryptic
+    # "PARAMETER DELIMITER ... cannot convert CHAR1 into IRfcTable" errors.
+    [void]$fn.SetValue("QUERY_TABLE", $Table)
+    [void]$fn.SetValue("DELIMITER",   $Delimiter)
+    # CRITICAL: IRfcFunction implements IEnumerable<RfcParameter>; PowerShell's
+    # output pipeline auto-enumerates IEnumerables, so a bare `return $fn`
+    # would unroll the function into N RfcParameter objects and the caller
+    # would receive an Object[] of parameters instead of the function itself.
+    # The unary `,` operator wraps the value in a single-element array which
+    # PS then unwraps back to the original object — preserving identity.
+    return ,$fn
 }

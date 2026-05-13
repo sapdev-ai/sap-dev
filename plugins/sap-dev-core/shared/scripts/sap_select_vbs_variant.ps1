@@ -16,10 +16,20 @@
 # major+minor concatenation (e.g. 77 for 7.7, 80 for 8.0).
 #
 # Scoring (highest wins, then lexicographic on filename):
-#   exact (server, gui)      → 100
-#   server-only match        → 50
-#   gui-only match           → 10
-#   default (no tag)         → 1
+#   exact (server, gui)              → 100
+#   server-only match                → 50
+#   kernel-fallback OR-alternative   → 25  (when pin marker is e.g.
+#                                           "S4HANA_1909_OR_NW754" and the
+#                                           VBS is tagged with either
+#                                           constituent, e.g. "S4HANA_1909")
+#   gui-only match                   → 10
+#   default (no tag)                 → 1
+#
+# The OR-alternative branch lets variant authors tag files with the canonical
+# release marker (S4HANA_1909) and still have them picked when the user's
+# CVERS reads failed and the resolver fell back to the ambiguous compound
+# marker S4HANA_1909_OR_NW754. Score 25 < exact 50, so a precise-pinned user
+# always still wins over a fallback-pinned user looking at the same skill.
 #
 # Usage:
 #   powershell -ExecutionPolicy Bypass -File sap_select_vbs_variant.ps1 `
@@ -142,13 +152,27 @@ function Get-Score {
         $serverPart = $tag
     }
 
+    # Build the set of acceptable server markers for the active pin. When
+    # the pin holds a kernel-fallback compound marker like S4HANA_1909_OR_NW754
+    # we accept the compound itself AND each underlying alternative
+    # (S4HANA_1909, NW754) at a reduced score. A precise pin like
+    # "S4HANA_1909" alone is not split — it has only one acceptable form.
+    $serverAlternatives = @($server)
+    if ($server -and $server -match '_OR_') {
+        $serverAlternatives += ($server -split '_OR_') | Where-Object { $_ }
+    }
+    $serverIsExactMatch    = ($serverPart -eq $server)
+    $serverIsAlternative   = (-not $serverIsExactMatch) -and ($serverAlternatives -contains $serverPart)
+
     # Score
     if ($hasServer -and $hasGui) {
-        if ($serverPart -eq $server -and $guiPart -eq $gui) { return 100 }
+        if ($serverIsExactMatch  -and $guiPart -eq $gui) { return 100 }
+        if ($serverIsAlternative -and $guiPart -eq $gui) { return 75 }
         return -1
     }
     if ($hasServer) {
-        if ($serverPart -eq $server) { return 50 }
+        if ($serverIsExactMatch)  { return 50 }
+        if ($serverIsAlternative) { return 25 }
         return -1
     }
     if ($hasGui) {

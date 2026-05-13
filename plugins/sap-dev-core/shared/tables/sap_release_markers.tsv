@@ -40,3 +40,24 @@ SAP_BASIS	750	753	NW	NW75	NetWeaver 7.5x
 SAP_BASIS	754	755	NW	NW75_LATE	NetWeaver 7.54 / 7.55
 SAP_BASIS	756	758	NW	NW76	NetWeaver 7.56-7.58 (S/4HANA-era basis)
 SAP_BASIS	759	999	NW	NW_NEW	NetWeaver newer than the table knows about
+#
+#	Kernel-only fallback. Used by sap_rfc_system_info.ps1 ONLY when every
+#	CVERS lookup returned empty (e.g. user lacks S_TABU_DIS for table-class SS,
+#	or S_RFC for RFC_READ_TABLE on function group SDTX). Kernel release
+#	tracks SAP_BASIS one-for-one on on-premise releases, so kernel 754
+#	strongly implies SAP_BASIS 754 -> S/4HANA 1909 OR pure NetWeaver 7.54.
+#	The S/4 vs. NW ambiguity cannot be resolved without CVERS, so the marker
+#	preserves both. Variant selectors that want S/4HANA-only behaviour should
+#	glob-match the canonical prefix (S4HANA_1909_*) and accept this fallback.
+KERNEL	720	721	UNKNOWN	NW70_OR_ECC6_KERNEL_72X	kernel 720-721 (NW 7.0x / ECC6 base)
+KERNEL	740	742	UNKNOWN	NW74_OR_ECC6_EHP7_KERNEL_74X	kernel 740-742 (NW 7.4 / ECC6 EhP7)
+KERNEL	745	749	UNKNOWN	NW75_OR_S4HANA_1511_1610_KERNEL_74X	kernel 745-749 (NW 7.5 / S/4HANA 1511 / 1610)
+KERNEL	750	750	UNKNOWN	NW75_OR_ECC6_EHP8_KERNEL_750	kernel 750 (NW 7.5 / ECC6 EhP8)
+KERNEL	751	752	UNKNOWN	NW75_OR_S4HANA_1610_KERNEL_75X	kernel 751-752 (NW 7.5 / S/4HANA 1610)
+KERNEL	753	753	UNKNOWN	NW75_OR_S4HANA_1709_1809_KERNEL_753	kernel 753 (NW 7.53 / S/4HANA 1709 / 1809)
+KERNEL	754	754	UNKNOWN	S4HANA_1909_OR_NW754	kernel 754 (NW 7.54 / S/4HANA 1909)
+KERNEL	755	755	UNKNOWN	S4HANA_2020_OR_NW755	kernel 755 (NW 7.55 / S/4HANA 2020)
+KERNEL	756	756	UNKNOWN	S4HANA_2021_OR_NW756	kernel 756 (NW 7.56 / S/4HANA 2021)
+KERNEL	757	757	UNKNOWN	S4HANA_2022_OR_NW757	kernel 757 (NW 7.57 / S/4HANA 2022)
+KERNEL	758	758	UNKNOWN	S4HANA_2023_OR_NW758	kernel 758 (NW 7.58 / S/4HANA 2023)
+KERNEL	759	999	UNKNOWN	S4HANA_NEW_OR_NW_NEW_KERNEL	kernel newer than the table knows about
