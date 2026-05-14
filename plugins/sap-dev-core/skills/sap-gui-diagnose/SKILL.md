@@ -132,10 +132,13 @@ $manifest   = "$diagDir\manifest.tsv"
 $content    = Get-Content "$skillDir\references\sap_gui_diagnose_capture.vbs" -Raw
 $content    = $content.Replace('%%OUTPUT_DIR%%', $diagDir)
 $content    = $content.Replace('%%MANIFEST%%',   $manifest)
-# Tier 3 session-attach plumbing. SESSION_PATH empty -> legacy default.
+# Session-attach plumbing (Phase 3.5 multi-connection aware). Resolution:
+# explicit --session > SAPDEV_SESSION_PATH > SAPDEV_PIN_FILE > sole-
+# connection auto-default > refuse. See sap_attach_lib.vbs for details.
 $sessionPath = ''  # set to the parsed --session value if supplied
 $content    = $content.Replace('%%SESSION_PATH%%',   $sessionPath)
 $content    = $content.Replace('%%ATTACH_LIB_VBS%%', '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs')
+$env:SAPDEV_PIN_FILE = '{WORK_TEMP}\sap_active_session.json'
 Set-Content "{WORK_TEMP}\sap_gui_diagnose_capture_run.vbs" $content -Encoding Unicode
 Write-Host 'Done'
 ```

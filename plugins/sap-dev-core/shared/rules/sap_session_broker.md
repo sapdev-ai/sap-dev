@@ -5,6 +5,14 @@ SAP GUI session at any moment, without requiring a long-running broker
 process. State lives in a single JSON registry; cross-process concurrency
 is serialized by a Windows named mutex.
 
+**Multi-connection aware** (since Phase 3.5 — mutex name bumped from
+`SapDevSessionBroker_v1` to `_v2`): the broker tracks every attached SAP
+connection separately, partitioned by `(connection_path, system_name,
+client, user)`. A claim against `/app/con[1]` (e.g. QAS / client 200)
+never returns a `/app/con[0]` path (e.g. DEV / client 100). When
+multiple connections are attached, every acquire MUST specify which
+target it wants — there is no implicit cross-connection default.
+
 This document is the **contract** between the broker and its callers. It
 spells out what callers can rely on, what they can't, and the exact CLI
 shape.
@@ -31,18 +39,29 @@ handles it fine).
 
 1. **Mutual exclusion.** At any instant, at most one `task_id` holds a
    `claimed` entry for any given session `path`.
-2. **Cleanup on every call.** Acquire and release run a sweep that drops
+2. **Connection isolation.** A claim resolved against connection N
+   never returns a session of connection M. The acquire-time resolver
+   refuses to default across connections when ambiguous.
+3. **Cleanup on every call.** Acquire and release run a sweep that drops
    entries reflecting any of these failure modes:
    - The SAP GUI session was closed (`findById` returns nothing).
    - The owner PID is no longer alive (when supplied by the caller).
    - The claim's TTL expired.
-   - The user logged out and back in (the SAP-side `SystemSessionId`
-     changed; all entries are stale).
-3. **Spawn-on-demand.** If acquire can't find a free session, the broker
-   spawns one via `/oSESSION_MANAGER` and registers it.
-4. **Idempotent acquire.** If the same `task_id` already holds a `claimed`
-   entry, acquire returns it unchanged (with refreshed `claim_time`).
-5. **Pre-allocation Easy-Access verification.** Before handing out a path,
+   - The user logged out and back in on a specific connection (the
+     SAP-side `SystemSessionId` for that connection changed; only
+     that connection's entries are dropped — other connections are
+     unaffected).
+   - The entire connection was closed (its `connection_path` no longer
+     resolves); all of that connection's entries are dropped.
+4. **Spawn-on-demand.** If acquire can't find a free session on the
+   target connection, the broker spawns one on that specific connection
+   via `/oSESSION_MANAGER` and registers it.
+5. **Idempotent acquire.** If the same `task_id` already holds a `claimed`
+   entry on ANY connection, acquire returns that path unchanged (with
+   refreshed `claim_time`) — even if the caller passed a connection
+   filter that points elsewhere. This is deliberate: the second call
+   wants the existing session, not a new one.
+6. **Pre-allocation Easy-Access verification.** Before handing out a path,
    the broker verifies the session is at SAP Easy Access. If not, it
    sends `/n` and re-verifies; if still not, it marks the entry
    `user_owned` and denies the acquire so the caller can retry.
@@ -87,13 +106,37 @@ pwsh -File sap_session_broker.ps1 -Action acquire `
     -OwnerSkill  "<skill-name>" `          # optional, free-form
     -OwnerPid    <caller-PID> `            # optional, see note below
     -WorkTemp    "<abs-path>" `
-    [-SessionPath  "/app/con[0]/ses[1]"] ` # optional preference
     [-TtlSeconds   600]                     # default 600 = 10 min
+    # --- connection-targeting (use ONE; resolution order below) ---
+    [-SessionPath    "/app/con[N]/ses[M]"]   # 1. explicit; derives connection
+    [-ConnectionPath "/app/con[N]"]          # 2. target a specific connection
+    [-SystemName     "<SID>"]                # 3. tuple-match: any combination
+    [-Client         "<CLNT>"]               #    of these three filters the
+    [-User           "<USR>"]                #    live connections by GuiSession.Info
+    [-PinFile        "<path>"]               # 4. read pin file -> use its
+                                              #    session_path, or fall back to
+                                              #    its (system_name,client,user)
 ```
+
+**Connection-targeting resolution order** (first hit wins):
+
+1. `-SessionPath` — explicit `/app/con[N]/ses[M]`; broker derives the
+   connection from the path.
+2. `-ConnectionPath` — explicit `/app/con[N]`; broker allocates within it.
+3. `-SystemName` / `-Client` / `-User` — any non-empty subset filters
+   the live connections. If exactly one matches, use it.
+4. `-PinFile` — read the pin (typically `{WORK_TEMP}\sap_active_session.json`);
+   honour its `session_path` if it resolves, else its
+   `(system_name, client, user)` tuple.
+5. **Exactly one connection attached** — silent default. Preserves the
+   single-connection 99% case for callers that don't pass any targeting
+   argument.
+6. **Otherwise** — `DENIED: ambiguous target: N connections attached and
+   no resolver supplied` (caller must add a targeting arg).
 
 stdout last line:
 ```
-ACQUIRED: path=<path> sessionNumber=<n> reused=true|false
+ACQUIRED: path=<path> sessionNumber=<n> connection=<connection_path> reused=true|false
 ```
 or
 ```
@@ -172,34 +215,63 @@ nothing if everything is already known.
 
 ## Registry schema
 
-`{WORK_TEMP}\session_registry.json`, UTF-8 no BOM:
+`{WORK_TEMP}\session_registry.json`, UTF-8 no BOM. Schema v2 (multi-
+connection, since Phase 3.5):
 
 ```json
 {
-  "logon_id":   "000C298056DE1FE193E27A22AD87CE0A",
-  "updated_at": "2026-05-14T10:38:44",
-  "entries": [
+  "updated_at": "2026-05-14T11:36:19",
+  "connections": [
     {
-      "path":           "/app/con[0]/ses[1]",
-      "session_number": 2,
-      "task_id":        "agent_a83f96",
-      "owner_pid":      12345,
-      "owner_skill":    "sap-se38-create",
-      "status":         "claimed",
-      "claim_time":     "2026-05-14T10:38:44",
-      "ttl_seconds":    600,
-      "discovered":     true
+      "connection_path": "/app/con[0]",
+      "description":     "S4HANA_1909_MICHAELLI",
+      "system_name":     "S4D",
+      "client":          "100",
+      "user":            "MICHAELLI",
+      "logon_id":        "000C298056DE1FE193E27A22AD87CE0A",
+      "entries": [
+        {
+          "path":           "/app/con[0]/ses[1]",
+          "session_number": 2,
+          "task_id":        "agent_a83f96",
+          "owner_pid":      12345,
+          "owner_skill":    "sap-se38-create",
+          "status":         "claimed",
+          "claim_time":     "2026-05-14T10:38:44",
+          "ttl_seconds":    600,
+          "discovered":     true
+        }
+      ]
+    },
+    {
+      "connection_path": "/app/con[1]",
+      "system_name":     "S4H",
+      "client":          "200",
+      "user":            "MICHAELLI",
+      "logon_id":        "7B277BFC...",
+      "entries": [ ... ]
     }
   ]
 }
 ```
 
-- `logon_id` — current `SystemSessionId` from any live session. Used to
-  detect logout+relogin. Empty before first acquire/discover.
-- `entries[].path` — primary key. Stable while the session is alive.
-- `entries[].session_number` — `Info.SessionNumber` at claim time.
-  Recorded for forensics; NOT used as identity.
-- `entries[].status` — one of `free`, `claimed`, `user_owned`.
+- `connections[].connection_path` — primary key for a connection block.
+  The address-of-record (recyclable). Use `(system_name, client, user)`
+  for stable identification.
+- `connections[].logon_id` — current `SystemSessionId` for THIS
+  connection. Used to detect logout+relogin on one connection without
+  invalidating others. Empty before first acquire/discover on the
+  connection.
+- `connections[].entries[].path` — primary key for a session within
+  the connection. Stable while the session is alive.
+- `connections[].entries[].session_number` — `Info.SessionNumber` at
+  claim time. Recorded for forensics; NOT used as identity (recycles).
+- `connections[].entries[].status` — one of `free`, `claimed`,
+  `user_owned`.
+
+The pre-3.5 v1 schema was a flat `entries` array with one top-level
+`logon_id`. The v2 broker auto-detects v1 registries by the missing
+`connections` field and rebuilds fresh on first call.
 - `entries[].discovered` — `true` if pre-existing at discover time;
   `false` if the broker spawned it.
 
@@ -368,10 +440,21 @@ touch the broker — they just use the path they were given.
 
 ## Versioning
 
-Mutex name encodes the schema version (`SapDevSessionBroker_v1`). If a
-future schema change is incompatible, the mutex name will increment
-(`_v2`) — running both versions concurrently is unsafe and we want
-loud breakage rather than silent corruption. Bump the version when:
+Mutex name encodes the schema version. **Current: `SapDevSessionBroker_v2`**
+(Phase 3.5 — multi-connection registry schema, new connection-targeting
+acquire args, per-connection cleanup, `connection_closed` failure mode).
+The previous `_v1` mutex (single flat-entries schema) is retired; running
+a v1 broker and a v2 broker concurrently against the same registry would
+corrupt state. The v2 broker auto-detects a v1 registry on disk and
+rebuilds it fresh; the operator's first call after upgrading prints a
+`WARN: v1 registry detected; rebuilding under v2 schema` line.
+
+Bump the version when:
 - The registry JSON schema changes incompatibly.
 - The CLI contract changes incompatibly.
 - The cleanup algorithm changes in a way callers might observe.
+
+| Version | Released | Highlights |
+|---|---|---|
+| v1 | Phase 3 (initial broker) | Single flat-entries schema. Assumed one SAP connection. Mutex: `SapDevSessionBroker_v1`. |
+| v2 | Phase 3.5 (multi-connection) | Nested `connections[]` schema. Mutex: `SapDevSessionBroker_v2`. New acquire args: `-ConnectionPath`, `-SystemName`, `-Client`, `-User`, `-PinFile`. New failure modes: `connection_closed`, per-connection `logon_changed`. ACQUIRED stdout now includes `connection=<path>`. |

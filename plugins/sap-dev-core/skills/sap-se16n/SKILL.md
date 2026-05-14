@@ -155,14 +155,19 @@ $content = Get-Content '<SKILL_DIR>\references\sap_se16n.vbs' -Raw
 $content = $content -replace '%%TABLE_NAME%%','THE_TABLE'
 $content = $content -replace '%%PARAMS_FILE%%','{WORK_TEMP}\se16n_params.txt'
 $content = $content -replace '%%OUTPUT_FILE%%','{WORK_TEMP}\se16n_THE_TABLE.txt'
-# Tier 3 session-attach plumbing. SESSION_PATH is empty by default; pass an
-# explicit /app/con[0]/ses[N] via the `--session` argument (parsed earlier)
-# when the caller wants to target a specific session in a parallel context.
-# The shared attach helper (AttachSapSession) honours the empty case by
-# falling through to the legacy first-session-of-first-connection default.
+# Session-attach plumbing (Phase 3.5 multi-connection aware). The shared
+# AttachSapSession helper resolves the target session in this order:
+#   1. SESSION_PATH constant (set from the parsed --session argument)
+#   2. SAPDEV_SESSION_PATH env var
+#   3. SAPDEV_PIN_FILE env var -> pin file's session_path field
+#   4. Sole-connection + sole-session auto-default
+#   5. Refuse with helpful error (multiple connections, no resolver)
 $sessionPath = ''   # set to the parsed --session value if supplied
 $content = $content -replace '%%SESSION_PATH%%', $sessionPath
 $content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
+# Tell the attach helper where the pin file lives. Harmless in single-
+# connection environments; essential in multi-connection ones.
+$env:SAPDEV_PIN_FILE = '{WORK_TEMP}\sap_active_session.json'
 Set-Content '{WORK_TEMP}\sap_se16n_run.vbs' $content -Encoding Unicode
 Write-Host 'Done'
 ```
