@@ -1,0 +1,377 @@
+# SAP GUI Session Broker — contract document
+
+Coordinates which AI task (sub-agent / skill run) is allowed to drive which
+SAP GUI session at any moment, without requiring a long-running broker
+process. State lives in a single JSON registry; cross-process concurrency
+is serialized by a Windows named mutex.
+
+This document is the **contract** between the broker and its callers. It
+spells out what callers can rely on, what they can't, and the exact CLI
+shape.
+
+---
+
+## Files
+
+| File | Role |
+|---|---|
+| `shared/scripts/sap_session_broker.ps1`     | The broker. PowerShell. Handles mutex, JSON registry, cleanup sweep, action dispatch. |
+| `shared/scripts/sap_session_broker_com.vbs` | SAP COM helper. VBScript run via 32-bit `cscript`. Performs `findById` / `Info` reads, spawns new sessions, sends `/n` resets. |
+| `{WORK_TEMP}\session_registry.json`         | The registry. UTF-8, no BOM. Single source of truth. |
+
+The broker shells out to the COM helper for every SAP-side operation because
+PowerShell 7+ / .NET 5+ cannot bind to the SAP GUI Scripting Engine
+(`GetActiveObject` was removed; 32-bit Windows PowerShell 5.1 fails because
+the SAPGUI ProgID isn't in the Running Object Table; 32-bit `cscript`
+handles it fine).
+
+---
+
+## What the broker promises
+
+1. **Mutual exclusion.** At any instant, at most one `task_id` holds a
+   `claimed` entry for any given session `path`.
+2. **Cleanup on every call.** Acquire and release run a sweep that drops
+   entries reflecting any of these failure modes:
+   - The SAP GUI session was closed (`findById` returns nothing).
+   - The owner PID is no longer alive (when supplied by the caller).
+   - The claim's TTL expired.
+   - The user logged out and back in (the SAP-side `SystemSessionId`
+     changed; all entries are stale).
+3. **Spawn-on-demand.** If acquire can't find a free session, the broker
+   spawns one via `/oSESSION_MANAGER` and registers it.
+4. **Idempotent acquire.** If the same `task_id` already holds a `claimed`
+   entry, acquire returns it unchanged (with refreshed `claim_time`).
+5. **Pre-allocation Easy-Access verification.** Before handing out a path,
+   the broker verifies the session is at SAP Easy Access. If not, it
+   sends `/n` and re-verifies; if still not, it marks the entry
+   `user_owned` and denies the acquire so the caller can retry.
+
+---
+
+## What the broker does NOT promise
+
+1. **Path stability across re-acquires.** SAP's `(path, SessionNumber,
+   SystemSessionId)` triple is recyclable on the kernels we tested
+   (S/4HANA 1909 kernel 754). There is no stable per-session identity
+   exposed by `GuiSession.Info`. Callers that need session continuity
+   across multiple skill invocations MUST hold the claim open for the
+   entire workflow.
+2. **Recovery if the user destroys a session mid-task.** The next
+   `findById` in the consumer's VBS will fail; the consumer must
+   surface the failure cleanly. The broker drops the entry on the
+   next sweep but the in-flight task is unrecoverable.
+3. **Allocation of user-owned sessions.** Sessions discovered mid-work
+   (transaction != `S000`/`SMEN`, or a popup is open) are tracked as
+   `user_owned` and never handed out — even if the user idles them
+   later. Manual `release` can reclassify if needed.
+4. **Defense against out-of-band access.** Tools that drive SAP GUI
+   *without* going through the broker (legacy skills, manual user
+   actions) can race with broker-managed claims. The broker's mutex
+   only serializes broker-aware callers.
+
+---
+
+## CLI contract
+
+All actions take `-WorkTemp <abs-path>` (location of the registry file).
+Last line of stdout is always a status string the caller parses.
+Exit codes: 0 on success, 1 on logical denial (`DENIED:` line),
+2 on usage / IO / SAP-unreachable errors.
+
+### `acquire`
+
+```
+pwsh -File sap_session_broker.ps1 -Action acquire `
+    -TaskId      "<unique-task-id>" `      # required
+    -OwnerSkill  "<skill-name>" `          # optional, free-form
+    -OwnerPid    <caller-PID> `            # optional, see note below
+    -WorkTemp    "<abs-path>" `
+    [-SessionPath  "/app/con[0]/ses[1]"] ` # optional preference
+    [-TtlSeconds   600]                     # default 600 = 10 min
+```
+
+stdout last line:
+```
+ACQUIRED: path=<path> sessionNumber=<n> reused=true|false
+```
+or
+```
+DENIED: <reason>            # exit 1
+ERROR:  <reason>            # exit 2
+```
+
+`reused=true` means the path came from the registry (existing slot or
+idempotent re-acquire). `reused=false` means the broker spawned a new
+session for this acquire.
+
+**About `-OwnerPid`.** Pass the PID of the **caller** (the skill /
+agent process that will hold the claim), NOT the broker process itself.
+The broker is transient. If you omit `-OwnerPid` (or pass `0`), the
+broker stores `owner_pid=0` and the sweep skips the dead-task check for
+that entry — TTL becomes the only safety net.
+
+### `release`
+
+```
+pwsh -File sap_session_broker.ps1 -Action release `
+    -TaskId   "<unique-task-id>" `
+    -WorkTemp "<abs-path>"
+```
+
+stdout last line:
+```
+RELEASED: path=<path>       # the broker also sent /n to the session
+NOT_FOUND                   # no matching claim (already released / swept)
+```
+
+Release is idempotent and never fails for an unknown task. Skills should
+always call release on every exit path (success, failure, exception).
+
+### `gc`
+
+```
+pwsh -File sap_session_broker.ps1 -Action gc -WorkTemp "<abs-path>"
+```
+
+Sweeps stale entries without acquiring. Prints one `DROP:` line per drop
+with the reason, then a final summary:
+```
+DROP: <path> task=<id> reason=<session_closed|pid_dead|ttl_expired|logon_changed>
+GC: dropped <n> stale entries
+```
+
+Useful as a startup cleanup (`/sap-login` Step 6) and between parallel
+batches in the scaffolder.
+
+### `list`
+
+```
+pwsh -File sap_session_broker.ps1 -Action list -WorkTemp "<abs-path>"
+```
+
+Read-only snapshot. Pretty-prints the full registry JSON. No side effects.
+
+### `discover`
+
+```
+pwsh -File sap_session_broker.ps1 -Action discover -WorkTemp "<abs-path>"
+```
+
+Walks `oCon.Children` and registers any session the broker doesn't know
+about. Classifies each as `free` (at Easy Access, no popup) or
+`user_owned` (mid-work). Output:
+```
+DISCOVERED: <n> new (total free=<f> user_owned=<u>)
+```
+
+Call this once after `/sap-login` succeeds. Idempotent — re-running adds
+nothing if everything is already known.
+
+---
+
+## Registry schema
+
+`{WORK_TEMP}\session_registry.json`, UTF-8 no BOM:
+
+```json
+{
+  "logon_id":   "000C298056DE1FE193E27A22AD87CE0A",
+  "updated_at": "2026-05-14T10:38:44",
+  "entries": [
+    {
+      "path":           "/app/con[0]/ses[1]",
+      "session_number": 2,
+      "task_id":        "agent_a83f96",
+      "owner_pid":      12345,
+      "owner_skill":    "sap-se38-create",
+      "status":         "claimed",
+      "claim_time":     "2026-05-14T10:38:44",
+      "ttl_seconds":    600,
+      "discovered":     true
+    }
+  ]
+}
+```
+
+- `logon_id` — current `SystemSessionId` from any live session. Used to
+  detect logout+relogin. Empty before first acquire/discover.
+- `entries[].path` — primary key. Stable while the session is alive.
+- `entries[].session_number` — `Info.SessionNumber` at claim time.
+  Recorded for forensics; NOT used as identity.
+- `entries[].status` — one of `free`, `claimed`, `user_owned`.
+- `entries[].discovered` — `true` if pre-existing at discover time;
+  `false` if the broker spawned it.
+
+The schema is internal — don't depend on it from outside the broker.
+Use the CLI.
+
+---
+
+## Cleanup architecture (4 hooks)
+
+The broker maintains the registry's correctness through four hooks. All
+of them run *inside* the named mutex.
+
+### Hook 1: reactive cleanup on every `acquire` / `release`
+
+Every acquire and release call runs `Sweep-StaleEntries` before doing its
+own work. Sweep checks each entry against the 4 failure modes and drops
+the stale ones. Cost: one cscript call (INFO), then in-memory comparisons.
+
+### Hook 2: explicit `release` on task completion
+
+Skills call `release` in their exit path. Release sends `/n` to the
+session (reset to Easy Access) then marks the entry `free`. If the
+session was destroyed in the meantime, the COM helper reports
+`{"ok":false}` and release silently proceeds — the next sweep will
+drop the entry.
+
+### Hook 3: standalone `gc` for manual / scheduled cleanup
+
+Same sweep logic but invoked without an acquire. Verbose mode emits a
+`DROP:` line per dropped entry with the reason. Useful for:
+- `/sap-login` startup (purge stale state from a previous AI session).
+- Between parallel batches in the scaffolder.
+- Manual operator inspection when something looks wrong.
+
+### Hook 4: pre-flight `discover`
+
+Registers any pre-existing sessions the broker doesn't know about.
+Classifies each as `free` or `user_owned`. Run once after `/sap-login`;
+the broker only allocates sessions it explicitly knows about.
+
+---
+
+## How callers integrate
+
+### Typical skill wrapper pattern (PowerShell)
+
+```powershell
+$BROKER = '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_session_broker.ps1'
+$WT     = '{WORK_TEMP}'
+
+# Acquire — pass our own $PID so dead-task cleanup works.
+$out = & powershell -ExecutionPolicy Bypass -File $BROKER `
+    -Action acquire `
+    -TaskId     $env:SAPDEV_TASK_ID `      # or another stable handle
+    -OwnerSkill 'sap-se38-create' `
+    -OwnerPid   $PID `
+    -WorkTemp   $WT
+$lastLine = ($out | Select-Object -Last 1)
+if ($lastLine -notmatch '^ACQUIRED:') {
+    Write-Error "could not acquire SAP session: $lastLine"
+    exit 1
+}
+# Parse: ACQUIRED: path=/app/con[0]/ses[1] sessionNumber=2 reused=true
+$null = $lastLine -match 'path=(\S+)'
+$sessionPath = $matches[1]
+
+try {
+    # ... thread $sessionPath into the cscript that does the real work ...
+    cscript //NoLogo "<SKILL_DIR>\references\sap_xx.vbs" /session $sessionPath ...
+} finally {
+    # Always release, even on failure.
+    & powershell -ExecutionPolicy Bypass -File $BROKER `
+        -Action release `
+        -TaskId   $env:SAPDEV_TASK_ID `
+        -WorkTemp $WT | Out-Null
+}
+```
+
+### Identity propagation: `SAPDEV_TASK_ID`
+
+The `task_id` is supplied by the caller. Conventions:
+
+- A top-level skill invocation gets `$env:SAPDEV_TASK_ID` from the
+  orchestrator. If not set, derive a UUID and use it for the run.
+- A scaffolder fan-out passes a different `task_id` to each sub-agent
+  (e.g. `agent_<short-id>`) so each agent gets its own claim.
+- A multi-step skill that calls other skills internally propagates
+  `SAPDEV_TASK_ID` so the inner skills idempotently re-claim the
+  same session (returns the existing `path` unchanged).
+
+The orchestrator (Claude) is responsible for setting `SAPDEV_TASK_ID`
+before invoking any skill that drives SAP GUI. The convention mirrors
+the existing `SAPDEV_RUN_ID` / `SAPDEV_PARENT_RUN_ID` chain used by the
+log helper.
+
+### Scaffolder fan-out pattern
+
+```
+1. Orchestrator: pwsh -File sap_session_broker.ps1 -Action discover ...
+2. For each scenario i:
+     orchestrator: acquire -TaskId "agent_<i>" -OwnerPid $PID
+       -> ACQUIRED: path=/app/con[0]/ses[N_i]
+     orchestrator: dispatch Agent { prompt includes --session N_i }
+3. Wait for all agents to return.
+4. For each scenario i:
+     orchestrator: release -TaskId "agent_<i>"
+```
+
+The orchestrator owns the lifetime of every claim. Sub-agents don't
+touch the broker — they just use the path they were given.
+
+---
+
+## Known constraints and caveats
+
+1. **No stable per-session identity.** See `sap-dev/CLAUDE.md` and the
+   verification test results in the design notes. `SystemSessionId`
+   is per-logon, `SessionNumber` recycles with the path index. The
+   broker compensates with reactive cleanup and operational hygiene
+   rather than identity.
+
+2. **PowerShell can't bind SAP COM directly.** The broker uses
+   `sap_session_broker_com.vbs` as a 32-bit cscript subprocess for
+   every SAP introspection / mutation. Each helper call is ~80-100ms;
+   acquire typically takes 200-400ms total.
+
+3. **Mutex is per-Windows-user-session.** Two AI sessions running under
+   the same Windows account share the broker (correctly serialised).
+   Two Windows accounts share neither mutex nor registry (each has
+   its own `{WORK_TEMP}`).
+
+4. **Cap of 6 sessions per SAP connection.** SAP default
+   `rdisp/max_alt_modes = 6`. Acquire fails with `DENIED: no free
+   session and spawn failed (cap reached or SAP GUI not running)`
+   once the cap is hit. Increase the SAP profile parameter to
+   raise it.
+
+5. **OK-code spawn idiosyncrasy.** `/oSESSION_MANAGER` is the only
+   spawn mechanism verified to work on S/4HANA 1909 kernel 754.
+   Bare `/o` is a no-op; `CreateSession` isn't surfaced. Other
+   kernels may differ — the helper will report `{"ok":false}` and
+   acquire returns `DENIED`.
+
+6. **Cleanup may briefly run twice in races.** When two callers both
+   trigger a sweep simultaneously, the mutex serialises them; the
+   second one finds an already-clean registry and is a no-op. The
+   only observable effect is that `gc -VerboseDrops` may emit drops
+   that were already done by a peer call — accept this as benign
+   double-reporting.
+
+---
+
+## Operational playbook
+
+| Situation | What to do |
+|---|---|
+| "I want to see what's claimed right now." | `list` |
+| "I think there are stale entries." | `gc` (prints what it dropped, why) |
+| "I just ran `/sap-login`." | `discover` (idempotent; registers any pre-existing sessions) |
+| "A sub-agent crashed and I'm not sure if its claim was released." | `gc` then `list`. The pid_dead path drops it if the agent's process is gone. |
+| "I want to release a stuck claim manually." | `release -TaskId <id>`. Idempotent; returns `NOT_FOUND` if nothing to do. |
+| "I want to reset everything from scratch." | Delete `{WORK_TEMP}\session_registry.json`; next call re-creates it empty. Any in-flight claims will be lost, so coordinate first. |
+
+---
+
+## Versioning
+
+Mutex name encodes the schema version (`SapDevSessionBroker_v1`). If a
+future schema change is incompatible, the mutex name will increment
+(`_v2`) — running both versions concurrently is unsafe and we want
+loud breakage rather than silent corruption. Bump the version when:
+- The registry JSON schema changes incompatibly.
+- The CLI contract changes incompatibly.
+- The cleanup algorithm changes in a way callers might observe.
