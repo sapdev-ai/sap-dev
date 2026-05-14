@@ -74,9 +74,11 @@ Second, resolve the **active-session pin** (same resolution order as
 4. Else refuse with: *"multiple SAP GUI connections detected and no active session pinned; run `/sap-login` first."* Log end Status=FAILED ErrorClass=NO_PIN.
 
 The resolved path is `{PINNED_SESSION}`. Its parent connection (everything
-up to the final `/ses[N]`) is `{PINNED_CONNECTION}`. Both are referenced
-later — `{PINNED_CONNECTION}` for the `ensure_sessions.vbs` pool, and
-`{PINNED_SESSION}` as the default for serial-mode probes.
+up to the final `/ses[N]`) is `{PINNED_CONNECTION}`. `{PINNED_SESSION}`
+is the default session for serial-mode probes (Step 2-Serial). The
+parallel path (Step 2-Parallel) doesn't use `{PINNED_SESSION}` directly —
+the broker allocates fresh sessions there; `{PINNED_CONNECTION}` is kept
+in scope for diagnostic logging only.
 
 Also copy version fields from the pin file into the scaffolder's run state
 and into the generated SKILL.md's "Probed against" header:
@@ -183,63 +185,92 @@ a partial scaffold is worse than no scaffold.
 
 Active when `--parallel` is set on the invocation.
 
-**2.0 — Pre-flight session pool.** Read `{WORK_TEMP}\sap_active_session.json`
-to get the pinned `session_path`. Derive the connection prefix
-(`/app/con[<idx>]`). Determine required session count:
-`required = min(scenario_count, parallel_cap)` (default cap = 6).
+Allocation goes through the **SAP GUI Session Broker** —
+`shared/scripts/sap_session_broker.ps1`, contract documented in
+`shared/rules/sap_session_broker.md`. The broker owns session
+discovery / spawn-on-demand / lifecycle / cleanup so the scaffolder
+doesn't have to.
 
-Run the ensure-sessions helper to spawn the missing sessions and reset
-every existing session to SAP Easy Access:
+**2.0 — Pre-flight: discover existing sessions, then gc any stale claims.**
 
 ```bash
-cmd /c C:\Windows\SysWOW64\cscript.exe //NoLogo "<SKILL_DIR>\references\ensure_sessions.vbs" "/app/con[0]" <required>
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_session_broker.ps1" -Action gc -WorkTemp "{WORK_TEMP}"
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_session_broker.ps1" -Action discover -WorkTemp "{WORK_TEMP}"
 ```
 
-Stdout has two lines you must parse:
+`gc` first so any stale entries from a previous AI session (crashed sub-
+agents, abandoned claims past TTL) get cleared before discover registers
+the live sessions. Discover output:
 
 ```
-SESSIONS: <existing> -> <total>
-PATHS: /app/con[0]/ses[0],/app/con[0]/ses[1],/app/con[0]/ses[3]
+DISCOVERED: <n> new (total free=<f> user_owned=<u>)
 ```
 
-The `PATHS:` line is the **authoritative list of session paths**. Use it
-directly — never derive paths by assuming `ses[0..N-1]` contiguous. SAP
-allocates non-contiguous indices when sessions are destroyed and re-
-spawned (e.g. after Shift+F3 from initial screen). Assuming contiguity
-caused today's `ses[2] not found` failure when SAP had handed out
-`ses[0]/ses[1]/ses[3]`.
+If `free < parallel_cap` we don't worry — the broker spawns on demand
+inside the per-scenario `acquire` calls. If `free == 0` AND the SAP cap
+is 6 already, the very first acquire will get `DENIED: ... cap reached`;
+treat that as a hard abort.
 
-If `<total>` < `<required>`, SAP capped at its max — log a warning and
-proceed with the smaller batch size. If the script `ERROR`s and quits
-non-zero (e.g. the spawn loop's loud-fail path triggered), abort the
-whole scaffold here — there's no clean way to continue with fewer
-sessions than scenarios.
+**2.1 — Acquire one session per scenario in the batch.** Build descriptors
+by acquiring up front (rather than letting each agent acquire its own —
+the scaffolder is the orchestrator, so it holds every claim on the
+agents' behalf):
 
-**2.1 — Build task descriptors from PATHS.** Parse the `PATHS:` line into
-an ordered list `availableSessions = ["/app/con[0]/ses[0]", "/app/con[0]/ses[1]", "/app/con[0]/ses[3]"]`.
-Then build one descriptor per scenario in this batch:
-
-```
-descriptor_i = {
-  scenario : "<scenario_i text>",
-  mode     : "<derived mode label>",
-  session  : availableSessions[i],   // by ORDINAL POSITION, not by ses[i]
-  index    : i
-}
+```bash
+# For each scenario i in this batch:
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_session_broker.ps1" `
+    -Action     acquire `
+    -TaskId     "scaffold_<runId>_scenario_<i>" `
+    -OwnerSkill "sap-gui-skill-scaffold" `
+    -OwnerPid   0 `
+    -WorkTemp   "{WORK_TEMP}"
 ```
 
-`i` is the scenario position within this batch (0..min(scenario_count, parallel_cap)-1).
-The `session` field is `availableSessions[i]` — the i-th *actually-existing*
-session, not `/app/con[0]/ses[<i>]`. The pinned session (Step 0.7) usually
-ends up at position 0; if you want to keep it free for manual inspection,
-shift descriptors to start at position 1 (and verify `len(availableSessions) >= scenario_count + 1`).
+**`-OwnerPid 0` is INTENTIONAL** for the scaffolder. Each tool call from the
+orchestrator (Claude) spawns a transient `pwsh.exe` process whose PID dies
+immediately on return. Passing `-OwnerPid $PID` from inside such a call
+would record a dead PID and the broker's reactive sweep would drop the
+entry on the next operation. The scaffolder relies on TTL (10 min default)
+for crash recovery instead — long enough to outlast any normal batch,
+short enough that abandoned scaffolds get cleaned up. **Skill wrappers
+that run as a single long-lived `pwsh` process (the typical Tier 3 case)
+SHOULD pass `-OwnerPid $PID`** — they benefit from immediate pid_dead
+detection.
+
+Stdout last line is one of:
+
+```
+ACQUIRED: path=/app/con[0]/ses[N] sessionNumber=M reused=<bool>
+DENIED:   <reason>     # exit 1 -- typically "cap reached"
+ERROR:    <reason>     # exit 2 -- SAP unreachable
+```
+
+On `DENIED`/`ERROR` for ANY scenario in the batch, **release all already-
+acquired claims for this batch** (`release -TaskId scaffold_<runId>_scenario_<j>` for j<i) and abort. The
+broker's `release` is idempotent — calling it for an unknown task_id
+returns `NOT_FOUND` and is a no-op.
+
+The `task_id` MUST be unique per acquired claim across the whole scaffold
+run; the suggested shape `scaffold_<runId>_scenario_<i>` satisfies that.
+`runId` is the scaffolder's own log_helper run id (Step 0.5).
+
+The resulting descriptor list:
+
+```
+descriptors = [
+  { i: 0, scenario: "<text>", mode: "<label>", task_id: "scaffold_xxx_scenario_0", session: "/app/con[0]/ses[N0]" },
+  { i: 1, scenario: "<text>", mode: "<label>", task_id: "scaffold_xxx_scenario_1", session: "/app/con[0]/ses[N1]" },
+  ...
+]
+```
 
 **2.2 — Spawn N general-purpose Task sub-agents** in a single tool message.
-Each sub-agent's prompt is self-contained:
+Each sub-agent's prompt:
 
 > You are probe runner #i of N for a sap-gui-skill-scaffold run. Your
-> assigned SAP GUI session is `<session>`. Invoke `/sap-gui-probe` with
-> this argument string verbatim:
+> assigned SAP GUI session is `<session>`. The orchestrator has already
+> acquired this session through the broker; you do NOT need to touch the
+> broker. Invoke `/sap-gui-probe` with this argument string verbatim:
 >
 >     <scenario> --auto --session <session>
 >
@@ -257,16 +288,36 @@ agent's last non-empty line:
 - absolute folder path → success, append to probe list with the matching mode label.
 - `FAILED:<reason>` → record the failure for this scenario index.
 
-**2.4 — Failure policy.** If ANY sub-agent returned FAILED, abort the
-whole scaffold. Log end Status=FAILED ErrorClass=PROBE_FAILED
-ErrorMsg="<failed indices>". Successful probe folders remain on disk.
+**2.4 — Release EVERY claim acquired in this batch.** Always, even on
+failure:
 
-**2.5 — Batching.** If `scenario_count > parallel_cap`, repeat 2.0–2.4 in
-batches of size `parallel_cap`. Re-run `ensure_sessions.vbs` between
-batches AND re-parse its `PATHS:` line — session indices can change
-across batches if any sub-agent destroyed its session (today's CUKY
-failure mode). Always dispatch scenario `cap+i` to `availableSessions[i]`
-from the FRESH PATHS list, not the previous batch's list.
+```bash
+# For each descriptor d in this batch:
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_session_broker.ps1" `
+    -Action  release `
+    -TaskId  "<d.task_id>" `
+    -WorkTemp "{WORK_TEMP}"
+```
+
+Release drives `/n` on the session (back to Easy Access) and frees the
+entry for the next batch. Release is idempotent; calling it for a
+task_id that was already released or never acquired returns `NOT_FOUND`
+and is harmless.
+
+**2.5 — Failure policy.** If ANY sub-agent returned FAILED, abort the
+whole scaffold after releasing all batch claims (Step 2.4 still runs).
+Log end Status=FAILED ErrorClass=PROBE_FAILED ErrorMsg="<failed indices>".
+Successful probe folders remain on disk.
+
+**2.6 — Batching.** If `scenario_count > parallel_cap`, repeat
+Steps 2.1–2.4 in batches of size `parallel_cap`. Each batch acquires
+fresh from the broker — the previous batch's releases returned its
+sessions to the broker's free pool, so subsequent acquires re-use them
+without needing to re-spawn. The broker's reactive cleanup catches
+any sessions destroyed by misbehaving sub-agents (e.g. yesterday's
+CUKY runner Shift+F3'd its session out of existence — the next batch's
+acquire would have noticed via the `session_closed` sweep and spawned
+a fresh replacement transparently).
 
 **Concurrency notes:**
 - Each cscript process binds to exactly one session via the `session` field
