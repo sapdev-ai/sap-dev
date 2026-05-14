@@ -90,6 +90,8 @@ If the list is empty, tell the user "No fixable issues found in result file." an
 | File | Token | Purpose |
 |---|---|---|
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/skill_operating_rules.md` | *(rule)* | Mandatory operating rules |
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/language_independence_rules.md` | *(rule)* | GUI-scripting language independence — offline fixer, but rule applies to downstream deploy skills the fixed source feeds |
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/abap_code_quality_rules.md` | *(rule)* | ABAP code-quality rules — fixed CALL FUNCTION blocks must remain compatible with modern-ABAP conventions |
 | `sap-dev-core/settings.json` | *(config)* | SAP connection parameters |
 
 ---

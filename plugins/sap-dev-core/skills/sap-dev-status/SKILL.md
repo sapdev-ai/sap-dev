@@ -30,6 +30,7 @@ Task: $ARGUMENTS
 | File | Token | Purpose |
 |---|---|---|
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/skill_operating_rules.md` | *(rule)* | Mandatory operating rules |
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/language_independence_rules.md` | *(rule)* | GUI-scripting language independence — RFC-only skill, but rule applies to any downstream skill this is invoked from |
 | `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_dev_artefacts.ps1` | many | RFC artefact checker (also used by `/sap-dev-clean` and `/sap-dev-init`). |
 
 ---

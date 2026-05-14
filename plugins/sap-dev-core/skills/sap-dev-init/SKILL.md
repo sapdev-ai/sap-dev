@@ -25,6 +25,8 @@ Task: $ARGUMENTS
 | File | Purpose |
 |---|---|
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/skill_operating_rules.md` | Mandatory operating rules |
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/language_independence_rules.md` | GUI-scripting language independence — applies to the GUI-driving sub-skills this orchestrator dispatches (sap-transport-request, sap-se21, sap-function-group, sap-se38) |
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/abap_code_quality_rules.md` | ABAP code-quality rules — `ZCMRUPDATE_ADDON_TABLE.abap` and the `Z_GENERIC_RFC_WRAPPER_TBL` wrapper FM source deployed by this init flow must follow modern syntax, OOP / exception conventions, and no literal MESSAGE strings |
 
 ---
 

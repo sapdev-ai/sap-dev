@@ -24,6 +24,8 @@ Task: $ARGUMENTS
 | File | Purpose |
 |---|---|
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/skill_operating_rules.md` | Mandatory operating rules |
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/language_independence_rules.md` | GUI-scripting language independence — offline fixer, but rule applies to downstream deploy skills the fixed source feeds |
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/abap_code_quality_rules.md` | ABAP code-quality rules — fixes applied here (variable renames, unused-comment-out) must preserve / restore modern-ABAP conventions; never introduce literal MESSAGE strings or downgrade syntax to obsolete forms while fixing |
 
 ---
 

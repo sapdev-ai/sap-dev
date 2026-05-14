@@ -13,6 +13,7 @@ Analyze JSONL log files produced by the shared sap-dev logger
 | Token / Path | Source | Purpose |
 |---|---|---|
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/skill_operating_rules.md` | rule | Mandatory operating rules |
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/language_independence_rules.md` | rule | GUI-scripting language independence — offline log analysis, but rule applies to skills whose logs this analyzes |
 | `<SAP_DEV_CORE_SHARED_DIR>` | placeholder | Resolves to `plugins/sap-dev-core/shared/` |
 | sap-dev-core `settings.json` | `userConfig.work_dir`, `userConfig.log_dir` | Locates log directory |
 

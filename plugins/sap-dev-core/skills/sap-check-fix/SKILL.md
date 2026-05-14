@@ -41,6 +41,8 @@ Task: $ARGUMENTS
 | File | Purpose |
 |---|---|
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/skill_operating_rules.md` | Mandatory operating rules |
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/language_independence_rules.md` | GUI-scripting language independence — this skill dispatches to GUI-driving skills (sap-se38, sap-se37, sap-se24, sap-se11) which must observe the rule |
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/abap_code_quality_rules.md` | ABAP code-quality rules — this router dispatches to skills that touch ABAP source (sap-se38/37/24) and to the check/fix loop (sap-check-abap → sap-fix-abap), so the quality bar applies end-to-end |
 
 ---
 

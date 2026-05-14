@@ -33,6 +33,7 @@ Task: $ARGUMENTS
 | File | Token | Purpose |
 |---|---|---|
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/skill_operating_rules.md` | *(rule)* | Mandatory operating rules |
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/language_independence_rules.md` | *(rule)* | GUI-scripting language independence — identify by component ID + DDIC field name, status-bar checks via `MessageType` codes (S/W/E/I/A), VKey instead of menu-text, no branching on `.Text`/`.Tooltip`/window titles |
 | `<SKILL_DIR>/references/sap_sp02_download.vbs` | many | SP02 driver: list scan + F2 + tbar[1]/btn[48] + format radio + DY_PATH/DY_FILENAME |
 
 ---

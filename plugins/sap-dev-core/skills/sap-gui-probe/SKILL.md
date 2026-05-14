@@ -41,12 +41,14 @@ Task: $ARGUMENTS
 | File | Purpose |
 |---|---|
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/skill_operating_rules.md` | Mandatory operating rules |
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/settings_lookup.md` | Two-file settings model — merge `settings.local.json` over `settings.json` per-key on `.value`; writes always go to `settings.local.json` |
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/language_independence_rules.md` | GUI-scripting language independence — identify by component ID + DDIC field name, status-bar checks via `MessageType` codes (S/W/E/I/A), VKey instead of menu-text, no branching on `.Text`/`.Tooltip`/window titles |
 
 ---
 
 ## Step 0 — Resolve work directory and run folder
 
-Read sap-dev-core's `settings.json` (go 2 levels up from `<SKILL_DIR>` to the
+**Settings reads/writes follow `shared/rules/settings_lookup.md`** — merge `settings.local.json` over `settings.json` per-key on the `.value` field; writes always go to `settings.local.json`. Read sap-dev-core's `settings.json` (go 2 levels up from `<SKILL_DIR>` to the
 plugin root, then `settings.json`). Read `work_dir`.
 
 | Setting | Default if blank |

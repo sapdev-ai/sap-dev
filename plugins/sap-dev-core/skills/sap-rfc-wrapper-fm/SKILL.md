@@ -25,6 +25,8 @@ Task: $ARGUMENTS
 | File | Token | Purpose |
 |---|---|---|
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/skill_operating_rules.md` | *(rule)* | Mandatory operating rules |
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/language_independence_rules.md` | *(rule)* | GUI-scripting language independence — pure RFC skill, but rule applies to any downstream deploy skill |
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/abap_code_quality_rules.md` | *(rule)* | ABAP code-quality rules — the wrapper FM signature interpretation must honor modern syntax, type safety, and code-quality conventions |
 | `<SKILL_DIR>/references/sap_rfc_read_fm_params.ps1` | — | Reads FM interface via RPY_FUNCTIONMODULE_READ_NEW |
 | `<SKILL_DIR>/references/sap_rfc_wrapper_fm.ps1` | — | Calls Z_GENERIC_RFC_WRAPPER_TBL with params file |
 

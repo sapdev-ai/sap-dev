@@ -22,6 +22,7 @@ Task: $ARGUMENTS
 | File | Purpose |
 |---|---|
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/skill_operating_rules.md` | Mandatory operating rules |
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/language_independence_rules.md` | GUI-scripting language independence — offline generator, but rule applies to downstream deploy skills the generated source feeds |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/abap_code_quality_rules.md` | **Mandatory ABAP code-quality rules** — release-aware modern syntax, OOP scaffolds, exception classes, performance gates, authz hooks, ABAP Unit, dependency + traceability emission |
 | `<SAP_DEV_CORE_SHARED_DIR>/templates/customer_brief.md` | One-page Project Profile read at Step 0a; drives release / OOP / perf decisions |
 | `<SAP_DEV_CORE_SHARED_DIR>/tables/abap_naming_rules.tsv` | Variable naming prefixes (overridable via `{custom_url}`) |

@@ -22,6 +22,8 @@ Task: $ARGUMENTS
 | File | Purpose |
 |---|---|
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/skill_operating_rules.md` | Mandatory operating rules |
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/language_independence_rules.md` | GUI-scripting language independence — offline validator, but rule applies to downstream deploy skills the spec feeds |
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/abap_code_quality_rules.md` | ABAP code-quality rules — process-logic ambiguity directly causes ABAP-quality issues downstream (METHOD_TOO_LONG, missing error handling, SELECT_IN_LOOP); flagging unclear logic here prevents quality findings at code-gen time |
 
 ---
 

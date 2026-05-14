@@ -25,6 +25,7 @@ Task: $ARGUMENTS
 | File | Purpose |
 |---|---|
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/skill_operating_rules.md` | Mandatory operating rules |
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/language_independence_rules.md` | GUI-scripting language independence — when analyzing recorded VBS, surface any `.Text`/`.Tooltip`/title-string branches as defects; identifiers must be component IDs + DDIC field names |
 
 ---
 

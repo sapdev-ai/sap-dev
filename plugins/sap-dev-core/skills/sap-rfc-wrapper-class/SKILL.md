@@ -25,6 +25,9 @@ Task: $ARGUMENTS
 | File | Purpose |
 |---|---|
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/skill_operating_rules.md` | Mandatory operating rules |
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/tr_resolution.md` | TR resolution flow — the generated wrapper FM is deployed via `/sap-se37`, which delegates to `/sap-transport-request` |
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/language_independence_rules.md` | GUI-scripting language independence — applies to the GUI-driven `/sap-se37` deploy step |
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/abap_code_quality_rules.md` | ABAP code-quality rules — the generated RFC wrapper FM is ABAP source and must follow modern syntax, type safety, and quality conventions |
 | `<SKILL_DIR>/references/sap_rfc_read_class_method.ps1` | Reads class method interface from SEOPARAM/SEOEXCEP |
 
 ---

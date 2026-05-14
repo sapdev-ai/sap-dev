@@ -41,6 +41,8 @@ Task: $ARGUMENTS
 | File | Purpose |
 |---|---|
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/skill_operating_rules.md` | Mandatory operating rules |
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/ddic_excel_layout_rules.md` | DDIC Excel-spec authoring rules — naming-suffix consistency, primitive-type-as-DTEL trap, currency reference, column order, no merged data cells. Detect spec-side defects at extract time. |
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/language_independence_rules.md` | GUI-scripting language independence — offline extractor, but rule applies to downstream deploy skills the spec feeds |
 
 ---
 

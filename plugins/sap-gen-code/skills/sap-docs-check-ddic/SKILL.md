@@ -23,6 +23,9 @@ Task: $ARGUMENTS
 | File | Token | Purpose |
 |---|---|---|
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/skill_operating_rules.md` | *(rule)* | Mandatory operating rules |
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/ddic_excel_layout_rules.md` | *(rule)* | DDIC Excel-spec authoring rules — naming-suffix consistency, primitive-type-as-DTEL trap, currency reference, column order. Cross-check extracted DDIC against these rules. |
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/language_independence_rules.md` | *(rule)* | GUI-scripting language independence — RFC-only validator, but rule applies to downstream deploy skills (sap-se11) the validated spec feeds |
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/abap_code_quality_rules.md` | *(rule)* | ABAP code-quality rules — DDIC spec quality directly determines downstream ABAP quality (data-element vs. primitive, currency reference, length consistency); validation findings here surface ABAP-quality risk before code generation |
 | `sap-dev-core/shared/tables/sap_object_naming_rules.tsv` | *(read by helper)* | DDIC naming patterns (DDIC_DOMAIN / DDIC_DATAELEMENT / DDIC_TABLE). Custom override: `{custom_url}\sap_object_naming_rules.tsv` |
 | `sap-dev-core/shared/scripts/sap_check_object_name.ps1` | *(helper)* | Shared name validator invoked in Steps 2a / 3a / 4a |
 

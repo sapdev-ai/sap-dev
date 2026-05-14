@@ -46,6 +46,8 @@ Task: $ARGUMENTS
 | File | Purpose |
 |---|---|
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/skill_operating_rules.md` | Mandatory operating rules |
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/language_independence_rules.md` | GUI-scripting language independence — offline normaliser, but rule applies to downstream deploy skills the converted spec feeds |
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/abap_code_quality_rules.md` | ABAP code-quality rules — type-rename and flag-mapping rules that convert legacy spec fields into Customer Brief layout must preserve ABAP-quality affordances (DTEL vs. primitive, currency reference) so the generated code stays clean |
 
 ---
 

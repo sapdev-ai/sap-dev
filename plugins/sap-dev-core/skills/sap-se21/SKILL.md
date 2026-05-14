@@ -39,6 +39,7 @@ Task: $ARGUMENTS
 | `<SKILL_DIR>/references/sap_check_package.ps1` | `%%PACKAGE%%`, `%%SAP_*%%` | RFC_READ_TABLE check for package existence on TDEVC |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/skill_operating_rules.md` | — | Mandatory operating rules |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/tr_resolution.md` | — | TR resolution policy implemented by `/sap-transport-request` |
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/language_independence_rules.md` | — | GUI-scripting language independence — identify by component ID + DDIC field name, status-bar checks via `MessageType` codes (S/W/E/I/A), VKey instead of menu-text, no branching on `.Text`/`.Tooltip`/window titles |
 
 ---
 

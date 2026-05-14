@@ -48,6 +48,7 @@ Steps 0 – 7 below are the CREATE flow.
 |---|---|
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/skill_operating_rules.md` | Mandatory operating rules (no SQL writes on standard tables; no unsolicited deploys) |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/tr_resolution.md` | Transport request resolution flow — defines `way_to_get_transport_request`, `rule_of_tr_description`, and the 60-char compression algorithm. This skill is a leaf called by `/sap-transport-request`; it implements the description rendering and request-type defaults. |
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/language_independence_rules.md` | GUI-scripting language independence — identify by component ID + DDIC field name, status-bar checks via `MessageType` codes (S/W/E/I/A), VKey instead of menu-text, no branching on `.Text`/`.Tooltip`/window titles |
 
 ---
 

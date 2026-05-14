@@ -40,6 +40,8 @@ Task: $ARGUMENTS
 | File | Purpose |
 |---|---|
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/skill_operating_rules.md` | Mandatory operating rules |
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/ddic_excel_layout_rules.md` | DDIC Excel-spec authoring rules — naming-suffix consistency, primitive-type-as-DTEL trap, currency reference, column order, no merged data cells. Constrain meta-layout edits to remain compatible with the rule set. |
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/language_independence_rules.md` | GUI-scripting language independence — offline layout editor, but rule applies to downstream deploy skills the spec feeds |
 | `<SAP_DEV_CORE_SHARED_DIR>/templates/spec_layout_schema.md` | Canonical schema for the `(Meta) Layout` sheet. Read this before generating or editing meta rows. |
 | `<SAP_DEV_CORE_SHARED_DIR>/templates/spec_template.xlsx` | Canonical reference template. Default target when no workbook path is provided. `bootstrap` copies its `(Meta) Layout` sheet into other workbooks. |
 | `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_log_helper.ps1` | Structured logging. |

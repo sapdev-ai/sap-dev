@@ -33,6 +33,9 @@ Task: $ARGUMENTS
 |---|---|
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/skill_operating_rules.md` | Mandatory operating rules |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/tr_resolution.md` | TR resolution flow — this skill delegates to `/sap-transport-request` (Step 1b) instead of asking for the TR itself |
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/language_independence_rules.md` | GUI-scripting language independence — identify by component ID + DDIC field name, status-bar checks via `MessageType` codes (S/W/E/I/A), VKey instead of menu-text, no branching on `.Text`/`.Tooltip`/window titles |
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/ddic_excel_layout_rules.md` | DDIC Excel-spec authoring rules — when the spec was extracted via `/sap-docs-extract`, check naming-suffix consistency, primitive-type-as-DTEL trap, currency reference, column order before deploying. |
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/abap_code_quality_rules.md` | ABAP code-quality rules — informs DDIC choices that affect ABAP source quality downstream (data-element vs. primitive type, currency reference, length consistency); also applies when the user supplies hand-written DDIC ABAP code (search helps with exit FMs, lock-object Z modules). |
 
 ---
 

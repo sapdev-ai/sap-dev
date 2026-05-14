@@ -29,6 +29,7 @@ Task: $ARGUMENTS
 |---|---|
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/skill_operating_rules.md` | Mandatory operating rules (no SQL writes on standard tables; no unsolicited deploys) |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/tr_resolution.md` | Defines `way_to_get_transport_request`, `rule_of_tr_description`, the description placeholders, and the 60-char compression rules. **This skill IS the implementation of that rule.** |
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/language_independence_rules.md` | GUI-scripting language independence — this skill delegates to GUI-driving `/sap-se01` for new-TR creation, which must observe the rule |
 
 ---
 
