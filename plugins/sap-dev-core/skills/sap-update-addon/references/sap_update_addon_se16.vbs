@@ -14,28 +14,15 @@ Option Explicit
 Const TABLE_NAME = "%%TABLE_NAME%%"
 Const DATA_FILE  = "%%DATA_FILE%%"
 Const OPERATION  = "%%OPERATION%%"
+Const SESSION_PATH = "%%SESSION_PATH%%"   ' empty / unsubstituted = use default
 
-Dim oSAPGUI, oApplication, oSession, oCandidate, oSessIter
+' Include shared attach helper.
+ExecuteGlobal CreateObject("Scripting.FileSystemObject") _
+    .OpenTextFile("%%ATTACH_LIB_VBS%%", 1).ReadAll()
 
-' --- 1. Attach to SAP GUI session ---
-On Error Resume Next
-Set oSAPGUI = GetObject("SAPGUI")
-Set oApplication = oSAPGUI.GetScriptingEngine
-Set oSession = Nothing
-For Each oCandidate In oApplication.Children
-    For Each oSessIter In oCandidate.Children
-        Set oSession = oSessIter
-        Exit For
-    Next
-    If Not (oSession Is Nothing) Then Exit For
-Next
-On Error GoTo 0
-
-If oSession Is Nothing Then
-    WScript.Echo "ERROR: No SAP GUI session found."
-    WScript.Quit 1
-End If
-WScript.Echo "INFO: Session acquired."
+' --- 1. Attach to existing SAP GUI session (via shared attach helper) ------
+Dim oSession
+Set oSession = AttachSapSession(SESSION_PATH)
 
 ' --- 2. Read data file ---
 Dim oFSO, oFile, sLine, aLines(), iLineCount

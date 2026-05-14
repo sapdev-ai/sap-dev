@@ -29,13 +29,16 @@ Const OBJECT_DESCRIPTION = "%%OBJECT_DESCRIPTION%%"
 Const DEFINITION_FILE    = "%%DEFINITION_FILE%%"
 Const SAP_PACKAGE        = "%%PACKAGE%%"
 Const SAP_TRANSPORT      = "%%TRANSPORT%%"
+Const SESSION_PATH       = "%%SESSION_PATH%%"   ' empty / unsubstituted = use default
 
 Const VKEY_ENTER    = 0
 Const VKEY_F3_BACK  = 3
 Const VKEY_F11_SAVE = 11
 
-' Include shared session-lock helpers (TryLockSession / ReleaseSession).
-' Per language_independence_rules.md Rule 7.
+' Include shared helpers (attach first; session-lock's pre-unlock sweep
+' reads from oSession).
+ExecuteGlobal CreateObject("Scripting.FileSystemObject") _
+    .OpenTextFile("%%ATTACH_LIB_VBS%%", 1).ReadAll()
 ExecuteGlobal CreateObject("Scripting.FileSystemObject") _
     .OpenTextFile("%%SESSION_LOCK_VBS%%", 1).ReadAll()
 
@@ -70,41 +73,9 @@ Function EnsureUnicodeFile(sSrcPath)
     EnsureUnicodeFile = sTempPath
 End Function
 
-Dim oSAPGUI, oApplication, oSession
-Dim oCandidate, oSessIter
-
-' ------ 1. Attach to existing SAP GUI session -------------------------------
-On Error Resume Next
-Set oSAPGUI = GetObject("SAPGUI")
-If Err.Number <> 0 Or oSAPGUI Is Nothing Then
-    WScript.Echo "ERROR: SAP GUI is not running."
-    WScript.Quit 1
-End If
-Err.Clear
-On Error GoTo 0
-
-Set oApplication = oSAPGUI.GetScriptingEngine
-If oApplication Is Nothing Then
-    WScript.Echo "ERROR: Could not get SAP Scripting Engine."
-    WScript.Quit 1
-End If
-
-Set oSession = Nothing
-On Error Resume Next
-For Each oCandidate In oApplication.Children
-    For Each oSessIter In oCandidate.Children
-        Set oSession = oSessIter
-        Exit For
-    Next
-    If Not (oSession Is Nothing) Then Exit For
-Next
-On Error GoTo 0
-
-If oSession Is Nothing Then
-    WScript.Echo "ERROR: No SAP GUI session found. Run the login step first."
-    WScript.Quit 1
-End If
-WScript.Echo "INFO: Session acquired."
+' ------ 1. Attach to existing SAP GUI session (via shared attach helper) ----
+Dim oSession
+Set oSession = AttachSapSession(SESSION_PATH)
 
 ' ------ 2. Navigate to SE11 and create table type ---------------------------
 WScript.Echo "INFO: Navigating to SE11..."

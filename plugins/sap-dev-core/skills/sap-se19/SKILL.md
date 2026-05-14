@@ -158,6 +158,11 @@ $content = $content -replace '%%BADI_DEFINITION%%','THE_BADI_DEFINITION'
 $content = $content -replace '%%BADI_IMPL_NAME%%','THE_BADI_IMPL_NAME'
 $content = $content -replace '%%IMPL_CLASS%%','THE_IMPL_CLASS'
 $content = $content -replace '%%BADI_IMPL_TEXT%%','THE_BADI_IMPL_TEXT'
+# Phase 3.5 session-attach plumbing.
+$sessionPath = ''
+$content = $content -replace '%%SESSION_PATH%%', $sessionPath
+$content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
+$env:SAPDEV_PIN_FILE = '{WORK_TEMP}\sap_active_session.json'
 Set-Content '{WORK_TEMP}\sap_se19_create_run.vbs' $content -Encoding Unicode
 Write-Host 'Done'
 ```
@@ -207,6 +212,11 @@ Write `{WORK_TEMP}\sap_se19_update_method_run.ps1`:
 $content = Get-Content '<SKILL_DIR>\references\sap_se19_update_method.vbs' -Raw
 $content = $content -replace '%%IMPL_CLASS%%','THE_IMPL_CLASS'
 $content = $content -replace '%%ABAP_SOURCE_FILE%%','THE_SOURCE_PATH'
+# Phase 3.5 session-attach plumbing.
+$sessionPath = ''
+$content = $content -replace '%%SESSION_PATH%%', $sessionPath
+$content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
+$env:SAPDEV_PIN_FILE = '{WORK_TEMP}\sap_active_session.json'
 Set-Content '{WORK_TEMP}\sap_se19_update_method_run.vbs' $content -Encoding Unicode
 Write-Host 'Done'
 ```

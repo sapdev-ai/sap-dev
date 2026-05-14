@@ -34,40 +34,22 @@ Option Explicit
 
 Const FUGR_ID      = "%%FUGR_ID%%"
 Const SAP_TRANSPORT = "%%TRANSPORT%%"
+Const SESSION_PATH  = "%%SESSION_PATH%%"   ' empty / unsubstituted = use default
 
 Const VKEY_ENTER = 0
 Const VKEY_F3    = 3
 Const VKEY_F15   = 15  ' Exit transaction
 
-' Include shared session-lock helpers (TryLockSession / ReleaseSession).
+' Include shared helpers (attach first; session-lock's pre-unlock sweep
+' reads from oSession).
+ExecuteGlobal CreateObject("Scripting.FileSystemObject") _
+    .OpenTextFile("%%ATTACH_LIB_VBS%%", 1).ReadAll()
 ExecuteGlobal CreateObject("Scripting.FileSystemObject") _
     .OpenTextFile("%%SESSION_LOCK_VBS%%", 1).ReadAll()
 
-Dim oSAPGUI, oApp, oSess
-Dim oCand, oSi
-
-On Error Resume Next
-Set oSAPGUI = GetObject("SAPGUI")
-If Err.Number <> 0 Or oSAPGUI Is Nothing Then
-    WScript.Echo "ERROR: SAP GUI is not running."
-    WScript.Quit 1
-End If
-Err.Clear
-On Error GoTo 0
-
-Set oApp = oSAPGUI.GetScriptingEngine
-Set oSess = Nothing
-For Each oCand In oApp.Children
-    For Each oSi In oCand.Children
-        Set oSess = oSi
-        Exit For
-    Next
-    If Not (oSess Is Nothing) Then Exit For
-Next
-If oSess Is Nothing Then
-    WScript.Echo "ERROR: No SAP GUI session found. Run /sap-login first."
-    WScript.Quit 1
-End If
+' ------ Attach to existing SAP GUI session (via shared attach helper) -------
+Dim oSess
+Set oSess = AttachSapSession(SESSION_PATH)
 WScript.Echo "INFO: Session acquired."
 
 ' --- 1. Navigate to SE80 (Object Navigator) --------------------------------

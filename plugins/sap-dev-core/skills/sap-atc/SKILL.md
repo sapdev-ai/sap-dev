@@ -161,6 +161,11 @@ $content  = $content.Replace('%%OBJECT_SET_NAME%%','THE_OBJECT_SET')
 $content  = $content.Replace('%%OBJECT_TYPE%%',    'THE_OBJECT_TYPE')
 $content  = $content.Replace('%%OBJECT_NAME%%',    'THE_OBJECT_NAME')
 $content  = $content.Replace('%%SESSION_LOCK_VBS%%',"$shared\scripts\sap_session_lock.vbs")
+# Phase 3.5 session-attach plumbing.
+$sessionPath = ''
+$content  = $content.Replace('%%SESSION_PATH%%',   $sessionPath)
+$content  = $content.Replace('%%ATTACH_LIB_VBS%%', "$shared\scripts\sap_attach_lib.vbs")
+$env:SAPDEV_PIN_FILE = '{WORK_TEMP}\sap_active_session.json'
 [System.IO.File]::WriteAllText('{WORK_TEMP}\sap_atc_stage1_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 ```
 
@@ -171,6 +176,12 @@ $content  = $content.Replace('%%SESSION_LOCK_VBS%%',"$shared\scripts\sap_session
 > `[System.IO.File]::WriteAllText(..., UnicodeEncoding)`. Never
 > `Get-Content -Raw` + `Set-Content -Encoding Unicode` for these files —
 > any localized string in the template will be silently corrupted.
+>
+> **Also apply the Phase 3.5 session-attach plumbing block from Stage 1
+> verbatim** before the WriteAllText line: `$sessionPath = ''`, replace
+> `%%SESSION_PATH%%` with `$sessionPath`, replace `%%ATTACH_LIB_VBS%%`
+> with `$shared\scripts\sap_attach_lib.vbs`, and set
+> `$env:SAPDEV_PIN_FILE = '{WORK_TEMP}\sap_active_session.json'`.
 
 Run via cscript. Expected last line:
 `SUCCESS: Object set <NAME> created/updated with <TYPE> <NAME>.`
@@ -303,6 +314,11 @@ $content  = [System.IO.File]::ReadAllText("$skillDir\references\sap_atc_drill_fi
 $content  = $content.Replace('%%RUN_SERIES_NAME%%', 'THE_RUN_SERIES')
 $content  = $content.Replace('%%OUTPUT_PATH%%',    'THE_DRILL_PATH')
 $content  = $content.Replace('%%SESSION_LOCK_VBS%%',"$shared\scripts\sap_session_lock.vbs")
+# Phase 3.5 session-attach plumbing.
+$sessionPath = ''
+$content  = $content.Replace('%%SESSION_PATH%%',   $sessionPath)
+$content  = $content.Replace('%%ATTACH_LIB_VBS%%', "$shared\scripts\sap_attach_lib.vbs")
+$env:SAPDEV_PIN_FILE = '{WORK_TEMP}\sap_active_session.json'
 [System.IO.File]::WriteAllText('{WORK_TEMP}\sap_atc_stage4b_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 ```
 

@@ -26,41 +26,22 @@ Option Explicit
 
 Const REQUEST_TYPE = "%%REQUEST_TYPE%%"
 Const DESCRIPTION  = "%%DESCRIPTION%%"
+Const SESSION_PATH = "%%SESSION_PATH%%"   ' empty / unsubstituted = use default
 
 Const VKEY_ENTER = 0
 Const VKEY_F6    = 6
 
-' Include shared session-lock helpers (TryLockSession / ReleaseSession).
-' Per language_independence_rules.md Rule 7. Released after the description
-' is saved; the SE16N TRKORR-resolution that follows is read-only.
+' Include shared helpers (attach first; session-lock's pre-unlock sweep
+' reads from oSession). Released after the description is saved; the
+' SE16N TRKORR-resolution that follows is read-only.
+ExecuteGlobal CreateObject("Scripting.FileSystemObject") _
+    .OpenTextFile("%%ATTACH_LIB_VBS%%", 1).ReadAll()
 ExecuteGlobal CreateObject("Scripting.FileSystemObject") _
     .OpenTextFile("%%SESSION_LOCK_VBS%%", 1).ReadAll()
 
-Dim oSAPGUI, oApp, oSess, c, s
-
-On Error Resume Next
-Set oSAPGUI = GetObject("SAPGUI")
-If Err.Number <> 0 Or oSAPGUI Is Nothing Then
-    WScript.Echo "ERROR: SAP GUI is not running."
-    WScript.Quit 1
-End If
-Err.Clear
-On Error GoTo 0
-
-Set oApp = oSAPGUI.GetScriptingEngine
-For Each c In oApp.Children
-    For Each s In c.Children
-        Set oSess = s
-        Exit For
-    Next
-    If Not (oSess Is Nothing) Then Exit For
-Next
-
-If oSess Is Nothing Then
-    WScript.Echo "ERROR: No SAP GUI session found. Run /sap-login first."
-    WScript.Quit 1
-End If
-WScript.Echo "INFO: Session acquired."
+' ------ 1. Attach to existing SAP GUI session (via shared attach helper) ----
+Dim oSess
+Set oSess = AttachSapSession(SESSION_PATH)
 
 oSess.findById("wnd[0]").maximize
 oSess.findById("wnd[0]/tbar[0]/okcd").text = "/nse01"

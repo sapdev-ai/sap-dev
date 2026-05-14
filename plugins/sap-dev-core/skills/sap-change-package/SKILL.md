@@ -230,6 +230,11 @@ $content = $content -replace '%%OBJECT_TYPE%%','THE_TYPE'   # SE11 only
 $content = $content -replace '%%NEW_PACKAGE%%','THE_PKG'
 $content = $content -replace '%%TRANSPORT%%','THE_TR'
 $content = $content -replace '%%TR_DESCRIPTION%%','THE_TR_DESC'
+# Phase 3.5 session-attach plumbing.
+$sessionPath = ''
+$content = $content -replace '%%SESSION_PATH%%', $sessionPath
+$content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
+$env:SAPDEV_PIN_FILE = '{WORK_TEMP}\sap_active_session.json'
 Set-Content '{WORK_TEMP}\sap_change_package_<TXN>_run.vbs' $content -Encoding Unicode
 Write-Host 'Done'
 ```

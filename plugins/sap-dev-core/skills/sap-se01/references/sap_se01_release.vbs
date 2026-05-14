@@ -25,6 +25,7 @@
 Option Explicit
 
 Const TRANSPORT = "%%TRANSPORT%%"
+Const SESSION_PATH = "%%SESSION_PATH%%"   ' empty / unsubstituted = use default
 
 Const VKEY_ENTER       = 0
 Const VKEY_F3_BACK     = 3
@@ -35,7 +36,10 @@ Const DISPLAY_BUTTON = "wnd[0]/usr/tabsMAINTABSTRIP/tabpTSSN/ssubCOMMONSUBSCREEN
 
 Const MAX_TASK_PASSES = 10
 
-Dim oSAPGUI, oApp, oSess, c, s
+' Include shared attach helper.
+ExecuteGlobal CreateObject("Scripting.FileSystemObject") _
+    .OpenTextFile("%%ATTACH_LIB_VBS%%", 1).ReadAll()
+
 Dim sTR
 
 sTR = UCase(Trim(TRANSPORT))
@@ -44,38 +48,9 @@ If sTR = "" Then
     WScript.Quit 1
 End If
 
-' ------ 1. Attach to existing SAP GUI session ---------------------------------
-On Error Resume Next
-Set oSAPGUI = GetObject("SAPGUI")
-If Err.Number <> 0 Then
-    WScript.Echo "ERROR: SAP GUI is not running. " & Err.Description
-    WScript.Quit 1
-End If
-Err.Clear
-On Error GoTo 0
-
-If oSAPGUI Is Nothing Then
-    WScript.Echo "ERROR: SAP GUI is not running."
-    WScript.Quit 1
-End If
-
-Set oApp  = oSAPGUI.GetScriptingEngine
-Set oSess = Nothing
-On Error Resume Next
-For Each c In oApp.Children
-    For Each s In c.Children
-        Set oSess = s
-        Exit For
-    Next
-    If Not (oSess Is Nothing) Then Exit For
-Next
-Err.Clear
-On Error GoTo 0
-
-If oSess Is Nothing Then
-    WScript.Echo "ERROR: No SAP GUI session found. Run /sap-login first."
-    WScript.Quit 1
-End If
+' ------ 1. Attach to existing SAP GUI session (via shared attach helper) ----
+Dim oSess
+Set oSess = AttachSapSession(SESSION_PATH)
 WScript.Echo "INFO: Session acquired. Releasing TR " & sTR & "..."
 
 ' ------ 2. Navigate to SE01 ---------------------------------------------------

@@ -473,6 +473,10 @@ $content = $content.Replace('%%PACKAGE%%',         $package)
 $content = $content.Replace('%%TRANSPORT%%',       $transport)
 $content = $content.Replace('%%INTERFACE_CODE%%',  $ifaceCode)
 $content = $content.Replace('%%SESSION_LOCK_VBS%%', '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_session_lock.vbs')
+$sessionPath = ''
+$content = $content.Replace('%%SESSION_PATH%%',     $sessionPath)
+$content = $content.Replace('%%ATTACH_LIB_VBS%%',   '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs')
+$env:SAPDEV_PIN_FILE = "$workTemp\sap_active_session.json"
 [System.IO.File]::WriteAllText("$workTemp\sap_se37_update_run.vbs", $content, [System.Text.Encoding]::Unicode)
 Write-Host "VBS written: $workTemp\sap_se37_update_run.vbs"
 Write-Host 'Done'
@@ -731,6 +735,10 @@ $content = $content -replace '%%PACKAGE%%',        $package
 $content = $content -replace '%%TRANSPORT%%',      $transport
 $content = $content.Replace('%%INTERFACE_CODE%%',  $ifaceCode)
 $content = $content -replace '%%SESSION_LOCK_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_session_lock.vbs'
+$sessionPath = ''
+$content = $content -replace '%%SESSION_PATH%%',   $sessionPath
+$content = $content -replace '%%ATTACH_LIB_VBS%%', '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
+$env:SAPDEV_PIN_FILE = "$workTemp\sap_active_session.json"
 Set-Content "$workTemp\sap_se37_create_run.vbs" $content -Encoding Unicode
 Write-Host "VBS written: $workTemp\sap_se37_create_run.vbs"
 Write-Host 'Done'
@@ -1017,6 +1025,10 @@ $content  = Get-Content $tpl -Raw
 $content  = $content.Replace('%%FM_NAME%%',         'THE_FM_NAME')
 $content  = $content.Replace('%%TRANSPORT%%',       'THE_TRANSPORT')
 $content  = $content.Replace('%%SESSION_LOCK_VBS%%', '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_session_lock.vbs')
+$sessionPath = ''
+$content  = $content.Replace('%%SESSION_PATH%%',     $sessionPath)
+$content  = $content.Replace('%%ATTACH_LIB_VBS%%',   '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs')
+$env:SAPDEV_PIN_FILE = '{WORK_TEMP}\sap_active_session.json'
 Set-Content '{WORK_TEMP}\sap_se37_delete_run.vbs' $content -Encoding Unicode
 Write-Host 'Done'
 ```

@@ -147,6 +147,11 @@ $content = $content -replace '%%PROGRAM_NAME%%','THE_PROGRAM_NAME'
 $content = $content -replace '%%SCREEN_NUMBER%%','THE_SCREEN_NUMBER'
 $content = $content -replace '%%LOG_FILE%%','{WORK_TEMP}\\sap_se51_update.log'
 $content = $content -replace '%%FOREGROUND_GUARD_PS1%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_gui_foreground_guard.ps1'
+# Phase 3.5 session-attach plumbing.
+$sessionPath = ''
+$content = $content -replace '%%SESSION_PATH%%', $sessionPath
+$content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
+$env:SAPDEV_PIN_FILE = '{WORK_TEMP}\sap_active_session.json'
 Set-Content '{WORK_TEMP}\sap_se51_update_run.vbs' $content -Encoding Unicode
 Write-Host 'Done'
 ```
@@ -200,6 +205,11 @@ $content = $content -replace '%%SCREEN_NUMBER%%','THE_SCREEN_NUMBER'
 $content = $content -replace '%%SCREEN_SHORT_TEXT%%','THE_SHORT_TEXT'
 $content = $content -replace '%%LOG_FILE%%','{WORK_TEMP}\\sap_se51_create.log'
 $content = $content -replace '%%FOREGROUND_GUARD_PS1%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_gui_foreground_guard.ps1'
+# Phase 3.5 session-attach plumbing.
+$sessionPath = ''
+$content = $content -replace '%%SESSION_PATH%%', $sessionPath
+$content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
+$env:SAPDEV_PIN_FILE = '{WORK_TEMP}\sap_active_session.json'
 Set-Content '{WORK_TEMP}\sap_se51_create_run.vbs' $content -Encoding Unicode
 Write-Host 'Done'
 ```

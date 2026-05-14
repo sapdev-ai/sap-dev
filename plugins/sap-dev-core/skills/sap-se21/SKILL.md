@@ -192,6 +192,11 @@ $content = $content.Replace('%%PACKAGE%%',          'THE_PACKAGE')
 $content = $content.Replace('%%DESCRIPTION%%',      'THE_DESCRIPTION')
 $content = $content.Replace('%%TRANSPORT%%',        'THE_TRANSPORT')
 $content = $content.Replace('%%SESSION_LOCK_VBS%%', '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_session_lock.vbs')
+# Phase 3.5 session-attach plumbing.
+$sessionPath = ''
+$content = $content.Replace('%%SESSION_PATH%%',   $sessionPath)
+$content = $content.Replace('%%ATTACH_LIB_VBS%%', '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs')
+$env:SAPDEV_PIN_FILE = '{WORK_TEMP}\sap_active_session.json'
 [System.IO.File]::WriteAllText('{WORK_TEMP}\sap_se21_filled.vbs', $content, [System.Text.Encoding]::Unicode)
 Write-Host 'Done'
 ```
@@ -298,6 +303,11 @@ $content  = Get-Content $tpl -Raw
 $content  = $content.Replace('%%PACKAGE%%',         'THE_PACKAGE')
 $content  = $content.Replace('%%TRANSPORT%%',       'THE_TRANSPORT')
 $content  = $content.Replace('%%SESSION_LOCK_VBS%%', '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_session_lock.vbs')
+# Phase 3.5 session-attach plumbing.
+$sessionPath = ''
+$content  = $content.Replace('%%SESSION_PATH%%',     $sessionPath)
+$content  = $content.Replace('%%ATTACH_LIB_VBS%%',   '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs')
+$env:SAPDEV_PIN_FILE = '{WORK_TEMP}\sap_active_session.json'
 Set-Content '{WORK_TEMP}\sap_se21_delete_run.vbs' $content -Encoding Unicode
 Write-Host 'Done'
 ```

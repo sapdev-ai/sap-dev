@@ -30,49 +30,21 @@ Option Explicit
 
 Const PROGRAM_NAME  = "%%PROGRAM_NAME%%"
 Const SAP_TRANSPORT = "%%TRANSPORT%%"
+Const SESSION_PATH  = "%%SESSION_PATH%%"   ' empty / unsubstituted = use default
 
 Const VKEY_ENTER    = 0
 Const VKEY_SHIFT_F2 = 14
 
-' Include shared session-lock helpers (TryLockSession / ReleaseSession).
+' Include shared helpers (attach first; session-lock's pre-unlock sweep
+' reads from oSession).
+ExecuteGlobal CreateObject("Scripting.FileSystemObject") _
+    .OpenTextFile("%%ATTACH_LIB_VBS%%", 1).ReadAll()
 ExecuteGlobal CreateObject("Scripting.FileSystemObject") _
     .OpenTextFile("%%SESSION_LOCK_VBS%%", 1).ReadAll()
 
-Dim oSAPGUI, oApplication, oSession
-Dim oCandidate, oSessIter
-
-' --- 1. Attach to existing SAP GUI session ---------------------------------
-On Error Resume Next
-Set oSAPGUI = GetObject("SAPGUI")
-If Err.Number <> 0 Or oSAPGUI Is Nothing Then
-    WScript.Echo "ERROR: SAP GUI is not running."
-    WScript.Quit 1
-End If
-Err.Clear
-On Error GoTo 0
-
-Set oApplication = oSAPGUI.GetScriptingEngine
-If oApplication Is Nothing Then
-    WScript.Echo "ERROR: Could not get SAP Scripting Engine."
-    WScript.Quit 1
-End If
-
-Set oSession = Nothing
-On Error Resume Next
-For Each oCandidate In oApplication.Children
-    For Each oSessIter In oCandidate.Children
-        Set oSession = oSessIter
-        Exit For
-    Next
-    If Not (oSession Is Nothing) Then Exit For
-Next
-On Error GoTo 0
-
-If oSession Is Nothing Then
-    WScript.Echo "ERROR: No SAP GUI session found. Run /sap-login first."
-    WScript.Quit 1
-End If
-WScript.Echo "INFO: Session acquired."
+' --- 1. Attach to existing SAP GUI session (via shared attach helper) ------
+Dim oSession
+Set oSession = AttachSapSession(SESSION_PATH)
 
 ' --- 2. Navigate to SE38 ---------------------------------------------------
 WScript.Echo "INFO: Navigating to SE38 to delete program " & UCase(PROGRAM_NAME) & "..."

@@ -150,6 +150,11 @@ $content = Get-Content '<SKILL_DIR>\references\sap_cmod_create.vbs' -Raw
 $content = $content -replace '%%PROJECT_NAME%%','THE_PROJECT_NAME'
 $content = $content -replace '%%SHORT_TEXT%%','THE_SHORT_TEXT'
 $content = $content -replace '%%ENHANCEMENTS%%','THE_ENHANCEMENTS'
+# Phase 3.5 session-attach plumbing.
+$sessionPath = ''
+$content = $content -replace '%%SESSION_PATH%%', $sessionPath
+$content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
+$env:SAPDEV_PIN_FILE = '{WORK_TEMP}\sap_active_session.json'
 Set-Content '{WORK_TEMP}\sap_cmod_create_run.vbs' $content -Encoding Unicode
 Write-Host 'Done'
 ```
@@ -194,6 +199,11 @@ Write `{WORK_TEMP}\sap_cmod_change_include_run.ps1`:
 $content = Get-Content '<SKILL_DIR>\references\sap_cmod_change_include.vbs' -Raw
 $content = $content -replace '%%INCLUDE_NAME%%','THE_INCLUDE_NAME'
 $content = $content -replace '%%ABAP_SOURCE_FILE%%','THE_SOURCE_PATH'
+# Phase 3.5 session-attach plumbing.
+$sessionPath = ''
+$content = $content -replace '%%SESSION_PATH%%', $sessionPath
+$content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
+$env:SAPDEV_PIN_FILE = '{WORK_TEMP}\sap_active_session.json'
 Set-Content '{WORK_TEMP}\sap_cmod_change_include_run.vbs' $content -Encoding Unicode
 Write-Host 'Done'
 ```

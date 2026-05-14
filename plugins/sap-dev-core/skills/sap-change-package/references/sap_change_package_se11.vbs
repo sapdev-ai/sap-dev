@@ -14,6 +14,7 @@ Const OBJECT_TYPE    = "%%OBJECT_TYPE%%"
 Const NEW_PACKAGE    = "%%NEW_PACKAGE%%"
 Const TRANSPORT      = "%%TRANSPORT%%"
 Const TR_DESCRIPTION = "%%TR_DESCRIPTION%%"
+Const SESSION_PATH   = "%%SESSION_PATH%%"   ' empty / unsubstituted = use default
 
 ' SE11 Display screen: Goto > Object Directory Entry
 Const MENU_OBJECT_DIR = "wnd[0]/mbar/menu[2]/menu[0]"
@@ -22,7 +23,10 @@ Const VKEY_ENTER         = 0
 Const VKEY_F3_BACK       = 3
 Const VKEY_SHIFT_F3_EXIT = 15
 
-Dim oSAPGUI, oApp, oSess, c, s
+' Include shared attach helper.
+ExecuteGlobal CreateObject("Scripting.FileSystemObject") _
+    .OpenTextFile("%%ATTACH_LIB_VBS%%", 1).ReadAll()
+
 Dim sName, sPkg, sType, sRadio, sNameField
 
 sName = UCase(Trim(OBJECT_NAME))
@@ -61,22 +65,9 @@ Select Case sType
         WScript.Quit 1
 End Select
 
-On Error Resume Next
-Set oSAPGUI = GetObject("SAPGUI")
-If Err.Number <> 0 Or oSAPGUI Is Nothing Then : WScript.Echo "ERROR: SAP GUI is not running." : WScript.Quit 1 : End If
-Err.Clear
-On Error GoTo 0
-
-Set oApp = oSAPGUI.GetScriptingEngine
-Set oSess = Nothing
-On Error Resume Next
-For Each c In oApp.Children
-    For Each s In c.Children : Set oSess = s : Exit For : Next
-    If Not (oSess Is Nothing) Then Exit For
-Next
-On Error GoTo 0
-
-If oSess Is Nothing Then : WScript.Echo "ERROR: No SAP GUI session. Run /sap-login." : WScript.Quit 1 : End If
+' ------ Attach to session (via shared attach helper) -------------------------
+Dim oSess
+Set oSess = AttachSapSession(SESSION_PATH)
 WScript.Echo "INFO: Session acquired. Changing " & sType & " " & sName & " package -> " & sPkg
 
 ' Navigate to SE11 + select radio + enter name

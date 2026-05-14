@@ -25,11 +25,16 @@ Option Explicit
 
 Const OBJECT_NAME = "%%OBJECT_NAME%%"
 Const OBJECT_TYPE = "%%OBJECT_TYPE%%"
+Const SESSION_PATH = "%%SESSION_PATH%%"   ' empty / unsubstituted = use default
 
 Const VKEY_ENTER         = 0
 Const VKEY_F3_BACK       = 3
 Const VKEY_SHIFT_F3_EXIT = 15
 Const VKEY_CTRL_F3_ACT   = 27
+
+' Include shared attach helper.
+ExecuteGlobal CreateObject("Scripting.FileSystemObject") _
+    .OpenTextFile("%%ATTACH_LIB_VBS%%", 1).ReadAll()
 
 ' Include shared activation-log capture (CaptureActivationLog /
 ' ExtractTopActivationError). Used after Activate when sbar.MessageType is
@@ -39,7 +44,6 @@ Const VKEY_CTRL_F3_ACT   = 27
 ExecuteGlobal CreateObject("Scripting.FileSystemObject") _
     .OpenTextFile("%%ACTIVATION_LOG_VBS%%", 1).ReadAll()
 
-Dim oSAPGUI, oApp, oSess, c, s
 Dim sName, sType, sRadio, sNameField
 
 sName = UCase(Trim(OBJECT_NAME))
@@ -83,32 +87,9 @@ Select Case sType
         WScript.Quit 1
 End Select
 
-' ------ 1. Attach to existing SAP GUI session ---------------------------------
-On Error Resume Next
-Set oSAPGUI = GetObject("SAPGUI")
-If Err.Number <> 0 Or oSAPGUI Is Nothing Then
-    WScript.Echo "ERROR: SAP GUI is not running."
-    WScript.Quit 1
-End If
-Err.Clear
-On Error GoTo 0
-
-Set oApp = oSAPGUI.GetScriptingEngine
-Set oSess = Nothing
-On Error Resume Next
-For Each c In oApp.Children
-    For Each s In c.Children
-        Set oSess = s
-        Exit For
-    Next
-    If Not (oSess Is Nothing) Then Exit For
-Next
-On Error GoTo 0
-
-If oSess Is Nothing Then
-    WScript.Echo "ERROR: No SAP GUI session found. Run /sap-login first."
-    WScript.Quit 1
-End If
+' ------ 1. Attach to existing SAP GUI session (via shared attach helper) -----
+Dim oSess
+Set oSess = AttachSapSession(SESSION_PATH)
 WScript.Echo "INFO: Session acquired. Activating " & sType & " " & sName & " via SE11..."
 
 ' ------ 2. Navigate to SE11 ---------------------------------------------------

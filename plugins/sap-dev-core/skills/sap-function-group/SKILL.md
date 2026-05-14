@@ -212,6 +212,11 @@ $content = $content -replace '%%FUGR_ID%%','THE_ID'
 $content = $content -replace '%%FUGR_DESC%%','THE_DESC'
 $content = $content -replace '%%PACKAGE%%','THE_PKG'
 $content = $content -replace '%%TRANSPORT%%','THE_TR'
+# Phase 3.5 session-attach plumbing.
+$sessionPath = ''
+$content = $content -replace '%%SESSION_PATH%%', $sessionPath
+$content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
+$env:SAPDEV_PIN_FILE = '{WORK_TEMP}\sap_active_session.json'
 [System.IO.File]::WriteAllText('{WORK_TEMP}\sap_function_group_gui_create_run.vbs', $content, [System.Text.Encoding]::Unicode)
 Write-Host 'Done'
 ```
@@ -332,6 +337,11 @@ $content = Get-Content '<SKILL_DIR>\references\sap_function_group_gui_delete.vbs
 $content = $content -replace '%%FUGR_ID%%','THE_FG'
 $content = $content -replace '%%TRANSPORT%%','THE_TR'
 $content = $content -replace '%%SESSION_LOCK_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_session_lock.vbs'
+# Phase 3.5 session-attach plumbing.
+$sessionPath = ''
+$content = $content -replace '%%SESSION_PATH%%', $sessionPath
+$content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
+$env:SAPDEV_PIN_FILE = '{WORK_TEMP}\sap_active_session.json'
 [System.IO.File]::WriteAllText('{WORK_TEMP}\sap_function_group_gui_delete_run.vbs', $content, [System.Text.Encoding]::Unicode)
 Write-Host 'Done'
 ```

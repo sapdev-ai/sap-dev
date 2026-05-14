@@ -15,13 +15,17 @@
 Option Explicit
 
 Const OBJECT_NAME = "%%OBJECT_NAME%%"
+Const SESSION_PATH = "%%SESSION_PATH%%"   ' empty / unsubstituted = use default
 
 Const VKEY_ENTER         = 0
 Const VKEY_F3_BACK       = 3
 Const VKEY_SHIFT_F3_EXIT = 15
 Const VKEY_CTRL_F3_ACT   = 27
 
-Dim oSAPGUI, oApp, oSess, c, s
+' Include shared attach helper.
+ExecuteGlobal CreateObject("Scripting.FileSystemObject") _
+    .OpenTextFile("%%ATTACH_LIB_VBS%%", 1).ReadAll()
+
 Dim sName
 
 sName = UCase(Trim(OBJECT_NAME))
@@ -30,32 +34,9 @@ If sName = "" Then
     WScript.Quit 1
 End If
 
-' ------ 1. Attach to existing SAP GUI session ---------------------------------
-On Error Resume Next
-Set oSAPGUI = GetObject("SAPGUI")
-If Err.Number <> 0 Or oSAPGUI Is Nothing Then
-    WScript.Echo "ERROR: SAP GUI is not running."
-    WScript.Quit 1
-End If
-Err.Clear
-On Error GoTo 0
-
-Set oApp = oSAPGUI.GetScriptingEngine
-Set oSess = Nothing
-On Error Resume Next
-For Each c In oApp.Children
-    For Each s In c.Children
-        Set oSess = s
-        Exit For
-    Next
-    If Not (oSess Is Nothing) Then Exit For
-Next
-On Error GoTo 0
-
-If oSess Is Nothing Then
-    WScript.Echo "ERROR: No SAP GUI session found. Run /sap-login first."
-    WScript.Quit 1
-End If
+' ------ 1. Attach to existing SAP GUI session (via shared attach helper) -----
+Dim oSess
+Set oSess = AttachSapSession(SESSION_PATH)
 WScript.Echo "INFO: Session acquired. Activating CLASS/INTERFACE " & sName & " via SE24..."
 
 ' ------ 2. Navigate to SE24 ---------------------------------------------------

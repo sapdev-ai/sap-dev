@@ -20,35 +20,17 @@
 Option Explicit
 
 Const FUGR_ID = "%%FUGR_ID%%"
+Const SESSION_PATH = "%%SESSION_PATH%%"   ' empty / unsubstituted = use default
 
 Const VKEY_ENTER = 0
 
-Dim oSAPGUI, oApp, oSess, c, s
+' Include shared attach helper.
+ExecuteGlobal CreateObject("Scripting.FileSystemObject") _
+    .OpenTextFile("%%ATTACH_LIB_VBS%%", 1).ReadAll()
 
-On Error Resume Next
-Set oSAPGUI = GetObject("SAPGUI")
-If Err.Number <> 0 Or oSAPGUI Is Nothing Then
-    WScript.Echo "ERROR: SAP GUI is not running."
-    WScript.Quit 1
-End If
-Err.Clear
-On Error GoTo 0
-
-Set oApp = oSAPGUI.GetScriptingEngine
-Set oSess = Nothing
-For Each c In oApp.Children
-    For Each s In c.Children
-        Set oSess = s
-        Exit For
-    Next
-    If Not (oSess Is Nothing) Then Exit For
-Next
-
-If oSess Is Nothing Then
-    WScript.Echo "ERROR: No SAP GUI session found. Run /sap-login first."
-    WScript.Quit 1
-End If
-WScript.Echo "INFO: Session acquired."
+' ------ Attach to existing SAP GUI session (via shared attach helper) -------
+Dim oSess
+Set oSess = AttachSapSession(SESSION_PATH)
 
 ' --- Navigate to SE37 -------------------------------------------------------
 oSess.findById("wnd[0]").maximize

@@ -270,6 +270,11 @@ $content = $content -replace '%%MSG_CLASS%%','THE_MSG_CLASS'
 $content = $content -replace '%%MESSAGES_FILE%%','THE_MESSAGES_FILE'
 $content = $content -replace '%%PACKAGE%%','THE_PACKAGE'
 $content = $content -replace '%%TRANSPORT%%','THE_TRANSPORT'
+# Phase 3.5 session-attach plumbing.
+$sessionPath = ''
+$content = $content -replace '%%SESSION_PATH%%', $sessionPath
+$content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
+$env:SAPDEV_PIN_FILE = '{WORK_TEMP}\sap_active_session.json'
 Set-Content '{WORK_TEMP}\sap_se91_update_run.vbs' $content -Encoding Unicode
 Write-Host 'Done'
 ```
@@ -307,6 +312,11 @@ $content = $content -replace '%%SHORT_TEXT%%','THE_SHORT_TEXT'
 $content = $content -replace '%%MESSAGES_FILE%%','THE_MESSAGES_FILE'
 $content = $content -replace '%%PACKAGE%%','THE_PACKAGE'
 $content = $content -replace '%%TRANSPORT%%','THE_TRANSPORT'
+# Phase 3.5 session-attach plumbing.
+$sessionPath = ''
+$content = $content -replace '%%SESSION_PATH%%', $sessionPath
+$content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
+$env:SAPDEV_PIN_FILE = '{WORK_TEMP}\sap_active_session.json'
 Set-Content '{WORK_TEMP}\sap_se91_create_run.vbs' $content -Encoding Unicode
 Write-Host 'Done'
 ```

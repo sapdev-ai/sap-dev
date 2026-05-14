@@ -659,6 +659,11 @@ $content = $content -replace '%%TEMP_DIR%%','{WORK_TEMP}'
 # ignore the token if it isn't present in their template).
 $content = $content -replace '%%ENHANCEMENT_CATEGORY%%','THE_ENH_CATEGORY'
 $content = $content -replace '%%ENH_CATEGORY_VBS%%','<SKILL_DIR>\references\sap_se11_set_enh_category.vbs'
+# Phase 3.5 session-attach plumbing.
+$sessionPath = ''
+$content = $content -replace '%%SESSION_PATH%%', $sessionPath
+$content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
+$env:SAPDEV_PIN_FILE = '{WORK_TEMP}\sap_active_session.json'
 Set-Content '{WORK_TEMP}\sap_se11_update_run.vbs' $content -Encoding Unicode
 Write-Host 'Done'
 ```
@@ -782,6 +787,11 @@ $content = $content -replace '%%VIEW_TYPE%%','THE_VIEW_TYPE'
 
 Then write:
 ```powershell
+# Phase 3.5 session-attach plumbing.
+$sessionPath = ''
+$content = $content -replace '%%SESSION_PATH%%', $sessionPath
+$content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
+$env:SAPDEV_PIN_FILE = '{WORK_TEMP}\sap_active_session.json'
 Set-Content '{WORK_TEMP}\sap_se11_create_run.vbs' $content -Encoding Unicode
 Write-Host 'Done'
 ```
@@ -945,6 +955,11 @@ $content = $content -replace '%%OBJECT_NAME%%','THE_OBJECT_NAME'
 $content = $content -replace '%%PACKAGE%%','THE_PACKAGE'
 $content = $content -replace '%%TRANSPORT%%','THE_TRANSPORT'
 $content = $content -replace '%%SESSION_LOCK_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_session_lock.vbs'
+# Phase 3.5 session-attach plumbing.
+$sessionPath = ''
+$content = $content -replace '%%SESSION_PATH%%', $sessionPath
+$content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
+$env:SAPDEV_PIN_FILE = '{WORK_TEMP}\sap_active_session.json'
 Set-Content '{WORK_TEMP}\sap_se11_chgpkg_run.vbs' $content -Encoding Unicode
 Write-Host 'Done'
 ```
@@ -1041,6 +1056,11 @@ $content = $content -replace '%%OBJECT_TYPE%%','THE_OBJECT_TYPE'
 $content = $content -replace '%%OBJECT_NAME%%','THE_OBJECT_NAME'
 $content = $content -replace '%%TRANSPORT%%','THE_TRANSPORT'
 $content = $content -replace '%%SESSION_LOCK_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_session_lock.vbs'
+# Phase 3.5 session-attach plumbing.
+$sessionPath = ''
+$content = $content -replace '%%SESSION_PATH%%', $sessionPath
+$content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
+$env:SAPDEV_PIN_FILE = '{WORK_TEMP}\sap_active_session.json'
 Set-Content '{WORK_TEMP}\sap_se11_delete_run.vbs' $content -Encoding Unicode
 Write-Host 'Done'
 ```

@@ -32,10 +32,15 @@ Const SAP_TRANSPORT   = "%%TRANSPORT%%"
 ' Accepted: NOT_EXTENSIBLE (default), FLAT, FLAT_NUMERIC, DEEP. See
 ' sap_se11_set_enh_category.vbs for the full mapping.
 Const ENH_CATEGORY    = "%%ENHANCEMENT_CATEGORY%%"
+Const SESSION_PATH    = "%%SESSION_PATH%%"   ' empty / unsubstituted = use default
 
 Const VKEY_ENTER    = 0
 Const VKEY_F3_BACK  = 3
 Const VKEY_F11_SAVE = 11
+
+' Include shared attach helper.
+ExecuteGlobal CreateObject("Scripting.FileSystemObject") _
+    .OpenTextFile("%%ATTACH_LIB_VBS%%", 1).ReadAll()
 
 ' Include shared activation-log capture (CaptureActivationLog /
 ' ExtractTopActivationError). Used after Activate (Ctrl+F3) when
@@ -82,9 +87,6 @@ Function EnsureUnicodeFile(sSrcPath)
     EnsureUnicodeFile = sTempPath
 End Function
 
-Dim oSAPGUI, oApplication, oSession
-Dim oCandidate, oSessIter
-
 ' ------ 0. Pre-flight: validate definition file --------------------------------
 Dim oPFSO
 Set oPFSO = CreateObject("Scripting.FileSystemObject")
@@ -94,38 +96,9 @@ If Not oPFSO.FileExists(DEFINITION_FILE) Then
 End If
 WScript.Echo "INFO: Definition file validated OK."
 
-' ------ 1. Attach to existing SAP GUI session -----------------------------------
-On Error Resume Next
-Set oSAPGUI = GetObject("SAPGUI")
-If Err.Number <> 0 Or oSAPGUI Is Nothing Then
-    WScript.Echo "ERROR: SAP GUI is not running."
-    WScript.Quit 1
-End If
-Err.Clear
-On Error GoTo 0
-
-Set oApplication = oSAPGUI.GetScriptingEngine
-If oApplication Is Nothing Then
-    WScript.Echo "ERROR: Could not get SAP Scripting Engine."
-    WScript.Quit 1
-End If
-
-Set oSession = Nothing
-On Error Resume Next
-For Each oCandidate In oApplication.Children
-    For Each oSessIter In oCandidate.Children
-        Set oSession = oSessIter
-        Exit For
-    Next
-    If Not (oSession Is Nothing) Then Exit For
-Next
-On Error GoTo 0
-
-If oSession Is Nothing Then
-    WScript.Echo "ERROR: No SAP GUI session found. Run the login step first."
-    WScript.Quit 1
-End If
-WScript.Echo "INFO: Session acquired."
+' ------ 1. Attach to existing SAP GUI session (via shared attach helper) --------
+Dim oSession
+Set oSession = AttachSapSession(SESSION_PATH)
 
 ' ------ 2. Navigate to SE11 and open table in change mode -----------------------
 WScript.Echo "INFO: Navigating to SE11..."

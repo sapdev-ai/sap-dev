@@ -185,6 +185,11 @@ $content = $content -replace '%%OBJECT_NAME%%','THE_NAME'
 $content = $content -replace '%%OBJECT_TYPE%%','THE_TYPE'   # SE11 only
 $content = $content -replace '%%ACTIVATION_LOG_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_activation_log.vbs'   # SE11 only
 $content = $content -replace '%%TEMP_DIR%%','{WORK_TEMP}'   # SE11 only
+# Phase 3.5 session-attach plumbing.
+$sessionPath = ''
+$content = $content -replace '%%SESSION_PATH%%', $sessionPath
+$content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
+$env:SAPDEV_PIN_FILE = '{WORK_TEMP}\sap_active_session.json'
 Set-Content '{WORK_TEMP}\sap_activate_<TXN>_run.vbs' $content -Encoding Unicode
 Write-Host 'Done'
 ```
