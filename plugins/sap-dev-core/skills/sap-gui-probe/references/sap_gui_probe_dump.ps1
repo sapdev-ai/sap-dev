@@ -64,7 +64,17 @@ $content = $content.Replace('%%FILTER%%',       $Filter)
 $content = $content.Replace('%%WINDOW%%',       $Window)
 $content = $content.Replace('%%MAX_DEPTH%%',    "$MaxDepth")
 $content = $content.Replace('%%OUTPUT_FILE%%',  $OutputFile)
-$content = $content.Replace('%%SESSION_PATH%%', $SessionPath)
+
+# %%SESSION_PATH%% is anchored to ONE specific assignment line. A naive
+# global .Replace() would also rewrite any sentinel comparison line that
+# refers to the same literal token (see the BUG NOTE inside the template
+# VBS) and silently retarget the script to ses[0]. Anchored regex makes
+# the substitution explicit and audit-friendly. Escape any literal $ in
+# the replacement so PowerShell's -replace doesn't treat it as a back-ref.
+$sessionPathLiteral = $SessionPath -replace '\$','$$$$'
+$content = $content -replace `
+    '(?m)^(\s*Dim\s+SESSION_PATH\s*:\s*SESSION_PATH\s*=\s*")%%SESSION_PATH%%(")', `
+    ('${1}' + $sessionPathLiteral + '${2}')
 
 Set-Content -Path $runtimeVbs -Value $content -Encoding Unicode
 

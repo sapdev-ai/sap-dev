@@ -42,7 +42,19 @@ Dim OUTPUT_FILE  : OUTPUT_FILE  = "%%OUTPUT_FILE%%"
 Dim SESSION_PATH : SESSION_PATH = "%%SESSION_PATH%%"
 ' SESSION_PATH defaults to /app/con[0]/ses[0] when the calling wrapper does
 ' not substitute the token (preserves single-session callers).
-If Trim(SESSION_PATH) = "" Or SESSION_PATH = "%%SESSION_PATH%%" Then
+'
+' BUG NOTE: the wrapper substitutes EVERY occurrence of the literal token
+' `<%>%>SESSION_PATH<%>%>` in this file before cscript runs (PowerShell's
+' .Replace() is global). If we wrote the sentinel here as a contiguous
+' literal `<%>%>SESSION_PATH<%>%>` it would ALSO be rewritten to the caller's
+' supplied path -- causing the comparison below to become
+'   SESSION_PATH = "<the caller's path>"
+' which is ALWAYS true on any non-default path, so the script silently
+' falls back to ses[0] regardless of what the caller asked for. We build
+' the sentinel at runtime from Chr() codes so the wrapper cannot rewrite
+' it. (Chr(37) = '%'.) Keep this idiom; do NOT inline the literal token.
+Dim UNSUBSTITUTED_TOKEN : UNSUBSTITUTED_TOKEN = Chr(37) & Chr(37) & "SESSION_PATH" & Chr(37) & Chr(37)
+If Trim(SESSION_PATH) = "" Or SESSION_PATH = UNSUBSTITUTED_TOKEN Then
     SESSION_PATH = "/app/con[0]/ses[0]"
 End If
 

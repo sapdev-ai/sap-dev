@@ -10,15 +10,23 @@
 '
 ' Action JSON schema (flat, all optional except verb + target):
 '   {
-'     "verb":   "SET_TEXT" | "SEND_VKEY" | "PRESS" | "SELECT_ROW" |
+'     "verb":   "SET_TEXT" | "SEND_VKEY" | "PRESS" | "SELECT" | "SELECT_ROW" |
 '               "DOUBLE_CLICK" | "SET_OKCD",
 '     "target": "wnd[0]/usr/ctxtRMMG1-MATNR",
-'     "value":  "ZHKAMATVer7001",   // SET_TEXT / SET_OKCD
+'     "value":  "ZHKAMATVer7001",   // SET_TEXT / SET_OKCD / SELECT (checkbox)
 '     "vkey":   0,                   // SEND_VKEY
 '     "row":    0,                   // SELECT_ROW (uses getAbsoluteRow(n))
 '     "sleep":  800,                 // optional ms after action; default 800
 '     "note":   "free text"          // ignored at runtime
 '   }
+'
+' Verb notes:
+'   PRESS    -- auto-dispatches by control type: GuiRadioButton -> .Select,
+'               GuiCheckBox -> Selected=True, everything else -> .press.
+'               Safe default when the caller does not know the type.
+'   SELECT   -- explicit selection verb. Radios always select on; check
+'               boxes honour "value" ("true"/"x"/"1"/"" = on, anything
+'               else = off). Falls back to .press for unknown types.
 '
 ' Output:
 '   Last line is "DONE" on success or "ERROR: <text>" on failure.
@@ -185,8 +193,78 @@ Select Case sVerb
     Case "PRESS"
         If sTarget = "" Then sErr = "PRESS requires 'target'"
         If sErr = "" Then
-            oSess.findById(sTarget).press
-            If Err.Number <> 0 Then sErr = "press failed: " & Err.Description
+            ' GuiRadioButton does not expose .press at the COM level -- the
+            ' call raises "object doesn't support this property or method".
+            ' Discriminate by control type so the caller's intent ("press
+            ' this thing") works on radios without forcing them to a
+            ' different verb. GuiCheckBox is treated as "tick" (Selected =
+            ' True) -- caller can use the SELECT verb with an explicit
+            ' value for nuance.
+            Dim oCtrl, sCtrlType
+            Err.Clear
+            Set oCtrl = oSess.findById(sTarget)
+            If Err.Number <> 0 Then
+                sErr = "findById failed: " & Err.Description
+            Else
+                sCtrlType = ""
+                Err.Clear
+                sCtrlType = oCtrl.Type
+                If Err.Number <> 0 Then
+                    sCtrlType = ""
+                    Err.Clear
+                End If
+                If sCtrlType = "GuiRadioButton" Then
+                    oCtrl.Select
+                    If Err.Number <> 0 Then sErr = "select (radio) failed: " & Err.Description
+                ElseIf sCtrlType = "GuiCheckBox" Then
+                    oCtrl.Selected = True
+                    If Err.Number <> 0 Then sErr = "set (checkbox) failed: " & Err.Description
+                Else
+                    oCtrl.press
+                    If Err.Number <> 0 Then sErr = "press failed: " & Err.Description
+                End If
+            End If
+        End If
+
+    Case "SELECT"
+        ' Explicit selection verb -- prefer over PRESS when the target is
+        ' known to be a radio / checkbox. Honours an optional "value" of
+        ' "true" / "false" / "x" / "1" / "" for check boxes (default True).
+        ' Radio buttons always select on; the framework does not surface a
+        ' "deselect radio" operation.
+        If sTarget = "" Then sErr = "SELECT requires 'target'"
+        If sErr = "" Then
+            Dim oSCtrl, sSCtrlType, sWant
+            Err.Clear
+            Set oSCtrl = oSess.findById(sTarget)
+            If Err.Number <> 0 Then
+                sErr = "findById failed: " & Err.Description
+            Else
+                sSCtrlType = ""
+                Err.Clear
+                sSCtrlType = oSCtrl.Type
+                If Err.Number <> 0 Then
+                    sSCtrlType = ""
+                    Err.Clear
+                End If
+                If sSCtrlType = "GuiRadioButton" Then
+                    oSCtrl.Select
+                    If Err.Number <> 0 Then sErr = "select (radio) failed: " & Err.Description
+                ElseIf sSCtrlType = "GuiCheckBox" Then
+                    sWant = LCase(Trim(sValue))
+                    If sWant = "" Or sWant = "true" Or sWant = "x" Or sWant = "1" Then
+                        oSCtrl.Selected = True
+                    Else
+                        oSCtrl.Selected = False
+                    End If
+                    If Err.Number <> 0 Then sErr = "set (checkbox) failed: " & Err.Description
+                Else
+                    ' Unknown control type for SELECT -- fall back to .press
+                    ' so the verb still has a defined behaviour.
+                    oSCtrl.press
+                    If Err.Number <> 0 Then sErr = "SELECT fallback press failed (type=" & sSCtrlType & "): " & Err.Description
+                End If
+            End If
         End If
 
     Case "SELECT_ROW"

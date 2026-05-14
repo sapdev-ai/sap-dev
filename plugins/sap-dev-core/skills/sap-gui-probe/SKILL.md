@@ -47,15 +47,18 @@ plugin root, then `settings.json`). Read `work_dir`.
 
 Derive:
 - `{WORK_TEMP}`  = `{work_dir}\temp`
-- `{TS}`         = current timestamp `yyyyMMdd-HHmmss`
+- `{TS}`         = current timestamp `yyyyMMdd-HHmmssfff` (milliseconds — REQUIRED for parallel-safety; two probes started in the same second under a parallel scaffolder run would otherwise collide on folder name)
+- `{PID}`        = the orchestrator's process ID — append as an extra suffix to guarantee uniqueness across simultaneous AI sessions on the same host. PowerShell: `$PID`. Bash on Windows: `echo $$` (the cygwin/git-bash PID, distinct per shell). Either works.
 - `{TXN}`        = transaction code extracted from the scenario in Step 1
-- `{RUN_FOLDER}` = `{work_dir}\probes\{TXN}_{TS}`
+- `{RUN_FOLDER}` = `{work_dir}\probes\{TXN}_{TS}_p{PID}`
 
 Ensure folders exist (one Bash call, two mkdir):
 ```bash
 cmd /c if not exist "{WORK_TEMP}" mkdir "{WORK_TEMP}"
 cmd /c if not exist "{RUN_FOLDER}" mkdir "{RUN_FOLDER}"
 ```
+
+**Why ms + pid?** Today's parallel scaffolder spawns N sub-agents from one process; each sub-agent invokes this skill in its own cscript run, but they all derive `{TS}` from `Get-Date -Format 'yyyyMMdd-HHmmss'` and can land in the same second. Adding `fff` (ms) and the process ID makes collisions effectively impossible in practice. Sub-agents under the SAME orchestrator process share `{PID}` but have different `{TS}` ms; sub-agents under DIFFERENT orchestrator processes (the typical AI-session-vs-AI-session case) have different `{PID}`. Either axis alone is sufficient; using both is belt-and-braces.
 
 ---
 
@@ -144,7 +147,69 @@ If `MODE = auto`, emit a single line warning before Step 2:
 
 ---
 
+## Step 1.5 — Claim the session (parallel-safety) — REQUIRED
+
+Before doing ANY work against the resolved `{SESSION_PATH}`, claim the
+session via the shared owner-lock helper. This prevents two parallel
+probe runs from accidentally landing on the same session and corrupting
+each other's state. The lock is advisory but it surfaces accidents loud
+and early rather than silently after destruction.
+
+```bash
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_session_owner.ps1" -Action claim -SessionPath "{SESSION_PATH}" -OwnerSkill "sap-gui-probe" -OwnerRunId "%SAPDEV_RUN_ID%" -WorkTemp "{WORK_TEMP}"
+```
+
+Read the last line of stdout:
+- `CLAIMED` → proceed.
+- `DENIED: held by <skill> pid=<pid> age=<sec>` → another agent has the
+  session locked. Abort cleanly with `ABANDONED: session {SESSION_PATH} already claimed by <skill>`.
+  Do NOT proceed — the scaffolder dispatcher should have assigned a free
+  session and didn't; failing fast lets the operator see the misalignment.
+
+Best-effort release on EVERY exit path (success, failure, abandon):
+
+```bash
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_session_owner.ps1" -Action release -SessionPath "{SESSION_PATH}" -WorkTemp "{WORK_TEMP}"
+```
+
+The lock has a 10-minute TTL — a crashed probe doesn't permanently
+block its session.
+
+---
+
 ## Step 2 — The dump / decide / classify / confirm / act / dump loop
+
+### 2.0 — Stale-state guard (parallel-safety) — REQUIRED before step 01
+
+Before action 1, dump the current screen state and verify the session is
+at SAP Easy Access (transaction `SMEN`, screen `101` or `40`). When the
+scaffolder is running probes in parallel, a session may have been left
+mid-flow by a previous probe that crashed, or by an unrelated agent. If
+the session is NOT at Easy Access, send `/n` (reset to Easy Access),
+sleep 600 ms, dump again, and verify.
+
+```bash
+powershell -ExecutionPolicy Bypass -File "<SKILL_DIR>\references\sap_gui_probe_dump.ps1" -Mode wnd -Filter 0 -OutputFile "{RUN_FOLDER}\step_00_pre.txt" -SessionPath "{SESSION_PATH}"
+```
+
+Read the dump. Confirm:
+- `Transaction:` is empty or `SMEN`.
+- `Screen:` is `101` or `40`.
+- No popup window (`POPUP WINDOW wnd[1]` absent).
+
+If any check fails, send a reset action and re-dump:
+
+```bash
+echo {"verb":"SET_OKCD","value":"/n","session":"{SESSION_PATH}","note":"reset stale state"} > "{RUN_FOLDER}\step_00_reset.json"
+cmd /c C:\Windows\SysWOW64\cscript.exe //NoLogo "<SKILL_DIR>\references\sap_gui_probe_action.vbs" "{RUN_FOLDER}\step_00_reset.json"
+powershell -ExecutionPolicy Bypass -File "<SKILL_DIR>\references\sap_gui_probe_dump.ps1" -Mode wnd -Filter 0 -OutputFile "{RUN_FOLDER}\step_00_post.txt" -SessionPath "{SESSION_PATH}"
+```
+
+If the second dump STILL shows non-Easy-Access state, abort with
+`ABANDONED: session not reachable from stale state` rather than corrupting
+another probe's session by issuing destructive keystrokes (Shift+F3 can
+close a session entirely — that's how today's CUKY runner destroyed
+ses[3]).
 
 For each step until the scenario is complete or N > 30:
 

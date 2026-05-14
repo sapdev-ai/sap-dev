@@ -195,25 +195,44 @@ every existing session to SAP Easy Access:
 cmd /c C:\Windows\SysWOW64\cscript.exe //NoLogo "<SKILL_DIR>\references\ensure_sessions.vbs" "/app/con[0]" <required>
 ```
 
-Last line is `SESSIONS: <existing> -> <total>`. If `<total>` < `<required>`,
-SAP capped at its max — log a warning and proceed with the smaller batch
-size (subsequent batches reuse the same sessions).
+Stdout has two lines you must parse:
 
-**2.1 — Build task descriptors.** One per scenario:
+```
+SESSIONS: <existing> -> <total>
+PATHS: /app/con[0]/ses[0],/app/con[0]/ses[1],/app/con[0]/ses[3]
+```
+
+The `PATHS:` line is the **authoritative list of session paths**. Use it
+directly — never derive paths by assuming `ses[0..N-1]` contiguous. SAP
+allocates non-contiguous indices when sessions are destroyed and re-
+spawned (e.g. after Shift+F3 from initial screen). Assuming contiguity
+caused today's `ses[2] not found` failure when SAP had handed out
+`ses[0]/ses[1]/ses[3]`.
+
+If `<total>` < `<required>`, SAP capped at its max — log a warning and
+proceed with the smaller batch size. If the script `ERROR`s and quits
+non-zero (e.g. the spawn loop's loud-fail path triggered), abort the
+whole scaffold here — there's no clean way to continue with fewer
+sessions than scenarios.
+
+**2.1 — Build task descriptors from PATHS.** Parse the `PATHS:` line into
+an ordered list `availableSessions = ["/app/con[0]/ses[0]", "/app/con[0]/ses[1]", "/app/con[0]/ses[3]"]`.
+Then build one descriptor per scenario in this batch:
 
 ```
 descriptor_i = {
   scenario : "<scenario_i text>",
   mode     : "<derived mode label>",
-  session  : "/app/con[<idx>]/ses[i]",
+  session  : availableSessions[i],   // by ORDINAL POSITION, not by ses[i]
   index    : i
 }
 ```
 
-`i` starts at 0 and counts up. Don't reuse session 0 unless the user
-explicitly pinned it via Step 0.6 — keeping ses[0] free of probe activity
-makes manual inspection / debugging easier. If the pinned session is
-ses[0], use ses[0..N-1]; otherwise use ses[<pinned_idx>..<pinned_idx>+N-1].
+`i` is the scenario position within this batch (0..min(scenario_count, parallel_cap)-1).
+The `session` field is `availableSessions[i]` — the i-th *actually-existing*
+session, not `/app/con[0]/ses[<i>]`. The pinned session (Step 0.7) usually
+ends up at position 0; if you want to keep it free for manual inspection,
+shift descriptors to start at position 1 (and verify `len(availableSessions) >= scenario_count + 1`).
 
 **2.2 — Spawn N general-purpose Task sub-agents** in a single tool message.
 Each sub-agent's prompt is self-contained:
@@ -242,11 +261,12 @@ agent's last non-empty line:
 whole scaffold. Log end Status=FAILED ErrorClass=PROBE_FAILED
 ErrorMsg="<failed indices>". Successful probe folders remain on disk.
 
-**2.5 — Batching.** If `scenario_count > parallel_cap`, repeat 2.1–2.4 in
-batches of size `parallel_cap`. Sessions persist across batches; ses[i]
-is reused for scenario `cap+i`, etc. Between batches, run
-`ensure_sessions.vbs` again (no-op for session count, but it re-issues `/n`
-to clean up state from the previous batch).
+**2.5 — Batching.** If `scenario_count > parallel_cap`, repeat 2.0–2.4 in
+batches of size `parallel_cap`. Re-run `ensure_sessions.vbs` between
+batches AND re-parse its `PATHS:` line — session indices can change
+across batches if any sub-agent destroyed its session (today's CUKY
+failure mode). Always dispatch scenario `cap+i` to `availableSessions[i]`
+from the FRESH PATHS list, not the previous batch's list.
 
 **Concurrency notes:**
 - Each cscript process binds to exactly one session via the `session` field

@@ -65,7 +65,7 @@ Dim nHave : nHave = oConn.Children.Count
 Dim nNeed : nNeed = nRequired - nHave
 If nNeed < 0 Then nNeed = 0
 
-' Create the missing sessions. Two strategies, in order of preference:
+' Create the missing sessions. Three strategies, in order of preference:
 '
 '   A) oConn.CreateSession  -- the documented SAP GUI Scripting method.
 '      Available since SAP GUI 7.20. Some newer SAP GUI builds expose the
@@ -73,55 +73,96 @@ If nNeed < 0 Then nNeed = 0
 '      surface CreateSession at the COM level -- a call raises "object
 '      doesn't support this property or method".
 '
-'   B) OK-code "/o" on an existing session of this connection -- the SAP
-'      keyboard equivalent of "System > Create New Session". Universally
-'      available; works regardless of which COM interface the connection
-'      object happens to expose.
+'   B) OK-code "/o" (no transaction code) on an existing session of this
+'      connection -- the SAP keyboard equivalent of "System > Create New
+'      Session". Opens a fresh session at SAP Easy Access. Universally
+'      available across kernels.
 '
-' We try A first, fall back to B on error. Either way the resulting child
-' session is bound to the SAME GuiConnection -- same SID / client / user --
-' because both spawning paths are scoped to oConn.
-Dim i, anchor, useFallback
+'   C) OK-code "/oSESSION_MANAGER" -- last-ditch. Some 1909 builds ignore
+'      bare "/o" but accept "/oSMEN" / "/oSESSION_MANAGER" as a transaction
+'      launch.
+'
+' We try A first, fall back to B on error, and to C if B also no-ops.
+' Either way the resulting child session is bound to the SAME GuiConnection
+' (same SID / client / user) because every spawn is scoped to oConn.
+'
+' CRITICAL: each spawn attempt is followed by a poll of oConn.Children.Count
+' to confirm the count actually increased. Without this, /o silently
+' fails when the anchor session is mid-flow on a non-Easy-Access screen
+' (the OK-code field gets buried under whatever popup is up) and we
+' silently iterate without spawning anything. Today's symptom was
+' "SESSIONS: 2 -> 2" with no error -- that is what this loop fixes.
+Dim i, anchor, useFallback, beforeCount, afterCount, spawned
 useFallback = False
 
 For i = 1 To nNeed
-    Dim spawned : spawned = False
+    spawned = False
+    beforeCount = oConn.Children.Count
 
+    ' --- Strategy A: oConn.CreateSession ---------------------------------------
     If Not useFallback Then
         On Error Resume Next
         Err.Clear
         oConn.CreateSession
         If Err.Number <> 0 Then
-            ' CreateSession not supported on this build -- switch permanently
-            ' to the OK-code fallback for the rest of this loop.
-            WScript.Echo "WARNING: CreateSession not supported (" & Err.Description & "); falling back to /o OK-code."
+            WScript.Echo "WARNING: CreateSession not supported (" & Err.Description & "); falling back to OK-code."
             useFallback = True
             Err.Clear
-        Else
-            spawned = True
         End If
         On Error GoTo 0
+        WScript.Sleep 700
+        If oConn.Children.Count > beforeCount Then spawned = True
     End If
 
+    ' --- Strategy B: OK-code "/o" on the anchor, after parking it at Easy Access -
     If Not spawned Then
-        ' /oSESSION_MANAGER opens a NEW session running the SAP Easy Access
-        ' transaction (the same starting screen probe expects). /o alone
-        ' would open a Session List popup -- not what we want. Issue it on
-        ' an existing session of this connection; the new session belongs
-        ' to the same connection (same SID / client / user) by construction.
         On Error Resume Next
         Err.Clear
         Set anchor = oConn.Children(0)
+        ' Park the anchor at Easy Access first -- /o is a no-op (or worse,
+        ' a tooltip into a frozen field) when the anchor is on a popup or
+        ' edit screen. /n is the universal "abandon current screen and go
+        ' back to SAP Easy Access" OK-code.
+        anchor.findById("wnd[0]/tbar[0]/okcd").Text = "/n"
+        anchor.findById("wnd[0]").sendVKey 0
+        WScript.Sleep 400
+        anchor.findById("wnd[0]/tbar[0]/okcd").Text = "/o"
+        anchor.findById("wnd[0]").sendVKey 0
+        If Err.Number <> 0 Then
+            WScript.Echo "WARNING: /o OK-code failed at iteration " & i & ": " & Err.Description
+            Err.Clear
+        End If
+        On Error GoTo 0
+        WScript.Sleep 700
+        If oConn.Children.Count > beforeCount Then spawned = True
+    End If
+
+    ' --- Strategy C: OK-code "/oSESSION_MANAGER" (last resort) -----------------
+    If Not spawned Then
+        On Error Resume Next
+        Err.Clear
+        Set anchor = oConn.Children(0)
+        anchor.findById("wnd[0]/tbar[0]/okcd").Text = "/n"
+        anchor.findById("wnd[0]").sendVKey 0
+        WScript.Sleep 400
         anchor.findById("wnd[0]/tbar[0]/okcd").Text = "/oSESSION_MANAGER"
         anchor.findById("wnd[0]").sendVKey 0
         If Err.Number <> 0 Then
-            WScript.Echo "ERROR: /oSESSION_MANAGER OK-code fallback failed at iteration " & i & ": " & Err.Description
-            WScript.Quit 3
+            WScript.Echo "WARNING: /oSESSION_MANAGER OK-code failed at iteration " & i & ": " & Err.Description
+            Err.Clear
         End If
         On Error GoTo 0
+        WScript.Sleep 700
+        If oConn.Children.Count > beforeCount Then spawned = True
     End If
 
-    WScript.Sleep 700   ' give SAP GUI time to materialise the new window
+    ' --- Fail loud rather than silently iterate without spawning ---------------
+    If Not spawned Then
+        afterCount = oConn.Children.Count
+        WScript.Echo "ERROR: failed to spawn additional SAP GUI session at iteration " & i & _
+                     " (before=" & beforeCount & " after=" & afterCount & "); aborting."
+        WScript.Quit 3
+    End If
 Next
 
 ' Re-check actual count (SAP may have refused silently if at max).
@@ -141,5 +182,19 @@ Next
 
 WScript.Sleep 600   ' settle
 
+' Enumerate the actual session paths so the scaffolder can dispatch agents
+' to real indices rather than assuming /ses[0..N-1] contiguous. SAP can
+' allocate non-contiguous indices when sessions are destroyed and re-
+' spawned (e.g. after Shift+F3 from initial screen).
+Dim sPaths : sPaths = ""
+For Each oS In oConn.Children
+    If sPaths = "" Then
+        sPaths = oS.Id
+    Else
+        sPaths = sPaths & "," & oS.Id
+    End If
+Next
+
 WScript.Echo "SESSIONS: " & nHave & " -> " & nFinal
+WScript.Echo "PATHS: " & sPaths
 WScript.Quit 0
