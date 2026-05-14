@@ -300,12 +300,15 @@ WScript.Echo "INFO: Checking data element consistency..."
 oSession.findById("wnd[0]/tbar[1]/btn[26]").press
 WScript.Sleep 2000
 
-' Dismiss check result popup if any
+' Dismiss check result popup if any (any modal window level >= 1)
+Dim sChkWndId, nChkWndIdx
 On Error Resume Next
 For nPopupLoop = 1 To 10
     WScript.Sleep 500
-    If InStr(oSession.ActiveWindow.Id, "wnd[1]") > 0 Then
-        oSession.findById("wnd[1]").sendVKey VKEY_ENTER
+    sChkWndId = oSession.ActiveWindow.Id
+    If InStr(sChkWndId, "wnd[") > 0 And InStr(sChkWndId, "wnd[0]") = 0 Then
+        nChkWndIdx = Mid(sChkWndId, InStr(sChkWndId, "wnd[") + 4, 1)
+        oSession.findById("wnd[" & nChkWndIdx & "]").sendVKey VKEY_ENTER
         WScript.Sleep 500
         Err.Clear
     Else
@@ -332,12 +335,17 @@ WScript.Echo "INFO: Activating..."
 oSession.findById("wnd[0]/tbar[1]/btn[27]").press
 WScript.Sleep 2000
 
-' Dismiss all activation popups
+' Dismiss all activation popups (any modal window level >= 1)
+Dim sActiveWndId, nWndIdx
 On Error Resume Next
-For nPopupLoop = 1 To 10
+For nPopupLoop = 1 To 20
     WScript.Sleep 500
-    If InStr(oSession.ActiveWindow.Id, "wnd[1]") > 0 Then
-        oSession.findById("wnd[1]").sendVKey VKEY_ENTER
+    sActiveWndId = oSession.ActiveWindow.Id
+    If InStr(sActiveWndId, "wnd[") > 0 And InStr(sActiveWndId, "wnd[0]") = 0 Then
+        ' Extract window index and send Enter to dismiss
+        nWndIdx = Mid(sActiveWndId, InStr(sActiveWndId, "wnd[") + 4, 1)
+        WScript.Echo "INFO: Dismissing activation popup wnd[" & nWndIdx & "]..."
+        oSession.findById("wnd[" & nWndIdx & "]").sendVKey VKEY_ENTER
         WScript.Sleep 500
         Err.Clear
     Else
@@ -359,7 +367,8 @@ sFinalType = oSession.findById("wnd[0]/sbar").MessageType
 On Error GoTo 0
 
 If sFinalType = "E" Then
-    WScript.Echo "WARNING: Activation may have errors - " & sFinalMsg
+    WScript.Echo "ERROR: Activation failed - " & sFinalMsg
+    WScript.Quit 1
 Else
     WScript.Echo "INFO: SAP status: " & sFinalMsg
 End If
