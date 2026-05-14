@@ -110,6 +110,13 @@ $content  = $content.Replace('%%SPOOL_NUM_COL%%', 'THE_SPOOL_NUM_COL')  # empty 
 $content  = $content.Replace('%%FORMAT_INDEX%%',  'THE_FORMAT_INDEX')   # empty for default 0
 $content  = $content.Replace('%%OUTPUT_DIR%%',    'THE_OUTPUT_DIR')     # MUST end with '\'
 $content  = $content.Replace('%%OUTPUT_FILE%%',   'THE_OUTPUT_FILE')
+# Tier 3 session-attach plumbing. SESSION_PATH is empty by default; pass an
+# explicit /app/con[0]/ses[N] via `--session` when targeting a specific
+# session in a parallel context. AttachSapSession honours the empty case
+# with the legacy first-session-of-first-connection default.
+$sessionPath = ''  # set to the parsed --session value if supplied
+$content  = $content.Replace('%%SESSION_PATH%%',     $sessionPath)
+$content  = $content.Replace('%%ATTACH_LIB_VBS%%',   '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs')
 Set-Content '{WORK_TEMP}\sap_sp02_download_run.vbs' $content -Encoding Unicode
 Write-Host 'Done'
 ```

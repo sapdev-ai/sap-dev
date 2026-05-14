@@ -155,6 +155,14 @@ $content = Get-Content '<SKILL_DIR>\references\sap_se16n.vbs' -Raw
 $content = $content -replace '%%TABLE_NAME%%','THE_TABLE'
 $content = $content -replace '%%PARAMS_FILE%%','{WORK_TEMP}\se16n_params.txt'
 $content = $content -replace '%%OUTPUT_FILE%%','{WORK_TEMP}\se16n_THE_TABLE.txt'
+# Tier 3 session-attach plumbing. SESSION_PATH is empty by default; pass an
+# explicit /app/con[0]/ses[N] via the `--session` argument (parsed earlier)
+# when the caller wants to target a specific session in a parallel context.
+# The shared attach helper (AttachSapSession) honours the empty case by
+# falling through to the legacy first-session-of-first-connection default.
+$sessionPath = ''   # set to the parsed --session value if supplied
+$content = $content -replace '%%SESSION_PATH%%', $sessionPath
+$content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
 Set-Content '{WORK_TEMP}\sap_se16n_run.vbs' $content -Encoding Unicode
 Write-Host 'Done'
 ```

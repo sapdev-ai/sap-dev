@@ -113,6 +113,10 @@ $content  = $content.Replace('%%OBJECT_TYPE%%',     'THE_OBJECT_TYPE')   # empty
 $content  = $content.Replace('%%OBJECT_NAME%%',     'THE_OBJECT_NAME')
 $content  = $content.Replace('%%TO_SPOOL%%',        'THE_TO_SPOOL')      # 'X' or empty
 $content  = $content.Replace('%%SESSION_LOCK_VBS%%', '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_session_lock.vbs')
+# Tier 3 session-attach plumbing. SESSION_PATH empty -> legacy default.
+$sessionPath = ''  # set to the parsed --session value if supplied
+$content  = $content.Replace('%%SESSION_PATH%%',     $sessionPath)
+$content  = $content.Replace('%%ATTACH_LIB_VBS%%',   '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs')
 Set-Content '{WORK_TEMP}\sap_where_used_list_run.vbs' $content -Encoding Unicode
 Write-Host 'Done'
 ```

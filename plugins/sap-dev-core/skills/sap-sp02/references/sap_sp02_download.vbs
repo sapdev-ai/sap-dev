@@ -52,6 +52,12 @@ Const SPOOL_NUM_COL = "%%SPOOL_NUM_COL%%"
 Const FORMAT_INDEX  = "%%FORMAT_INDEX%%"
 Const OUTPUT_DIR    = "%%OUTPUT_DIR%%"
 Const OUTPUT_FILE   = "%%OUTPUT_FILE%%"
+Const SESSION_PATH  = "%%SESSION_PATH%%"   ' empty / unsubstituted = use default
+
+' Include shared attach helper (AttachSapSession with explicit-hint /
+' env-var / legacy-default resolution). Handles error paths internally.
+ExecuteGlobal CreateObject("Scripting.FileSystemObject") _
+    .OpenTextFile("%%ATTACH_LIB_VBS%%", 1).ReadAll()
 
 Const VKEY_ENTER     = 0
 Const VKEY_F2        = 2
@@ -76,35 +82,9 @@ If rowIdx < 0 And Trim(SPOOL_NUMBER) = "" Then
     WScript.Quit 1
 End If
 
-' --- Attach to existing SAP GUI session ------------------------------------
-Dim oSAPGUI, oApp, oSess, c, s
-
-On Error Resume Next
-Set oSAPGUI = GetObject("SAPGUI")
-If Err.Number <> 0 Or oSAPGUI Is Nothing Then
-    WScript.Echo "ERROR: SAP GUI is not running."
-    WScript.Quit 1
-End If
-Err.Clear
-On Error GoTo 0
-
-Set oApp = oSAPGUI.GetScriptingEngine
-Set oSess = Nothing
-On Error Resume Next
-For Each c In oApp.Children
-    For Each s In c.Children
-        Set oSess = s
-        Exit For
-    Next
-    If Not (oSess Is Nothing) Then Exit For
-Next
-On Error GoTo 0
-
-If oSess Is Nothing Then
-    WScript.Echo "ERROR: No SAP GUI session found. Run /sap-login first."
-    WScript.Quit 1
-End If
-WScript.Echo "INFO: Session acquired."
+' --- Attach to existing SAP GUI session (via shared attach helper) ---------
+Dim oSess
+Set oSess = AttachSapSession(SESSION_PATH)
 
 ' --- 1. Navigate to SP02 ---------------------------------------------------
 WScript.Echo "INFO: Navigating to SP02..."

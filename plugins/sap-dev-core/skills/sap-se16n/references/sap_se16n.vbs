@@ -53,6 +53,7 @@ Option Explicit
 Const TABLE_NAME  = "%%TABLE_NAME%%"
 Const PARAMS_FILE = "%%PARAMS_FILE%%"
 Const OUTPUT_FILE = "%%OUTPUT_FILE%%"
+Const SESSION_PATH = "%%SESSION_PATH%%"   ' empty / unsubstituted = use default
 
 Const VKEY_ENTER  = 0
 Const VKEY_F4     = 4
@@ -66,7 +67,14 @@ Const COL_BTNPUSH = 4
 Const COL_MARK    = 5
 Const COL_FIELD   = 6
 
-Dim oSAPGUI, oApplication, oSession, oCandidate, oSessIter
+' Include shared attach helper. Provides AttachSapSession(sHint) which
+' resolves the target session by explicit hint -> SAPDEV_SESSION_PATH
+' env var -> first-session-of-first-connection legacy default. Handles
+' all error paths internally (WScript.Echo + Quit).
+ExecuteGlobal CreateObject("Scripting.FileSystemObject") _
+    .OpenTextFile("%%ATTACH_LIB_VBS%%", 1).ReadAll()
+
+Dim oSession
 Dim oFSO, oTS, sLine
 Dim sMode, i, j
 
@@ -78,39 +86,9 @@ Dim nSelect : nSelect = 0
 Dim aFilterValueCount() : ReDim aFilterValueCount(100)
 
 ' ----------------------------------------------------------------------------
-' 1. Attach to SAP GUI session
+' 1. Attach to SAP GUI session (via shared attach helper)
 ' ----------------------------------------------------------------------------
-On Error Resume Next
-Set oSAPGUI = GetObject("SAPGUI")
-If Err.Number <> 0 Or oSAPGUI Is Nothing Then
-    WScript.Echo "ERROR: SAP GUI is not running."
-    WScript.Quit 1
-End If
-Err.Clear
-On Error GoTo 0
-
-Set oApplication = oSAPGUI.GetScriptingEngine
-If oApplication Is Nothing Then
-    WScript.Echo "ERROR: Could not get SAP Scripting Engine."
-    WScript.Quit 1
-End If
-
-Set oSession = Nothing
-On Error Resume Next
-For Each oCandidate In oApplication.Children
-    For Each oSessIter In oCandidate.Children
-        Set oSession = oSessIter
-        Exit For
-    Next
-    If Not (oSession Is Nothing) Then Exit For
-Next
-On Error GoTo 0
-
-If oSession Is Nothing Then
-    WScript.Echo "ERROR: No SAP GUI session found. Run the login step first."
-    WScript.Quit 1
-End If
-WScript.Echo "INFO: Session acquired."
+Set oSession = AttachSapSession(SESSION_PATH)
 
 ' ----------------------------------------------------------------------------
 ' 2. Read PARAMS_FILE

@@ -31,8 +31,13 @@ Option Explicit
 Const MAX_WND     = 5
 Const IMG_FORMAT  = 0   ' 0 = unspecified (BMP, broadest compat across releases)
 
-Dim OUTPUT_DIR : OUTPUT_DIR = "%%OUTPUT_DIR%%"
-Dim MANIFEST   : MANIFEST   = "%%MANIFEST%%"
+Dim OUTPUT_DIR   : OUTPUT_DIR   = "%%OUTPUT_DIR%%"
+Dim MANIFEST     : MANIFEST     = "%%MANIFEST%%"
+Dim SESSION_PATH : SESSION_PATH = "%%SESSION_PATH%%"   ' empty = use default
+
+' Include shared attach helper.
+ExecuteGlobal CreateObject("Scripting.FileSystemObject") _
+    .OpenTextFile("%%ATTACH_LIB_VBS%%", 1).ReadAll()
 
 If Trim(OUTPUT_DIR) = "" Or Trim(MANIFEST) = "" Then
     WScript.Echo "ERROR: OUTPUT_DIR or MANIFEST token not filled in."
@@ -51,40 +56,9 @@ If Not oFSO.FolderExists(OUTPUT_DIR) Then
     On Error GoTo 0
 End If
 
-' --- Attach to SAP GUI -------------------------------------------------------
-Dim oSAPGUI, oApplication, oSession
-Dim oCandidate, oSessIter
-
-On Error Resume Next
-Set oSAPGUI = GetObject("SAPGUI")
-If Err.Number <> 0 Or oSAPGUI Is Nothing Then
-    WScript.Echo "ERROR: SAP GUI is not running."
-    WScript.Quit 1
-End If
-Err.Clear
-On Error GoTo 0
-
-Set oApplication = oSAPGUI.GetScriptingEngine
-If oApplication Is Nothing Then
-    WScript.Echo "ERROR: Could not get SAP Scripting Engine."
-    WScript.Quit 1
-End If
-
-Set oSession = Nothing
-On Error Resume Next
-For Each oCandidate In oApplication.Children
-    For Each oSessIter In oCandidate.Children
-        Set oSession = oSessIter
-        Exit For
-    Next
-    If Not (oSession Is Nothing) Then Exit For
-Next
-On Error GoTo 0
-
-If oSession Is Nothing Then
-    WScript.Echo "ERROR: No SAP GUI session found. Run /sap-login first."
-    WScript.Quit 1
-End If
+' --- Attach to SAP GUI (via shared attach helper) ---------------------------
+Dim oSession
+Set oSession = AttachSapSession(SESSION_PATH)
 
 ' --- Open manifest as UTF-16 LE (consistent with other skills) ---------------
 Dim oManifest
