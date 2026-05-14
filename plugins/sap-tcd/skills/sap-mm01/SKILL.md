@@ -181,6 +181,11 @@ Write `{WORK_TEMP}\sap_mm01_check_run.ps1`:
 ```powershell
 $content = Get-Content '<SKILL_DIR>\references\sap_mm01_check.vbs' -Raw
 $content = $content -replace '%%MATERIAL%%','THE_MATERIAL'
+# Phase 3.5 session-attach plumbing.
+$sessionPath = ''
+$content = $content -replace '%%SESSION_PATH%%', $sessionPath
+$content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
+$env:SAPDEV_PIN_FILE = '{WORK_TEMP}\sap_active_session.json'
 Set-Content '{WORK_TEMP}\sap_mm01_check_run.vbs' $content -Encoding Unicode
 Write-Host 'Done'
 ```
@@ -215,6 +220,11 @@ Write `{WORK_TEMP}\sap_mm01_update_run.ps1`:
 $content = Get-Content '<SKILL_DIR>\references\sap_mm01_update.vbs' -Raw
 $content = $content -replace '%%MATERIAL%%','THE_MATERIAL'
 $content = $content -replace '%%DEFINITION_FILE%%','THE_DEFINITION_FILE'
+# Phase 3.5 session-attach plumbing.
+$sessionPath = ''
+$content = $content -replace '%%SESSION_PATH%%', $sessionPath
+$content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
+$env:SAPDEV_PIN_FILE = '{WORK_TEMP}\sap_active_session.json'
 Set-Content '{WORK_TEMP}\sap_mm01_update_run.vbs' $content -Encoding Unicode
 Write-Host 'Done'
 ```
@@ -253,6 +263,11 @@ $content = $content -replace '%%INDUSTRY%%','THE_INDUSTRY'
 $content = $content -replace '%%MATERIAL_TYPE%%','THE_MATERIAL_TYPE'
 $content = $content -replace '%%DEFINITION_FILE%%','THE_DEFINITION_FILE'
 $content = $content -replace '%%SESSION_LOCK_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_session_lock.vbs'
+# Phase 3.5 session-attach plumbing.
+$sessionPath = ''
+$content = $content -replace '%%SESSION_PATH%%', $sessionPath
+$content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
+$env:SAPDEV_PIN_FILE = '{WORK_TEMP}\sap_active_session.json'
 Set-Content '{WORK_TEMP}\sap_mm01_create_run.vbs' $content -Encoding Unicode
 Write-Host 'Done'
 ```

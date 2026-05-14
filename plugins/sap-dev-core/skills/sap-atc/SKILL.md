@@ -169,19 +169,13 @@ $env:SAPDEV_PIN_FILE = '{WORK_TEMP}\sap_active_session.json'
 [System.IO.File]::WriteAllText('{WORK_TEMP}\sap_atc_stage1_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 ```
 
-> **Stages 2-4 use the same I/O pattern.** Substitute the template name
-> (`sap_atc_create_run_series.vbs`, `sap_atc_check_run_status.vbs`,
-> `sap_atc_get_results.vbs`) and the corresponding output file name.
-> Always `[System.IO.File]::ReadAllText(..., UTF8)` +
+> **Stages 2-4 use the same I/O pattern.** Always
+> `[System.IO.File]::ReadAllText(..., UTF8)` +
 > `[System.IO.File]::WriteAllText(..., UnicodeEncoding)`. Never
 > `Get-Content -Raw` + `Set-Content -Encoding Unicode` for these files —
 > any localized string in the template will be silently corrupted.
->
-> **Also apply the Phase 3.5 session-attach plumbing block from Stage 1
-> verbatim** before the WriteAllText line: `$sessionPath = ''`, replace
-> `%%SESSION_PATH%%` with `$sessionPath`, replace `%%ATTACH_LIB_VBS%%`
-> with `$shared\scripts\sap_attach_lib.vbs`, and set
-> `$env:SAPDEV_PIN_FILE = '{WORK_TEMP}\sap_active_session.json'`.
+> Explicit generator blocks for each stage are spelled out below
+> (Steps 4, 5, 6) so each stage is self-contained.
 
 Run via cscript. Expected last line:
 `SUCCESS: Object set <NAME> created/updated with <TYPE> <NAME>.`
@@ -198,8 +192,22 @@ re-record via `/sap-gui-record`.
 Fill `sap_atc_create_run_series.vbs`. Tokens: `%%RUN_SERIES_NAME%%`,
 `%%OBJECT_SET_NAME%%`, `%%SESSION_LOCK_VBS%%`.
 
-Same generator pattern; output `{WORK_TEMP}\sap_atc_stage2_run.vbs`,
-run via cscript. Expected last line:
+```powershell
+$skillDir = '<SKILL_DIR>'
+$shared   = '<SAP_DEV_CORE_SHARED_DIR>'
+$content  = [System.IO.File]::ReadAllText("$skillDir\references\sap_atc_create_run_series.vbs", [System.Text.Encoding]::UTF8)
+$content  = $content.Replace('%%RUN_SERIES_NAME%%', 'THE_RUN_SERIES')
+$content  = $content.Replace('%%OBJECT_SET_NAME%%', 'THE_OBJECT_SET')
+$content  = $content.Replace('%%SESSION_LOCK_VBS%%', "$shared\scripts\sap_session_lock.vbs")
+# Phase 3.5 session-attach plumbing.
+$sessionPath = ''
+$content  = $content.Replace('%%SESSION_PATH%%',   $sessionPath)
+$content  = $content.Replace('%%ATTACH_LIB_VBS%%', "$shared\scripts\sap_attach_lib.vbs")
+$env:SAPDEV_PIN_FILE = '{WORK_TEMP}\sap_active_session.json'
+[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_atc_stage2_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
+```
+
+Run via cscript. Expected last line:
 `SUCCESS: Run series <NAME> scheduled (object set <SET>).`
 
 After this point the ATC run is **async** — SAP queues the work and
@@ -209,12 +217,26 @@ executes it in the background. Stage 3 polls.
 
 ## Step 5 — Stage 3: Poll Run Status
 
-Loop:
+Generate the Stage 3 VBS once (it's reused inside the poll loop):
 
-1. Generate `{WORK_TEMP}\sap_atc_stage3_run.vbs` from
-   `sap_atc_check_run_status.vbs` with token `%%RUN_SERIES_NAME%%`.
-2. Run it via cscript.
-3. Parse the last line:
+```powershell
+$skillDir = '<SKILL_DIR>'
+$shared   = '<SAP_DEV_CORE_SHARED_DIR>'
+$content  = [System.IO.File]::ReadAllText("$skillDir\references\sap_atc_check_run_status.vbs", [System.Text.Encoding]::UTF8)
+$content  = $content.Replace('%%RUN_SERIES_NAME%%', 'THE_RUN_SERIES')
+$content  = $content.Replace('%%SESSION_LOCK_VBS%%', "$shared\scripts\sap_session_lock.vbs")
+# Phase 3.5 session-attach plumbing.
+$sessionPath = ''
+$content  = $content.Replace('%%SESSION_PATH%%',   $sessionPath)
+$content  = $content.Replace('%%ATTACH_LIB_VBS%%', "$shared\scripts\sap_attach_lib.vbs")
+$env:SAPDEV_PIN_FILE = '{WORK_TEMP}\sap_active_session.json'
+[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_atc_stage3_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
+```
+
+Then loop:
+
+1. Run `{WORK_TEMP}\sap_atc_stage3_run.vbs` via cscript.
+2. Parse the last line:
    - `STATE=COMPLETED` → break, proceed to Stage 4.
    - `STATE=RUNNING` → wait `--poll-interval` seconds, retry.
    - `STATE=FAILED` → abort with `ERROR: ATC run <NAME> failed`.
@@ -251,7 +273,24 @@ Suppress and only show on state-change or timeout.
 ## Step 6 — Stage 4: Read Results + Apply Gate
 
 Fill `sap_atc_get_results.vbs`. Tokens: `%%RUN_SERIES_NAME%%`,
-`%%OUTPUT_PATH%%`, `%%SESSION_LOCK_VBS%%`. Run via cscript.
+`%%OUTPUT_PATH%%`, `%%SESSION_LOCK_VBS%%`.
+
+```powershell
+$skillDir = '<SKILL_DIR>'
+$shared   = '<SAP_DEV_CORE_SHARED_DIR>'
+$content  = [System.IO.File]::ReadAllText("$skillDir\references\sap_atc_get_results.vbs", [System.Text.Encoding]::UTF8)
+$content  = $content.Replace('%%RUN_SERIES_NAME%%', 'THE_RUN_SERIES')
+$content  = $content.Replace('%%OUTPUT_PATH%%',    'THE_OUTPUT_PATH')
+$content  = $content.Replace('%%SESSION_LOCK_VBS%%', "$shared\scripts\sap_session_lock.vbs")
+# Phase 3.5 session-attach plumbing.
+$sessionPath = ''
+$content  = $content.Replace('%%SESSION_PATH%%',   $sessionPath)
+$content  = $content.Replace('%%ATTACH_LIB_VBS%%', "$shared\scripts\sap_attach_lib.vbs")
+$env:SAPDEV_PIN_FILE = '{WORK_TEMP}\sap_active_session.json'
+[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_atc_stage4_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
+```
+
+Run `{WORK_TEMP}\sap_atc_stage4_run.vbs` via cscript.
 
 Parse the output for these lines:
 

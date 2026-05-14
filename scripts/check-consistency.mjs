@@ -95,8 +95,149 @@ if (mp.metadata.total_skills !== totalSkills) {
   warn(`metadata.total_skills (${mp.metadata.total_skills}) != sum across plugins (${totalSkills})`);
 }
 
+// ---------------------------------------------------------------------------
+// Tier 3 contract checks (added 2026-05-14 after the multi-connection migration):
+//
+// Every operational SAP-driving .vbs under plugins/<plugin>/skills/<skill>/references/
+// MUST attach to its target session via the shared helper:
+//
+//   Const SESSION_PATH = "%%SESSION_PATH%%"
+//   ExecuteGlobal CreateObject("Scripting.FileSystemObject") _
+//       .OpenTextFile("%%ATTACH_LIB_VBS%%", 1).ReadAll()
+//   Set oSession = AttachSapSession(SESSION_PATH)
+//
+// The legacy `For Each oCandidate In oApp.Children / For Each oSessIter In ...`
+// idiom silently grabs the first session of the first connection, which
+// causes parallel skills to trample each other and multi-connection users
+// to silently miss-target the wrong SAP system. Catch regressions at CI time.
+//
+// Exempt by design (these don't fit the helper's contract):
+//   sap_login.vbs                       — bootstrap; runs before SAPGUI exists
+//   sap_check_gui_login_status.vbs      — pre-flight probe
+//   sap_gui_object_details.vbs          — own findById(SESSION_PATH) per Phase-1 fix
+//   sap_gui_probe_action.vbs            — own action.json "session" field resolution
+//   sap_login_capture_active_session.vbs — captures the just-logged-in session
+//   sap_gui_security_warmup.vbs         — one-shot SAP-GUI-Security warmup; bootstrap
+//   sap_attach_lib.vbs                  — the helper itself
+//
+// For SKILL.md PowerShell wrappers, every generator block that writes a
+// runtime VBS via `Set-Content ... _run.vbs` should substitute %%ATTACH_LIB_VBS%%
+// — but ONLY when the referenced template actually contains the token (i.e.
+// it's a SAP-driving VBS that needs the helper). Non-SAP-driving VBS like
+// sap-gen-code's `sap_check_abap.vbs` / `sap_check_fm.vbs` are static-analysis
+// tools and don't need the helper.
+// ---------------------------------------------------------------------------
+
+const TIER3_EXEMPT_VBS = new Set([
+  'sap_login.vbs',
+  'sap_check_gui_login_status.vbs',
+  'sap_gui_object_details.vbs',
+  'sap_gui_probe_action.vbs',
+  'sap_login_capture_active_session.vbs',
+  'sap_gui_security_warmup.vbs',
+  'sap_attach_lib.vbs',
+]);
+
+const LEGACY_ATTACH_PATTERNS = [
+  /For\s+Each\s+oCandidate\s+In\s+oApp/i,
+  /For\s+Each\s+oCandidate\s+In\s+oApplication/i,
+  /For\s+Each\s+c\s+In\s+oApp\.Children/i,
+  /For\s+Each\s+oC\s+In\s+oApp\.Children/i,
+  /For\s+Each\s+oCand\s+In\s+oApp\.Children/i,
+];
+
+function listVbsTemplates(skillsDir) {
+  const out = [];
+  if (!existsSync(skillsDir)) return out;
+  for (const skillEntry of readdirSync(skillsDir)) {
+    const refDir = join(skillsDir, skillEntry, 'references');
+    if (!existsSync(refDir)) continue;
+    if (!statSync(refDir).isDirectory()) continue;
+    for (const fname of readdirSync(refDir)) {
+      if (!fname.endsWith('.vbs')) continue;
+      out.push({ skill: skillEntry, file: fname, abs: join(refDir, fname) });
+    }
+  }
+  return out;
+}
+
+for (const plugin of mp.plugins) {
+  const sourceRel = plugin.source.replace(/^\.\//, '').replace(/\/$/, '');
+  const sourceAbs = join(repoRoot, sourceRel);
+  const skillsDir = join(sourceAbs, 'skills');
+  const vbsFiles  = listVbsTemplates(skillsDir);
+
+  for (const { skill, file, abs } of vbsFiles) {
+    if (TIER3_EXEMPT_VBS.has(file)) continue;
+    const body = readFileSync(abs, 'utf8');
+
+    // 1. Legacy For-Each idiom must not appear.
+    for (const re of LEGACY_ATTACH_PATTERNS) {
+      if (re.test(body)) {
+        warn(`${plugin.name}: ${skill}/${file} contains legacy attach idiom (${re.source}); migrate to AttachSapSession(SESSION_PATH) per shared/rules/sap_session_broker.md`);
+        break;
+      }
+    }
+
+    // 2. If SESSION_PATH is declared, ATTACH_LIB_VBS must also be included.
+    const hasSessionPathConst = /Const\s+SESSION_PATH\s*=\s*"%%SESSION_PATH%%"/i.test(body);
+    const hasAttachLibInclude = body.includes('%%ATTACH_LIB_VBS%%');
+    if (hasSessionPathConst && !hasAttachLibInclude) {
+      warn(`${plugin.name}: ${skill}/${file} declares Const SESSION_PATH but does not include %%ATTACH_LIB_VBS%%; AttachSapSession() will be undefined at runtime`);
+    }
+
+    // 3. If neither token is present, the file is unmigrated. Require migration.
+    const looksOperational = /GetObject\("SAPGUI"\)/i.test(body) || /GetScriptingEngine/i.test(body);
+    if (looksOperational && !hasSessionPathConst && !hasAttachLibInclude) {
+      warn(`${plugin.name}: ${skill}/${file} drives SAP GUI but uses neither Const SESSION_PATH nor %%ATTACH_LIB_VBS%%; migrate per shared/rules/sap_session_broker.md (or add to TIER3_EXEMPT_VBS if intentionally bootstrap-only)`);
+    }
+
+    // 4. AttachSapSession must actually be called when the helper is included.
+    if (hasAttachLibInclude && !/AttachSapSession\s*\(/.test(body)) {
+      warn(`${plugin.name}: ${skill}/${file} includes %%ATTACH_LIB_VBS%% but never calls AttachSapSession(...); include is dead code`);
+    }
+  }
+
+  // SKILL.md cross-check: if a SKILL.md wraps any VBS whose source contains
+  // %%ATTACH_LIB_VBS%%, the SKILL.md MUST substitute that token. Only checks
+  // SKILL.md files that wrap at least one SAP-driving template (i.e. one
+  // whose source needs the helper) — exempt files and non-SAP-driving VBS
+  // (sap-gen-code's static-analysis VBS, for example) are correctly skipped.
+  if (existsSync(skillsDir)) {
+    for (const skillEntry of readdirSync(skillsDir)) {
+      const skillMdPath = join(skillsDir, skillEntry, 'SKILL.md');
+      if (!existsSync(skillMdPath)) continue;
+      const md = readFileSync(skillMdPath, 'utf8');
+
+      // Which template VBS does this SKILL.md reference? Match both
+      // forward-slash and backslash path separators.
+      const referenced = [...md.matchAll(/references[\\/]([a-zA-Z0-9_]+\.vbs)/g)].map(m => m[1]);
+      if (referenced.length === 0) continue;
+
+      // For each referenced template, check whether its source needs ATTACH_LIB.
+      const refDir = join(skillsDir, skillEntry, 'references');
+      let anyNeedsAttach = false;
+      for (const t of new Set(referenced)) {
+        if (TIER3_EXEMPT_VBS.has(t)) continue;
+        const tplPath = join(refDir, t);
+        if (!existsSync(tplPath)) continue;
+        const tplBody = readFileSync(tplPath, 'utf8');
+        if (tplBody.includes('%%ATTACH_LIB_VBS%%')) {
+          anyNeedsAttach = true;
+          break;
+        }
+      }
+      if (!anyNeedsAttach) continue;
+
+      if (!md.includes('%%ATTACH_LIB_VBS%%')) {
+        warn(`${plugin.name}: skills/${skillEntry}/SKILL.md wraps a SAP-driving template that needs %%ATTACH_LIB_VBS%% substitution, but the SKILL.md never substitutes it; the runtime VBS will fail to attach`);
+      }
+    }
+  }
+}
+
 if (errors.length === 0) {
-  console.log(`OK: ${mp.plugins.length} plugins, ${totalSkills} skills, all manifests aligned at version ${mp.version}`);
+  console.log(`OK: ${mp.plugins.length} plugins, ${totalSkills} skills, all manifests aligned at version ${mp.version}, Tier 3 attach contract clean`);
   process.exit(0);
 } else {
   console.error(`FAIL: ${errors.length} consistency issue(s):`);

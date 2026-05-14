@@ -173,6 +173,11 @@ Write `{WORK_TEMP}\sap_va01_check_run.ps1`:
 ```powershell
 $content = Get-Content '<SKILL_DIR>\references\sap_va01_check.vbs' -Raw
 $content = $content -replace '%%ORDER_NUMBER%%','THE_ORDER_NUMBER'
+# Phase 3.5 session-attach plumbing.
+$sessionPath = ''
+$content = $content -replace '%%SESSION_PATH%%', $sessionPath
+$content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
+$env:SAPDEV_PIN_FILE = '{WORK_TEMP}\sap_active_session.json'
 Set-Content '{WORK_TEMP}\sap_va01_check_run.vbs' $content -Encoding Unicode
 Write-Host 'Done'
 ```
@@ -207,6 +212,11 @@ Write `{WORK_TEMP}\sap_va01_update_run.ps1`:
 $content = Get-Content '<SKILL_DIR>\references\sap_va01_update.vbs' -Raw
 $content = $content -replace '%%ORDER_NUMBER%%','THE_ORDER_NUMBER'
 $content = $content -replace '%%DEFINITION_FILE%%','THE_DEFINITION_FILE'
+# Phase 3.5 session-attach plumbing.
+$sessionPath = ''
+$content = $content -replace '%%SESSION_PATH%%', $sessionPath
+$content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
+$env:SAPDEV_PIN_FILE = '{WORK_TEMP}\sap_active_session.json'
 Set-Content '{WORK_TEMP}\sap_va01_update_run.vbs' $content -Encoding Unicode
 Write-Host 'Done'
 ```
@@ -245,6 +255,11 @@ $content = $content -replace '%%DIST_CHANNEL%%','THE_DIST_CHANNEL'
 $content = $content -replace '%%DIVISION%%','THE_DIVISION'
 $content = $content -replace '%%DEFINITION_FILE%%','THE_DEFINITION_FILE'
 $content = $content -replace '%%SESSION_LOCK_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_session_lock.vbs'
+# Phase 3.5 session-attach plumbing.
+$sessionPath = ''
+$content = $content -replace '%%SESSION_PATH%%', $sessionPath
+$content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
+$env:SAPDEV_PIN_FILE = '{WORK_TEMP}\sap_active_session.json'
 Set-Content '{WORK_TEMP}\sap_va01_create_run.vbs' $content -Encoding Unicode
 Write-Host 'Done'
 ```
