@@ -22,6 +22,7 @@ Task: $ARGUMENTS
 
 | File | Token | Purpose |
 |---|---|---|
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/skill_operating_rules.md` | *(rule)* | Mandatory operating rules |
 | `sap-dev-core/shared/tables/sap_object_naming_rules.tsv` | *(read by helper)* | DDIC naming patterns (DDIC_DOMAIN / DDIC_DATAELEMENT / DDIC_TABLE). Custom override: `{custom_url}\sap_object_naming_rules.tsv` |
 | `sap-dev-core/shared/scripts/sap_check_object_name.ps1` | *(helper)* | Shared name validator invoked in Steps 2a / 3a / 4a |
 

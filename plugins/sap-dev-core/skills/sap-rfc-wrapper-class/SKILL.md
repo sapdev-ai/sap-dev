@@ -24,6 +24,7 @@ Task: $ARGUMENTS
 
 | File | Purpose |
 |---|---|
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/skill_operating_rules.md` | Mandatory operating rules |
 | `<SKILL_DIR>/references/sap_rfc_read_class_method.ps1` | Reads class method interface from SEOPARAM/SEOEXCEP |
 
 ---

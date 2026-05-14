@@ -89,6 +89,7 @@ If the list is empty, tell the user "No fixable issues found in result file." an
 
 | File | Token | Purpose |
 |---|---|---|
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/skill_operating_rules.md` | *(rule)* | Mandatory operating rules |
 | `sap-dev-core/settings.json` | *(config)* | SAP connection parameters |
 
 ---

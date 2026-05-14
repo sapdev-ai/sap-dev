@@ -31,6 +31,7 @@ Task: $ARGUMENTS
 
 | File | Token | Purpose |
 |---|---|---|
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/skill_operating_rules.md` | *(rule)* | Mandatory operating rules |
 | `<SKILL_DIR>/references/sap_where_used_list.vbs` | many | Multi-txn router + scope popup + optional Print-to-spool branch |
 
 ---

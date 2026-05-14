@@ -39,6 +39,7 @@ Task: $ARGUMENTS
 
 | File | Purpose |
 |---|---|
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/skill_operating_rules.md` | Mandatory operating rules |
 | `<SAP_DEV_CORE_SHARED_DIR>/templates/spec_layout_schema.md` | Canonical schema for the `(Meta) Layout` sheet. Read this before generating or editing meta rows. |
 | `<SAP_DEV_CORE_SHARED_DIR>/templates/spec_template.xlsx` | Canonical reference template. Default target when no workbook path is provided. `bootstrap` copies its `(Meta) Layout` sheet into other workbooks. |
 | `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_log_helper.ps1` | Structured logging. |

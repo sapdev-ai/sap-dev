@@ -26,6 +26,14 @@ Task: $ARGUMENTS
 
 ---
 
+## Shared Resources
+
+| File | Purpose |
+|---|---|
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/skill_operating_rules.md` | Mandatory operating rules |
+
+---
+
 ## Operation × transport matrix
 
 | Operation | RFC path | GUI path | Fallback chain (when `sap_dev_mode` unset) |

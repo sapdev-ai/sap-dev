@@ -31,6 +31,7 @@ Task: $ARGUMENTS
 
 | File | Token | Purpose |
 |---|---|---|
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/skill_operating_rules.md` | *(rule)* | Mandatory operating rules |
 | `<SKILL_DIR>/references/sap_gui_diagnose_capture.vbs` | `%%OUTPUT_DIR%%`, `%%MANIFEST%%` | HardCopy each window's BMP + emit TSV manifest |
 | `<SKILL_DIR>/references/sap_gui_diagnose_compose.ps1` | `%%MANIFEST%%`, `%%COMPOSITE_PNG%%`, `%%TOPMOST_PNG%%` | Stack BMPs in screen-space order to produce composite PNG + topmost PNG |
 

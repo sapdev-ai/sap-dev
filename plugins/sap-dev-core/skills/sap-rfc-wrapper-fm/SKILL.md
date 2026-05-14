@@ -24,6 +24,7 @@ Task: $ARGUMENTS
 
 | File | Token | Purpose |
 |---|---|---|
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/skill_operating_rules.md` | *(rule)* | Mandatory operating rules |
 | `<SKILL_DIR>/references/sap_rfc_read_fm_params.ps1` | — | Reads FM interface via RPY_FUNCTIONMODULE_READ_NEW |
 | `<SKILL_DIR>/references/sap_rfc_wrapper_fm.ps1` | — | Calls Z_GENERIC_RFC_WRAPPER_TBL with params file |
 

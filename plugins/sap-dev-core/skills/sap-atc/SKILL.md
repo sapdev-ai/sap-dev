@@ -66,6 +66,7 @@ Final PASS / FAIL emitted with the findings.tsv path when available.
 
 | File | Stage | Purpose |
 |---|---|---|
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/skill_operating_rules.md` | — | Mandatory operating rules |
 | `<SKILL_DIR>/references/sap_sci_create_object_set.vbs` | 1 | Define the scope — programs / classes / FMs / interfaces / FUGRs |
 | `<SKILL_DIR>/references/sap_atc_create_run_series.vbs` | 2 | Schedule + trigger the ATC run |
 | `<SKILL_DIR>/references/sap_atc_check_run_status.vbs` | 3 | Read run state from the Monitor (read-only; safe to call in a poll loop) |

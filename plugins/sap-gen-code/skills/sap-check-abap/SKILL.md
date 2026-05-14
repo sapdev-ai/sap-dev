@@ -113,6 +113,7 @@ Exit code `0` = OK (no row written). Exit code `2` = UNKNOWN_TYPE / RULES_NOT_FO
 
 | File | Token | Purpose |
 |---|---|---|
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/skill_operating_rules.md` | *(rule)* | Mandatory operating rules |
 | `sap-dev-core/settings.json` | *(config)* | SAP connection parameters |
 | `sap-dev-core/shared/tables/abap_naming_rules.tsv` | `%%NAMING_RULES%%` | ABAP variable naming prefix conventions |
 | `sap-dev-core/shared/tables/sap_object_naming_rules.tsv` | *(read by helper)* | Top-level SAP object naming patterns (program / class / method / FORM). Custom override: `{custom_url}\sap_object_naming_rules.tsv` |

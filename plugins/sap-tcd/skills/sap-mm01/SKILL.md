@@ -20,6 +20,14 @@ Task: $ARGUMENTS
 
 ---
 
+## Shared Resources
+
+| File | Purpose |
+|---|---|
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/skill_operating_rules.md` | Mandatory operating rules |
+
+---
+
 ## Step 0 — Resolve Work Directory
 
 **Settings reads/writes follow `<SAP_DEV_CORE_SHARED_DIR>/rules/settings_lookup.md`** — merge `settings.local.json` over `settings.json` per-key on the `.value` field; writes always go to `settings.local.json`. Resolve cross-plugin paths: 3 levels up from `<SKILL_DIR>`, then into `sap-dev-core\settings.json` and (if present) `sap-dev-core\settings.local.json`. Read `work_dir`, `custom_url`.

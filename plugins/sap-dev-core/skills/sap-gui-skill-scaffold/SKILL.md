@@ -24,6 +24,14 @@ Task: $ARGUMENTS
 
 ---
 
+## Shared Resources
+
+| File | Purpose |
+|---|---|
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/skill_operating_rules.md` | Mandatory operating rules |
+
+---
+
 ## Step 0 — Resolve work directory + scaffold folder
 
 Read sap-dev-core's `settings.json` (2 levels up from `<SKILL_DIR>`). Read

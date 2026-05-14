@@ -20,6 +20,14 @@ Task: $ARGUMENTS
 
 ---
 
+## Shared Resources
+
+| File | Purpose |
+|---|---|
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/skill_operating_rules.md` | Mandatory operating rules |
+
+---
+
 ## Step 0 — Resolve Work Directory and Mode
 
 **Settings reads/writes follow `shared/rules/settings_lookup.md`** — merge `settings.local.json` over `settings.json` per-key on the `.value` field; writes always go to `settings.local.json`. Resolve sap-dev-core paths: 2 levels up from `<SKILL_DIR>` to the plugin root, then `settings.json` and (if present) `settings.local.json`. Read `work_dir`, `custom_url`, `sap_dev_mode`.

@@ -32,6 +32,7 @@ Task: $ARGUMENTS
 
 | File | Token | Purpose |
 |---|---|---|
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/skill_operating_rules.md` | *(rule)* | Mandatory operating rules |
 | `<SKILL_DIR>/references/sap_sp02_download.vbs` | many | SP02 driver: list scan + F2 + tbar[1]/btn[48] + format radio + DY_PATH/DY_FILENAME |
 
 ---

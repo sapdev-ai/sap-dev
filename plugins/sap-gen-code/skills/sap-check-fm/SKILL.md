@@ -93,6 +93,7 @@ Exit code `1` → append a finding to `{WORK_TEMP}\checkfm_result.txt` with code
 
 | File | Token | Purpose |
 |---|---|---|
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/skill_operating_rules.md` | *(rule)* | Mandatory operating rules |
 | `sap-dev-core/settings.json` | *(config)* | SAP connection parameters |
 | `sap-dev-core/shared/tables/sap_object_naming_rules.tsv` | *(read by helper)* | FM / FG naming patterns. Custom override: `{custom_url}\sap_object_naming_rules.tsv` |
 | `sap-dev-core/shared/scripts/sap_check_object_name.ps1` | *(helper)* | Shared name validator invoked in Step 1.5 |

@@ -37,6 +37,27 @@ Task: $ARGUMENTS
 
 ---
 
+## Shared Resources
+
+Mandatory contract files this agent honors on every invocation. Read each
+once at session start; cite by filename when refusing an action.
+
+| File | Purpose |
+|---|---|
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/skill_operating_rules.md` | **MANDATORY.** Rule 1 (no write SQL on standard tables), Rule 2 (no unsolicited deploy), Rule 3 (forbidden `RFC_READ_TABLE` tables — `REPOSRC` etc.), Rule 4 (structured logging on every skill invocation). This file's rules OVERRIDE any conflicting guidance in skill bodies or this agent file. The Boundaries table below cites these rules — when a Boundary row says "see Rule N", read the full text in `skill_operating_rules.md`. |
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/tr_resolution.md` | TR-resolution policy. `/sap-transport-request` is the single entry point; never prompt the user for a TR number, never call `/sap-se01` directly. |
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/abap_code_quality_rules.md` | ABAP code-quality rules driven by the customer brief. Consumed by `/sap-gen-abap`, `/sap-check-abap`, `/sap-fix-abap` — this agent inherits via those skills. |
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/language_independence_rules.md` | GUI-scripting language independence. Enforced inside the deploy skills' VBS — this agent inherits via those skills. |
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/settings_lookup.md` | Two-file `settings.json` / `settings.local.json` merge contract. |
+| `<SAP_DEV_CORE_SHARED_DIR>/templates/customer_brief.md` | Built-in empty brief template (see Step 0.2 resolution chain). |
+
+**Path resolution from this file**: `<SAP_DEV_CORE_SHARED_DIR>` is `../shared/`
+relative to this agent file (i.e. `plugins/sap-dev-core/shared/`). This is
+different from the SKILL.md convention ("3 levels up + sap-dev-core/shared")
+because agents live one level shallower than skills.
+
+---
+
 ## Step 0 — Pre-flight (every invocation, every mode)
 
 ### 0.1 Resolve work paths
@@ -590,12 +611,14 @@ do not improvise.
 ## Boundaries — DO NOT, under any circumstance
 
 These are mandatory rules from the project's existing rule files. Cite the
-source file when refusing.
+source file when refusing. Rows that cite `skill_operating_rules.md` are
+shorthand — see that file for the full rationale, examples, and
+enforcement details.
 
 | Action | Source rule | Agent does instead |
 |---|---|---|
-| Issue `INSERT` / `UPDATE` / `DELETE` / `MODIFY` against a non-`Z*`/`Y*` table | `skill_operating_rules.md` | Use a SAP-supplied write API (`BAPI_*` / `RPY_*` / `DDIF_*`). If none exists, ask the user. |
-| Create or deploy an ABAP object that the user did NOT explicitly request | `skill_operating_rules.md` | Stop. Describe the helper. Ask permission with name / type / package / TR. |
+| Issue `INSERT` / `UPDATE` / `DELETE` / `MODIFY` against a non-`Z*`/`Y*` table | `skill_operating_rules.md` Rule 1 | Use a SAP-supplied write API (`BAPI_*` / `RPY_*` / `DDIF_*` / `SEO_*`). If none exists, ask the user. |
+| Create or deploy an ABAP object that the user did NOT explicitly request | `skill_operating_rules.md` Rule 2 | Stop. Describe the helper (name / type / package / TR). Ask explicit yes/no permission. |
 | Prompt the user directly for a TR number, or call `/sap-se01` directly | `tr_resolution.md` | Always go through `/sap-transport-request`. |
 | Branch on localised text (window titles, button labels, status-bar text) | `language_independence_rules.md` Rules 1-4 | Use IDs, `MessageType` codes, and VKey codes. Localised text is for `WScript.Echo` only. |
 | Bypass the session lock around source paste / save / activate | `language_independence_rules.md` Rule 7 | Already enforced inside the deploy skills' VBS — don't reach around them. |
@@ -607,9 +630,9 @@ source file when refusing.
 | **Hand-write ABAP source** in build mode (Step 2). The generator is `/sap-gen-abap` — it has the FM-signature cache (Step 1.5), the AUTHORITY-CHECK SU21 field cache (Step 1.5b'), and the DDIC struct-field cache (Step 1.5e). Hand-written ABAP bypasses every one of these and reverts to AI training knowledge that is provably wrong on BAPI parameter structures (e.g. `gross_wt`/`volume` not on BAPI_MARA), AUTHORITY-CHECK field names (e.g. M_MATE_MAR has `BEGRU` not `MATART`), and message-class translation hygiene. | `/sap-gen-abap` SKILL.md Steps 1.5/1.5b'/1.5e + this agent's contract | Invoke `/sap-gen-abap <work_folder>/<doc>_process.txt`. If it fails, surface the failure — DO NOT substitute it with manual coding. If the generated output looks wrong, fix the spec or fix `/sap-gen-abap`; don't side-step it. |
 | Emit `MESSAGE 'literal text' TYPE 'X'.` (literal-string MESSAGE) anywhere — generated, hand-edited, or pasted from training-knowledge memory | `abap_code_quality_rules.md` §20 + ATC pre-emit checklist item 4 in `/sap-gen-abap` SKILL.md | Route every MESSAGE through a message class: `MESSAGE eNNN(<msgclass>) WITH …`. If the spec doesn't cover the case, add a new message via `/sap-se91 update <msgclass>` BEFORE deploying the program. Literal MESSAGE strings ALWAYS produce ATC Priority 2 (translation hygiene); the rule has zero exceptions. |
 | Emit `AUTHORITY-CHECK OBJECT '<X>' ID '<FNAME>' …` without first verifying `<FNAME>` exists on `<X>` via the live SU21 field list | `/sap-gen-abap` Step 1.5b' + `abap_code_quality_rules.md` §14 | Let `/sap-gen-abap` shape the AUTHORITY-CHECK from `_authz_signatures.txt` (it queries USOBT_C / SU21 via RFC). If `/sap-check-abap` Step 3.5 wasn't possible (no RFC), STOP and ask the user — do NOT guess field names from training knowledge. Field-name guesses pass activation silently and fail ATC P2 (SLIN code AUT 0302 "認可項目がありません" / "Authorization field missing"). |
-| Read `REPOSRC` via `RFC_READ_TABLE` at all | The server materializes the full row width before applying the `FIELDS` projection. The row contains `DATA` (`LRAW`, the compressed source chunk), so any non-stub program blows past `RFC_READ_TABLE`'s 512-byte row cap and the server raises `ASSIGN ... CASTING` in `SAPLSDTX`. Limiting `FIELDS` to `PROGNAME,R3STATE,CNAM` does NOT help — confirmed live 2026-05-11. | Pick by use case: (1) for activation state, use `PROGDIR.STATE` (`'A'` active, `'I'` inactive) keyed by `NAME`. (2) For program metadata (type, package, author), use `PROGDIR.SUBC` / `TRDIR.SUBC` / `TADIR`. (3) For source content, use `READ REPORT` / `RPY_PROGRAM_READ` over RFC. (4) For a REPOSRC chunk listing (e.g. to verify the latest source version exists after a deploy), invoke `/sap-se16n REPOSRC PROGNAME=<X>` and follow the rules in the row below — SE16N drives SAP GUI, not `RFC_READ_TABLE`, so the 512-byte cap doesn't apply. |
+| Read `REPOSRC` via `RFC_READ_TABLE` at all | `skill_operating_rules.md` Rule 3 (full alternatives table there). At the library level, `sap_rfc_lib.ps1::New-RfcReadTable` and `Assert-RfcReadTableAllowed` already throw on the forbidden list — but the agent must not work around them either (e.g. by calling `$dest.Repository.CreateFunction("RFC_READ_TABLE")` directly). | Follow Rule 3's alternatives table. For the common "verify a just-deployed program is non-empty" case, chain to `/sap-se16n REPOSRC PROGNAME=<X>` and apply the SE16N rules in the row below (SE16N drives SAP GUI, so the 512-byte cap doesn't apply). |
 | Include `DATA` in the SE16N output column list when querying `REPOSRC`, or filter `R3STATE=A`, or use the active row as the "latest source" indicator | (a) The `DATA` column is `LRAW` (binary compressed source). SE16N would try to render it and either truncate, error, or produce unreadable binary noise. (b) The inactive row (`R3STATE='I'`) is often the LATEST source — a developer who just edited but hasn't activated leaves the new bytes there; the active row is the LAST KNOWN GOOD, not the most recent. Filtering `R3STATE=A` silently hides the in-flight edit. | When querying `REPOSRC` via `/sap-se16n`: always pass an explicit `select=PROGNAME,R3STATE,UDAT,UTIME,DATALG,UNAM` (NEVER include `DATA`). Sort by `UDAT` / `UTIME` desc and take the FIRST row — that is the latest, regardless of `R3STATE`. To verify a just-deployed program is non-empty: if `DATALG < 100` on the top row, the program is essentially blank → the most recent upload likely failed silently and you should re-run the deploy. (Real programs have a header banner + signature lines that comfortably exceed 100 bytes.) |
-| Skip a skill's `## Step 0.5 — Start Logging` block or `## Final — Log End` block | `skill_operating_rules.md` Rule 4 | Every skill invocation MUST run both. The "best-effort" / "silently no-ops" phrasing in the Step 0.5 prose refers to FAILURE HANDLING inside the helper (lib can't load, log dir read-only, log_enabled=false) — NOT permission for the caller to skip. The helper is idempotent and ~50ms; run it on every skill, success and failure paths alike. Without it, post-mortem audit of the agent's run (via `sap-dev-{YYYYMMDD}.log` + `/sap-log-analyze`) loses the entire build phase — exactly what happened during the 2026-05-11 MaterialUpload_JA test that motivated this rule. |
+| Skip a skill's `## Step 0.5 — Start Logging` block or `## Final — Log End` block | `skill_operating_rules.md` Rule 4 (covers the "best-effort means failure-handling, not opt-out" caveat and the 2026-05-11 incident that motivated this rule). | Run BOTH `start` and `end` helper calls on every skill invocation — success and failure paths alike. The helper is idempotent and ~50ms. As a subagent, this rule applies to YOU for every skill YOU invoke (Rule 4 explicitly names `abap-developer`). |
 
 ---
 
