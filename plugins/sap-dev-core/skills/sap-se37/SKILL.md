@@ -207,6 +207,11 @@ Write `{WORK_TEMP}\sap_se37_check_run.ps1`:
 ```powershell
 $content = Get-Content '<SKILL_DIR>\references\sap_se37_check.vbs' -Raw
 $content = $content -replace '%%FM_NAME%%','THE_FM_NAME'
+# Phase 3.5 session-attach plumbing.
+$sessionPath = ''
+$content = $content -replace '%%SESSION_PATH%%', $sessionPath
+$content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
+$env:SAPDEV_PIN_FILE = '{WORK_TEMP}\sap_active_session.json'
 Set-Content '{WORK_TEMP}\sap_se37_check_run.vbs' $content -Encoding Unicode
 Write-Host 'Done'
 ```
@@ -805,6 +810,11 @@ $content  = $content.Replace('%%PROCESSING_TYPE%%', 'THE_PROCESSING_TYPE')
 $content  = $content.Replace('%%UPDATE_KIND%%',     'THE_UPDATE_KIND')
 $content  = $content.Replace('%%TRANSPORT%%',       'THE_TRANSPORT')
 $content  = $content.Replace('%%SESSION_LOCK_VBS%%', '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_session_lock.vbs')
+# Phase 3.5 session-attach plumbing.
+$sessionPath = ''
+$content  = $content.Replace('%%SESSION_PATH%%',     $sessionPath)
+$content  = $content.Replace('%%ATTACH_LIB_VBS%%',   '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs')
+$env:SAPDEV_PIN_FILE = '{WORK_TEMP}\sap_active_session.json'
 Set-Content '{WORK_TEMP}\sap_se37_change_attrs_run.vbs' $content -Encoding Unicode
 Write-Host 'Done'
 ```
@@ -913,6 +923,11 @@ $content  = $content.Replace('%%FM_NAME%%',        'THE_FM_NAME')
 $content  = $content.Replace('%%NEW_FUNC_GROUP%%', 'THE_NEW_FUNC_GROUP')
 $content  = $content.Replace('%%TRANSPORT%%',      'THE_TRANSPORT')
 $content  = $content.Replace('%%SESSION_LOCK_VBS%%', '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_session_lock.vbs')
+# Phase 3.5 session-attach plumbing.
+$sessionPath = ''
+$content  = $content.Replace('%%SESSION_PATH%%',     $sessionPath)
+$content  = $content.Replace('%%ATTACH_LIB_VBS%%',   '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs')
+$env:SAPDEV_PIN_FILE = '{WORK_TEMP}\sap_active_session.json'
 Set-Content '{WORK_TEMP}\sap_se37_reassign_fugr_run.vbs' $content -Encoding Unicode
 Write-Host 'Done'
 ```
@@ -1139,6 +1154,11 @@ $workTemp = 'THE_WORK_TEMP'
 $content = Get-Content "$skillDir\references\sap_se37_check_and_download.vbs" -Raw
 $content = $content -replace '%%FM_NAME%%',     $fmName
 $content = $content -replace '%%OUTPUT_FILE%%', $outFile
+# Phase 3.5 session-attach plumbing.
+$sessionPath = ''
+$content = $content -replace '%%SESSION_PATH%%',   $sessionPath
+$content = $content -replace '%%ATTACH_LIB_VBS%%', '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
+$env:SAPDEV_PIN_FILE = "$workTemp\sap_active_session.json"
 Set-Content "$workTemp\sap_se37_check_and_download_run.vbs" $content -Encoding Unicode
 Write-Host 'Done'
 ```

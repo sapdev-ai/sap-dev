@@ -31,41 +31,19 @@ Const MSG_CLASS        = "%%MSG_CLASS%%"
 Const NEW_SHORT_TEXT   = "%%SHORT_TEXT%%"
 Const NEW_RESPONSIBLE  = "%%RESPONSIBLE%%"
 Const SAP_TRANSPORT    = "%%TRANSPORT%%"
+Const SESSION_PATH     = "%%SESSION_PATH%%"   ' empty / unsubstituted = use default
 
 Const VKEY_ENTER     = 0
 Const VKEY_F11_SAVE  = 11
 Const VKEY_F3_BACK   = 3
 Const HEAD_BASE      = "wnd[0]/usr/tabsCONTROL1000/tabpHEAD/ssubSUB:SAPLWBMESSAGES:0102"
 
-Dim oSAPGUI, oApp, oSession, oCandidate, oSessIter
+ExecuteGlobal CreateObject("Scripting.FileSystemObject") _
+    .OpenTextFile("%%ATTACH_LIB_VBS%%", 1).ReadAll()
 
-' ------ 1. Attach to existing SAP GUI session -------------------------------
-On Error Resume Next
-Set oSAPGUI = GetObject("SAPGUI")
-If Err.Number <> 0 Or oSAPGUI Is Nothing Then
-    WScript.Echo "ERROR: SAP GUI is not running."
-    WScript.Quit 1
-End If
-Err.Clear
-On Error GoTo 0
-
-Set oApp = oSAPGUI.GetScriptingEngine
-Set oSession = Nothing
-On Error Resume Next
-For Each oCandidate In oApp.Children
-    For Each oSessIter In oCandidate.Children
-        Set oSession = oSessIter
-        Exit For
-    Next
-    If Not (oSession Is Nothing) Then Exit For
-Next
-On Error GoTo 0
-
-If oSession Is Nothing Then
-    WScript.Echo "ERROR: No SAP GUI session found. Run the login step first."
-    WScript.Quit 1
-End If
-WScript.Echo "INFO: Session acquired."
+' ------ 1. Attach to existing SAP GUI session (via shared attach helper) ----
+Dim oSession
+Set oSession = AttachSapSession(SESSION_PATH)
 
 ' ------ 2. Navigate to SE91 -------------------------------------------------
 WScript.Echo "INFO: Navigating to SE91..."

@@ -25,6 +25,11 @@ Dim SELECTION_TEXTS_RAW : SELECTION_TEXTS_RAW = "%%SELECTION_TEXTS%%"
 Dim TEXT_SYMBOLS_RAW : TEXT_SYMBOLS_RAW = "%%TEXT_SYMBOLS%%"
 Dim PACKAGE_VAL  : PACKAGE_VAL  = "%%PACKAGE%%"
 Dim TRANSPORT_VAL : TRANSPORT_VAL = "%%TRANSPORT%%"
+Dim SESSION_PATH : SESSION_PATH = "%%SESSION_PATH%%"   ' empty = default
+
+' Include shared attach helper.
+ExecuteGlobal CreateObject("Scripting.FileSystemObject") _
+    .OpenTextFile("%%ATTACH_LIB_VBS%%", 1).ReadAll()
 
 ' ---- Parse selection texts into arrays ----
 ' Format: PARAM_NAME=Selection Text|PARAM_NAME=Text|...
@@ -54,21 +59,9 @@ If nTextCount > 0 Then
     Next
 End If
 
-' ---- Attach to SAP GUI session ----
-Dim oSapGui, oApplication, oConnection, oSession
-On Error Resume Next
-Set oSapGui = GetObject("SAPGUI")
-If Err.Number <> 0 Then
-    WScript.Echo "ERROR: Cannot attach to SAP GUI. Is SAP Logon running?"
-    WScript.Quit 1
-End If
-Set oApplication = oSapGui.GetScriptingEngine
-Set oConnection = oApplication.Children(0)
-Set oSession = oConnection.Children(0)
-Err.Clear
-On Error GoTo 0
-
-WScript.Echo "INFO: Attached to SAP GUI session."
+' ---- Attach to SAP GUI session (via shared attach helper) ----
+Dim oSession
+Set oSession = AttachSapSession(SESSION_PATH)
 
 ' ---- Navigate to SE38 ----
 oSession.StartTransaction "SE38"

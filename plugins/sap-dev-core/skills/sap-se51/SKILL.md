@@ -98,6 +98,11 @@ Write `{WORK_TEMP}\sap_se51_check_run.ps1`:
 $content = Get-Content '<SKILL_DIR>\references\sap_se51_check.vbs' -Raw
 $content = $content -replace '%%PROGRAM_NAME%%','THE_PROGRAM_NAME'
 $content = $content -replace '%%SCREEN_NUMBER%%','THE_SCREEN_NUMBER'
+# Phase 3.5 session-attach plumbing.
+$sessionPath = ''
+$content = $content -replace '%%SESSION_PATH%%', $sessionPath
+$content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
+$env:SAPDEV_PIN_FILE = '{WORK_TEMP}\sap_active_session.json'
 Set-Content '{WORK_TEMP}\sap_se51_check_run.vbs' $content -Encoding Unicode
 Write-Host 'Done'
 ```
