@@ -234,8 +234,18 @@ powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_
     -TaskId     "scaffold_<runId>_scenario_<i>" `
     -OwnerSkill "sap-gui-skill-scaffold" `
     -OwnerPid   0 `
+    -PinFile    "{WORK_TEMP}\sap_active_session.json" `
     -WorkTemp   "{WORK_TEMP}"
 ```
+
+**`-PinFile` is REQUIRED** — without a connection resolver, multi-connection
+setups (any operator with two or more SAP Logon entries attached) get
+`DENIED: ambiguous target: N connections attached and no resolver supplied`
+on the very first acquire. The pin file from Step 0.7 has already pinned
+`{PINNED_CONNECTION}`, so passing it routes every probe to the same
+connection the operator authorised. If you ever need to scaffold across
+connections, swap `-PinFile` for `-ConnectionPath "{PINNED_CONNECTION}"`
+(same effect, no file read).
 
 **`-OwnerPid 0` is INTENTIONAL** for the scaffolder. Each tool call from the
 orchestrator (Claude) spawns a transient `pwsh.exe` process whose PID dies
