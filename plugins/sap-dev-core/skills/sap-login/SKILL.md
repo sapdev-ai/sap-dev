@@ -448,14 +448,14 @@ Program / ScreenNumber, plus GUI version — and emits a single-line JSON
 record.
 
 ```bash
-cmd /c C:\Windows\SysWOW64\cscript.exe //NoLogo "<SKILL_DIR>\references\sap_login_capture_active_session.vbs" "<session-path-from-step-0.8-or-blank>"
+C:/Windows/SysWOW64/cscript.exe //NoLogo "<SKILL_DIR>\references\sap_login_capture_active_session.vbs" "<session-path-from-step-0.8-or-blank>"
 ```
 
 Last line of stdout:
 - `{"session_path":"/app/con[0]/ses[0]", ...}` — single-line JSON record. Save this to a variable for Step 6.5.
 - `MULTI:[ {...}, ... ]` — only fires when the wrapper passed no hint AND multiple connections are attached AND Step 0.8 didn't already pick one. Should be rare after Phase 4 (Step 0.8 picks first). If it happens, present a picker via `AskUserQuestion`, then re-invoke the VBS with **both** the chosen `session_path` **and** the `connection_string` field from the chosen entry as a second argument. SAP GUI can reorder connection indices between the two calls; the second argument lets the VBS recover by scanning for the connection by description when the path-based lookup returns the wrong session:
   ```bash
-  cmd /c C:\Windows\SysWOW64\cscript.exe //NoLogo "<SKILL_DIR>\references\sap_login_capture_active_session.vbs" "<chosen-session_path>" "<chosen-connection_string>"
+  C:/Windows/SysWOW64/cscript.exe //NoLogo "<SKILL_DIR>\references\sap_login_capture_active_session.vbs" "<chosen-session_path>" "<chosen-connection_string>"
   ```
 - `WARN: SAP GUI reordered connections ...` — logged when the path hint matched a different connection than expected; the VBS scanned by description and recovered automatically.
 - `ERROR: <text>` — skip Step 6.5 and warn; downstream skills still work via the broker's discovery path, just without an explicit pin.
