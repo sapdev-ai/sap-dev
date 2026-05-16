@@ -32,6 +32,7 @@ Const SAP_TRANSPORT      = "%%TRANSPORT%%"
 ' sap_se11_set_enh_category.vbs for the full mapping.
 Const ENH_CATEGORY       = "%%ENHANCEMENT_CATEGORY%%"
 Const SESSION_PATH       = "%%SESSION_PATH%%"   ' empty / unsubstituted = use default
+Const POST_ACTIVATE_VERIFY_PS1 = "%%POST_ACTIVATE_VERIFY_PS1%%"   ' empty = skip verify
 
 Const VKEY_ENTER    = 0
 Const VKEY_F3_BACK  = 3
@@ -43,6 +44,8 @@ ExecuteGlobal CreateObject("Scripting.FileSystemObject") _
     .OpenTextFile("%%ATTACH_LIB_VBS%%", 1).ReadAll()
 ExecuteGlobal CreateObject("Scripting.FileSystemObject") _
     .OpenTextFile("%%SESSION_LOCK_VBS%%", 1).ReadAll()
+ExecuteGlobal CreateObject("Scripting.FileSystemObject") _
+    .OpenTextFile("%%POST_ACTIVATE_VERIFY_VBS%%", 1).ReadAll()
 
 ' Include SE11-local enhancement-category helper (SetEnhancementCategory).
 ' Used after Save and before Activate so the activation step doesn't
@@ -570,22 +573,21 @@ sFinalMsg  = oSession.findById("wnd[0]/sbar").Text
 sFinalType = oSession.findById("wnd[0]/sbar").MessageType
 On Error GoTo 0
 
-If sFinalType = "E" Then
-    WScript.Echo "WARNING: Activation may have errors - " & sFinalMsg
+If sFinalType = "E" Or sFinalType = "A" Then
+    WScript.Echo "ERROR: Activation failed (sbar Type=" & sFinalType & ") - " & sFinalMsg
+    WScript.Quit 1
 Else
     WScript.Echo "INFO: SAP status: " & sFinalMsg
 End If
 
-' DO NOT trust the GUI-side success signal. The SAP status bar can read
-' "Action was canceled" with MessageType <> "E" when an unhandled popup
-' was dismissed by the lock-release sweep. The caller must run the
-' post-activate RFC verifier (Step 5d in SKILL.md) to confirm the active
-' DDIC version exists. We still emit SUCCESS_GUI here so the orchestrator
-' can recognise we got past the activate block, but the orchestrator
-' must NOT report 'created and activated' to the user without the
-' verifier returning ACTIVE.
-WScript.Echo "SUCCESS_GUI: Structure " & UCase(OBJECT_NAME) & " GUI flow finished. " & _
-             "RUN POST-ACTIVATE RFC VERIFIER (Step 5d) before reporting success."
+' Phase 4.3: SUCCESS_GUI replaced by the actual post-activate RFC verify.
+' Previous design printed SUCCESS_GUI and left the verify to the orchestrator,
+' which nothing wired -- so a "Action was canceled" sbar with non-E MessageType
+' (lock-release sweep dismissing a popup) propagated as success. Now the
+' verify runs inline; INACTIVE/MISSING fail-closed here.
+PostActivateVerifyOrFail POST_ACTIVATE_VERIFY_PS1, "STRUCTURE", OBJECT_NAME
+
+WScript.Echo "SUCCESS: Structure " & UCase(OBJECT_NAME) & " created and activated in SAP."
 WScript.Quit 0
 
 ' --- Helper: ResolveGridCol -------------------------------------------------

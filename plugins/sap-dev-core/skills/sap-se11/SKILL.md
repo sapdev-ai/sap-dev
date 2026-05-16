@@ -796,6 +796,12 @@ Then write:
 $sessionPath = ''
 $content = $content -replace '%%SESSION_PATH%%', $sessionPath
 $content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
+# Phase 4.3 post-activate RFC verify plumbing. The VBS shells out to the PS1
+# AFTER activation; the PS1 reads the AI-session pinned connection from
+# connections.json (DPAPI-decrypted password) and runs an RFC_READ_TABLE
+# against the right DDIC catalog table. Fail-closed on INACTIVE/MISSING.
+$content = $content -replace '%%POST_ACTIVATE_VERIFY_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_se11_post_activate_verify.vbs'
+$content = $content -replace '%%POST_ACTIVATE_VERIFY_PS1%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_se11_post_activate_verify.ps1'
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 Set-Content '{WORK_TEMP}\sap_se11_create_run.vbs' $content -Encoding Unicode

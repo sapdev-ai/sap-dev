@@ -28,6 +28,7 @@ Const DEFINITION_FILE    = "%%DEFINITION_FILE%%"
 Const SAP_PACKAGE        = "%%PACKAGE%%"
 Const SAP_TRANSPORT      = "%%TRANSPORT%%"
 Const SESSION_PATH       = "%%SESSION_PATH%%"   ' empty / unsubstituted = use default
+Const POST_ACTIVATE_VERIFY_PS1 = "%%POST_ACTIVATE_VERIFY_PS1%%"   ' empty = skip verify
 
 Const VKEY_ENTER    = 0
 Const VKEY_F3_BACK  = 3
@@ -39,6 +40,8 @@ ExecuteGlobal CreateObject("Scripting.FileSystemObject") _
     .OpenTextFile("%%ATTACH_LIB_VBS%%", 1).ReadAll()
 ExecuteGlobal CreateObject("Scripting.FileSystemObject") _
     .OpenTextFile("%%SESSION_LOCK_VBS%%", 1).ReadAll()
+ExecuteGlobal CreateObject("Scripting.FileSystemObject") _
+    .OpenTextFile("%%POST_ACTIVATE_VERIFY_VBS%%", 1).ReadAll()
 
 ' UTF-8/16 BOM-detect text-encoding helper.
 ' Lets the OpenTextFile(..., -1) reads below accept UTF-8 inputs from
@@ -366,12 +369,15 @@ sFinalMsg  = oSession.findById("wnd[0]/sbar").Text
 sFinalType = oSession.findById("wnd[0]/sbar").MessageType
 On Error GoTo 0
 
-If sFinalType = "E" Then
-    WScript.Echo "ERROR: Activation failed - " & sFinalMsg
+If sFinalType = "E" Or sFinalType = "A" Then
+    WScript.Echo "ERROR: Activation failed (sbar Type=" & sFinalType & ") - " & sFinalMsg
     WScript.Quit 1
 Else
     WScript.Echo "INFO: SAP status: " & sFinalMsg
 End If
+
+' Post-activate RFC verify (Phase 4.3 — mandatory per SKILL.md Step 5d).
+PostActivateVerifyOrFail POST_ACTIVATE_VERIFY_PS1, "DATAELEMENT", OBJECT_NAME
 
 WScript.Echo "SUCCESS: Data element " & UCase(OBJECT_NAME) & " created and activated in SAP."
 WScript.Quit 0

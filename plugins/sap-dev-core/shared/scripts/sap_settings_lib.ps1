@@ -88,6 +88,28 @@ function Get-SapSettingValue {
         [Parameter(Mandatory)] [string] $Key,
         [string] $Default = ''
     )
+    # Per-connection isolation (Phase 4.3): for SAP-system-specific keys
+    # (TR / package / function group) the source of truth is the pinned
+    # connection's dev_defaults block in connections.json, not the global
+    # settings.local.json. This is the read-side routing — Get-SapCurrentDevDefault
+    # handles its own file-based fallback so this remains safe even when
+    # sap_connection_lib.ps1 isn't loaded (caller gets the file value).
+    if (Get-Command Get-SapPerConnectionDevKeys -ErrorAction SilentlyContinue) {
+        $perConnKeys = Get-SapPerConnectionDevKeys
+        if ($perConnKeys -contains $Key) {
+            if (Get-Command Get-SapCurrentDevDefault -ErrorAction SilentlyContinue) {
+                try {
+                    $vv = Get-SapCurrentDevDefault -Key $Key
+                    if (-not [string]::IsNullOrWhiteSpace("$vv")) { return "$vv" }
+                } catch {
+                    # Per-conn lookup failed (no pin / no store) — fall through
+                    # to the file-based read below.
+                }
+                # Per-conn returned empty -> fall through to global default.
+                return $Default
+            }
+        }
+    }
     $s = Get-SapSettings
     if ($s.userConfig.PSObject.Properties.Name -contains $Key) {
         $v = $s.userConfig.$Key.value

@@ -30,6 +30,7 @@ Const DEFINITION_FILE    = "%%DEFINITION_FILE%%"
 Const SAP_PACKAGE        = "%%PACKAGE%%"
 Const SAP_TRANSPORT      = "%%TRANSPORT%%"
 Const SESSION_PATH       = "%%SESSION_PATH%%"   ' empty / unsubstituted = use default
+Const POST_ACTIVATE_VERIFY_PS1 = "%%POST_ACTIVATE_VERIFY_PS1%%"   ' empty = skip verify
 
 Const VKEY_ENTER    = 0
 Const VKEY_F3_BACK  = 3
@@ -41,6 +42,8 @@ ExecuteGlobal CreateObject("Scripting.FileSystemObject") _
     .OpenTextFile("%%ATTACH_LIB_VBS%%", 1).ReadAll()
 ExecuteGlobal CreateObject("Scripting.FileSystemObject") _
     .OpenTextFile("%%SESSION_LOCK_VBS%%", 1).ReadAll()
+ExecuteGlobal CreateObject("Scripting.FileSystemObject") _
+    .OpenTextFile("%%POST_ACTIVATE_VERIFY_VBS%%", 1).ReadAll()
 
 ' UTF-8/16 BOM-detect text-encoding helper.
 ' Lets the OpenTextFile(..., -1) reads below accept UTF-8 inputs from
@@ -464,11 +467,22 @@ sFinalMsg  = oSession.findById("wnd[0]/sbar").Text
 sFinalType = oSession.findById("wnd[0]/sbar").MessageType
 On Error GoTo 0
 
-If sFinalType = "E" Then
-    WScript.Echo "WARNING: Activation may have errors - " & sFinalMsg
+If sFinalType = "E" Or sFinalType = "A" Then
+    ' Phase 4.3: promote from WARNING to ERROR. Activation reported a
+    ' hard error via sbar MessageType — the half-deploy was the original
+    ' silent-failure case.
+    WScript.Echo "ERROR: Activation reported sbar Type=" & sFinalType & " - " & sFinalMsg
+    WScript.Quit 1
 Else
     WScript.Echo "INFO: SAP status: " & sFinalMsg
 End If
+
+' ------ 8. Post-activate RFC verify (mandatory per SKILL.md Step 5d) -------
+' Confirms DOMAIN really exists in the ACTIVE workspace via RFC_READ_TABLE on
+' DD01L. Catches the silent half-deploy case where the GUI status bar reports
+' nothing but the save was rejected (e.g. bad definition file). Fail-closed
+' on INACTIVE/MISSING; soft-warn on ERROR (verify itself couldn't run).
+PostActivateVerifyOrFail POST_ACTIVATE_VERIFY_PS1, "DOMAIN", OBJECT_NAME
 
 WScript.Echo "SUCCESS: Domain " & UCase(OBJECT_NAME) & " created and activated in SAP."
 WScript.Quit 0

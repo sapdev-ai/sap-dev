@@ -40,6 +40,7 @@ Const SAP_TRANSPORT      = "%%TRANSPORT%%"
 ' sap_se11_set_enh_category.vbs for the full mapping.
 Const ENH_CATEGORY       = "%%ENHANCEMENT_CATEGORY%%"
 Const SESSION_PATH       = "%%SESSION_PATH%%"   ' empty / unsubstituted = use default
+Const POST_ACTIVATE_VERIFY_PS1 = "%%POST_ACTIVATE_VERIFY_PS1%%"   ' empty = skip verify
 
 Const VKEY_ENTER    = 0
 Const VKEY_F3_BACK  = 3
@@ -51,6 +52,8 @@ ExecuteGlobal CreateObject("Scripting.FileSystemObject") _
     .OpenTextFile("%%ATTACH_LIB_VBS%%", 1).ReadAll()
 ExecuteGlobal CreateObject("Scripting.FileSystemObject") _
     .OpenTextFile("%%SESSION_LOCK_VBS%%", 1).ReadAll()
+ExecuteGlobal CreateObject("Scripting.FileSystemObject") _
+    .OpenTextFile("%%POST_ACTIVATE_VERIFY_VBS%%", 1).ReadAll()
 
 ' Include shared activation-log capture (CaptureActivationLog /
 ' ExtractTopActivationError). Used after Activate (Ctrl+F3) when
@@ -692,6 +695,9 @@ If sFinalType = "E" Or sFinalType = "A" Then
 Else
     WScript.Echo "INFO: SAP status: " & sFinalMsg
 End If
+
+' Post-activate RFC verify (Phase 4.3 — mandatory per SKILL.md Step 5d).
+PostActivateVerifyOrFail POST_ACTIVATE_VERIFY_PS1, "TABLE", OBJECT_NAME
 
 WScript.Echo "SUCCESS: Table " & UCase(OBJECT_NAME) & " created and activated in SAP."
 WScript.Quit 0

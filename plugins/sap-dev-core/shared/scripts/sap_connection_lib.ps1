@@ -170,6 +170,16 @@ function Read-SapConnectionStore {
                 if (-not $p.ContainsKey('software_components') -or $null -eq $p['software_components']) {
                     $p['software_components'] = @()
                 }
+                # dev_defaults — per-connection overrides for system-keyed settings
+                # (sap_dev_transport_request / sap_dev_package / sap_dev_function_group).
+                # Coerce PSCustomObject -> hashtable so we can index/Update freely.
+                if (-not $p.ContainsKey('dev_defaults') -or $null -eq $p['dev_defaults']) {
+                    $p['dev_defaults'] = @{}
+                } elseif ($p['dev_defaults'] -is [System.Management.Automation.PSCustomObject]) {
+                    $hh = @{}
+                    foreach ($pp2 in $p['dev_defaults'].PSObject.Properties) { $hh[$pp2.Name] = "$($pp2.Value)" }
+                    $p['dev_defaults'] = $hh
+                }
                 $store.connections += $p
             }
         }
@@ -514,6 +524,9 @@ function Save-SapConnection {
     if (-not $new.ContainsKey('software_components') -or $null -eq $new['software_components']) {
         $new['software_components'] = @()
     }
+    if (-not $new.ContainsKey('dev_defaults') -or $null -eq $new['dev_defaults']) {
+        $new['dev_defaults'] = @{}
+    }
     $store.connections += $new
     Write-SapConnectionStore -Store $store
     return $new
@@ -560,7 +573,7 @@ function Remove-SapConnection {
 # specific id without touching files.
 # =============================================================================
 
-$script:_SapAi_ScriptHosts = @('powershell','pwsh','cscript','wscript','cmd','conhost')
+$script:_SapAi_ScriptHosts = @('powershell','pwsh','cscript','wscript','cmd','conhost','bash','sh','git-bash','sh.distrib','busybox')
 $script:_SapAi_MutexName   = 'SapDevAiSessionId_v1'
 
 function _Get-AiOwnerPid {
@@ -834,6 +847,118 @@ function Get-SapCurrentConnectionProfile {
         if ($p) { return $p }
     }
     return (Get-SapDefaultConnection)
+}
+
+# =============================================================================
+# Per-connection dev defaults (Phase 4.3)
+# -----------------------------------------------------------------------------
+# Some sap-dev settings are SAP-system-specific — most notably the transport
+# request (TR numbers carry the SID prefix like S4DK..., so a TR resolved on
+# S4D is meaningless on S4H). Storing them in settings.local.json with a
+# single global slot causes silent contamination when a user runs Claude on
+# two SAP systems in parallel.
+#
+# Phase 4.3 adds a `dev_defaults` hashtable to each connection profile in
+# connections.json. Keys in $script:SapPerConnectionDevKeys are read from /
+# written to the pinned connection's dev_defaults first; settings.local.json
+# remains the global fallback for connections that haven't set a value yet.
+#
+# Read order  : pinned-connection dev_defaults[<key>] -> settings.local.json
+# Write order : pinned-connection dev_defaults[<key>] (if pinned), else file
+#
+# `Get-SapSettingValue` (sap_settings_lib.ps1) checks this list and routes
+# through Get-SapCurrentDevDefault automatically — most callers don't need to
+# change.
+# =============================================================================
+
+$script:SapPerConnectionDevKeys = @(
+    'sap_dev_transport_request',
+    'sap_dev_package',
+    'sap_dev_function_group'
+)
+
+function Get-SapPerConnectionDevKeys {
+    return ,$script:SapPerConnectionDevKeys
+}
+
+function Get-SapCurrentDevDefault {
+    <#
+    .SYNOPSIS
+        Resolve a system-specific dev setting for this AI session's pinned
+        connection. Falls back to settings.local.json on miss, then empty.
+    .PARAMETER Key
+        One of sap_dev_transport_request / sap_dev_package /
+        sap_dev_function_group (or any other key — non-listed keys still
+        work, they just won't have per-connection isolation by default).
+    #>
+    param([Parameter(Mandatory)][string]$Key)
+    $profile = $null
+    try { $profile = Get-SapCurrentConnectionProfile } catch {}
+    if ($profile -and $profile.ContainsKey('dev_defaults') -and $profile['dev_defaults']) {
+        $dd = $profile['dev_defaults']
+        $v = $null
+        if ($dd -is [hashtable] -and $dd.ContainsKey($Key)) {
+            $v = $dd[$Key]
+        } elseif ($dd.PSObject -and ($dd.PSObject.Properties.Name -contains $Key)) {
+            $v = $dd.$Key
+        }
+        if ($null -ne $v -and "$v" -ne '') { return "$v" }
+    }
+    # File-based fallback — read raw from merged settings WITHOUT re-entering
+    # the per-conn path (avoid the Get-SapSettingValue<->Get-SapCurrentDevDefault
+    # loop).
+    if (Get-Command Get-SapSettings -ErrorAction SilentlyContinue) {
+        $s = Get-SapSettings
+        if ($s.userConfig.PSObject.Properties.Name -contains $Key) {
+            $vv = $s.userConfig.$Key.value
+            if ($null -ne $vv -and "$vv" -ne '') { return [string]$vv }
+        }
+    }
+    return ''
+}
+
+function Set-SapCurrentDevDefault {
+    <#
+    .SYNOPSIS
+        Write a per-connection dev default. Targets the pinned connection's
+        dev_defaults dict in connections.json; falls back to writing
+        settings.local.json when no connection is pinned (caller is on a
+        fresh box that hasn't run /sap-login yet, etc.).
+    #>
+    param(
+        [Parameter(Mandatory)][string]$Key,
+        [Parameter(Mandatory)][AllowEmptyString()][string]$Value
+    )
+    $profile = $null
+    try { $profile = Get-SapCurrentConnectionProfile } catch {}
+    if (-not $profile -or -not (_NotEmpty "$($profile.id)")) {
+        if (Get-Command Set-SapUserSetting -ErrorAction SilentlyContinue) {
+            Set-SapUserSetting -Key $Key -Value $Value
+            return
+        }
+        throw "Set-SapCurrentDevDefault: no pinned connection and Set-SapUserSetting unavailable."
+    }
+    $store = Read-SapConnectionStore
+    $target = $null
+    foreach ($p in $store.connections) {
+        if ("$($p.id)" -eq "$($profile.id)") { $target = $p; break }
+    }
+    if (-not $target) {
+        if (Get-Command Set-SapUserSetting -ErrorAction SilentlyContinue) {
+            Set-SapUserSetting -Key $Key -Value $Value
+            return
+        }
+        throw "Set-SapCurrentDevDefault: pinned connection id=$($profile.id) not found in store."
+    }
+    if (-not $target.ContainsKey('dev_defaults') -or $null -eq $target['dev_defaults']) {
+        $target['dev_defaults'] = @{}
+    } elseif ($target['dev_defaults'] -is [System.Management.Automation.PSCustomObject]) {
+        $h = @{}
+        foreach ($pp in $target['dev_defaults'].PSObject.Properties) { $h[$pp.Name] = "$($pp.Value)" }
+        $target['dev_defaults'] = $h
+    }
+    $target['dev_defaults'][$Key] = "$Value"
+    Write-SapConnectionStore -Store $store
 }
 
 # --- Legacy migration -------------------------------------------------------
