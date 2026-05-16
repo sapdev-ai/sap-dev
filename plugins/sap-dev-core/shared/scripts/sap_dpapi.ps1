@@ -137,7 +137,13 @@ if ($PSBoundParameters.ContainsKey('Action')) {
     switch ($Action.ToLowerInvariant()) {
         "protect" {
             try {
-                Write-Host (Protect-SapSecret -Plaintext $Value)
+                # Write-Output (NOT Write-Host) so the value flows through the
+                # PowerShell success stream. Inline callers (`$x = & $dpapiPs ...`)
+                # only capture the success stream; Write-Host writes straight to
+                # the host console, bypassing capture AND leaking the plaintext.
+                # Subprocess invocation (powershell -File ...) works either way
+                # because the child's host is the parent's stdout.
+                Write-Output (Protect-SapSecret -Plaintext $Value)
                 exit 0
             } catch {
                 [Console]::Error.WriteLine("ERROR: $($_.Exception.Message)")
@@ -146,7 +152,7 @@ if ($PSBoundParameters.ContainsKey('Action')) {
         }
         "unprotect" {
             try {
-                Write-Host (Unprotect-SapSecret -StoredValue $Value)
+                Write-Output (Unprotect-SapSecret -StoredValue $Value)
                 exit 0
             } catch {
                 [Console]::Error.WriteLine("ERROR: $($_.Exception.Message)")
