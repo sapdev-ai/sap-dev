@@ -10,33 +10,26 @@
 '
 ' Run via: 32-bit cscript //NoLogo (SAP GUI Scripting COM requires 32-bit).
 ' Requires an active SAP GUI session positioned at SAP Easy Access.
+'
+' Parallel-safe session attach (Tier 3 contract) — DO NOT replace with
+' oApp.Children(0). The wrapping SKILL.md sets $env:SAPDEV_SESSION_PATH to
+' Get-SapCurrentSessionPath's return value, then substitutes %%SESSION_PATH%%
+' (hint) and %%ATTACH_LIB_VBS%% (absolute path of sap_attach_lib.vbs) into
+' this template. AttachSapSession resolves the target session in priority
+' order: hint -> SAPDEV_SESSION_PATH env -> sole-connection default ->
+' loud refusal. This is what keeps the script from driving a connection
+' the operator did not pin to.
 ' =============================================================================
 Option Explicit
 
-' --- attach to active SAP GUI session ---------------------------------------
-Dim oSAP, oApp, oCon, oSess
-On Error Resume Next
-Set oSAP = GetObject("SAPGUI")
-If Err.Number <> 0 Or oSAP Is Nothing Then
-    WScript.Echo "ERROR: SAP GUI not running"
-    WScript.Quit 2
-End If
-Set oApp = oSAP.GetScriptingEngine
-If Err.Number <> 0 Or oApp Is Nothing Then
-    WScript.Echo "ERROR: SAP GUI scripting engine unavailable"
-    WScript.Quit 2
-End If
-On Error GoTo 0
-If oApp.Children.Count = 0 Then
-    WScript.Echo "ERROR: no SAP GUI connection (run /sap-login first)"
-    WScript.Quit 2
-End If
-Set oCon = oApp.Children(0)
-If oCon.Children.Count = 0 Then
-    WScript.Echo "ERROR: SAP GUI connection has no session"
-    WScript.Quit 2
-End If
-Set oSess = oCon.Children(0)
+Const SESSION_PATH = "%%SESSION_PATH%%"   ' empty / unsubstituted = use default
+
+ExecuteGlobal CreateObject("Scripting.FileSystemObject") _
+    .OpenTextFile("%%ATTACH_LIB_VBS%%", 1).ReadAll()
+
+' --- attach to the AI session's pinned SAP GUI session ----------------------
+Dim oSess
+Set oSess = AttachSapSession(SESSION_PATH)
 
 ' --- helper: dismiss a popup if one is open ---------------------------------
 Function IsPopupOpen(sess)
@@ -56,6 +49,31 @@ Function StatusBarType(sess)
     Else
         StatusBarType = s.MessageType
     End If
+End Function
+
+' --- helper: select a row by matching a cell value (language-independent) ---
+' Used for inactive-objects worklist popups where the row index changes
+' depending on what other inactive objects coexist. Returns True on hit.
+Function SelectRowByCellValue(sess, tblId, columnName, cellValue)
+    On Error Resume Next
+    Dim tbl : Set tbl = sess.findById(tblId, False)
+    On Error GoTo 0
+    SelectRowByCellValue = False
+    If tbl Is Nothing Then Exit Function
+    Dim i, c, r
+    For i = 0 To tbl.RowCount - 1
+        Set r = tbl.getAbsoluteRow(i)
+        On Error Resume Next
+        Set c = tbl.GetCell(i, columnName)
+        On Error GoTo 0
+        If Not c Is Nothing Then
+            If Trim(c.Text) = Trim(cellValue) Then
+                r.Selected = True
+                SelectRowByCellValue = True
+                Exit Function
+            End If
+        End If
+    Next
 End Function
 
 ' --- begin scenario actions -------------------------------------------------

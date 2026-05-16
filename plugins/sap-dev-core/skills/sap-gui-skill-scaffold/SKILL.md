@@ -46,10 +46,17 @@ Derive:
 - Parse new skill name + scenarios from `$ARGUMENTS` (see Step 1).
 - `{SCAFFOLD_FOLDER}` = `{work_dir}\skill_scaffolds\<new-skill-name>_<TS>`
 
-```bash
-cmd /c if not exist "{WORK_TEMP}" mkdir "{WORK_TEMP}"
-cmd /c if not exist "{SCAFFOLD_FOLDER}" mkdir "{SCAFFOLD_FOLDER}"
+```powershell
+New-Item -Path '{WORK_TEMP}'       -ItemType Directory -Force | Out-Null
+New-Item -Path '{SCAFFOLD_FOLDER}' -ItemType Directory -Force | Out-Null
 ```
+
+Use `New-Item -Force` rather than `cmd /c … mkdir` — Windows' built-in
+`mkdir` silently no-ops when the parent path is missing under some
+cmd.exe extension states, leaving `{SCAFFOLD_FOLDER}` uncreated and
+Step 0.5's `-StateFile` write below raising `DirectoryNotFoundException`.
+`New-Item -Force` is reliable cross-shell and creates intermediate
+directories.
 
 ---
 
@@ -84,8 +91,40 @@ $session = Get-SapCurrentSessionPath           -WorkTemp '{WORK_TEMP}'
 $profile = Get-SapCurrentConnectionProfile     -WorkTemp '{WORK_TEMP}'
 ```
 
-- `$session` is the SAP GUI session path for the AI-session's pinned connection (sole-conn fallback applies). Empty when no pin AND multi-conn — refuse with: *"multiple SAP GUI connections detected and no active session pinned; run `/sap-login` first."* Log end Status=FAILED ErrorClass=NO_PIN.
+- `$session` is the SAP GUI session path for the AI-session's pinned connection (sole-conn fallback applies). Empty when no pin AND multi-conn.
 - `$profile` is the full connection profile (or `$null` when nothing is pinned). It carries version fields used below.
+
+**When `$session` is empty**, try auto-pin before refusing. If the broker
+registry has exactly one connection block with a non-empty `connection_id`
+(other blocks are unregistered shells the broker cannot acquire against
+anyway), pin to it automatically; if more than one is registered, refuse:
+
+```powershell
+if ([string]::IsNullOrWhiteSpace($session)) {
+    # Inspect the registry to count registered (connection_id-bearing) blocks.
+    $registry = Get-Content '{work_dir}\runtime\session_registry.json' -Raw -Encoding UTF8 | ConvertFrom-Json
+    $registered = @($registry.connections | Where-Object { "$($_.connection_id)" -ne '' })
+    if ($registered.Count -eq 1) {
+        $aid = Get-SapAiSessionId
+        & '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_session_broker.ps1' `
+            -Action pin -AiSessionId $aid -ConnectionId $registered[0].connection_id `
+            -PinReason 'scaffold_auto' -WorkTemp '{WORK_TEMP}' | Out-Host
+        $session = Get-SapCurrentSessionPath        -WorkTemp '{WORK_TEMP}'
+        $profile = Get-SapCurrentConnectionProfile  -WorkTemp '{WORK_TEMP}'
+    } else {
+        Write-Error "multiple SAP GUI connections detected (registered: $($registered.Count)) and no active session pinned; run /sap-login to pin one. Candidates: $(($registered | ForEach-Object { $_.connection_id }) -join ', ')"
+        # Log end Status=FAILED ErrorClass=NO_PIN.
+        exit 1
+    }
+}
+```
+
+This handles the common "two connections in saplogon, only one registered
+with the broker" case without forcing a full `/sap-login` cycle. When
+auto-pin fires, the resulting pin's `pin_reason` is `scaffold_auto` so
+the operator can audit it via `broker list` / inspecting the registry.
+The refusal message lists candidate connection_ids so the operator can
+pin manually via `broker -Action pin -ConnectionId <id>` if needed.
 
 *Phase 4.2 note:* prior versions read `{WORK_TEMP}\sap_active_session.json` for both session_path AND version info. That file is gone. Session path resolution + version info both go through the lib helpers above. Cross-AI-session persistence lives in `connections.json` via `default_target_id`.
 
@@ -101,6 +140,33 @@ and into the generated SKILL.md's "Probed against" header:
 - `gui_version_raw`, `gui_major`     ← `$profile.gui_version_raw`, `$profile.gui_major`
 - `server_release_marker`, `server_release_raw`
 - `system_name`, `client`
+
+**System-id consistency check (mandatory).** The pinned connection's
+`system_id` MUST match the system the operator is actually working in
+on the active GUI window. Mismatch is silent today but routinely
+misroutes probes to the wrong system (observed 2026-05: pin landed on
+the registered S4D block while operator's active SAP GUI window was
+S4H — probes drove S4H but the scaffolder logged everything as S4D,
+and the configured `sap_dev_transport_request` for S4D was rejected by
+S4H). Implement as:
+
+```powershell
+# Re-read the active-GUI status line emitted by Step 0.7's first command.
+$activeSystem = (& "C:\Windows\SysWOW64\cscript.exe" //NoLogo "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_check_gui_login_status.vbs"
+    | Select-String -Pattern '^SYSTEM:\s*(\S+)') -replace '^.*SYSTEM:\s*',''
+$pinnedSystem = "$($profile.system_name)"   # could also use $profile.system_id
+if ($activeSystem -and $pinnedSystem -and ($activeSystem -ne $pinnedSystem)) {
+    Write-Error "GUI session is on '$activeSystem' but the pinned connection is '$pinnedSystem'. Run /sap-login to re-pin, or unpin and rerun the scaffolder."
+    # Log end Status=FAILED ErrorClass=PIN_SYSTEM_MISMATCH
+    exit 1
+}
+```
+
+This guard is what makes Bug 6 (per-connection TR resolution) actually
+correct downstream — if the pin and the GUI agree, then
+`sap_dev_transport_request` resolved from the per-profile
+`dev_defaults` in `connections.json` is automatically the TR for the
+right system. Without this guard, the per-connection mapping is moot.
 
 ---
 
@@ -141,10 +207,11 @@ After parsing:
 - If scenario count < 2, refuse with: *"scaffolding from one probe is just
   synthesized.vbs -- use that directly via /sap-gui-probe"*. Log end
   Status=SKIPPED.
-- Derive a mode name per scenario by parsing for action-verb keywords. Use
-  this lookup table; first match wins, scan in order:
+- Derive a mode name per scenario in two passes:
 
-  | Keyword regex (case-insensitive) | Mode label |
+  **Pass 1 — verb**: scan the scenario for an action verb. First match wins.
+
+  | Keyword regex (case-insensitive) | Verb label |
   |---|---|
   | `\bnot[ _-]?found\b\|missing\|nonexistent` | `not-found` |
   | `\bdisplay\b\|show\|view\b` | `display` |
@@ -157,9 +224,38 @@ After parsing:
   | `\bcopy\b\|clone\b` | `copy` |
   | `\brename\b` | `rename` |
 
-  If no keyword matches, fall back to `mode_NN` (NN = scenario index, 1-based).
-  Two scenarios producing the same mode label (both "display") get
-  de-duplicated -- both contribute their actions to a single merged mode.
+  **Pass 2 — object discriminator**: when the verb matches but a SAP repo
+  object noun is also present, append it as a suffix. This keeps
+  multi-object SE11 / SE38 / SE24 / ... skills from collapsing every
+  scenario into one mode. First match wins; case-insensitive.
+
+  | Keyword regex | Suffix |
+  |---|---|
+  | `\btable\b` | `-table` |
+  | `\bview\b` | `-view` |
+  | `\bdataelement\b\|\bdata[ _-]?element\b` | `-dataelement` |
+  | `\bdomain\b` | `-domain` |
+  | `\bstructure\b` | `-structure` |
+  | `\btabletype\b\|\btable[ _-]?type\b` | `-tabletype` |
+  | `\btypegroup\b\|\btype[ _-]?group\b` | `-typegroup` |
+  | `\bsearchhelp\b\|\bsearch[ _-]?help\b` | `-searchhelp` |
+  | `\blockobject\b\|\block[ _-]?object\b` | `-lockobject` |
+  | `\bprogram\b\|\breport\b\|\bpgm\b` | `-program` |
+  | `\bfunction[ _-]?module\b\|\bfm\b` | `-fm` |
+  | `\bfunction[ _-]?group\b\|\bfugr\b` | `-fugr` |
+  | `\bclass\b` | `-class` |
+  | `\binterface\b` | `-interface` |
+  | `\bmessage[ _-]?class\b` | `-messageclass` |
+  | `\bpackage\b` | `-package` |
+
+  If neither pass matches a verb, fall back to `mode_NN` (NN = scenario
+  index, 1-based). Two scenarios producing the same final mode label
+  (e.g. both `create-domain`) get de-duplicated — both contribute their
+  actions to a single merged mode VBS. This is fine when the actual
+  flows differ only in payload values (the merge surfaces those as
+  parameters); Step 5 self-review only flags a collision warning when
+  the merge produced ZERO parameters (then the collapse was a real
+  accident, not intentional value-variance).
 
 Echo the parsed plan to the user before Step 2:
 
@@ -206,6 +302,30 @@ Allocation goes through the **SAP GUI Session Broker** —
 `shared/rules/sap_session_broker.md`. The broker owns session
 discovery / spawn-on-demand / lifecycle / cleanup so the scaffolder
 doesn't have to.
+
+**Warmup-first sequencing (mandatory).** The FIRST scenario ALWAYS runs
+serially (Steps 2-Serial below) BEFORE any parallel fanout begins. The
+scaffolder treats scenario 1 as the warmup — by convention it creates
+any prerequisites later scenarios depend on (a fresh TR, a new package,
+a base function group, etc.). Running it solo first eliminates the
+race condition where parallel followers hit SAP before the warmup has
+landed its writes (observed in 2026-05 test run: 2 of 3 followers
+failed with "package ZCMSKILLSC3 does not exist" because they raced
+ahead of scenario 1's package-create step). Implementation:
+
+1. Run scenario 1 via Step 2-Serial below — single probe, no broker
+   acquire (use `{PINNED_SESSION}` directly).
+2. On success, record the run folder and continue.
+3. On FAILED / ABANDONED, abort the whole scaffold immediately.
+4. THEN proceed to the broker-coordinated parallel fanout (Steps 2.0
+   onward) for scenarios 2..N.
+
+This applies regardless of whether scenario 1 has explicit prerequisite
+syntax — the scaffolder cannot know which writes are prerequisites
+without solving a semantics problem, so the conservative rule is "first
+scenario always warms up." Operators who DON'T want a warmup (e.g. all
+scenarios are read-only) can ignore the cost; one extra serial probe
+adds maybe 30s and is correct.
 
 **2.0 — Pre-flight: discover existing sessions, then gc any stale claims.**
 
@@ -361,9 +481,14 @@ a fresh replacement transparently).
 
 Once every probe succeeded:
 
-```bash
-powershell -ExecutionPolicy Bypass -File "<SKILL_DIR>\references\merge_probes.ps1" -ProbeFolders <folder1>,<folder2>,... -ModeNames <mode1>,<mode2>,... -OutputFile "{SCAFFOLD_FOLDER}\_merge_report.json"
+```powershell
+$folders = @('<folder1>','<folder2>', ...)
+$modes   = @('<mode1>','<mode2>', ...)
+& '<SKILL_DIR>\references\merge_probes.ps1' -ProbeFolders $folders -ModeNames $modes -OutputFile '{SCAFFOLD_FOLDER}\_merge_report.json'
 ```
+
+**Why the call-operator (`& '<script>.ps1' ...`) instead of `powershell -File`?**
+The PowerShell host's `-File` argument tokenizer turns a literal `-ProbeFolders "a","b","c"` into a SINGLE string `a,b,c` (one element), and `merge_probes.ps1` then refuses with "need at least 2 probe folders; got 1". Invoking via the call operator from a PowerShell host preserves the real `[string[]]` array binding. Pass `$folders` and `$modes` as arrays built up beforehand.
 
 The script reads every `step_NN_action.json` across all probe folders, groups
 by `(verb, target)` touchpoint, classifies each as:
@@ -385,9 +510,32 @@ Last line of stdout: `MERGE OK: probes=<N> touchpoints=<M> parameters=<P> modeSp
 
 ## Step 4 — Emit the skill folder
 
-```bash
-powershell -ExecutionPolicy Bypass -File "<SKILL_DIR>\references\emit_skill_folder.ps1" -MergeReport "{SCAFFOLD_FOLDER}\_merge_report.json" -SkillName "<new-skill-name>" -OutputDir "{SCAFFOLD_FOLDER}" -Tcd "<TXN>" -ServerMarker "<server_release_marker-from-pin-or-empty>"
+```powershell
+& '<SKILL_DIR>\references\emit_skill_folder.ps1' `
+    -MergeReport  '{SCAFFOLD_FOLDER}\_merge_report.json' `
+    -SkillName    '<new-skill-name>' `
+    -OutputDir    '{SCAFFOLD_FOLDER}' `
+    -Tcd          '<TXN>' `
+    -ServerMarker '<server_release_marker-from-pin-or-empty>' `
+    -ForceParam   @('L_DEVCLASS','TRKORR')   # optional; see below
 ```
+
+`-ForceParam` (optional `[string[]]`) overrides the merge classification by
+DDIC field tail. Use this when every probe happened to use the same value
+for a field — making the merge classify it as a `constant` — but real
+users will want to vary it. Canonical examples:
+
+- `L_DEVCLASS` — package name on the Object Directory popup; classified as
+  constant because every test scenario said "in <one-package>", but the
+  shipped skill should accept any package.
+- `TRKORR` — transport request number on the Workbench Request popup;
+  same reasoning.
+
+For each matched touchpoint, the emit step flips `constant` → `parameter`,
+derives a token from the tail (`%%L_DEVCLASS%%`, `%%TRKORR%%`), and rebuilds
+per-probe values from each probe's recorded action so the argument-hint
+and SKILL.md dispatch table list the new parameter alongside the
+merge-discovered ones.
 
 `-ServerMarker` is `$profile.server_release_marker` from the
 `Get-SapCurrentConnectionProfile` call in the second-step of Step 0
@@ -431,9 +579,13 @@ Surface to the user any obvious gaps:
 3. **Missing parameter validation** -- the generated SKILL.md does not
    validate that the user passed each required parameter; that's left to the
    human author.
-4. **Mode collisions** -- if two scenarios produced the same mode label (e.g.,
-   both "display"), confirm to the user that the de-dup was intentional and
-   the resulting single VBS covers both scenarios' actions.
+4. **Mode collisions** -- if two scenarios produced the same mode label
+   (e.g., both `display-table`) AND the merge report's parameter count
+   is zero, surface a real collision warning: the scenarios merged
+   without producing any distinguishing parameters, which usually means
+   they shouldn't have been collapsed. When parameter count is > 0 the
+   collapse was the intended outcome (the variance lives in the
+   parameter tokens), so DO NOT warn.
 
 Output a concise findings list; do not modify the generated files.
 

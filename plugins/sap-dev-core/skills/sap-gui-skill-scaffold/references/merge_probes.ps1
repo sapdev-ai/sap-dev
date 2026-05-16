@@ -112,11 +112,21 @@ for ($i = 0; $i -lt $ProbeFolders.Count; $i++) {
 # Build the touchpoint index. Key = "<verb>|<target>" (target may be empty for
 # VKey-only navigations on wnd[0]; we keep them keyed by verb+target+vkey so
 # Enter and F3 don't collide).
+#
+# Special case: SET_OKCD has the same target path (wnd[0]/tbar[0]/okcd) at
+# every position in the flow, so keying by (verb, target) alone collapses
+# `/nSE11` (entry navigation), intermediate `/nSE21` etc., and `/n` (cleanup)
+# into a single bucket — which then looks like a parameter with one varying
+# value, and the emit step bakes ONE value at multiple positions where
+# different values were intended. Include the value in the key for SET_OKCD
+# so each distinct transaction code becomes its own touchpoint and the
+# emit step gets the right constant at each step.
 # ------------------------------------------------------------------------------
 function Get-TouchpointKey {
     param($a)
     $tgt = if ($a.target) { $a.target } else { '' }
     if ($a.verb -eq 'SEND_VKEY') { return "$($a.verb)|$tgt|$($a.vkey)" }
+    if ($a.verb -eq 'SET_OKCD')  { return "$($a.verb)|$tgt|$($a.value)" }
     return "$($a.verb)|$tgt"
 }
 

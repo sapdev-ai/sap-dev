@@ -284,6 +284,17 @@ function Write-Registry {
     )
 }
 
+# Persist the registry if Sweep-StaleEntries dropped anything. Callers that
+# Sweep then exit early (e.g. release → NOT_FOUND, acquire → DENIED) MUST
+# invoke this before returning, otherwise the sweep's in-memory drops are
+# lost and stale claims "come back from the dead" on the next read. The
+# happy paths already call Write-Registry directly, so this helper is for
+# the error / not-found exit paths only.
+function Persist-IfSwept {
+    param([hashtable] $Registry, [int] $Swept)
+    if ($Swept -gt 0) { Write-Registry -Registry $Registry }
+}
+
 # ===========================================================================
 # SAP GUI introspection (shells out to the cscript COM helper)
 # ===========================================================================
@@ -798,7 +809,7 @@ function Invoke-Acquire {
     $script:Result = ''
     With-RegistryLock {
         $reg = Read-Registry
-        [void](Sweep-StaleEntries -Registry $reg -VerboseDrops $false)
+        $swept = Sweep-StaleEntries -Registry $reg -VerboseDrops $false
 
         # Idempotent re-acquire: same task_id with a still-live claim wins
         # regardless of connection target. AI-session pin is also bypassed
@@ -848,6 +859,7 @@ function Invoke-Acquire {
             -User           $User `
             -PinFile        $PinFile
         if ($target.error) {
+            Persist-IfSwept -Registry $reg -Swept $swept
             $script:Result = "DENIED: $($target.error)"
             return
         }
@@ -862,6 +874,7 @@ function Invoke-Acquire {
             $state = Get-SapState
             if ($state) { $liveCon = $state.connections | Where-Object { "$($_.connection_path)" -eq $targetCon } | Select-Object -First 1 }
             if (-not $liveCon) {
+                Persist-IfSwept -Registry $reg -Swept $swept
                 $script:Result = "DENIED: target connection $targetCon disappeared during acquire"
                 return
             }
@@ -890,6 +903,7 @@ function Invoke-Acquire {
         # itself uses on user-driven re-pin).
         if ($AiSessionId -and -not $ForceUnpin) {
             if ($pinConnId -and "$($cb.connection_id)" -and ("$($cb.connection_id)" -ne $pinConnId)) {
+                Persist-IfSwept -Registry $reg -Swept $swept
                 $script:Result = "DENIED: ai_session $AiSessionId is pinned to connection_id=$pinConnId; this acquire targets $($cb.connection_id) on $targetCon. Re-run /sap-login to switch pins, or pass -ForceUnpin."
                 return
             }
@@ -912,6 +926,7 @@ function Invoke-Acquire {
         if (-not $chosen) {
             $newSes = Spawn-NewSession -TargetConnectionPath $targetCon
             if (-not $newSes) {
+                Persist-IfSwept -Registry $reg -Swept $swept
                 $script:Result = "DENIED: no free session on $targetCon and spawn failed (cap reached or SAP GUI unreachable)"
                 return
             }
@@ -1002,14 +1017,18 @@ function Invoke-Release {
     $script:Result = ''
     With-RegistryLock {
         $reg = Read-Registry
-        [void](Sweep-StaleEntries -Registry $reg -VerboseDrops $false)
+        $swept = Sweep-StaleEntries -Registry $reg -VerboseDrops $false
 
         $matched = $null
         foreach ($cb in $reg.connections) {
             $hit = $cb.entries | Where-Object { $_.task_id -eq $TaskId -and $_.status -eq 'claimed' } | Select-Object -First 1
             if ($hit) { $matched = @{ block = $cb; entry = $hit }; break }
         }
-        if (-not $matched) { $script:Result = 'NOT_FOUND'; return }
+        if (-not $matched) {
+            Persist-IfSwept -Registry $reg -Swept $swept
+            $script:Result = 'NOT_FOUND'
+            return
+        }
 
         $entry = $matched.entry
         $closeIt = $WasCreated -or [bool]$entry.was_created
@@ -1095,7 +1114,7 @@ function Invoke-SetConnectionId {
     $script:Result = ''
     With-RegistryLock {
         $reg = Read-Registry
-        [void](Sweep-StaleEntries -Registry $reg -VerboseDrops $false)
+        $swept = Sweep-StaleEntries -Registry $reg -VerboseDrops $false
 
         $cb = $reg.connections | Where-Object { $_.connection_path -eq $ConnectionPath } | Select-Object -First 1
         if (-not $cb) {
@@ -1104,6 +1123,7 @@ function Invoke-SetConnectionId {
             $liveCon = $null
             if ($state) { $liveCon = $state.connections | Where-Object { "$($_.connection_path)" -eq $ConnectionPath } | Select-Object -First 1 }
             if (-not $liveCon) {
+                Persist-IfSwept -Registry $reg -Swept $swept
                 $script:Result = "ERROR: connection $ConnectionPath not attached"
                 return
             }
