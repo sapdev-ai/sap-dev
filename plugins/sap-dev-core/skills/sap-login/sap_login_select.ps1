@@ -160,7 +160,14 @@ function Invoke-Broker {
 
 function Get-LiveSapConnections {
     # Run broker `discover` to register newcomers + fold a fresh enumeration.
-    $r = Invoke-Broker -Args @('-Action','discover','-WorkTemp',$WorkTemp)
+    # When SAP COM is unreachable (no live GUI), discover exits 2 and
+    # Sweep-StaleEntries deliberately leaves the persisted registry alone —
+    # so the next `list` would echo back ghost connections from a previous
+    # session. Guard against that: a non-zero discover exit means there is no
+    # live state, so report zero connections (preserve ai_sessions for pin
+    # introspection by the caller, which is still meaningful as a record of
+    # intent even when nothing is currently attached).
+    $rDiscover = Invoke-Broker -Args @('-Action','discover','-WorkTemp',$WorkTemp)
     # `list` then reads the v3 registry and emits a JSON blob.
     $r = Invoke-Broker -Args @('-Action','list','-WorkTemp',$WorkTemp)
     $blob = ($r.raw | Out-String).Trim()
@@ -168,10 +175,16 @@ function Get-LiveSapConnections {
     $start = $blob.IndexOf('{')
     if ($start -lt 0) { return $null }
     try {
-        return ($blob.Substring($start) | ConvertFrom-Json)
+        $obj = $blob.Substring($start) | ConvertFrom-Json
     } catch {
         return $null
     }
+    if ($rDiscover.exit -ne 0) {
+        # Force-empty the connections list so decide doesn't emit ATTACH_ACTIVE
+        # against a stale block. ai_sessions stays intact.
+        $obj | Add-Member -NotePropertyName connections -NotePropertyValue @() -Force
+    }
+    return $obj
 }
 
 # ---------------------------------------------------------------------------
