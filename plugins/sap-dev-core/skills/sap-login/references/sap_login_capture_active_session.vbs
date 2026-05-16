@@ -177,6 +177,22 @@ If sPinned <> "" Then
         WScript.Echo "ERROR: pinned session not found: " & sPinned
         WScript.Quit 3
     End If
+    ' Accept connection-only paths (/app/con[N]) by descending to the first
+    ' session. GuiConnection has no .Info, so without this we would silently
+    ' return empty SystemName/Client/User/Language because every .Info.* read
+    ' is swallowed by On Error Resume Next inside BuildSessionRecord.
+    Dim sPinType : sPinType = ""
+    On Error Resume Next
+    sPinType = oPin.Type
+    On Error GoTo 0
+    If sPinType = "GuiConnection" Then
+        If oPin.Children.Count = 0 Then
+            WScript.Echo "ERROR: connection " & sPinned & " has no session"
+            WScript.Quit 3
+        End If
+        Set oPin = oPin.Children(0)
+        sPinned = oPin.Id
+    End If
     ' Walk up to find the GuiConnection ancestor.
     Dim parts : parts = Split(sPinned, "/")
     Dim conPath : conPath = "/" & parts(1) & "/" & parts(2)   '   /app/con[N]

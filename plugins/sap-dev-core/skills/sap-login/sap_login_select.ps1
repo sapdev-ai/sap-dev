@@ -322,7 +322,7 @@ function Invoke-Decide {
         foreach ($a in $activeConns) {
             $match = Match-ActiveToProfile -ActiveConn $a -Profiles @($p)
             if ($match) {
-                Write-Host "ATTACH_ACTIVE: path=$($a.connection_path) connection_path=$($a.connection_path) connection_id=$($p.id) description='$($p.description)'"
+                Write-Host "ATTACH_ACTIVE: path=$($a.connection_path)/ses[0] connection_path=$($a.connection_path) connection_id=$($p.id) description='$($p.description)'"
                 return
             }
         }
@@ -334,7 +334,7 @@ function Invoke-Decide {
         if (-not $a) { Write-Host "ERROR: active connection $PickConnectionPath not found"; exit 1 }
         $match = Match-ActiveToProfile -ActiveConn $a -Profiles $store.connections
         $descEff = if ($match) { $match.description } else { $a.description }
-        Write-Host "ATTACH_ACTIVE: path=$($a.connection_path) connection_path=$($a.connection_path) description='$descEff'"
+        Write-Host "ATTACH_ACTIVE: path=$($a.connection_path)/ses[0] connection_path=$($a.connection_path) description='$descEff'"
         return
     }
 
@@ -346,7 +346,7 @@ function Invoke-Decide {
             foreach ($a in $activeConns) {
                 $match = Match-ActiveToProfile -ActiveConn $a -Profiles @($pinnedProfile)
                 if ($match) {
-                    Write-Host "RESOLVED: path=$($a.connection_path) connection_path=$($a.connection_path) connection_id=$($pinnedProfile.id) description='$($pinnedProfile.description)' source=pin"
+                    Write-Host "RESOLVED: path=$($a.connection_path)/ses[0] connection_path=$($a.connection_path) connection_id=$($pinnedProfile.id) description='$($pinnedProfile.description)' source=pin"
                     return
                 }
             }
@@ -381,7 +381,7 @@ function Invoke-Decide {
         if ($defP) {
             $matchDefault = Test-SapConnectionsEqual -A (ConvertTo-IdentityHash $a) -B (ConvertTo-IdentityHash $defP)
             if ($matchDefault) {
-                Write-Host "ATTACH_ACTIVE: path=$($a.connection_path) connection_path=$($a.connection_path) connection_id=$($defP.id) description='$($defP.description)' source=default_match"
+                Write-Host "ATTACH_ACTIVE: path=$($a.connection_path)/ses[0] connection_path=$($a.connection_path) connection_id=$($defP.id) description='$($defP.description)' source=default_match"
                 return
             }
         }
