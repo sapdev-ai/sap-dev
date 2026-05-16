@@ -94,12 +94,77 @@ function Connect-SapRfc {
         [string]$LogonGroup    = '',
         [string]$SystemID      = '',
 
-        [Parameter(Mandatory=$true)] [string]$Client,
-        [Parameter(Mandatory=$true)] [string]$User,
-        [Parameter(Mandatory=$true)] [string]$Password,
-        [Parameter(Mandatory=$true)] [string]$Language,
+        # Phase 4.3: Client / User / Password / Language are NOT Mandatory any
+        # more. When empty (or still a literal %%TOKEN%%), the function falls
+        # back to the AI-session's pinned connection profile in
+        # runtime/connections.json (DPAPI-decrypted password). This makes every
+        # downstream RFC caller work without each one having to plumb
+        # sap_password through settings.json. Callers that explicitly pass real
+        # values are untouched -- the fallback only fills empty slots.
+        [string]$Client   = '',
+        [string]$User     = '',
+        [string]$Password = '',
+        [string]$Language = '',
         [string]$DestName = "SAPDEV"
     )
+
+    # ---- Phase 4.3 cred fallback: pinned connection profile -----------------
+    # Detect "field needs fallback" = empty OR still a literal %%TOKEN%%.
+    function _Needs($v) {
+        if ([string]::IsNullOrWhiteSpace($v)) { return $true }
+        if ($v.StartsWith('%%') -and $v.EndsWith('%%')) { return $true }
+        return $false
+    }
+    $needAny = (_Needs $Server) -and (_Needs $MessageServer)   # at least one endpoint
+    if (-not $needAny) { $needAny = (_Needs $Client) -or (_Needs $User) -or (_Needs $Password) }
+    if ($needAny) {
+        try {
+            $libDir = $PSScriptRoot
+            if (-not (Get-Command Get-SapCurrentConnectionProfile -ErrorAction SilentlyContinue)) {
+                $sl = Join-Path $libDir 'sap_settings_lib.ps1'
+                $cl = Join-Path $libDir 'sap_connection_lib.ps1'
+                if (Test-Path $sl) { . $sl }
+                if (Test-Path $cl) { . $cl }
+            }
+            $prof = $null
+            if (Get-Command Get-SapCurrentConnectionProfile -ErrorAction SilentlyContinue) {
+                $prof = Get-SapCurrentConnectionProfile
+            }
+            if ($prof) {
+                # Endpoint: prefer existing input shape (direct vs load-balanced);
+                # only fill blanks.
+                if (_Needs $Server)        { $Server        = "$($prof.application_server)" }
+                if (_Needs $Sysnr)         { $Sysnr         = "$($prof.system_number)" }
+                if (_Needs $MessageServer) { $MessageServer = "$($prof.message_server)" }
+                if (_Needs $LogonGroup)    { $LogonGroup    = "$($prof.logon_group)" }
+                if (_Needs $SystemID)      { $SystemID      = "$($prof.system_id)" }
+                if (_Needs $Client)        { $Client        = "$($prof.client)" }
+                if (_Needs $User)          { $User          = "$($prof.user)" }
+                if (_Needs $Language)      { $Language      = "$($prof.language)" }
+                if (_Needs $Password) {
+                    $pwdField = "$($prof.password_dpapi)"
+                    if (-not [string]::IsNullOrWhiteSpace($pwdField)) {
+                        $dpapiPs = Join-Path $libDir 'sap_dpapi.ps1'
+                        if (Test-Path $dpapiPs) {
+                            try {
+                                $Password = (& $dpapiPs -Action unprotect -Value $pwdField 2>$null) -as [string]
+                                if ($Password) { $Password = $Password.Trim() }
+                            } catch {
+                                Write-Host "WARN: Connect-SapRfc: DPAPI decrypt failed ($($_.Exception.Message)); password stays empty."
+                            }
+                        }
+                    }
+                }
+            }
+        } catch {
+            # Best-effort fallback; if it throws (lib not loadable, pin missing),
+            # we fall through to the mandatory-field check below.
+        }
+    }
+    if ([string]::IsNullOrWhiteSpace($Language)) { $Language = 'EN' }
+    if ([string]::IsNullOrWhiteSpace($Client))   { Write-Host "ERROR: Connect-SapRfc -Client is empty and no pinned profile resolved Client. Run /sap-login first."; return $null }
+    if ([string]::IsNullOrWhiteSpace($User))     { Write-Host "ERROR: Connect-SapRfc -User is empty and no pinned profile resolved User. Run /sap-login first."; return $null }
+    if ([string]::IsNullOrWhiteSpace($Password)) { Write-Host "ERROR: Connect-SapRfc -Password is empty. Save the password on this connection via /sap-login (Step 5b)."; return $null }
 
     # Validate exactly one endpoint mode is selected. If both -Server and
     # -MessageServer are non-blank, prefer direct (matches the historic
