@@ -236,7 +236,7 @@ Run via cscript:
 
 ```bash
 powershell -ExecutionPolicy Bypass -File "{WORK_TEMP}\sap_function_group_gui_create_run.ps1"
-cmd /c C:\Windows\SysWOW64\cscript.exe //NoLogo {WORK_TEMP}\sap_function_group_gui_create_run.vbs
+C:/Windows/SysWOW64/cscript.exe //NoLogo {WORK_TEMP}\sap_function_group_gui_create_run.vbs
 ```
 
 **Output:** the VBS prints `INFO: sbar [...]` and `INFO: activate sbar
@@ -362,7 +362,7 @@ Run:
 
 ```bash
 powershell -ExecutionPolicy Bypass -File "{WORK_TEMP}\sap_function_group_gui_delete_run.ps1"
-cmd /c C:\Windows\SysWOW64\cscript.exe //NoLogo {WORK_TEMP}\sap_function_group_gui_delete_run.vbs
+C:/Windows/SysWOW64/cscript.exe //NoLogo {WORK_TEMP}\sap_function_group_gui_delete_run.vbs
 ```
 
 ### Behaviour Notes

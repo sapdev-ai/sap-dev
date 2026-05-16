@@ -192,7 +192,7 @@ Replace `THE_TYPE` (W or C), `THE_DESC` (short text), and `<SKILL_DIR>` /
 Run:
 ```bash
 powershell -ExecutionPolicy Bypass -File "{WORK_TEMP}\sap_se01_create_run.ps1"
-cmd /c C:\Windows\SysWOW64\cscript.exe //NoLogo {WORK_TEMP}\sap_se01_create_run.vbs
+C:/Windows/SysWOW64/cscript.exe //NoLogo {WORK_TEMP}\sap_se01_create_run.vbs
 ```
 
 **Expected last line of stdout:** `DONE`. If the VBS prints `ERROR:`, abort
@@ -344,7 +344,7 @@ Write-Host 'Done'
 Run:
 ```bash
 powershell -ExecutionPolicy Bypass -File "{WORK_TEMP}\sap_se01_release_run.ps1"
-cmd /c C:\Windows\SysWOW64\cscript.exe //NoLogo {WORK_TEMP}\sap_se01_release_run.vbs
+C:/Windows/SysWOW64/cscript.exe //NoLogo {WORK_TEMP}\sap_se01_release_run.vbs
 ```
 
 ## R6 — Interpret VBS output

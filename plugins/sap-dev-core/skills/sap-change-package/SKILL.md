@@ -244,7 +244,7 @@ Write-Host 'Done'
 Run via 32-bit cscript:
 ```bash
 powershell -ExecutionPolicy Bypass -File "{WORK_TEMP}\sap_change_package_<TXN>_run.ps1"
-cmd /c C:\Windows\SysWOW64\cscript.exe //NoLogo {WORK_TEMP}\sap_change_package_<TXN>_run.vbs
+C:/Windows/SysWOW64/cscript.exe //NoLogo {WORK_TEMP}\sap_change_package_<TXN>_run.vbs
 ```
 
 Each VBS emits a stable contract:

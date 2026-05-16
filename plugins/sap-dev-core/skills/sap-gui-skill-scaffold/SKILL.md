@@ -70,7 +70,7 @@ scaffold → probe call tree.
 First, confirm at least one SAP GUI session is attached:
 
 ```bash
-cmd /c C:\Windows\SysWOW64\cscript.exe //NoLogo "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_check_gui_login_status.vbs"
+C:/Windows/SysWOW64/cscript.exe //NoLogo "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_check_gui_login_status.vbs"
 ```
 
 If status is not `LOGGED_IN`, stop and tell the user to run `/sap-login` first.
@@ -446,7 +446,7 @@ mid-flow on the last probe's end state):
 
 ```bash
 echo {"verb":"SET_OKCD","value":"/n","note":"scaffolder cleanup"} > "{WORK_TEMP}\scaffold_cleanup.json"
-cmd /c C:\Windows\SysWOW64\cscript.exe //NoLogo "<SAP_DEV_CORE_SHARED_DIR>\..\skills\sap-gui-probe\references\sap_gui_probe_action.vbs" "{WORK_TEMP}\scaffold_cleanup.json"
+C:/Windows/SysWOW64/cscript.exe //NoLogo "<SAP_DEV_CORE_SHARED_DIR>\..\skills\sap-gui-probe\references\sap_gui_probe_action.vbs" "{WORK_TEMP}\scaffold_cleanup.json"
 ```
 
 Tell the user how to install the generated skill into a plugin:

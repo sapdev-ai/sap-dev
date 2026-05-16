@@ -45,7 +45,7 @@ powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_
 ## Step 0.7 — Pre-flight: GUI session
 
 ```bash
-cmd /c C:\Windows\SysWOW64\cscript.exe //NoLogo "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_check_gui_login_status.vbs"
+C:/Windows/SysWOW64/cscript.exe //NoLogo "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_check_gui_login_status.vbs"
 ```
 
 If status is not `LOGGED_IN`, stop and tell the user to run `/sap-login` first.
@@ -91,7 +91,7 @@ foreach ($k in $paramsMap.Keys) {
 }
 Set-Content "$workTemp\{{SKILL_NAME}}_run.vbs" $content -Encoding Unicode
 
-cmd /c C:\Windows\SysWOW64\cscript.exe //NoLogo "$workTemp\{{SKILL_NAME}}_run.vbs"
+C:/Windows/SysWOW64/cscript.exe //NoLogo "$workTemp\{{SKILL_NAME}}_run.vbs"
 ```
 
 Read the script's stdout. Last line is `DONE` (success) or `ERROR: <text>`

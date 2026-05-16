@@ -118,7 +118,7 @@ Run the canonical login probe (no template substitution -- it's a static
 script). Aborts the probe if no session is attached.
 
 ```bash
-cmd /c C:\Windows\SysWOW64\cscript.exe //NoLogo "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_check_gui_login_status.vbs"
+C:/Windows/SysWOW64/cscript.exe //NoLogo "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_check_gui_login_status.vbs"
 ```
 
 If the last line is anything other than `STATUS: LOGGED_IN`, stop and tell
@@ -209,7 +209,7 @@ If any check fails, send a reset action and re-dump:
 
 ```bash
 echo {"verb":"SET_OKCD","value":"/n","session":"{SESSION_PATH}","note":"reset stale state"} > "{RUN_FOLDER}\step_00_reset.json"
-cmd /c C:\Windows\SysWOW64\cscript.exe //NoLogo "<SKILL_DIR>\references\sap_gui_probe_action.vbs" "{RUN_FOLDER}\step_00_reset.json"
+C:/Windows/SysWOW64/cscript.exe //NoLogo "<SKILL_DIR>\references\sap_gui_probe_action.vbs" "{RUN_FOLDER}\step_00_reset.json"
 powershell -ExecutionPolicy Bypass -File "<SKILL_DIR>\references\sap_gui_probe_dump.ps1" -Mode wnd -Filter 0 -OutputFile "{RUN_FOLDER}\step_00_post.txt" -SessionPath "{SESSION_PATH}"
 ```
 
@@ -297,7 +297,7 @@ If MODE=auto, skip the confirmation entirely.
 ### 2.6 — Run the action
 
 ```bash
-cmd /c C:\Windows\SysWOW64\cscript.exe //NoLogo "<SKILL_DIR>\references\sap_gui_probe_action.vbs" "{RUN_FOLDER}\step_NN_action.json"
+C:/Windows/SysWOW64/cscript.exe //NoLogo "<SKILL_DIR>\references\sap_gui_probe_action.vbs" "{RUN_FOLDER}\step_NN_action.json"
 ```
 
 Last line is `DONE` or `ERROR: <text>`. On error: read the run folder's
@@ -348,7 +348,7 @@ Best-effort return to SAP Easy Access. Use SET_OKCD via the action dispatcher:
 
 ```bash
 echo {"verb":"SET_OKCD","value":"/n","note":"return to Easy Access"} > "{RUN_FOLDER}\step_99_action.json"
-cmd /c C:\Windows\SysWOW64\cscript.exe //NoLogo "<SKILL_DIR>\references\sap_gui_probe_action.vbs" "{RUN_FOLDER}\step_99_action.json"
+C:/Windows/SysWOW64/cscript.exe //NoLogo "<SKILL_DIR>\references\sap_gui_probe_action.vbs" "{RUN_FOLDER}\step_99_action.json"
 ```
 
 If a modal popup is open and `/n` doesn't work, surface that to the user
