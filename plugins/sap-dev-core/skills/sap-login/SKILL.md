@@ -2,13 +2,18 @@
 name: sap-login
 description: |
   Opens a SAP GUI connection and logs in using SAP GUI Scripting.
-  Also verifies SAP NCo 3.1 RFC connectivity for RFC-based skills.
-  Reads connection parameters from settings.json (sap-dev-core plugin).
-  Supports two connection methods: SAP Logon pad entry name (OpenConnection)
-  or direct connection string (OpenConnectionByConnectionString).
-  Checks for existing sessions first without generating any VBS.
+  Multi-profile connection store (Phase 4): save multiple SAP connections
+  (different SID / Client / User / endpoint) at `{work_dir}\runtime\connections.json`,
+  with passwords DPAPI-encrypted at rest. Picks the right one for this
+  AI session via a 4-step identity compare and an AI-session pin.
+  Also verifies SAP NCo 3.1 RFC connectivity (direct or load-balanced via
+  MessageServer + LogonGroup + SystemID).
+  Supports three connection methods: SAP Logon pad entry name (OpenConnection),
+  load-balanced /M/<msrv>/G/<grp>/S/<sid> string, and direct /H/<host>/S/<port>.
+  Checks existing sessions first; reuses the active connection when it
+  matches the saved default.
   Prerequisites: SAP GUI installed, SAP GUI Scripting enabled (client + server).
-argument-hint: "[SAP Logon description override] [--remember]"
+argument-hint: "[--list | --add | --switch <id> | --set-default <id> | --delete <id>]"
 ---
 
 # SAP GUI Login Skill
@@ -27,12 +32,16 @@ Task: $ARGUMENTS
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/skill_operating_rules.md` | *(rule)* | Mandatory operating rules |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/language_independence_rules.md` | *(rule)* | GUI-scripting language independence — identify by component ID + DDIC field name, status-bar checks via `MessageType` codes (S/W/E/I/A), VKey instead of menu-text, no branching on `.Text`/`.Tooltip`/window titles |
 | `sap-dev-core/shared/scripts/sap_check_gui_login_status.vbs` | *(none — static)* | Check session status |
-| `sap-dev-core/shared/scripts/sap_login.vbs` | *(template)* | SAP GUI login VBScript |
-| `sap-dev-core/shared/scripts/sap_rfc_connect.ps1` | *(template)* | SAP NCo 3.1 RFC connection PowerShell |
-| `sap-dev-core/shared/scripts/sap_dpapi.ps1` | *(none — static)* | DPAPI encrypt/decrypt for `sap_password` at rest in `settings.json`. CLI mode: `-Action protect|unprotect -Value <text>`. |
+| `sap-dev-core/shared/scripts/sap_login.vbs` | *(template)* | SAP GUI login VBScript. Tokens: `%%SAP_LOGON_DESCRIPTION%%`, `%%SAP_APPLICATION_SERVER%%`, `%%SAP_SYSTEM_NUMBER%%`, `%%SAP_MESSAGE_SERVER%%`, `%%SAP_LOGON_GROUP%%`, `%%SAP_SYSTEM_ID%%`, `%%SAP_CLIENT%%`, `%%SAP_USER%%`, `%%SAP_PASSWORD%%`, `%%SAP_LANGUAGE%%`. |
+| `sap-dev-core/shared/scripts/sap_rfc_connect.ps1` | *(template)* | SAP NCo 3.1 RFC connection PowerShell. Now supports load-balanced login via `MessageServer + LogonGroup + SystemID`. |
+| `sap-dev-core/shared/scripts/sap_rfc_lib.ps1` | `%%RFC_LIB_PS1%%` | NCo helpers. `Connect-SapRfc` accepts either direct (`-Server` + `-Sysnr`) or load-balanced (`-MessageServer` + `-LogonGroup` + `-SystemID`). |
+| `sap-dev-core/shared/scripts/sap_dpapi.ps1` | *(none — static)* | DPAPI encrypt/decrypt for passwords at rest. CLI mode: `-Action protect|unprotect -Value <text>`. |
+| `sap-dev-core/shared/scripts/sap_connection_lib.ps1` | *(none — dot-source)* | **Multi-profile connection store**. 4-step identity compare, dedup-on-save, DPAPI password handling, legacy-settings migration. Storage: `{work_dir}\runtime\connections.json`. |
+| `sap-dev-core/shared/scripts/sap_session_broker.ps1` | *(none — invoke)* | Broker. New Phase-4 actions: `pin`, `unpin`, `set-connection-id`, `stuck`. New flags: `-AiSessionId`, `-WasCreated`, `-ForceUnpin`. |
 | `sap-dev-core/shared/scripts/sap_rfc_system_info.ps1` | *(none — direct invoke)* | RFC_SYSTEM_INFO + CVERS query. Step 6.2 calls this to capture `server_release_marker`, `software_components`. |
 | `sap-dev-core/shared/tables/sap_release_markers.tsv` | *(none — read by sap_rfc_system_info.ps1)* | (component, release range) → canonical marker lookup. |
-| `<SKILL_DIR>/references/sap_login_capture_active_session.vbs` | *(none — static)* | GUI-side capture for Step 6.1. Emits a flat JSON record or `MULTI:<array>` when multiple connections are open. |
+| `<SKILL_DIR>/sap_login_select.ps1` | *(none — direct invoke)* | **Selection driver**. Actions: `init`, `decide`, `list`, `set-default`, `switch`, `delete`, `finalize`. Emits structured signals (`RESOLVED:`, `ATTACH_ACTIVE:`, `CONNECT_PROFILE:`, `PICK_NEEDED:`, `ADD_NEEDED:`, `SUCCESS:`). |
+| `<SKILL_DIR>/references/sap_login_capture_active_session.vbs` | *(none — static)* | GUI-side capture. Phase-4 fields: `system_name`, `client`, `user`, `language`, `application_server`, `system_number`, `message_server`, `logon_group`, `program`, `screen_number`, plus GUI version. Emits flat JSON or `MULTI:<array>`. |
 
 ---
 
@@ -54,6 +63,23 @@ cmd /c if not exist "{WORK_TEMP}" mkdir "{WORK_TEMP}"
 
 ---
 
+## Argument Modes (Phase 4)
+
+Branch on `$ARGUMENTS` before running anything below. Each mode is a single
+PowerShell call to `sap_login_select.ps1`; the rest of this skill (Steps 1–6)
+runs only for the **default mode** (connect-and-pin).
+
+| Mode | Trigger phrase / arg | What runs |
+|---|---|---|
+| **list** | `--list`, "list connections", "show profiles" | `sap_login_select.ps1 -Action list` → emit `LIST: <json>`. Present a readable table to the user. **Done.** |
+| **set-default** | `--set-default <id>` | `sap_login_select.ps1 -Action set-default -ProfileId <id>` → emit `SUCCESS: default_target_id=...`. **Done.** |
+| **switch** | `--switch <id>`, "switch to X" | `sap_login_select.ps1 -Action switch -ProfileId <id>` → re-pins AI session, releases old claims. Then runs Step 2 (decide) for the new connection. |
+| **delete** | `--delete <id>` | Ask user to confirm deletion (`AskUserQuestion`); on confirm, `sap_login_select.ps1 -Action delete -ProfileId <id>`. **Done.** |
+| **add** | `--add` | Skip Step 2 (decide); jump to ADD_NEEDED handler in Step 2. Treat as user-initiated new-profile entry. |
+| **(default)** | no flag / no relevant arg | Run Steps 0.5 → 6.5 as documented below. |
+
+---
+
 ## Step 0.5 — Start Logging
 
 Start a structured log run. The helper persists `run_id` in a state file
@@ -65,6 +91,49 @@ the SAP password in `-ParamsJson` — only system / client / user.
 ```bash
 powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{WORK_TEMP}\sap_login_run.json" -Skill sap-login -ParamsJson "{\"system\":\"<SID>\",\"client\":\"<CLIENT>\",\"user\":\"<USER>\"}"
 ```
+
+---
+
+## Step 0.7 — Bootstrap (AI session + Migration)
+
+Phase-4 selection state needs an AI-session id. The repo convention is to
+wire a SessionStart hook that writes `{work_dir}\runtime\ai_session_id.txt`
+once per Claude Code conversation; subagents inherit by reading the same
+file. The wrapper falls back to deriving an id if the hook didn't run.
+
+This step also performs a one-shot migration of the legacy single-connection
+fields in `settings.json` into the new `connections.json` store (marking
+them as the default).
+
+```bash
+powershell -ExecutionPolicy Bypass -File "<SKILL_DIR>\sap_login_select.ps1" -Action init -WorkTemp "{WORK_TEMP}"
+```
+
+Stdout signals:
+- `INFO: ai_session_id=...` → record this value (use as `SAPDEV_AI_SESSION_ID` in all subsequent broker calls and skill wrappers within this conversation).
+- `INFO: migrated legacy connection id=...` (optional) → notify the user that the previous single-connection settings were imported as the default.
+- `SUCCESS: init complete` → proceed.
+
+---
+
+## Step 0.8 — Selection (decide)
+
+Run the selection driver to pick the target connection. Re-invoke with the
+appropriate `-PickProfileId` / `-PickConnectionPath` after each user choice.
+
+```bash
+powershell -ExecutionPolicy Bypass -File "<SKILL_DIR>\sap_login_select.ps1" -Action decide -WorkTemp "{WORK_TEMP}"
+```
+
+Interpret the **last** structured stdout line:
+
+| Signal | Meaning | Action |
+|---|---|---|
+| `RESOLVED: path=<P> connection_id=<I> description='<D>'` | Existing AI-session pin already matches a live session. | Skip Steps 1–5; jump to Step 6 (capture) with this `path` and Step 6.5 with this `connection_id`. |
+| `ATTACH_ACTIVE: path=<P> connection_id=<I> description='<D>'` | Pick is an already-open SAP connection. | Skip Steps 1–5; jump to Step 6 with this `path`. |
+| `CONNECT_PROFILE: id=<I> description='<D>' source=<S>` | Pick is a saved profile. | Look up the profile in `connections.json` (`sap_connection_lib.ps1`), decrypt password (DPAPI), and proceed to Step 3 (Generate Login VBS) with the profile's fields. |
+| `PICK_NEEDED: <json>` | User must choose. | Parse `options[]` (each has `kind=active|profile`, `description`, `system_name`, `client`, `user`, `endpoint_summary`, `is_default`). Present via `AskUserQuestion`. Re-invoke `sap_login_select.ps1 -Action decide -PickProfileId <id>` OR `-PickConnectionPath <path>`. |
+| `ADD_NEEDED:` | No active connections, no saved profiles. | Prompt the user for a new connection (logon-pad entry, OR app server + system number, OR message server + logon group + system id) plus client/user/password/language. Proceed to Step 3 with the supplied values. After login succeeds, Step 6.5 saves it as a new profile. |
 
 ---
 
@@ -90,30 +159,70 @@ then into `sap-dev-core\shared`.
 
 ---
 
-## Step 2 — Read Connection Parameters
+## Step 2 — Resolve Connection Parameters from the Pick
 
-Only reached if Step 1 did not find an authenticated session.
+Only reached if Step 0.8 emitted `CONNECT_PROFILE`, `ADD_NEEDED`, or the user
+needs credentials beyond what's stored. **`ATTACH_ACTIVE` and `RESOLVED` skip
+this step entirely.**
 
-Read SAP connection parameters from `$USER_CONFIG` (settings.json of sap-dev-core):
+### Step 2a — For `CONNECT_PROFILE: id=<I>`: load + decrypt
 
-| Setting key | Description | Example |
-|---|---|---|
-| `sap_logon_description` | SAP Logon pad entry name (optional) | `DEV_100` |
-| `sap_application_server` | Application server hostname or IP | `10.0.0.1` |
-| `sap_system_number` | 2-digit system number | `00` |
-| `sap_client` | 3-digit client | `100` |
-| `sap_user` | SAP username | `DEVELOPER` |
-| `sap_password` | SAP password — DPAPI-encrypted (preferred) or plaintext (legacy) | `dpapi:AQAAAN...` |
-| `sap_language` | 2-letter logon language | `EN` |
+Dot-source the connection library and look up the profile:
 
-If `$ARGUMENTS` provides a SAP Logon description, use it as override for `sap_logon_description`.
+```bash
+powershell -ExecutionPolicy Bypass -Command @"
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1';
+$p = Find-SapConnectionById -Id '<I>';
+$p | ConvertTo-Json -Depth 4
+"@
+```
 
-**If settings are not configured**, ask the user to provide the values and suggest
-they configure settings.json for future use:
-> "SAP connection settings are not configured. Please provide the connection details,
-> or configure them in sap-dev-core settings.json for automatic use."
+Use the returned fields directly as the `THE_*` substitutions in Step 3.
+For `password_dpapi`, decrypt via `sap_dpapi.ps1`:
 
-### Step 2a — Decrypt `sap_password` (DPAPI)
+```bash
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_dpapi.ps1" -Action unprotect -Value "<password_dpapi-value>"
+```
+
+Stdout = plaintext password (or the same value pass-through with a stderr
+warning for legacy plaintext). Exit code 1 = decrypt failed (different
+Windows user or machine) → prompt the user for the password fresh and
+remember to re-encrypt + save it in Step 6.5.
+
+### Step 2b — For `ADD_NEEDED:` or `--add`: collect new credentials
+
+Ask the user via `AskUserQuestion` for whichever endpoint set they want to
+configure:
+
+- **SAP Logon pad entry** (simplest) — just the entry-name string. Then ask
+  for client / user / password / language.
+- **Direct connect** — app server hostname/IP, 2-digit system number, plus
+  client / user / password / language.
+- **Load-balanced** — message server, logon group (default `SPACE`),
+  3-letter SystemID (R3NAME), plus client / user / password / language.
+
+Optionally ask for a "Logon description" label (free text, max 60 chars);
+if blank, `sap_login_select.ps1 -Action finalize` auto-derives it as
+`<msrv|asrv>_<sid>_<client>_<user>`.
+
+Encrypt the password BEFORE handing it to Step 3 if the user wants it
+saved — pre-encrypt then pass `dpapi:...` to finalize. Otherwise Step 6.5
+can re-encrypt:
+
+```bash
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_dpapi.ps1" -Action protect -Value "<plaintext>"
+# stdout: dpapi:AQAAAN...
+```
+
+### Step 2c — Legacy reminder
+
+The legacy single-connection keys (`sap_logon_description`, `sap_application_server`,
+`sap_system_number`, `sap_client`, `sap_user`, `sap_password`, `sap_language`)
+are kept in `settings.json` for back-compat ONLY. Step 0.7's `init` imports
+them into `connections.json` once; subsequent runs ignore them. Do **not**
+read or write these keys directly from this skill.
+
+### Step 2-legacy-a — DPAPI background (informational)
 
 The stored `sap_password` value is one of three forms:
 
@@ -152,6 +261,9 @@ $content = [System.IO.File]::ReadAllText('<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_
 $content = $content.Replace('%%SAP_LOGON_DESCRIPTION%%','THE_LOGON_DESC')
 $content = $content.Replace('%%SAP_APPLICATION_SERVER%%','THE_SERVER')
 $content = $content.Replace('%%SAP_SYSTEM_NUMBER%%','THE_SYSNR')
+$content = $content.Replace('%%SAP_MESSAGE_SERVER%%','THE_MSG_SERVER')
+$content = $content.Replace('%%SAP_LOGON_GROUP%%','THE_LOGON_GROUP')
+$content = $content.Replace('%%SAP_SYSTEM_ID%%','THE_SYSTEM_ID')
 $content = $content.Replace('%%SAP_CLIENT%%','THE_CLIENT')
 $content = $content.Replace('%%SAP_USER%%','THE_USER')
 $content = $content.Replace('%%SAP_PASSWORD%%','THE_PASSWORD')
@@ -165,7 +277,12 @@ Replace all `THE_*` placeholders with actual values from Step 2.
 needs plaintext). Replace `<SAP_DEV_CORE_SHARED_DIR>` with the
 resolved path.
 
-If `sap_logon_description` is blank, set `THE_LOGON_DESC` to empty string `""`.
+Token-fill rules (the VBS picks among three connection methods):
+- For **SAP Logon pad** profiles: set `THE_LOGON_DESC` to the entry name; leave server/sysnr/msrv/grp/sid empty.
+- For **direct** profiles: set `THE_SERVER` + `THE_SYSNR`; leave logon_desc/msrv/grp/sid empty.
+- For **load-balanced** profiles: set `THE_MSG_SERVER` + `THE_LOGON_GROUP` (blank → VBS uses " ") + `THE_SYSTEM_ID`; leave logon_desc/server/sysnr empty.
+
+If a field is unused in the chosen method, substitute the empty string `""`.
 
 Run:
 ```bash
@@ -178,11 +295,12 @@ powershell -ExecutionPolicy Bypass -File "{WORK_TEMP}\sap_login_run.ps1"
 cscript //NoLogo {WORK_TEMP}\sap_login_run.vbs
 ```
 
-**The VBScript handles three scenarios:**
+**The VBScript handles four scenarios** (first match wins):
 
 1. **Login-screen session found** → Reuses existing connection, fills credentials.
 2. **SAP Logon Description provided** → Opens connection via `OpenConnection(desc)`, fills login screen.
-3. **No SAP Logon Description** → Opens connection via `OpenConnectionByConnectionString("/H/<server>/S/<port>")` where port = 3200 + SystemNumber.
+3. **MessageServer provided + ApplicationServer empty** → Opens load-balanced via `OpenConnectionByConnectionString("/M/<msrv>/G/<grp>/S/<sid>")` (LogonGroup defaults to one space when blank).
+4. **ApplicationServer provided** → Opens direct via `OpenConnectionByConnectionString("/H/<server>/S/<port>")` where port = 3200 + SystemNumber.
 
 **On success** (last line starts with `SUCCESS:`): tell the user login succeeded. Show full output.
 
@@ -193,9 +311,11 @@ cscript //NoLogo {WORK_TEMP}\sap_login_run.vbs
 | `SAP GUI is not running` | SAP Logon not open | Start SAP Logon |
 | `Could not get SAP Scripting Engine` | Scripting disabled | SAP Logon > Options > Scripting > Enable |
 | `Could not open connection` | Wrong entry name | Check exact name in SAP Logon pad |
-| `Neither SAP Logon description nor application server is configured` | Both are blank | Configure settings.json or provide arguments |
+| `Load-balanced login requires SAP_SYSTEM_ID` | Missing R3NAME on load-balanced profile | Set `system_id` on the profile (3-letter SID) |
+| `No endpoint configured` | All three endpoint sets blank | Configure profile with one of: logon_pad_entry, message_server + system_id, or application_server + system_number |
 | `Could not open connection with string` | Server unreachable or wrong server/port | Check server hostname and system number |
-| `Login failed` | Wrong credentials | Check client, username, and password in settings |
+| `Could not open load-balanced connection` | Message server unreachable / wrong logon group / wrong SID | Check msrv hostname, logon group exists in RZ12, SID matches /sapmnt/<SID> |
+| `Login failed` | Wrong credentials | Check client, username, and password in profile |
 | `Login timed out` | No manual login within 5 min | Re-run and log in promptly |
 
 ---
@@ -207,7 +327,12 @@ the calling skill needs RFC (e.g., sap-check-fm, sap-fix-fm, sap-check-abap).
 
 The RFC connection template is at `sap-dev-core/shared/scripts/sap_rfc_connect.ps1`.
 
-Write `{WORK_TEMP}\sap_rfc_test_run.ps1`:
+For load-balanced profiles, call `Connect-SapRfc` directly with the
+`-MessageServer / -LogonGroup / -SystemID` parameter set rather than the
+template (the template is direct-server only). Either path works for
+verification — pick the one matching the profile's endpoint shape.
+
+Direct-server path (write `{WORK_TEMP}\sap_rfc_test_run.ps1`):
 ```powershell
 $content = [System.IO.File]::ReadAllText('<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_rfc_connect.ps1', [System.Text.Encoding]::UTF8)
 $content = $content.Replace('%%SAP_APPLICATION_SERVER%%','THE_SERVER')
@@ -221,6 +346,20 @@ $content = $content.Replace('%%RFC_LIB_PS1%%','<SAP_DEV_CORE_SHARED_DIR>\scripts
 Write-Host 'Done'
 ```
 Replace all `THE_*` placeholders.
+
+Load-balanced path (inline):
+```powershell
+. "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_rfc_lib.ps1"
+$dest = Connect-SapRfc `
+    -MessageServer THE_MSG_SERVER `
+    -LogonGroup    THE_LOGON_GROUP `
+    -SystemID      THE_SYSTEM_ID `
+    -Client        THE_CLIENT `
+    -User          THE_USER `
+    -Password      THE_PASSWORD `
+    -Language      THE_LANGUAGE
+if ($dest) { Write-Host 'RFC_OK' } else { Write-Host 'ERROR: RFC connect failed' }
+```
 
 Execute via **32-bit PowerShell** (SAP NCo 3.1 is registered in the 32-bit GAC):
 ```bash
@@ -300,112 +439,90 @@ on that new machine. This is the desired property: a leaked
 
 ---
 
-## Step 6 — Active-Session Capture (active-session pinning)
+## Step 6 — Active-Session Capture
 
-After login + RFC verification, capture metadata about the just-attached SAP
-GUI session so downstream skills (`sap-gui-probe`, `sap-gui-object-details`,
-`sap-gui-skill-scaffold`, future deploy skills) can pin to the correct
-session and select version-appropriate VBS variants.
-
-The captured record is written to `{WORK_TEMP}\sap_active_session.json` and
-covers:
-
-| Field | Source |
-|---|---|
-| `session_path`, `system_name`, `client`, `user`, `language`, `application_server` | `sap_login_capture_active_session.vbs` (GUI side) |
-| `gui_version_raw`, `gui_major`, `gui_minor`, `gui_patch` | same VBS, via `oApp.MajorVersion` etc. |
-| `connection_string`, `pin_reason` | same VBS |
-| `server_kernel_release`, `server_release_family`, `server_release_marker`, `software_components` | `sap_rfc_system_info.ps1` (RFC side, via NCo) |
-| `recorded_at`, `recorded_by_skill` | written by the orchestrator |
-
-### 6.1 — Call the GUI-side capture VBS
+Reached after `sap_login.vbs` succeeded **or** when Step 0.8 produced
+`ATTACH_ACTIVE` / `RESOLVED` (the session already exists). The capture VBS
+reads the **rich Phase-4 GuiSessionInfo set** — system / client / user /
+language, MessageServer / Group / SystemNumber / ApplicationServer,
+Program / ScreenNumber, plus GUI version — and emits a single-line JSON
+record.
 
 ```bash
-cmd /c C:\Windows\SysWOW64\cscript.exe //NoLogo "<SKILL_DIR>\references\sap_login_capture_active_session.vbs"
+cmd /c C:\Windows\SysWOW64\cscript.exe //NoLogo "<SKILL_DIR>\references\sap_login_capture_active_session.vbs" "<session-path-from-step-0.8-or-blank>"
 ```
 
 Last line of stdout:
-- `{"session_path":"/app/con[0]/ses[0]", …}` — single connection auto-pinned, single-line JSON. Use directly.
-- `MULTI:[ {…cand0…}, {…cand1…}, … ]` — multiple connections detected. Each candidate carries `session_path`, `system_name`, `client`, `user`. Present an AskUserQuestion listing them; user picks one. Then re-invoke the VBS with the chosen session id:
-  ```bash
-  cmd /c C:\Windows\SysWOW64\cscript.exe //NoLogo "<SKILL_DIR>\references\sap_login_capture_active_session.vbs" "/app/con[1]/ses[0]"
-  ```
-  to get the canonical record for the pick.
-- `ERROR: <text>` — abort Step 6 (do not fail the whole login; skip Step 6 with a warning and let users continue without a pin).
+- `{"session_path":"/app/con[0]/ses[0]", ...}` — single-line JSON record. Save this to a variable for Step 6.5.
+- `MULTI:[ {...}, ... ]` — only fires when the wrapper passed no hint AND multiple connections are attached AND Step 0.8 didn't already pick one. Should be rare after Phase 4 (Step 0.8 picks first). If it happens, present a picker via `AskUserQuestion`, then re-invoke the VBS with the chosen path.
+- `ERROR: <text>` — skip Step 6.5 and warn; downstream skills still work via the broker's discovery path, just without an explicit pin.
 
-### 6.2 — Call the RFC-side system info PS1
+### Step 6.2 — Optional RFC system info (deferred)
 
-```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_rfc_system_info.ps1" -Server "<server>" -Sysnr "<sysnr>" -Client "<client>" -User "<user>" -Password "<password>" -Language "<lang>"
+The legacy `sap_rfc_system_info.ps1` enrichment is no longer driven from
+this skill by default. Run it on demand when a consumer skill needs
+`server_release_marker` / `software_components`. See
+`<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_rfc_system_info.ps1` for the call
+convention.
+
+---
+
+## Step 6.5 — Finalize (save profile + pin AI session)
+
+Hand the captured JSON to `sap_login_select.ps1 -Action finalize`. This is
+the step that:
+
+1. Saves (or merges via 4-step dedup) the profile in `{work_dir}\runtime\connections.json`.
+2. Assigns the profile's UUID as `connection_id` on the live broker registry block (`broker set-connection-id`).
+3. Pins the AI session to that `connection_id` (`broker pin`). On a switch, this releases stale claims from the old connection.
+4. Writes `{work_dir}\runtime\sap_active_session.json` — the pin file every other skill's `sap_attach_lib.vbs` reads.
+
+```powershell
+$captured = '<single-line JSON from Step 6>'   # exact string
+$newDesc  = '<user-supplied Logon description, or empty>'
+$newPwd   = '<dpapi:... ciphertext, or empty>'
+
+powershell -ExecutionPolicy Bypass -File "<SKILL_DIR>\sap_login_select.ps1" `
+    -Action finalize `
+    -WorkTemp "{WORK_TEMP}" `
+    -CapturedJson $captured `
+    -NewLogonDescription $newDesc `
+    -NewPasswordDpapi $newPwd
 ```
 
-Use the same credentials decrypted in Step 2. Last line is a JSON record containing the `server_*` and `software_components` fields. On error (NCo missing, RFC logon fail), warn and skip — the pin still works without server release info; the version-aware selector will fall back to default VBS.
+Expected stdout:
+- `INFO: profile saved id=<UUID> description='<auto-derived or user-supplied>'`
+- `INFO: pin file at {work_dir}\runtime\sap_active_session.json`
+- `SUCCESS: connection_id=<UUID> description='<...>' session_path=/app/con[N]/ses[M]`
 
-### 6.3a — Optional persistence: `--remember`
+Tell the user the connection is ready, including the description and
+whether it became the new default.
 
-If `$ARGUMENTS` contains `--remember` (case-insensitive, anywhere), persist
-the captured `session_path` to `settings.local.json` so future AI sessions
-can restore the pin without re-running `/sap-login`. Use the shared
-`sap_settings_lib.ps1` per **Rule 7 — Settings Merge Helper** in CLAUDE.md
-(writes ALWAYS go to `settings.local.json`, never to `settings.json`):
+### Step 6.6 — Switch-mode follow-up
 
-```bash
-powershell -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1'; Set-SapUserSetting 'sap_pinned_session' '<session_path>'"
-```
+If the user invoked `/sap-login --switch <id>`, the `switch` action
+already re-pinned during Argument-Mode dispatch. Now Step 0.8's `decide`
+runs, will either ATTACH_ACTIVE (target already open) or CONNECT_PROFILE
+(open a new SAP GUI connection). Step 6.5 finalize re-affirms the pin.
+The broker's `pin` action already released any claims this AI session
+held on the OLD connection — those SAP sessions are now back at Easy
+Access and free for the user or another AI session.
 
-The persisted value is **only** the session path — not the full version
-record. Version info (`server_release_marker`, `gui_version_raw`, etc.) is
-re-captured on demand by consumer skills, because SAP can be patched between
-AI sessions. The `sap_pinned_session` key is a hint; the per-AI-session
-temp file (written in Step 6.3) remains the source of truth for
-version-aware decisions.
+---
 
-Without `--remember`, do NOT write to `settings.local.json`. The pin lives
-only in `{WORK_TEMP}\sap_active_session.json` and disappears when the temp
-dir is cleaned (or, more typically, gets overwritten by the next
-`/sap-login`).
+## Consumer-skill resolution contract (unchanged interface, Phase-4 enriched)
 
-If the user is on a system they want to make persistent, suggest:
-> Run `/sap-login --remember` to save this connection as your default for
-> future AI sessions. (You can clear it later with `Set-SapUserSetting
-> sap_pinned_session ''`.)
-
-### 6.3 — Merge and write
-
-Combine the GUI record + the RFC record + `recorded_at` (ISO 8601) + `recorded_by_skill` (`"sap-login"`) into a single JSON object and write to `{WORK_TEMP}\sap_active_session.json` (UTF-8). Example merged shape:
-
-```json
-{
-  "session_path": "/app/con[0]/ses[0]",
-  "system_name": "S4D", "client": "100", "user": "MICHAELLI",
-  "language": "EN", "application_server": "s4d.lan.example.com",
-  "gui_version_raw": "7.70.0.123", "gui_major": 7, "gui_minor": 70, "gui_patch": 0,
-  "server_kernel_release": "789",
-  "server_release_family": "S4HANA",
-  "server_release_marker": "S4HANA_2022",
-  "server_release_raw": "S/4HANA (S4CORE 107)",
-  "software_components": [
-    {"name": "SAP_BASIS", "release": "758"},
-    {"name": "S4CORE",    "release": "107"}
-  ],
-  "pin_reason": "auto-picked single connection",
-  "recorded_at": "2026-05-13T10:23:00",
-  "recorded_by_skill": "sap-login"
-}
-```
-
-This file is the source of truth for the rest of the AI session. Consumer skills MUST follow this resolution order in their own Step 0:
+Every downstream skill resolves its target session like this:
 
 1. Explicit `--session "<path>"` arg → use it.
-2. Else `{WORK_TEMP}\sap_active_session.json` exists → use its `session_path`.
+2. Else `{work_dir}\runtime\sap_active_session.json` exists → use its `session_path`. *(Path moved from `{WORK_TEMP}` in Phase 4; the file is now under `runtime\` so it survives `sap-dev-clean` temp wipes.)*
 3. Else exactly one connection attached → silent default `/app/con[0]/ses[0]`.
 4. Else refuse with: *"multiple SAP GUI connections detected and no active session pinned; run `/sap-login` first to pick one."*
 
-### 6.4 — Failure modes (graceful degradation)
-
-- **Step 6.1 ERROR**: skip Step 6 entirely, log a warning, do not write the pin file. Behaviour falls back to today's implicit `/app/con[0]/ses[0]`.
-- **Step 6.2 ERROR**: still write the pin file with only the GUI fields populated. `server_release_marker` defaults to `UNKNOWN_NO_RFC`. The selector falls back to default VBS variants.
-- **Both steps OK but stale pin** (user closes the pinned session later): consumer skills call `oApp.findById(<session_path>, False)`. If `Nothing`, the consumer treats the pin as missing and applies rule 3/4 above.
+The broker (sap_session_broker.ps1) ALSO enforces AI-session pin: an
+`acquire` for an AI session that's pinned to connection A will be refused
+if it targets connection B. This is the safety net that prevents subagents
+from "drifting" to a different SAP system.
 
 ---
 
@@ -425,6 +542,41 @@ powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_
 ```
 
 Suggested `<CLASS>`: `LOGIN_FAILED`, `RFC_LOGON_FAILED`, `GUI_TIMEOUT`.
+
+---
+
+## Recommended: SessionStart Hook for `SAPDEV_AI_SESSION_ID`
+
+The Phase-4 AI-session pin scope is identified by the env var
+`SAPDEV_AI_SESSION_ID`. Subagents inherit a shared working directory but
+not env vars set inside a tool call, so the canonical mechanism is to
+write the id to `{work_dir}\runtime\ai_session_id.txt` once per Claude
+Code conversation, then read it from there in every skill wrapper.
+
+If you have not wired the hook, `/sap-login` Step 0.7 still writes the
+file as a fallback — but only on first invocation. Other skills (e.g.
+`/sap-se16n`, `/sap-se38`) launched **before** the first `/sap-login`
+would see no pin and could land on the wrong connection in a
+multi-connection scenario.
+
+Wire the hook via `/update-config` (recommended):
+
+```
+/update-config hooks.SessionStart += {
+  "command": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"$d='C:\\sap_dev_work\\runtime'; New-Item -ItemType Directory -Force -Path $d | Out-Null; $f=Join-Path $d 'ai_session_id.txt'; if (-not (Test-Path $f)) { [guid]::NewGuid().ToString() | Set-Content -NoNewline $f }\""
+}
+```
+
+Adjust the path if your `work_dir` is not `C:\sap_dev_work`. The hook is
+idempotent (no-op if the file already exists), so it is safe to wire at
+the user level.
+
+To verify the hook is working, run `/sap-login --list` after a fresh
+Claude Code restart and confirm `ai_session_id` matches the file content:
+
+```bash
+type "%work_dir%\runtime\ai_session_id.txt"
+```
 
 ---
 

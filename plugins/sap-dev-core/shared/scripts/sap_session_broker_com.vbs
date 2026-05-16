@@ -40,8 +40,14 @@
 '     Output: {"ok":true} or {"ok":false,"error":"<reason>"}
 '
 '   PROBE <session_path>       -- single-session info (used to verify a claim)
-'     Output: {"ok":true,"path":"...","transaction":"...","screen":N,"has_popup":bool}
+'     Output: {"ok":true,"path":"...","transaction":"...","screen":N,"has_popup":bool,
+'              "program":"...","session_number":N}
 '         or: {"ok":false,"error":"gone"}                    if findById fails
+'
+'   CLOSE <session_path>       -- close a session (for skills that created it
+'                                   themselves; broker's release with
+'                                   -WasCreated calls this instead of RESET).
+'     Output: {"ok":true} or {"ok":false,"error":"<reason>"}
 '
 ' Exit codes:
 '   0  -- success
@@ -102,34 +108,60 @@ Function HasPopup(oSes)
     HasPopup = Not (w Is Nothing)
 End Function
 
+' --- Helper: parse one segment from a /M/<msrv>/G/<grp>/S/<sid> string -----
+Function ParseConnFlag(sConn, sFlag)
+    ParseConnFlag = ""
+    If sConn = "" Then Exit Function
+    Dim p : p = Split(sConn, "/")
+    Dim i
+    For i = 0 To UBound(p) - 1
+        If UCase(p(i)) = UCase(sFlag) Then
+            ParseConnFlag = p(i + 1)
+            Exit Function
+        End If
+    Next
+End Function
+
 ' --- Helper: serialise one session as JSON --------------------------------
+' Adds 'program' alongside the existing fields so the broker can record
+' a stuck-screen marker (Program / ScreenNumber) when a skill fails mid-flow.
 Function SessionJson(oSes)
-    Dim sId, sTxn, nScr, bPop, nNum
-    sId  = "" : sTxn = "" : nScr = 0 : bPop = False : nNum = 0
+    Dim sId, sTxn, nScr, bPop, nNum, sProg
+    sId  = "" : sTxn = "" : nScr = 0 : bPop = False : nNum = 0 : sProg = ""
     On Error Resume Next
-    sId  = oSes.Id
-    sTxn = oSes.Info.Transaction
-    nScr = oSes.Info.ScreenNumber
-    nNum = oSes.Info.SessionNumber
+    sId   = oSes.Id
+    sTxn  = oSes.Info.Transaction
+    nScr  = oSes.Info.ScreenNumber
+    nNum  = oSes.Info.SessionNumber
+    sProg = oSes.Info.Program
     On Error GoTo 0
     bPop = HasPopup(oSes)
     SessionJson = "{""path"":""" & J(sId) & _
                   """,""session_number"":" & nNum & _
                   ",""transaction"":""" & J(sTxn) & _
+                  """,""program"":""" & J(sProg) & _
                   """,""screen"":" & nScr & _
                   ",""has_popup"":" & LCase(CStr(bPop)) & "}"
 End Function
 
 ' --- Helper: emit one connection block, with all its sessions -------------
+' Now also emits message_server, logon_group, system_id, application_server,
+' system_number so sap_login_select.ps1 can 4-step-compare active connections
+' against saved profiles. Reads them from GuiSessionInfo (per the SAP help
+' reference) and falls back to parsing GuiConnection.Description for the
+' load-balanced /M/<msrv>/G/<grp>/S/<sid> case where Info.MessageServer is
+' sometimes left blank.
 Function ConnectionJson(oCon)
     Dim sId, sDesc, sSys, sClnt, sUser, sLang, sLogon
+    Dim sMsrv, sGrp, sSid, sAsrv, sSysnr
     sId    = "" : sDesc = "" : sSys = "" : sClnt = "" : sUser = "" : sLang = "" : sLogon = ""
+    sMsrv  = "" : sGrp  = "" : sSid = "" : sAsrv = "" : sSysnr = ""
     On Error Resume Next
     sId    = oCon.Id
     sDesc  = oCon.Description
     On Error GoTo 0
 
-    ' (system_name/client/user/language/logon_id) live on each session's
+    ' (system_name/client/user/language/logon_id/...) live on each session's
     ' Info struct. They are identical across all sessions of one connection
     ' (per-logon), so we read from the first available session.
     If oCon.Children.Count > 0 Then
@@ -140,17 +172,40 @@ Function ConnectionJson(oCon)
         sUser  = oFirst.Info.User
         sLang  = oFirst.Info.Language
         sLogon = oFirst.Info.SystemSessionId
+        sMsrv  = oFirst.Info.MessageServer
+        sGrp   = oFirst.Info.Group
+        sAsrv  = oFirst.Info.ApplicationServer
+        sSysnr = oFirst.Info.SystemNumber
         On Error GoTo 0
+    End If
+
+    ' Fallbacks from the connection-string description: SAP GUI sometimes
+    ' leaves MessageServer / Group / SystemNumber blank on GuiSessionInfo
+    ' even when the connection was opened via /M/.../G/.../S/...
+    If sMsrv  = "" Then sMsrv  = ParseConnFlag(sDesc, "M")
+    If sGrp   = "" Then sGrp   = ParseConnFlag(sDesc, "G")
+    If sSid   = "" Then sSid   = sSys     ' system_id == system_name on most setups
+    If sSysnr = "" Then
+        Dim sPort : sPort = ParseConnFlag(sDesc, "S")
+        If IsNumeric(sPort) Then
+            Dim nP : nP = CInt(sPort)
+            If nP >= 3200 And nP <= 3298 Then sSysnr = Right("0" & CStr(nP - 3200), 2)
+        End If
     End If
 
     Dim sOut, oS, bFirst : bFirst = True
     sOut = "{""connection_path"":""" & J(sId) & _
-           """,""description"":"""   & J(sDesc) & _
-           """,""system_name"":"""   & J(sSys) & _
-           """,""client"":"""        & J(sClnt) & _
-           """,""user"":"""          & J(sUser) & _
-           """,""language"":"""      & J(sLang) & _
-           """,""logon_id"":"""      & J(sLogon) & _
+           """,""description"":"""        & J(sDesc) & _
+           """,""system_name"":"""        & J(sSys) & _
+           """,""client"":"""             & J(sClnt) & _
+           """,""user"":"""               & J(sUser) & _
+           """,""language"":"""           & J(sLang) & _
+           """,""logon_id"":"""           & J(sLogon) & _
+           """,""message_server"":"""     & J(sMsrv) & _
+           """,""logon_group"":"""        & J(sGrp) & _
+           """,""system_id"":"""          & J(sSid) & _
+           """,""application_server"":""" & J(sAsrv) & _
+           """,""system_number"":"""      & J(sSysnr) & _
            """,""sessions"":["
     For Each oS In oCon.Children
         If bFirst Then bFirst = False Else sOut = sOut & ","
@@ -275,6 +330,63 @@ Select Case sCmd
         Dim sPJ : sPJ = SessionJson(oProbe)
         ' Strip the leading "{" so we can splice in ok:true.
         WScript.StdOut.WriteLine "{""ok"":true," & Mid(sPJ, 2)
+        WScript.Quit 0
+
+    Case "CLOSE"
+        ' Close a session by calling oConnection.CloseSession(sessionId). Used
+        ' by broker release with -WasCreated when the broker spawned the
+        ' session itself (vs claiming an existing free one). Best-effort: SAP
+        ' refuses to close the only remaining session of a connection; in
+        ' that case we fall back to RESET (drive /n).
+        If WScript.Arguments.Count < 2 Then
+            WScript.StdOut.WriteLine "{""ok"":false,""error"":""CLOSE requires <session_path> arg""}"
+            WScript.Quit 1
+        End If
+        Dim sClosePath : sClosePath = WScript.Arguments(1)
+        On Error Resume Next
+        Dim oCloseSes : Set oCloseSes = oApp.findById(sClosePath, False)
+        On Error GoTo 0
+        If oCloseSes Is Nothing Then
+            ' Already gone — treat as success (idempotent close).
+            WScript.StdOut.WriteLine "{""ok"":true,""note"":""already_gone""}"
+            WScript.Quit 0
+        End If
+        ' Walk up to the GuiConnection (parent of GuiSession).
+        Dim partsCl : partsCl = Split(sClosePath, "/")
+        If UBound(partsCl) < 2 Then
+            WScript.StdOut.WriteLine "{""ok"":false,""error"":""malformed session path: " & J(sClosePath) & """}"
+            WScript.Quit 3
+        End If
+        Dim sCloseConPath : sCloseConPath = "/" & partsCl(1) & "/" & partsCl(2)
+        On Error Resume Next
+        Dim oCloseCon : Set oCloseCon = oApp.findById(sCloseConPath, False)
+        On Error GoTo 0
+        If oCloseCon Is Nothing Then
+            WScript.StdOut.WriteLine "{""ok"":false,""error"":""connection not found: " & J(sCloseConPath) & """}"
+            WScript.Quit 3
+        End If
+        ' If this is the only session of the connection, fall back to /n —
+        ' SAP refuses to close the last session and the user typically wants
+        ' the connection to stay alive for future tasks.
+        If oCloseCon.Children.Count <= 1 Then
+            On Error Resume Next
+            oCloseSes.findById("wnd[0]/tbar[0]/okcd").Text = "/n"
+            oCloseSes.findById("wnd[0]").sendVKey 0
+            On Error GoTo 0
+            WScript.Sleep 600
+            WScript.StdOut.WriteLine "{""ok"":true,""note"":""last_session_reset_instead""}"
+            WScript.Quit 0
+        End If
+        On Error Resume Next
+        oCloseCon.CloseSession sClosePath
+        Dim sCloseErr : sCloseErr = ""
+        If Err.Number <> 0 Then sCloseErr = Err.Description
+        On Error GoTo 0
+        If sCloseErr <> "" Then
+            WScript.StdOut.WriteLine "{""ok"":false,""error"":""" & J(sCloseErr) & """}"
+            WScript.Quit 3
+        End If
+        WScript.StdOut.WriteLine "{""ok"":true}"
         WScript.Quit 0
 
     Case Else

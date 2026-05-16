@@ -8,29 +8,62 @@
 '
 ' Tokens replaced at run time:
 '   %%SAP_LOGON_DESCRIPTION%%    SAP Logon pad entry name (may be empty)
-'   %%SAP_APPLICATION_SERVER%%   Application server hostname or IP
-'   %%SAP_SYSTEM_NUMBER%%        2-digit system number
+'   %%SAP_APPLICATION_SERVER%%   Application server hostname or IP   (direct login)
+'   %%SAP_SYSTEM_NUMBER%%        2-digit system number               (direct login)
+'   %%SAP_MESSAGE_SERVER%%       Message server hostname             (load-balanced)
+'   %%SAP_LOGON_GROUP%%          Logon group  (default: SPACE)       (load-balanced)
+'   %%SAP_SYSTEM_ID%%            3-letter R3NAME / SID               (load-balanced)
 '   %%SAP_CLIENT%%               3-digit client
 '   %%SAP_USER%%                 SAP username
 '   %%SAP_PASSWORD%%             SAP password (blank = wait for manual login)
 '   %%SAP_LANGUAGE%%             Logon language
 '
-' Connection logic:
-'   1. If a session is on the login screen, reuse it (skip opening a new connection)
-'   2. If SAP_LOGON_DESCRIPTION is set, use OpenConnection (SAP Logon pad)
-'   3. Otherwise, use OpenConnectionByConnectionString with server + sysnr
+' Connection logic (in this order — first match wins):
+'   1. Session already on the login screen -> reuse it.
+'   2. SAP_LOGON_DESC set -> OpenConnection(desc).
+'   3. SAP_MESSAGE_SERVER set and SAP_SERVER empty -> load-balanced connection
+'      string  /M/<msgsrv>/G/<grp>/S/<sysid>.  LogonGroup defaults to " " if blank.
+'   4. SAP_SERVER set -> direct connection string  /H/<host>/S/<port>
+'      (port = 3200 + sysnr).
+'   5. Else -> ERROR (no endpoint configured).
 ' =============================================================================
 
 Option Explicit
 
-Const SAP_LOGON_DESC = "%%SAP_LOGON_DESCRIPTION%%"
-Const SAP_SERVER     = "%%SAP_APPLICATION_SERVER%%"
-Const SAP_SYSNR      = "%%SAP_SYSTEM_NUMBER%%"
-Const SAP_CLIENT     = "%%SAP_CLIENT%%"
-Const SAP_USER       = "%%SAP_USER%%"
-Const SAP_PASSWORD   = "%%SAP_PASSWORD%%"
-Const SAP_LANGUAGE   = "%%SAP_LANGUAGE%%"
-Const VKEY_ENTER     = 0
+Const SAP_LOGON_DESC    = "%%SAP_LOGON_DESCRIPTION%%"
+Const SAP_SERVER        = "%%SAP_APPLICATION_SERVER%%"
+Const SAP_SYSNR         = "%%SAP_SYSTEM_NUMBER%%"
+Const SAP_MESSAGE_SRV   = "%%SAP_MESSAGE_SERVER%%"
+Const SAP_LOGON_GROUP   = "%%SAP_LOGON_GROUP%%"
+Const SAP_SYSTEM_ID     = "%%SAP_SYSTEM_ID%%"
+Const SAP_CLIENT        = "%%SAP_CLIENT%%"
+Const SAP_USER          = "%%SAP_USER%%"
+Const SAP_PASSWORD      = "%%SAP_PASSWORD%%"
+Const SAP_LANGUAGE      = "%%SAP_LANGUAGE%%"
+Const VKEY_ENTER        = 0
+
+' Detect unsubstituted tokens. PowerShell .Replace() is global, so we build
+' the sentinel at runtime from Chr() codes — wrapper substitution cannot
+' touch a Chr-built string. Pattern lifted from sap_attach_lib.vbs.
+Dim UNSUB_DESC, UNSUB_SRV, UNSUB_MSRV, UNSUB_GRP, UNSUB_SID
+UNSUB_DESC = Chr(37) & Chr(37) & "SAP_LOGON_DESCRIPTION" & Chr(37) & Chr(37)
+UNSUB_SRV  = Chr(37) & Chr(37) & "SAP_APPLICATION_SERVER" & Chr(37) & Chr(37)
+UNSUB_MSRV = Chr(37) & Chr(37) & "SAP_MESSAGE_SERVER" & Chr(37) & Chr(37)
+UNSUB_GRP  = Chr(37) & Chr(37) & "SAP_LOGON_GROUP" & Chr(37) & Chr(37)
+UNSUB_SID  = Chr(37) & Chr(37) & "SAP_SYSTEM_ID" & Chr(37) & Chr(37)
+
+' Effective values — empty when the wrapper left the token unsubstituted.
+Dim eDesc, eSrv, eMsrv, eGrp, eSid
+eDesc = SAP_LOGON_DESC
+eSrv  = SAP_SERVER
+eMsrv = SAP_MESSAGE_SRV
+eGrp  = SAP_LOGON_GROUP
+eSid  = SAP_SYSTEM_ID
+If eDesc = UNSUB_DESC Then eDesc = ""
+If eSrv  = UNSUB_SRV  Then eSrv  = ""
+If eMsrv = UNSUB_MSRV Then eMsrv = ""
+If eGrp  = UNSUB_GRP  Then eGrp  = ""
+If eSid  = UNSUB_SID  Then eSid  = ""
 
 Dim oSAPGUI, oApplication, oSession
 
@@ -91,51 +124,108 @@ If oApplication Is Nothing Then
     WScript.Quit 1
 End If
 
-' ------ 2. Check for login-screen session (reuse if found) -------------------
+' ------ 2. Reuse an EXISTING CONNECTION FOR THE REQUESTED SYSTEM ------------
+' Build the GuiConnection.Description the target system would carry. SAP GUI
+' sets this to either the SAP Logon Pad entry name (OpenConnection path) or
+' the connection string (OpenConnectionByConnectionString path). We compute
+' both forms and accept either as a match — that way a connection opened
+' previously via the OTHER path still hits the reuse fast path.
+Dim sExpectedDesc1, sExpectedDesc2, sExpectedDesc3
+sExpectedDesc1 = "" : sExpectedDesc2 = "" : sExpectedDesc3 = ""
+If eDesc <> "" Then sExpectedDesc1 = eDesc
+If eMsrv <> "" And eSid <> "" Then
+    Dim eGrpMatch : eGrpMatch = eGrp
+    If eGrpMatch = "" Then eGrpMatch = " "
+    sExpectedDesc2 = "/M/" & eMsrv & "/G/" & eGrpMatch & "/S/" & eSid
+End If
+If eSrv <> "" And SAP_SYSNR <> "" Then
+    Dim sPortMatch : sPortMatch = CStr(3200 + CInt(SAP_SYSNR))
+    sExpectedDesc3 = "/H/" & eSrv & "/S/" & sPortMatch
+End If
+
 Set oSession = Nothing
 Dim oCandidate, oSessIter, oSessInfo
 Dim oLoginScreenCheck
+Dim sCandDesc, bSystemMatch
 On Error Resume Next
 For Each oCandidate In oApplication.Children
-    For Each oSessIter In oCandidate.Children
-        Err.Clear
-        Set oLoginScreenCheck = oSessIter.findById("wnd[0]/usr/txtRSYST-MANDT")
-        If Err.Number = 0 And Not (oLoginScreenCheck Is Nothing) Then
-            ' Found a session on the login screen — reuse this connection
-            Set oSession = oSessIter
-            WScript.Echo "INFO: Found existing session on login screen. Reusing connection."
-            Exit For
+    Err.Clear
+    sCandDesc = oCandidate.Description
+    bSystemMatch = False
+    If sExpectedDesc1 <> "" And sCandDesc = sExpectedDesc1 Then bSystemMatch = True
+    If sExpectedDesc2 <> "" And sCandDesc = sExpectedDesc2 Then bSystemMatch = True
+    If sExpectedDesc3 <> "" And sCandDesc = sExpectedDesc3 Then bSystemMatch = True
+    If bSystemMatch Then
+        ' Prefer a session at the login screen (we'll fill credentials below).
+        ' If none, take the first session — it's already logged in for THIS
+        ' system, so the bOnLogin check in Step 4 will see "Already logged in".
+        For Each oSessIter In oCandidate.Children
+            Err.Clear
+            Set oLoginScreenCheck = oSessIter.findById("wnd[0]/usr/txtRSYST-MANDT")
+            If Err.Number = 0 And Not (oLoginScreenCheck Is Nothing) Then
+                Set oSession = oSessIter
+                WScript.Echo "INFO: Reusing login-screen session of existing connection '" & sCandDesc & "'."
+                Exit For
+            End If
+            Err.Clear
+        Next
+        If oSession Is Nothing And oCandidate.Children.Count > 0 Then
+            Set oSession = oCandidate.Children(0)
+            WScript.Echo "INFO: Reusing already-logged-in session of existing connection '" & sCandDesc & "'."
         End If
-        Err.Clear
-    Next
+    End If
     If Not (oSession Is Nothing) Then Exit For
 Next
 On Error GoTo 0
 
 ' ------ 3. Open connection (only if no login-screen session found) -----------
 If oSession Is Nothing Then
-    If SAP_LOGON_DESC <> "" Then
+    If eDesc <> "" Then
         ' Path A: Use SAP Logon pad entry name
-        WScript.Echo "INFO: Opening connection via SAP Logon: " & SAP_LOGON_DESC
+        WScript.Echo "INFO: Opening connection via SAP Logon: " & eDesc
         On Error Resume Next
         Dim oConnA
-        Set oConnA = oApplication.OpenConnection(SAP_LOGON_DESC, True)
+        Set oConnA = oApplication.OpenConnection(eDesc, True)
         If Err.Number <> 0 Then
-            WScript.Echo "ERROR: Could not open connection '" & SAP_LOGON_DESC & "': " & Err.Description & vbCrLf & _
+            WScript.Echo "ERROR: Could not open connection '" & eDesc & "': " & Err.Description & vbCrLf & _
                          "       Verify the entry name matches exactly what is in SAP Logon pad (case-sensitive)."
             WScript.Quit 1
         End If
         On Error GoTo 0
+    ElseIf eMsrv <> "" And eSrv = "" Then
+        ' Path B: Load-balanced via Message Server + Logon Group + System ID
+        ' Connection string shape: /M/<msgsrv>/G/<grp>/S/<sysid>
+        ' LogonGroup defaults to "SPACE" (literal one-space) when blank.
+        If eSid = "" Then
+            WScript.Echo "ERROR: Load-balanced login requires SAP_SYSTEM_ID (R3NAME / 3-letter SID)." & vbCrLf & _
+                         "       Set system_id on the connection profile."
+            WScript.Quit 1
+        End If
+        Dim eGrpEff : eGrpEff = eGrp
+        If eGrpEff = "" Then eGrpEff = " "
+        Dim sConnStrLB
+        sConnStrLB = "/M/" & eMsrv & "/G/" & eGrpEff & "/S/" & eSid
+        WScript.Echo "INFO: Opening load-balanced connection: " & sConnStrLB
+        On Error Resume Next
+        Dim oConnLB
+        Set oConnLB = oApplication.OpenConnectionByConnectionString(sConnStrLB, True)
+        If Err.Number <> 0 Then
+            WScript.Echo "ERROR: Could not open load-balanced connection '" & sConnStrLB & "': " & Err.Description
+            WScript.Quit 1
+        End If
+        On Error GoTo 0
     Else
-        ' Path B: Use connection string (no SAP Logon description)
-        If SAP_SERVER = "" Then
-            WScript.Echo "ERROR: Neither SAP Logon description nor application server is configured." & vbCrLf & _
-                         "       Set sap_logon_description or sap_application_server in settings."
+        ' Path C: Direct connection via Application Server + System Number
+        If eSrv = "" Then
+            WScript.Echo "ERROR: No endpoint configured. Set one of:" & vbCrLf & _
+                         "       sap_logon_description  (SAP Logon pad entry)" & vbCrLf & _
+                         "       sap_message_server     (load-balanced + sap_system_id)" & vbCrLf & _
+                         "       sap_application_server (direct + sap_system_number)"
             WScript.Quit 1
         End If
         Dim sPort, sConnStr
         sPort = CStr(3200 + CInt(SAP_SYSNR))
-        sConnStr = "/H/" & SAP_SERVER & "/S/" & sPort
+        sConnStr = "/H/" & eSrv & "/S/" & sPort
         WScript.Echo "INFO: Opening connection via connection string: " & sConnStr
         On Error Resume Next
         Dim oConnB

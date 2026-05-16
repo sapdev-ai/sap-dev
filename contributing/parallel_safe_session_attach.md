@@ -172,6 +172,101 @@ On failure, the script lists each non-conforming file with a specific reason. Th
 
 ---
 
+## Phase 4 — Multi-profile connection store + AI-session pin
+
+Phase 4 extends the Phase-3.5 multi-connection-aware broker with **persistent
+saved profiles** and an **AI-session pin** that keeps the AI session (and its
+subagents) on a single SAP connection for its lifetime.
+
+### What changed
+
+1. **`{work_dir}\runtime\` is the new home for durable broker state.**
+   `session_registry.json` moved from `{work_dir}\temp\` to
+   `{work_dir}\runtime\` so it survives `sap-dev-clean` temp wipes. The
+   broker auto-migrates on first call after upgrade.
+2. **`{work_dir}\runtime\connections.json` stores saved profiles.**
+   Multi-profile, DPAPI-encrypted passwords, identified by stable UUIDs.
+   Library: `shared/scripts/sap_connection_lib.ps1` (4-step compare,
+   dedup-on-save, legacy migration).
+3. **`{work_dir}\runtime\ai_session_id.txt`** holds the AI-session id.
+   Written by a SessionStart hook (recommended) or as a fallback by
+   `/sap-login` Step 0.7. Skills read this via the new
+   `SAPDEV_AI_SESSION_ID` env var convention.
+4. **Broker new actions**: `pin`, `unpin`, `set-connection-id`, `stuck`.
+   New parameters on existing actions: `-AiSessionId`, `-WasCreated`,
+   `-ForceUnpin`, `-ConnectionId`, `-Program`, `-Screen`, `-WorkRuntime`.
+5. **Pin enforcement at acquire**: when an `acquire` is called with
+   `-AiSessionId` AND the registry holds a pin for that AI session AND
+   the resolved target connection's `connection_id` differs from the
+   pinned one, the broker refuses with `DENIED: ai_session ... pinned to
+   ...`. The orchestrator (`/sap-login --switch <id>`) bypasses with
+   `-ForceUnpin`; everyone else stays on rails.
+6. **Re-pin releases stale claims**: `broker pin -AiSessionId X
+   -ConnectionId Y` walks the registry, sends `/n` to every session this
+   AI session previously claimed on connection X, and marks them free.
+7. **Stuck-screen tracking**: skills that fail mid-flow call `broker
+   stuck -Program ... -Screen ...` to record where they got stuck without
+   releasing the claim. Next acquire from the same task_id sees the
+   marker on `entries[].stuck_program`/`stuck_screen` and decides whether
+   to resume or `/n` first.
+8. **Created-vs-borrowed**: when `acquire` spawns a session via
+   `/oSESSION_MANAGER` it tags `entries[].was_created = true`. `release`
+   then calls broker COM helper's `CLOSE` (instead of RESET) so the
+   spawned session is actually destroyed — keeps the SAP GUI session
+   count clean. Skills can also pass `-WasCreated` explicitly.
+9. **RFC load-balanced**: `Connect-SapRfc` accepts
+   `-MessageServer -LogonGroup -SystemID` as an alternative to
+   `-Server -Sysnr`. Mirrors the GUI-side
+   `OpenConnectionByConnectionString("/M/.../G/.../S/...")` flow.
+10. **GuiSessionInfo richer capture**: `sap_login_capture_active_session.vbs`
+    and `sap_session_broker_com.vbs` now read `MessageServer`, `Group`,
+    `SystemNumber`, `ApplicationServer`, `Program`, `ScreenNumber` per
+    the SAP GUI Scripting API reference. The
+    `sap_session_broker_com.vbs INFO` payload carries the full identity
+    tuple per connection block so callers can 4-step-compare without a
+    second probe.
+
+### Identity model (4-step compare)
+
+Two "connection info" tuples are the same logical connection iff:
+
+1. `system_name == system_name AND client == client AND user == user`  *(necessary precondition)*
+2. THEN any one of:
+   - both `logon_pad_entry` non-empty AND equal
+   - both `message_server` non-empty AND equal
+   - both `application_server` non-empty AND `system_number` non-empty on both sides AND both equal
+
+Implementation: `Test-SapConnectionsEqual` in `sap_connection_lib.ps1`,
+duplicated as `Test-IdentityMatch` in `sap_session_broker.ps1`.
+
+### Skill-author contract (Phase 4 additions)
+
+Every PS skill wrapper that calls the broker MUST:
+
+1. Resolve `$env:SAPDEV_AI_SESSION_ID` at top of the wrapper:
+   ```powershell
+   if (-not $env:SAPDEV_AI_SESSION_ID) {
+       $aif = "$work_dir\runtime\ai_session_id.txt"
+       if (Test-Path $aif) { $env:SAPDEV_AI_SESSION_ID = (Get-Content $aif -Raw).Trim() }
+       if (-not $env:SAPDEV_AI_SESSION_ID) {
+           $env:SAPDEV_AI_SESSION_ID = "ai_pid$PID" + "_" + (Get-Date -Format 'yyyyMMddHHmmss')
+           Set-Content -NoNewline -Path $aif -Value $env:SAPDEV_AI_SESSION_ID
+       }
+   }
+   ```
+2. Pass `-AiSessionId $env:SAPDEV_AI_SESSION_ID` to every `broker acquire` / `release` / `stuck` call.
+3. Wrap SAP-driving work in `try { ... } finally { broker release ... }` so reset is best-effort even on exception.
+4. Pass `-WasCreated` to `release` when the wrapper itself spawned the session (vs claiming a pre-existing free one).
+
+### CI gate additions
+
+`sap-dev/scripts/check-consistency.mjs` Phase-4 checks (see CI source):
+- Skills calling `acquire` should pass `-AiSessionId`.
+- Skills using `release -WasCreated` should not also `RESET` the session.
+- Operational SKILL.md wrappers must read `ai_session_id.txt` before invoking the broker.
+
+---
+
 ## History
 
 - **Pre-Tier-3** (legacy): every operational VBS had its own attach loop. Parallel runs and multi-connection users both broken.
@@ -180,3 +275,4 @@ On failure, the script lists each non-conforming file with a specific reason. Th
 - **Phase 3.5**: made the broker multi-connection aware (registry schema v2, new acquire args, attach-lib's pin-file fallback).
 - **Phase 3.2 / 3.3 / 3.4**: migrated 19 / 32 / 9 more files across sap-dev-core and sap-tcd plugins, for 100 total.
 - **Phase 3.6**: added CI gate at `scripts/check-consistency.mjs` to prevent regression.
+- **Phase 4** (2026-05-16): multi-profile connection store (`connections.json`), AI-session pin, broker pin enforcement, RFC load-balanced login, stuck-screen tracking, `was_created` close-semantics.

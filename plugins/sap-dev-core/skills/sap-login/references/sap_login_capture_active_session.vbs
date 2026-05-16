@@ -66,24 +66,78 @@ Function JsonStr(s)
     JsonStr = """" & JsonEscape("" & s) & """"
 End Function
 
+' Parse "/M/<msgsrv>/G/<grp>/.../S/<sysid>" or "/H/<host>/S/<port>" fragments
+' from a connection-string. Returns empty if not present. Used as a fallback
+' when GuiSessionInfo.MessageServer is empty (some SAP GUI releases leave
+' MessageServer blank even on load-balanced connections; the connection
+' description still carries /M/.../G/... segments).
+Function ParseConnStringField(sConn, sFlag)
+    ParseConnStringField = ""
+    If sConn = "" Then Exit Function
+    Dim parts : parts = Split(sConn, "/")
+    Dim i
+    For i = 0 To UBound(parts) - 1
+        If UCase(parts(i)) = UCase(sFlag) Then
+            ParseConnStringField = parts(i + 1)
+            Exit Function
+        End If
+    Next
+End Function
+
 ' Build a one-line JSON object for a single (conn, sess) pair using its Info.
+' Captures the full identity tuple needed by the multi-profile store:
+'   * Logical identity:    SystemName / Client / User / Language
+'   * Direct endpoint:     ApplicationServer / SystemNumber
+'   * Load-balanced:       MessageServer / Group  (with connection-string fallback)
+'   * Runtime state:       Program / ScreenNumber  (for stuck-screen recovery)
+' All reads are guarded with On Error Resume Next because not every release
+' exposes every property and we don't want one missing field to mask the rest.
 Function BuildSessionRecord(oConn, oSess, sPath, sPinReason)
     Dim sysName, sysClient, sysUser, sysLang, sysAppServer
+    Dim sysMsgServer, sysGroup, sysSysnr, sysProgram, sysScreen
+    sysName = "" : sysClient = "" : sysUser = "" : sysLang = ""
+    sysAppServer = "" : sysMsgServer = "" : sysGroup = "" : sysSysnr = ""
+    sysProgram = "" : sysScreen = 0
+
     On Error Resume Next
     sysName       = oSess.Info.SystemName
     sysClient     = oSess.Info.Client
     sysUser       = oSess.Info.User
     sysLang       = oSess.Info.Language
     sysAppServer  = oSess.Info.ApplicationServer
+    sysMsgServer  = oSess.Info.MessageServer
+    sysGroup      = oSess.Info.Group
+    sysSysnr      = oSess.Info.SystemNumber
+    sysProgram    = oSess.Info.Program
+    sysScreen     = oSess.Info.ScreenNumber
     On Error GoTo 0
 
+    ' MessageServer fallback — some SAP GUI builds leave it blank even on
+    ' load-balanced connections, but the GuiConnection.Description carries
+    ' /M/<msgsrv>/G/<grp>/S/<sysid>.
+    Dim sConnDesc : sConnDesc = ""
+    On Error Resume Next
+    sConnDesc = oConn.Description
+    On Error GoTo 0
+    If sysMsgServer = "" Then sysMsgServer = ParseConnStringField(sConnDesc, "M")
+    If sysGroup     = "" Then sysGroup     = ParseConnStringField(sConnDesc, "G")
+    ' SystemNumber fallback (from /S/<port>: portnum-3200 = sysnr)
+    If sysSysnr = "" Then
+        Dim sPort : sPort = ParseConnStringField(sConnDesc, "S")
+        If IsNumeric(sPort) Then
+            Dim nP : nP = CInt(sPort)
+            If nP >= 3200 And nP <= 3298 Then sysSysnr = Right("0" & CStr(nP - 3200), 2)
+        End If
+    End If
+
     Dim guiVer, guiMaj, guiMin, guiPat
+    guiMaj = 0 : guiMin = 0 : guiPat = 0
     On Error Resume Next
     guiMaj = oApp.MajorVersion
     guiMin = oApp.MinorVersion
     guiPat = oApp.PatchLevel
-    guiVer = guiMaj & "." & guiMin & "." & guiPat
     On Error GoTo 0
+    guiVer = guiMaj & "." & guiMin & "." & guiPat
 
     Dim s : s = "{"
     s = s & JsonStr("session_path")        & ":" & JsonStr(sPath) & ","
@@ -92,11 +146,17 @@ Function BuildSessionRecord(oConn, oSess, sPath, sPinReason)
     s = s & JsonStr("user")                & ":" & JsonStr(sysUser) & ","
     s = s & JsonStr("language")            & ":" & JsonStr(sysLang) & ","
     s = s & JsonStr("application_server")  & ":" & JsonStr(sysAppServer) & ","
+    s = s & JsonStr("system_number")       & ":" & JsonStr(sysSysnr) & ","
+    s = s & JsonStr("message_server")      & ":" & JsonStr(sysMsgServer) & ","
+    s = s & JsonStr("logon_group")         & ":" & JsonStr(sysGroup) & ","
+    s = s & JsonStr("program")             & ":" & JsonStr(sysProgram) & ","
+    s = s & JsonStr("screen_number")       & ":" & sysScreen & ","
     s = s & JsonStr("gui_version_raw")     & ":" & JsonStr(guiVer) & ","
     s = s & JsonStr("gui_major")           & ":" & guiMaj & ","
     s = s & JsonStr("gui_minor")           & ":" & guiMin & ","
     s = s & JsonStr("gui_patch")           & ":" & guiPat & ","
-    s = s & JsonStr("connection_string")   & ":" & JsonStr(oConn.Description) & ","
+    s = s & JsonStr("connection_string")   & ":" & JsonStr(sConnDesc) & ","
+    s = s & JsonStr("logon_pad_entry")     & ":" & JsonStr(sConnDesc) & ","
     s = s & JsonStr("pin_reason")          & ":" & JsonStr(sPinReason)
     s = s & "}"
     BuildSessionRecord = s

@@ -236,11 +236,82 @@ for (const plugin of mp.plugins) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Phase 4 contract checks (added 2026-05-16 with the multi-profile +
+// AI-session-pin work).
+//
+// SKILL.md wrappers that invoke `sap_session_broker.ps1 -Action acquire`
+// SHOULD pass `-AiSessionId` so the broker's pin enforcement can refuse
+// cross-connection acquires for the same AI session. The check is a soft
+// warning rather than a hard error because some bootstrap-style skills
+// (sap-dev-init, sap-login itself) legitimately call acquire/release
+// before the AI-session-id file exists. The CI emits these as warnings
+// surfaced in the output but does not fail the build on them.
+//
+// Skills using `release -WasCreated` MUST NOT separately call `-Action
+// reset` or invoke RESET on the COM helper for the same session — that's
+// double cleanup and risks killing a freshly spawned replacement session.
+//
+// Wrappers that drive SAP via cscript SHOULD set $env:SAPDEV_AI_SESSION_ID
+// from the runtime\ai_session_id.txt file before launching cscript so
+// the attach lib can record it in its diagnostic INFO line.
+//
+// Exempt from these checks: the same TIER3_EXEMPT_VBS files (bootstrap),
+// plus the broker / connection / capture scripts themselves.
+// ---------------------------------------------------------------------------
+
+const PHASE4_BROKER_CALLERS_EXEMPT = new Set([
+  // The skills that legitimately call broker BEFORE the AI session ID
+  // is available (they are responsible for bootstrapping it).
+  'sap-login',
+  'sap-dev-init',
+]);
+
+const phase4Warnings = [];
+
+for (const plugin of mp.plugins) {
+  const sourceRel = plugin.source.replace(/^\.\//, '').replace(/\/$/, '');
+  const sourceAbs = join(repoRoot, sourceRel);
+  const skillsDir = join(sourceAbs, 'skills');
+  if (!existsSync(skillsDir)) continue;
+
+  for (const skillEntry of readdirSync(skillsDir)) {
+    if (PHASE4_BROKER_CALLERS_EXEMPT.has(skillEntry)) continue;
+    const skillMdPath = join(skillsDir, skillEntry, 'SKILL.md');
+    if (!existsSync(skillMdPath)) continue;
+    const md = readFileSync(skillMdPath, 'utf8');
+
+    // 1. SKILL.md that mentions broker acquire SHOULD also mention -AiSessionId.
+    const callsAcquire = /sap_session_broker\.ps1[^\n]*-Action[^\n]*acquire/i.test(md)
+                       || /broker[^\n]*-Action[^\n]*acquire/i.test(md);
+    const mentionsAiSessionId = /-AiSessionId/i.test(md) || /SAPDEV_AI_SESSION_ID/i.test(md);
+    if (callsAcquire && !mentionsAiSessionId) {
+      phase4Warnings.push(`${plugin.name}: skills/${skillEntry}/SKILL.md calls broker acquire but does not pass -AiSessionId / SAPDEV_AI_SESSION_ID; pin enforcement will not engage for this AI session`);
+    }
+
+    // 2. SKILL.md using release -WasCreated should not separately reset.
+    const wasCreatedRelease = /-WasCreated\b/.test(md);
+    const separateReset = /Reset-SessionToEasyAccess|COM helper[^\n]*RESET/i.test(md);
+    if (wasCreatedRelease && separateReset) {
+      phase4Warnings.push(`${plugin.name}: skills/${skillEntry}/SKILL.md combines release -WasCreated with an explicit RESET; release with -WasCreated already closes the session (or falls back to RESET when it is the last)`);
+    }
+  }
+}
+
 if (errors.length === 0) {
-  console.log(`OK: ${mp.plugins.length} plugins, ${totalSkills} skills, all manifests aligned at version ${mp.version}, Tier 3 attach contract clean`);
+  let summary = `OK: ${mp.plugins.length} plugins, ${totalSkills} skills, all manifests aligned at version ${mp.version}, Tier 3 attach contract clean`;
+  if (phase4Warnings.length > 0) {
+    summary += `, ${phase4Warnings.length} Phase-4 warning(s)`;
+  }
+  console.log(summary);
+  for (const w of phase4Warnings) console.warn('  WARN: ' + w);
   process.exit(0);
 } else {
   console.error(`FAIL: ${errors.length} consistency issue(s):`);
   for (const e of errors) console.error('  - ' + e);
+  if (phase4Warnings.length > 0) {
+    console.error(`\nPhase-4 warnings (informational):`);
+    for (const w of phase4Warnings) console.error('  WARN: ' + w);
+  }
   process.exit(1);
 }

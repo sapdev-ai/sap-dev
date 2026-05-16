@@ -87,6 +87,18 @@ Function AttachSapSession(sHint)
     Err.Clear
     On Error GoTo 0
 
+    ' Phase 4: emit a single diagnostic line if SAPDEV_AI_SESSION_ID is set.
+    ' AI-session pin enforcement lives in the broker (sap_session_broker.ps1
+    ' refuses cross-connection acquires). Attach lib only echoes the ID so
+    ' multi-AI-session debug logs can reconstruct who-attached-to-what.
+    Dim oShellDiag, sAi
+    Set oShellDiag = CreateObject("WScript.Shell")
+    On Error Resume Next
+    sAi = oShellDiag.Environment("Process")("SAPDEV_AI_SESSION_ID")
+    On Error GoTo 0
+    sAi = Trim("" & sAi)
+    If sAi <> "" Then WScript.Echo "INFO: ai_session=" & sAi
+
     ' Build the unsubstituted-token sentinel at runtime so the PowerShell
     ' wrapper's `.Replace('%%SESSION_PATH%%', ...)` cannot rewrite it.
     Dim UNSUB_TOKEN

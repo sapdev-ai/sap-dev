@@ -44,16 +44,26 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet('acquire', 'release', 'gc', 'list', 'discover')]
+    [ValidateSet('acquire', 'release', 'gc', 'list', 'discover',
+                 'stuck', 'pin', 'unpin', 'set-connection-id')]
     [string] $Action,
 
     [Parameter(Mandatory = $true)]
     [string] $WorkTemp,
 
-    [string] $TaskId      = '',
-    [string] $OwnerSkill  = '',
-    [int]    $TtlSeconds  = 600,
-    [int]    $OwnerPid    = 0,
+    # Optional override for the directory holding session_registry.json.
+    # Default: $(Split-Path $WorkTemp -Parent)\runtime  (i.e. sibling of
+    # {work_dir}\temp). This keeps existing callers working — they all
+    # pass `-WorkTemp {work_dir}\temp` and the registry now auto-relocates
+    # to {work_dir}\runtime\session_registry.json. Callers that want a
+    # custom location pass -WorkRuntime explicitly.
+    [string] $WorkRuntime = '',
+
+    [string] $TaskId       = '',
+    [string] $AiSessionId  = '',   # NEW (Phase 4): AI-session pin scope.
+    [string] $OwnerSkill   = '',
+    [int]    $TtlSeconds   = 600,
+    [int]    $OwnerPid     = 0,
 
     # Connection-targeting filters (acquire). Resolution order:
     #   1. -SessionPath /app/con[N]/ses[M]   — explicit; derives connection.
@@ -63,14 +73,32 @@ param(
     #   4. -PinFile <path>                   — read pin file; honour its
     #                                          session_path if non-empty,
     #                                          else its (system,client,user).
-    #   5. Exactly 1 connection attached     — silent default.
-    #   6. Else                              — DENIED: ambiguous.
+    #   5. AI-session pin                    — ai_sessions[$AiSessionId]
+    #                                          .connection_id -> match a live
+    #                                          connection with same id.
+    #   6. Exactly 1 connection attached     — silent default.
+    #   7. Else                              — DENIED: ambiguous.
     [string] $SessionPath    = '',
     [string] $ConnectionPath = '',
     [string] $SystemName     = '',
     [string] $Client         = '',
     [string] $User           = '',
-    [string] $PinFile        = ''
+    [string] $PinFile        = '',
+
+    # Stuck-screen markers (Action=stuck).
+    [string] $Program        = '',
+    [string] $Screen         = '',
+
+    # Release semantics. When set on `release`, the broker calls CLOSE
+    # (drop the session) on the COM helper instead of RESET (/n to Easy
+    # Access). Used when the skill spawned the session itself and wants
+    # to clean up after.
+    [switch] $WasCreated,
+
+    # `pin` / `unpin` / `set-connection-id` args.
+    [string] $ConnectionId   = '',   # opaque profile UUID; pin scope.
+    [string] $PinReason      = '',
+    [switch] $ForceUnpin             # `acquire`: bypass pin enforcement.
 )
 
 $ErrorActionPreference = 'Stop'
@@ -78,9 +106,22 @@ $ErrorActionPreference = 'Stop'
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-$script:RegistryFile = Join-Path $WorkTemp 'session_registry.json'
-$script:MutexName    = 'SapDevSessionBroker_v2'   # bumped from v1 in Phase 3.5
-$script:MutexTimeout = 10000
+# Phase 4: move session_registry.json from {work_dir}\temp\ to
+# {work_dir}\runtime\ so it survives `sap-dev-clean` temp wipes. Callers
+# pass -WorkTemp as today; we derive the runtime dir from it.
+if ([string]::IsNullOrWhiteSpace($WorkRuntime)) {
+    $WorkRuntime = Join-Path (Split-Path -Parent $WorkTemp) 'runtime'
+}
+if (-not (Test-Path $WorkRuntime)) {
+    New-Item -ItemType Directory -Path $WorkRuntime -Force | Out-Null
+}
+
+$script:WorkTempDir    = $WorkTemp
+$script:WorkRuntimeDir = $WorkRuntime
+$script:RegistryFile   = Join-Path $WorkRuntime 'session_registry.json'
+$script:LegacyRegistryFile = Join-Path $WorkTemp 'session_registry.json'  # pre-Phase-4 location
+$script:MutexName      = 'SapDevSessionBroker_v2'   # bumped from v1 in Phase 3.5
+$script:MutexTimeout   = 10000
 
 $script:ComHelperVbs = Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Path) 'sap_session_broker_com.vbs'
 $script:Cscript      = 'C:\Windows\SysWOW64\cscript.exe'
@@ -121,37 +162,71 @@ function With-RegistryLock {
 # ===========================================================================
 
 function New-EmptyRegistry {
-    return @{ updated_at = ''; connections = @() }
+    return @{ updated_at = ''; ai_sessions = @{}; connections = @() }
 }
 
 function Read-Registry {
-    if (-not (Test-Path $script:RegistryFile)) {
+    # Phase 4: prefer the new runtime location, but auto-migrate a v3
+    # registry that's still sitting in the legacy temp folder.
+    $registryPath = $script:RegistryFile
+    if (-not (Test-Path $registryPath) -and (Test-Path $script:LegacyRegistryFile)) {
+        try {
+            Move-Item -Path $script:LegacyRegistryFile -Destination $registryPath -ErrorAction Stop
+            Write-Host "INFO: migrated session_registry.json from $($script:LegacyRegistryFile) to $registryPath"
+        } catch {
+            # Couldn't move — keep using the new path (empty) and let the
+            # next discover rebuild from live state.
+            Write-Host "WARN: could not migrate legacy session_registry.json: $($_.Exception.Message)"
+        }
+    }
+    if (-not (Test-Path $registryPath)) {
         return New-EmptyRegistry
     }
     try {
-        $raw = Get-Content -Path $script:RegistryFile -Raw -Encoding UTF8
+        $raw = Get-Content -Path $registryPath -Raw -Encoding UTF8
         if (-not $raw -or $raw.Trim() -eq '') { return New-EmptyRegistry }
         $obj = $raw | ConvertFrom-Json
 
         # Detect v1 (flat-entries) shape and reject it. Forward-compat: a v1
-        # registry has top-level "entries"; v2 has "connections".
+        # registry has top-level "entries"; v2/v3 has "connections".
         if ($obj.PSObject.Properties['entries'] -and -not $obj.PSObject.Properties['connections']) {
-            Write-Host 'WARN: v1 registry detected; rebuilding under v2 schema'
+            Write-Host 'WARN: v1 registry detected; rebuilding under v3 schema'
             return New-EmptyRegistry
         }
 
         $reg = New-EmptyRegistry
         $reg.updated_at = "$($obj.updated_at)"
+
+        # ai_sessions map (Phase 4). May not exist on v2 registries.
+        if ($obj.PSObject.Properties['ai_sessions'] -and $obj.ai_sessions) {
+            foreach ($p in $obj.ai_sessions.PSObject.Properties) {
+                $v = $p.Value
+                $reg.ai_sessions[$p.Name] = @{
+                    connection_id = "$($v.connection_id)"
+                    pinned_at     = "$($v.pinned_at)"
+                    pin_reason    = "$($v.pin_reason)"
+                    last_seen_at  = "$($v.last_seen_at)"
+                }
+            }
+        }
+
         if ($obj.connections) {
             foreach ($c in $obj.connections) {
                 $conBlock = @{
-                    connection_path = "$($c.connection_path)"
-                    system_name     = "$($c.system_name)"
-                    client          = "$($c.client)"
-                    user            = "$($c.user)"
-                    description     = "$($c.description)"
-                    logon_id        = "$($c.logon_id)"
-                    entries         = @()
+                    connection_path    = "$($c.connection_path)"
+                    connection_id      = "$($c.connection_id)"
+                    system_name        = "$($c.system_name)"
+                    client             = "$($c.client)"
+                    user               = "$($c.user)"
+                    language           = "$($c.language)"
+                    description        = "$($c.description)"
+                    logon_id           = "$($c.logon_id)"
+                    message_server     = "$($c.message_server)"
+                    logon_group        = "$($c.logon_group)"
+                    system_id          = "$($c.system_id)"
+                    application_server = "$($c.application_server)"
+                    system_number      = "$($c.system_number)"
+                    entries            = @()
                 }
                 if ($c.entries) {
                     foreach ($e in $c.entries) {
@@ -159,12 +234,16 @@ function Read-Registry {
                             path           = "$($e.path)"
                             session_number = if ($e.session_number) { [int]$e.session_number } else { 0 }
                             task_id        = "$($e.task_id)"
+                            ai_session_id  = "$($e.ai_session_id)"
                             owner_pid      = if ($e.owner_pid) { [int]$e.owner_pid } else { 0 }
                             owner_skill    = "$($e.owner_skill)"
                             status         = "$($e.status)"
                             claim_time     = "$($e.claim_time)"
                             ttl_seconds    = if ($e.ttl_seconds) { [int]$e.ttl_seconds } else { 600 }
                             discovered     = [bool]$e.discovered
+                            stuck_program  = "$($e.stuck_program)"
+                            stuck_screen   = "$($e.stuck_screen)"
+                            was_created    = [bool]$e.was_created
                         }
                     }
                 }
@@ -241,6 +320,7 @@ function Resolve-SapSessionSnap {
                     path            = "$($s.path)"
                     session_number  = [int]$s.session_number
                     transaction     = "$($s.transaction)"
+                    program         = "$($s.program)"
                     screen          = [int]$s.screen
                     has_popup       = [bool]$s.has_popup
                     connection_path = "$($c.connection_path)"
@@ -305,6 +385,49 @@ function Reset-SessionToEasyAccess {
     $result = Invoke-ComHelper -Args @('RESET', $Path)
     Invalidate-SapStateCache
     return [bool]$result.ok
+}
+
+function Close-SapSession {
+    <#
+    .SYNOPSIS
+        Close a session via the COM helper. Returns $true on success or
+        when the session is already gone (idempotent). The COM helper
+        falls back to /n when the target is the only session of its
+        connection — that's still reported as ok.
+    #>
+    param([string] $Path)
+    $result = Invoke-ComHelper -Args @('CLOSE', $Path)
+    Invalidate-SapStateCache
+    return [bool]$result.ok
+}
+
+# ===========================================================================
+# 4-step identity compare (mirror of sap_connection_lib.ps1::Test-SapConnectionsEqual)
+# Lives here as a duplicate because the broker can't dot-source another lib
+# safely without risking circular dependencies; the logic is tiny.
+# ===========================================================================
+
+function Test-IdentityMatch {
+    param($A, $B)
+    # Mirror of sap_connection_lib.ps1::Test-SapConnectionsEqual. SystemName
+    # is only decidable when both sides know it (empty = unknown, fall through).
+    if (("$($A.system_name)") -and ("$($B.system_name)") -and
+        ("$($A.system_name)" -ne "$($B.system_name)")) { return $false }
+    if (("$($A.client)") -ne ("$($B.client)")) { return $false }
+    if (("$($A.user)")   -ne ("$($B.user)"))   { return $false }
+    # Lenient OR across endpoint identifiers.
+    $aLpe = "$($A.logon_pad_entry)"
+    if (-not $aLpe) { $aLpe = "$($A.description)" }   # registry blocks use description for the SAP-Logon name
+    $bLpe = "$($B.logon_pad_entry)"
+    if (-not $bLpe) { $bLpe = "$($B.description)" }
+    if ($aLpe -and $bLpe -and ($aLpe -eq $bLpe)) { return $true }
+    if ("$($A.message_server)" -and "$($B.message_server)" -and
+        ("$($A.message_server)" -eq "$($B.message_server)")) { return $true }
+    if ("$($A.application_server)" -and "$($B.application_server)" -and
+        "$($A.system_number)"      -and "$($B.system_number)"      -and
+        ("$($A.application_server)" -eq "$($B.application_server)") -and
+        ("$($A.system_number)"      -eq "$($B.system_number)")) { return $true }
+    return $false
 }
 
 # ===========================================================================
@@ -557,25 +680,40 @@ function Invoke-Discover {
             $cp = "$($liveCon.connection_path)"
             if (-not $byCon.ContainsKey($cp)) {
                 $newBlock = @{
-                    connection_path = $cp
-                    system_name     = "$($liveCon.system_name)"
-                    client          = "$($liveCon.client)"
-                    user            = "$($liveCon.user)"
-                    description     = "$($liveCon.description)"
-                    logon_id        = "$($liveCon.logon_id)"
-                    entries         = @()
+                    connection_path    = $cp
+                    connection_id      = ''   # populated post-login by sap_login_select.ps1
+                    system_name        = "$($liveCon.system_name)"
+                    client             = "$($liveCon.client)"
+                    user               = "$($liveCon.user)"
+                    language           = "$($liveCon.language)"
+                    description        = "$($liveCon.description)"
+                    logon_id           = "$($liveCon.logon_id)"
+                    message_server     = "$($liveCon.message_server)"
+                    logon_group        = "$($liveCon.logon_group)"
+                    system_id          = "$($liveCon.system_id)"
+                    application_server = "$($liveCon.application_server)"
+                    system_number      = "$($liveCon.system_number)"
+                    entries            = @()
                 }
                 $reg.connections += $newBlock
                 $byCon[$cp] = $newBlock
             }
             $cb = $byCon[$cp]
 
-            # Refresh per-connection metadata in case logon_id was newly known.
-            if (-not $cb.system_name) { $cb.system_name = "$($liveCon.system_name)" }
-            if (-not $cb.client)      { $cb.client      = "$($liveCon.client)" }
-            if (-not $cb.user)        { $cb.user        = "$($liveCon.user)" }
-            if (-not $cb.description) { $cb.description = "$($liveCon.description)" }
-            if (-not $cb.logon_id)    { $cb.logon_id    = "$($liveCon.logon_id)" }
+            # Refresh per-connection metadata. Identity fields are sticky
+            # (don't overwrite once set) since the live state can race with
+            # an explicit set-connection-id call from sap_login_select.ps1.
+            if (-not $cb.system_name)        { $cb.system_name        = "$($liveCon.system_name)" }
+            if (-not $cb.client)             { $cb.client             = "$($liveCon.client)" }
+            if (-not $cb.user)               { $cb.user               = "$($liveCon.user)" }
+            if (-not $cb.language)           { $cb.language           = "$($liveCon.language)" }
+            if (-not $cb.description)        { $cb.description        = "$($liveCon.description)" }
+            if (-not $cb.logon_id)           { $cb.logon_id           = "$($liveCon.logon_id)" }
+            if (-not $cb.message_server)     { $cb.message_server     = "$($liveCon.message_server)" }
+            if (-not $cb.logon_group)        { $cb.logon_group        = "$($liveCon.logon_group)" }
+            if (-not $cb.system_id)          { $cb.system_id          = "$($liveCon.system_id)" }
+            if (-not $cb.application_server) { $cb.application_server = "$($liveCon.application_server)" }
+            if (-not $cb.system_number)      { $cb.system_number      = "$($liveCon.system_number)" }
 
             $existingPaths = @{}
             foreach ($e in $cb.entries) { $existingPaths["$($e.path)"] = $e }
@@ -598,12 +736,15 @@ function Invoke-Discover {
                     path           = $sp
                     session_number = [int]$s.session_number
                     task_id        = ''
+                    ai_session_id  = ''
                     owner_pid      = 0
                     owner_skill    = ''
                     status         = $status
                     claim_time     = ''
                     ttl_seconds    = $TtlSeconds
                     discovered     = $true
+                    stuck_program  = ''
+                    stuck_screen   = ''
                 }
                 $newCount += 1
                 if ($status -eq 'free') { $totalFree += 1 } else { $totalUser += 1 }
@@ -644,17 +785,42 @@ function Invoke-Acquire {
         [void](Sweep-StaleEntries -Registry $reg -VerboseDrops $false)
 
         # Idempotent re-acquire: same task_id with a still-live claim wins
-        # regardless of connection target.
+        # regardless of connection target. AI-session pin is also bypassed
+        # for the idempotent path (the claim already exists; we're just
+        # touching the heartbeat).
         foreach ($cb in $reg.connections) {
             $hit = $cb.entries | Where-Object {
                 $_.task_id -eq $TaskId -and $_.status -eq 'claimed'
             } | Select-Object -First 1
             if ($hit) {
                 $hit.claim_time = (Get-Date).ToString('yyyy-MM-ddTHH:mm:ss')
+                if ($AiSessionId -and -not $hit.ai_session_id) { $hit.ai_session_id = $AiSessionId }
                 Write-Registry -Registry $reg
                 $script:Result = "ACQUIRED: path=$($hit.path) sessionNumber=$($hit.session_number) connection=$($cb.connection_path) reused=true"
                 return
             }
+        }
+
+        # Phase 4: honor AI-session pin BEFORE running the targeting
+        # resolver, but only when no explicit target was supplied. If the
+        # caller passed an explicit -SessionPath / -ConnectionPath / tuple
+        # / -PinFile, that wins; we still enforce the pin AFTER resolution.
+        $pinConnId = ''
+        $pinConnPath = ''
+        if ($AiSessionId -and $reg.ai_sessions.ContainsKey($AiSessionId)) {
+            $pinConnId = "$($reg.ai_sessions[$AiSessionId].connection_id)"
+            if ($pinConnId) {
+                # Find the live connection_path that owns this connection_id.
+                $cbPin = $reg.connections | Where-Object { "$($_.connection_id)" -eq $pinConnId } | Select-Object -First 1
+                if ($cbPin) { $pinConnPath = "$($cbPin.connection_path)" }
+            }
+        }
+        $usedPinForResolution = $false
+        if (-not $SessionPath -and -not $ConnectionPath -and
+            -not $SystemName -and -not $Client -and -not $User -and -not $PinFile -and
+            $pinConnPath) {
+            $ConnectionPath = $pinConnPath
+            $usedPinForResolution = $true
         }
 
         # Resolve which connection this acquire targets.
@@ -684,15 +850,33 @@ function Invoke-Acquire {
                 return
             }
             $cb = @{
-                connection_path = "$($liveCon.connection_path)"
-                system_name     = "$($liveCon.system_name)"
-                client          = "$($liveCon.client)"
-                user            = "$($liveCon.user)"
-                description     = "$($liveCon.description)"
-                logon_id        = "$($liveCon.logon_id)"
-                entries         = @()
+                connection_path    = "$($liveCon.connection_path)"
+                connection_id      = ''
+                system_name        = "$($liveCon.system_name)"
+                client             = "$($liveCon.client)"
+                user               = "$($liveCon.user)"
+                language           = "$($liveCon.language)"
+                description        = "$($liveCon.description)"
+                logon_id           = "$($liveCon.logon_id)"
+                message_server     = "$($liveCon.message_server)"
+                logon_group        = "$($liveCon.logon_group)"
+                system_id          = "$($liveCon.system_id)"
+                application_server = "$($liveCon.application_server)"
+                system_number      = "$($liveCon.system_number)"
+                entries            = @()
             }
             $reg.connections += $cb
+        }
+
+        # Phase 4: enforce the AI-session pin AFTER resolution. Refuse if
+        # the resolved connection's connection_id differs from the pinned
+        # connection_id (unless -ForceUnpin was passed, which sap-login
+        # itself uses on user-driven re-pin).
+        if ($AiSessionId -and -not $ForceUnpin) {
+            if ($pinConnId -and "$($cb.connection_id)" -and ("$($cb.connection_id)" -ne $pinConnId)) {
+                $script:Result = "DENIED: ai_session $AiSessionId is pinned to connection_id=$pinConnId; this acquire targets $($cb.connection_id) on $targetCon. Re-run /sap-login to switch pins, or pass -ForceUnpin."
+                return
+            }
         }
 
         # Pick a free entry. Prefer the explicit SessionPath if supplied
@@ -719,12 +903,16 @@ function Invoke-Acquire {
                 path           = "$($newSes.path)"
                 session_number = [int]$newSes.session_number
                 task_id        = ''
+                ai_session_id  = ''
                 owner_pid      = 0
                 owner_skill    = ''
                 status         = 'free'
                 claim_time     = ''
                 ttl_seconds    = $TtlSeconds
                 discovered     = $false
+                stuck_program  = ''
+                stuck_screen   = ''
+                was_created    = $true   # used by `release -WasCreated` to call CLOSE
             }
             $cb.entries += $chosen
             $spawned = $true
@@ -750,12 +938,33 @@ function Invoke-Acquire {
         }
 
         # Claim it.
-        $chosen.task_id     = $TaskId
-        $chosen.owner_pid   = if ($OwnerPid -gt 0) { $OwnerPid } else { 0 }
-        $chosen.owner_skill = $OwnerSkill
-        $chosen.status      = 'claimed'
-        $chosen.claim_time  = (Get-Date).ToString('yyyy-MM-ddTHH:mm:ss')
-        $chosen.ttl_seconds = $TtlSeconds
+        $chosen.task_id        = $TaskId
+        $chosen.ai_session_id  = "$AiSessionId"
+        $chosen.owner_pid      = if ($OwnerPid -gt 0) { $OwnerPid } else { 0 }
+        $chosen.owner_skill    = $OwnerSkill
+        $chosen.status         = 'claimed'
+        $chosen.claim_time     = (Get-Date).ToString('yyyy-MM-ddTHH:mm:ss')
+        $chosen.ttl_seconds    = $TtlSeconds
+        # Clear any prior stuck-screen marker — the session is back at Easy
+        # Access by now (we verified above).
+        $chosen.stuck_program  = ''
+        $chosen.stuck_screen   = ''
+
+        # Auto-bootstrap pin: if -AiSessionId supplied and no pin yet, AND
+        # the resolved connection has a connection_id, write the pin so
+        # subsequent acquires for the same AI session land on the same
+        # connection.
+        if ($AiSessionId -and "$($cb.connection_id)" -and
+            -not ($reg.ai_sessions.ContainsKey($AiSessionId) -and $reg.ai_sessions[$AiSessionId].connection_id)) {
+            $reg.ai_sessions[$AiSessionId] = @{
+                connection_id = "$($cb.connection_id)"
+                pinned_at     = (Get-Date).ToString('yyyy-MM-ddTHH:mm:ss')
+                pin_reason    = 'acquire_bootstrap'
+                last_seen_at  = (Get-Date).ToString('yyyy-MM-ddTHH:mm:ss')
+            }
+        } elseif ($AiSessionId -and $reg.ai_sessions.ContainsKey($AiSessionId)) {
+            $reg.ai_sessions[$AiSessionId].last_seen_at = (Get-Date).ToString('yyyy-MM-ddTHH:mm:ss')
+        }
 
         Write-Registry -Registry $reg
         $script:Result = "ACQUIRED: path=$($chosen.path) sessionNumber=$($chosen.session_number) connection=$targetCon reused=$(-not $spawned)"
@@ -786,18 +995,211 @@ function Invoke-Release {
         }
         if (-not $matched) { $script:Result = 'NOT_FOUND'; return }
 
-        # Best-effort reset to Easy Access.
-        $snap = Resolve-SapSessionSnap -Path $matched.entry.path
-        if ($snap) { [void](Reset-SessionToEasyAccess -Path $matched.entry.path) }
+        $entry = $matched.entry
+        $closeIt = $WasCreated -or [bool]$entry.was_created
 
-        $matched.entry.task_id     = ''
-        $matched.entry.owner_pid   = 0
-        $matched.entry.owner_skill = ''
-        $matched.entry.status      = 'free'
-        $matched.entry.claim_time  = ''
+        # Cleanup the SAP-side state. CLOSE for sessions the broker spawned;
+        # RESET (/n) for sessions we just borrowed from the user.
+        $snap = Resolve-SapSessionSnap -Path $entry.path
+        if ($snap) {
+            if ($closeIt) {
+                [void](Close-SapSession -Path $entry.path)
+            } else {
+                [void](Reset-SessionToEasyAccess -Path $entry.path)
+            }
+        }
+
+        if ($closeIt) {
+            # Drop the entry entirely — the session is gone (or about to be).
+            $matched.block.entries = @($matched.block.entries | Where-Object { $_.path -ne $entry.path })
+            $script:Result = "RELEASED: path=$($entry.path) connection=$($matched.block.connection_path) closed=true"
+        } else {
+            $entry.task_id        = ''
+            $entry.ai_session_id  = ''
+            $entry.owner_pid      = 0
+            $entry.owner_skill    = ''
+            $entry.status         = 'free'
+            $entry.claim_time     = ''
+            $entry.stuck_program  = ''
+            $entry.stuck_screen   = ''
+            $script:Result = "RELEASED: path=$($entry.path) connection=$($matched.block.connection_path) closed=false"
+        }
 
         Write-Registry -Registry $reg
-        $script:Result = "RELEASED: path=$($matched.entry.path) connection=$($matched.block.connection_path)"
+    }
+    Write-Host $script:Result
+}
+
+# ===========================================================================
+# Action: stuck — record Program / ScreenNumber on a still-claimed entry.
+# Used by skills that fail mid-flow to leave a breadcrumb so the next
+# acquire from the same task_id knows the session is NOT at Easy Access.
+# Does NOT release the claim; the skill calls release separately when ready.
+# ===========================================================================
+
+function Invoke-Stuck {
+    if ($TaskId -eq '') {
+        Write-Host 'ERROR: -TaskId is required for stuck'
+        exit 2
+    }
+    $script:Result = ''
+    With-RegistryLock {
+        $reg = Read-Registry
+
+        $hit = $null
+        foreach ($cb in $reg.connections) {
+            $e = $cb.entries | Where-Object { $_.task_id -eq $TaskId -and $_.status -eq 'claimed' } | Select-Object -First 1
+            if ($e) { $hit = $e; break }
+        }
+        if (-not $hit) { $script:Result = 'NOT_FOUND'; return }
+
+        $hit.stuck_program = "$Program"
+        $hit.stuck_screen  = "$Screen"
+        Write-Registry -Registry $reg
+        $script:Result = "STUCK_RECORDED: path=$($hit.path) program=$Program screen=$Screen"
+    }
+    Write-Host $script:Result
+}
+
+# ===========================================================================
+# Action: set-connection-id — associate a live connection_path with a
+# profile UUID. Called once by sap_login_select.ps1 post-login.
+# ===========================================================================
+
+function Invoke-SetConnectionId {
+    if ([string]::IsNullOrWhiteSpace($ConnectionPath)) {
+        Write-Host 'ERROR: -ConnectionPath is required for set-connection-id'
+        exit 2
+    }
+    if ([string]::IsNullOrWhiteSpace($ConnectionId)) {
+        Write-Host 'ERROR: -ConnectionId is required for set-connection-id'
+        exit 2
+    }
+
+    $script:Result = ''
+    With-RegistryLock {
+        $reg = Read-Registry
+        [void](Sweep-StaleEntries -Registry $reg -VerboseDrops $false)
+
+        $cb = $reg.connections | Where-Object { $_.connection_path -eq $ConnectionPath } | Select-Object -First 1
+        if (-not $cb) {
+            # Pull the live block from SAP state and add it.
+            $state = Get-SapState
+            $liveCon = $null
+            if ($state) { $liveCon = $state.connections | Where-Object { "$($_.connection_path)" -eq $ConnectionPath } | Select-Object -First 1 }
+            if (-not $liveCon) {
+                $script:Result = "ERROR: connection $ConnectionPath not attached"
+                return
+            }
+            $cb = @{
+                connection_path    = "$($liveCon.connection_path)"
+                connection_id      = ''
+                system_name        = "$($liveCon.system_name)"
+                client             = "$($liveCon.client)"
+                user               = "$($liveCon.user)"
+                language           = "$($liveCon.language)"
+                description        = "$($liveCon.description)"
+                logon_id           = "$($liveCon.logon_id)"
+                message_server     = "$($liveCon.message_server)"
+                logon_group        = "$($liveCon.logon_group)"
+                system_id          = "$($liveCon.system_id)"
+                application_server = "$($liveCon.application_server)"
+                system_number      = "$($liveCon.system_number)"
+                entries            = @()
+            }
+            $reg.connections += $cb
+        }
+        $cb.connection_id = "$ConnectionId"
+        Write-Registry -Registry $reg
+        $script:Result = "SET_CONNECTION_ID: path=$ConnectionPath connection_id=$ConnectionId"
+    }
+    Write-Host $script:Result
+}
+
+# ===========================================================================
+# Action: pin — write ai_sessions[$AiSessionId] = { connection_id = ... }.
+# When this changes the pin to a different connection AND ALSO existing
+# claims for this AI session live on the old connection, releases them.
+# ===========================================================================
+
+function Invoke-Pin {
+    if ([string]::IsNullOrWhiteSpace($AiSessionId)) {
+        Write-Host 'ERROR: -AiSessionId is required for pin'
+        exit 2
+    }
+    if ([string]::IsNullOrWhiteSpace($ConnectionId)) {
+        Write-Host 'ERROR: -ConnectionId is required for pin'
+        exit 2
+    }
+
+    $script:Result = ''
+    $script:ReleasedCount = 0
+    With-RegistryLock {
+        $reg = Read-Registry
+
+        $oldConnId = ''
+        if ($reg.ai_sessions.ContainsKey($AiSessionId)) {
+            $oldConnId = "$($reg.ai_sessions[$AiSessionId].connection_id)"
+        }
+
+        $now = (Get-Date).ToString('yyyy-MM-ddTHH:mm:ss')
+        $reasonEff = if ($PinReason) { $PinReason } else { 'user_picked' }
+        $reg.ai_sessions[$AiSessionId] = @{
+            connection_id = "$ConnectionId"
+            pinned_at     = $now
+            pin_reason    = $reasonEff
+            last_seen_at  = $now
+        }
+
+        # If switching, release this AI session's claims on the old connection.
+        if ($oldConnId -and $oldConnId -ne $ConnectionId) {
+            foreach ($cb in $reg.connections) {
+                if ("$($cb.connection_id)" -ne $oldConnId) { continue }
+                $myEntries = @($cb.entries | Where-Object {
+                    $_.ai_session_id -eq $AiSessionId -and $_.status -eq 'claimed'
+                })
+                foreach ($e in $myEntries) {
+                    $snap = Resolve-SapSessionSnap -Path $e.path
+                    if ($snap) { [void](Reset-SessionToEasyAccess -Path $e.path) }
+                    $e.task_id        = ''
+                    $e.ai_session_id  = ''
+                    $e.owner_pid      = 0
+                    $e.owner_skill    = ''
+                    $e.status         = 'free'
+                    $e.claim_time     = ''
+                    $e.stuck_program  = ''
+                    $e.stuck_screen   = ''
+                    $script:ReleasedCount += 1
+                }
+            }
+        }
+
+        Write-Registry -Registry $reg
+        $script:Result = "PINNED: ai_session=$AiSessionId connection_id=$ConnectionId released=$($script:ReleasedCount) old=$oldConnId"
+    }
+    Write-Host $script:Result
+}
+
+# ===========================================================================
+# Action: unpin — drop ai_sessions[$AiSessionId]. Does NOT release claims;
+# call release separately if needed.
+# ===========================================================================
+
+function Invoke-Unpin {
+    if ([string]::IsNullOrWhiteSpace($AiSessionId)) {
+        Write-Host 'ERROR: -AiSessionId is required for unpin'
+        exit 2
+    }
+    $script:Result = ''
+    With-RegistryLock {
+        $reg = Read-Registry
+        if ($reg.ai_sessions.ContainsKey($AiSessionId)) {
+            $reg.ai_sessions.Remove($AiSessionId) | Out-Null
+            Write-Registry -Registry $reg
+            $script:Result = "UNPINNED: ai_session=$AiSessionId"
+        } else {
+            $script:Result = "NOT_FOUND: ai_session=$AiSessionId not pinned"
+        }
     }
     Write-Host $script:Result
 }
@@ -807,10 +1209,14 @@ function Invoke-Release {
 # ===========================================================================
 
 switch ($Action) {
-    'list'     { Invoke-List }
-    'discover' { Invoke-Discover }
-    'gc'       { Invoke-Gc }
-    'acquire'  { Invoke-Acquire }
-    'release'  { Invoke-Release }
+    'list'              { Invoke-List }
+    'discover'          { Invoke-Discover }
+    'gc'                { Invoke-Gc }
+    'acquire'           { Invoke-Acquire }
+    'release'           { Invoke-Release }
+    'stuck'             { Invoke-Stuck }
+    'pin'               { Invoke-Pin }
+    'unpin'             { Invoke-Unpin }
+    'set-connection-id' { Invoke-SetConnectionId }
 }
 exit 0

@@ -81,14 +81,47 @@ function _Load-SapNco {
 function Connect-SapRfc {
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory=$true)] [string]$Server,
-        [Parameter(Mandatory=$true)] [string]$Sysnr,
+        # Direct-server path. Pass -Server and -Sysnr, OR leave both blank
+        # and supply -MessageServer + -SystemID for load-balanced login.
+        [string]$Server   = '',
+        [string]$Sysnr    = '',
+
+        # Load-balanced path (NCo: MessageServerHost + LogonGroup + SystemID).
+        # If -Server is blank and -MessageServer is non-blank, the function
+        # builds a load-balanced destination. -SystemID is mandatory in that
+        # case (NCo requires R3NAME to route to a candidate app server).
+        [string]$MessageServer = '',
+        [string]$LogonGroup    = '',
+        [string]$SystemID      = '',
+
         [Parameter(Mandatory=$true)] [string]$Client,
         [Parameter(Mandatory=$true)] [string]$User,
         [Parameter(Mandatory=$true)] [string]$Password,
         [Parameter(Mandatory=$true)] [string]$Language,
         [string]$DestName = "SAPDEV"
     )
+
+    # Validate exactly one endpoint mode is selected. If both -Server and
+    # -MessageServer are non-blank, prefer direct (matches the historic
+    # implicit behaviour) but warn.
+    $useDirect = -not [string]::IsNullOrWhiteSpace($Server)
+    $useMsg    = -not [string]::IsNullOrWhiteSpace($MessageServer)
+    if (-not $useDirect -and -not $useMsg) {
+        Write-Host "ERROR: Connect-SapRfc requires either -Server (direct) or -MessageServer (load-balanced)."
+        return $null
+    }
+    if ($useDirect -and $useMsg) {
+        Write-Host "WARN: Connect-SapRfc got both -Server and -MessageServer; using direct (-Server)."
+        $useMsg = $false
+    }
+    if ($useDirect -and [string]::IsNullOrWhiteSpace($Sysnr)) {
+        Write-Host "ERROR: Connect-SapRfc -Server requires -Sysnr (2-digit system number)."
+        return $null
+    }
+    if ($useMsg -and [string]::IsNullOrWhiteSpace($SystemID)) {
+        Write-Host "ERROR: Connect-SapRfc -MessageServer requires -SystemID (R3NAME / 3-letter SID)."
+        return $null
+    }
 
     if (-not (_Load-SapNco)) { return $null }
 
@@ -124,9 +157,20 @@ function Connect-SapRfc {
     $uniqueName = "{0}_{1}" -f $DestName, ([Guid]::NewGuid().ToString('N').Substring(0,8))
 
     $params = New-Object SAP.Middleware.Connector.RfcConfigParameters
-    $params.Add([SAP.Middleware.Connector.RfcConfigParameters]::Name,          $uniqueName)
-    $params.Add([SAP.Middleware.Connector.RfcConfigParameters]::AppServerHost, $Server)
-    $params.Add([SAP.Middleware.Connector.RfcConfigParameters]::SystemNumber,  $Sysnr)
+    $params.Add([SAP.Middleware.Connector.RfcConfigParameters]::Name,         $uniqueName)
+    if ($useDirect) {
+        $params.Add([SAP.Middleware.Connector.RfcConfigParameters]::AppServerHost, $Server)
+        $params.Add([SAP.Middleware.Connector.RfcConfigParameters]::SystemNumber,  $Sysnr)
+    } else {
+        # Load-balanced: NCo requires MSHOST + GROUP + R3NAME.
+        # LogonGroup defaults to "PUBLIC" when blank (NCo treats empty as
+        # invalid; SAP GUI defaults to "SPACE" but for RFC we follow NCo's
+        # documented default of "PUBLIC").
+        $effGroup = if ([string]::IsNullOrWhiteSpace($LogonGroup)) { 'PUBLIC' } else { $LogonGroup }
+        $params.Add([SAP.Middleware.Connector.RfcConfigParameters]::MessageServerHost, $MessageServer)
+        $params.Add([SAP.Middleware.Connector.RfcConfigParameters]::LogonGroup,        $effGroup)
+        $params.Add([SAP.Middleware.Connector.RfcConfigParameters]::SystemID,          $SystemID)
+    }
     $params.Add([SAP.Middleware.Connector.RfcConfigParameters]::Client,        $Client)
     $params.Add([SAP.Middleware.Connector.RfcConfigParameters]::User,          $User)
     $params.Add([SAP.Middleware.Connector.RfcConfigParameters]::Password,      $Password)
@@ -135,18 +179,26 @@ function Connect-SapRfc {
     try {
         $dest = [SAP.Middleware.Connector.RfcDestinationManager]::GetDestination($params)
         $dest.Ping()
-        Write-Host "INFO: RFC connected to $Server client $Client (NCo 3.1)."
+        if ($useDirect) {
+            Write-Host "INFO: RFC connected to $Server (sysnr $Sysnr) client $Client (NCo 3.1, direct)."
+        } else {
+            $effGroupMsg = if ([string]::IsNullOrWhiteSpace($LogonGroup)) { 'PUBLIC (default)' } else { $LogonGroup }
+            Write-Host "INFO: RFC connected to $SystemID via msrv=$MessageServer group=$effGroupMsg client=$Client (NCo 3.1, load-balanced)."
+        }
         $script:_SapRfc_Params = $params
         # Also expose at caller scope so legacy `RemoveDestination($g_rfcParams)` keeps working,
         # and re-publish the credential values as $g_sap* so consumers don't need their own
         # 6-line credential block (post-connect uses like $fn.SetValue("LANGU",$g_sapLanguage)).
-        Set-Variable -Scope 1 -Name g_rfcParams   -Value $params   -ErrorAction SilentlyContinue
-        Set-Variable -Scope 1 -Name g_sapServer   -Value $Server   -ErrorAction SilentlyContinue
-        Set-Variable -Scope 1 -Name g_sapSysnr    -Value $Sysnr    -ErrorAction SilentlyContinue
-        Set-Variable -Scope 1 -Name g_sapClient   -Value $Client   -ErrorAction SilentlyContinue
-        Set-Variable -Scope 1 -Name g_sapUser     -Value $User     -ErrorAction SilentlyContinue
-        Set-Variable -Scope 1 -Name g_sapPassword -Value $Password -ErrorAction SilentlyContinue
-        Set-Variable -Scope 1 -Name g_sapLanguage -Value $Language -ErrorAction SilentlyContinue
+        Set-Variable -Scope 1 -Name g_rfcParams     -Value $params        -ErrorAction SilentlyContinue
+        Set-Variable -Scope 1 -Name g_sapServer     -Value $Server        -ErrorAction SilentlyContinue
+        Set-Variable -Scope 1 -Name g_sapSysnr      -Value $Sysnr         -ErrorAction SilentlyContinue
+        Set-Variable -Scope 1 -Name g_sapMsgServer  -Value $MessageServer -ErrorAction SilentlyContinue
+        Set-Variable -Scope 1 -Name g_sapLogonGroup -Value $LogonGroup    -ErrorAction SilentlyContinue
+        Set-Variable -Scope 1 -Name g_sapSystemId   -Value $SystemID      -ErrorAction SilentlyContinue
+        Set-Variable -Scope 1 -Name g_sapClient     -Value $Client        -ErrorAction SilentlyContinue
+        Set-Variable -Scope 1 -Name g_sapUser       -Value $User          -ErrorAction SilentlyContinue
+        Set-Variable -Scope 1 -Name g_sapPassword   -Value $Password      -ErrorAction SilentlyContinue
+        Set-Variable -Scope 1 -Name g_sapLanguage   -Value $Language      -ErrorAction SilentlyContinue
         return $dest
     }
     catch [SAP.Middleware.Connector.RfcLogonException] {
