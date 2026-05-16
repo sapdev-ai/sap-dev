@@ -237,7 +237,22 @@ If oSession Is Nothing Then
         On Error GoTo 0
     End If
 
-    ' Wait for session to become available
+    ' Compute the expected GuiConnection.Description for the connection we
+    ' just opened so the wait loop only picks a session belonging to THAT
+    ' connection. Without this filter, a pre-existing already-logged-in
+    ' connection (e.g. from an earlier /sap-login in the same session) would
+    ' be picked instead, and Step 4 would print a false "Already logged in"
+    ' while the newly opened connection sits stuck on SAPMSYST.
+    Dim sNewConnDesc
+    If eDesc <> "" Then
+        sNewConnDesc = eDesc
+    ElseIf eMsrv <> "" And eSrv = "" Then
+        sNewConnDesc = sConnStrLB
+    Else
+        sNewConnDesc = sConnStr
+    End If
+
+    ' Wait for a session to become available on the NEW connection.
     Set oSession = Nothing
     Dim iWait
     For iWait = 1 To 30
@@ -245,11 +260,13 @@ If oSession Is Nothing Then
         On Error Resume Next
         Set oApplication = oSAPGUI.GetScriptingEngine
         For Each oCandidate In oApplication.Children
-            For Each oSessIter In oCandidate.Children
-                Set oSession = oSessIter
-                Exit For
-            Next
-            If Not (oSession Is Nothing) Then Exit For
+            If oCandidate.Description = sNewConnDesc Then
+                For Each oSessIter In oCandidate.Children
+                    Set oSession = oSessIter
+                    Exit For
+                Next
+                If Not (oSession Is Nothing) Then Exit For
+            End If
         Next
         On Error GoTo 0
         If Not (oSession Is Nothing) Then Exit For
