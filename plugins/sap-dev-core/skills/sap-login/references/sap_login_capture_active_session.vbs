@@ -33,6 +33,12 @@ Option Explicit
 Dim sPinned : sPinned = ""
 If WScript.Arguments.Count >= 1 Then sPinned = WScript.Arguments(0)
 
+' Optional 2nd arg: expected connection description (e.g. SAP Logon pad entry name
+' or connection string) used to recover when SAP GUI reordered connections between
+' the MULTI call and this re-invocation.
+Dim sExpectedDesc : sExpectedDesc = ""
+If WScript.Arguments.Count >= 2 Then sExpectedDesc = WScript.Arguments(1)
+
 ' --- attach to SAP GUI ------------------------------------------------------
 Dim oSAP, oApp
 On Error Resume Next
@@ -193,15 +199,58 @@ If sPinned <> "" Then
         Set oPin = oPin.Children(0)
         sPinned = oPin.Id
     End If
-    ' Walk up to find the GuiConnection ancestor.
-    Dim parts : parts = Split(sPinned, "/")
+    ' Walk up to find the GuiConnection ancestor using the actual pin path.
+    Dim sPinActual : sPinActual = ""
+    On Error Resume Next
+    sPinActual = oPin.Id
+    On Error GoTo 0
+    If sPinActual = "" Then sPinActual = sPinned
+
+    Dim parts : parts = Split(sPinActual, "/")
     Dim conPath : conPath = "/" & parts(1) & "/" & parts(2)   '   /app/con[N]
     Dim oConn : Set oConn = oApp.findById(conPath, False)
     If oConn Is Nothing Then
-        WScript.Echo "ERROR: cannot resolve connection for " & sPinned
+        WScript.Echo "ERROR: cannot resolve connection for " & sPinActual
         WScript.Quit 3
     End If
-    WScript.Echo BuildSessionRecord(oConn, oPin, sPinned, "explicit pin")
+
+    ' If caller supplied an expected connection description, verify the found
+    ' connection matches. SAP GUI can renumber connections (e.g. a newly opened
+    ' connection is inserted at con[0], bumping existing ones). If the description
+    ' mismatches, scan all connections for the right one.
+    If sExpectedDesc <> "" Then
+        Dim sFoundDesc : sFoundDesc = ""
+        On Error Resume Next
+        sFoundDesc = oConn.Description
+        On Error GoTo 0
+        If sFoundDesc <> sExpectedDesc Then
+            WScript.Echo "WARN: SAP GUI reordered connections (found '" & sFoundDesc & "', expected '" & sExpectedDesc & "') - scanning all connections"
+            Dim oScanConn, bFound : bFound = False
+            For Each oScanConn In oApp.Children
+                Dim sScanDesc : sScanDesc = ""
+                On Error Resume Next
+                sScanDesc = oScanConn.Description
+                On Error GoTo 0
+                If sScanDesc = sExpectedDesc Then
+                    If oScanConn.Children.Count > 0 Then
+                        Set oPin = oScanConn.Children(0)
+                        Set oConn = oScanConn
+                        On Error Resume Next
+                        sPinActual = oPin.Id
+                        On Error GoTo 0
+                        bFound = True
+                    End If
+                    Exit For
+                End If
+            Next
+            If Not bFound Then
+                WScript.Echo "ERROR: expected connection '" & sExpectedDesc & "' not found after SAP GUI reorder"
+                WScript.Quit 3
+            End If
+        End If
+    End If
+
+    WScript.Echo BuildSessionRecord(oConn, oPin, sPinActual, "explicit pin")
     WScript.Quit 0
 End If
 
@@ -224,7 +273,11 @@ i = 0
 For Each oConn2 In oApp.Children
     j = 0
     For Each oSess2 In oConn2.Children
-        Dim path2 : path2 = "/app/con[" & i & "]/ses[" & j & "]"
+        Dim path2 : path2 = ""
+        On Error Resume Next
+        path2 = oSess2.Id
+        On Error GoTo 0
+        If path2 = "" Then path2 = "/app/con[" & i & "]/ses[" & j & "]"
         If Len(s) > 1 Then s = s & ","
         s = s & BuildSessionRecord(oConn2, oSess2, path2, "candidate")
         j = j + 1
