@@ -161,7 +161,8 @@ $content = $content.Replace('%%OPERATION%%',  'THE_OPERATION')
 $sessionPath = ''
 $content = $content.Replace('%%SESSION_PATH%%',   $sessionPath)
 $content = $content.Replace('%%ATTACH_LIB_VBS%%', '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs')
-$env:SAPDEV_PIN_FILE = '{WORK_TEMP}\sap_active_session.json'
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 [System.IO.File]::WriteAllText('{WORK_TEMP}\sap_update_addon_sm30_run.vbs', $content, [System.Text.Encoding]::Unicode)
 Write-Host 'Done'
 ```
@@ -191,7 +192,8 @@ $content = $content.Replace('%%OPERATION%%',  'THE_OPERATION')
 $sessionPath = ''
 $content = $content.Replace('%%SESSION_PATH%%',   $sessionPath)
 $content = $content.Replace('%%ATTACH_LIB_VBS%%', '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs')
-$env:SAPDEV_PIN_FILE = '{WORK_TEMP}\sap_active_session.json'
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 [System.IO.File]::WriteAllText('{WORK_TEMP}\sap_update_addon_se16_run.vbs', $content, [System.Text.Encoding]::Unicode)
 Write-Host 'Done'
 ```
@@ -223,7 +225,8 @@ $content = $content.Replace('%%TEMP_DIR%%',   '{WORK_TEMP}')
 $sessionPath = ''
 $content = $content.Replace('%%SESSION_PATH%%',   $sessionPath)
 $content = $content.Replace('%%ATTACH_LIB_VBS%%', '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs')
-$env:SAPDEV_PIN_FILE = '{WORK_TEMP}\sap_active_session.json'
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 [System.IO.File]::WriteAllText('{WORK_TEMP}\sap_update_addon_prog_run.vbs', $content, [System.Text.Encoding]::Unicode)
 Write-Host 'Done'
 ```

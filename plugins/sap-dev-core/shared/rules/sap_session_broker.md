@@ -125,9 +125,11 @@ pwsh -File sap_session_broker.ps1 -Action acquire `
 2. `-ConnectionPath` — explicit `/app/con[N]`; broker allocates within it.
 3. `-SystemName` / `-Client` / `-User` — any non-empty subset filters
    the live connections. If exactly one matches, use it.
-4. `-PinFile` — read the pin (typically `{WORK_TEMP}\sap_active_session.json`);
-   honour its `session_path` if it resolves, else its
-   `(system_name, client, user)` tuple.
+4. *(Phase 4.2 — removed)* `-PinFile` is still accepted by the broker
+   for back-compat but no longer the default resolver. The AI-session
+   pin (`ai_sessions[<id>].connection_id`, derived automatically from
+   the broker's parent-PID walk) takes precedence and covers the same
+   case.
 5. **Exactly one connection attached** — silent default. Preserves the
    single-connection 99% case for callers that don't pass any targeting
    argument.

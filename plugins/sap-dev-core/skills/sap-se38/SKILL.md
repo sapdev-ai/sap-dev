@@ -194,13 +194,14 @@ Write `{WORK_TEMP}\sap_se38_check_run.ps1`:
 ```powershell
 $content = Get-Content '<SKILL_DIR>\references\sap_se38_check.vbs' -Raw
 $content = $content -replace '%%PROGRAM_NAME%%','THE_PROGRAM_NAME'
-# Phase 3.5 session-attach plumbing. SESSION_PATH empty -> attach lib falls
-# through to SAPDEV_PIN_FILE -> sole-connection -> refuse. Pass --session
-# for explicit targeting in parallel/multi-connection contexts.
+# Phase 4.2 session-attach plumbing. SESSION_PATH empty -> attach lib falls
+# through to SAPDEV_SESSION_PATH (set below) -> sole-connection -> refuse.
+# Pass --session for explicit targeting in parallel/multi-connection contexts.
 $sessionPath = ''
 $content = $content -replace '%%SESSION_PATH%%', $sessionPath
 $content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
-$env:SAPDEV_PIN_FILE = '{WORK_TEMP}\sap_active_session.json'
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 Set-Content '{WORK_TEMP}\sap_se38_check_run.vbs' $content -Encoding Unicode
 Write-Host 'Done'
 ```
@@ -291,7 +292,8 @@ $content = $content -replace '%%FOREGROUND_GUARD_PS1%%','<SAP_DEV_CORE_SHARED_DI
 $sessionPath = ''
 $content = $content -replace '%%SESSION_PATH%%', $sessionPath
 $content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
-$env:SAPDEV_PIN_FILE = '{WORK_TEMP}\sap_active_session.json'
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 Set-Content '{WORK_TEMP}\sap_se38_update_run.vbs' $content -Encoding Unicode
 Write-Host 'Done'
 ```
@@ -342,7 +344,8 @@ $content = $content -replace '%%FOREGROUND_GUARD_PS1%%','<SAP_DEV_CORE_SHARED_DI
 $sessionPath = ''
 $content = $content -replace '%%SESSION_PATH%%', $sessionPath
 $content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
-$env:SAPDEV_PIN_FILE = '{WORK_TEMP}\sap_active_session.json'
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 Set-Content '{WORK_TEMP}\sap_se38_create_run.vbs' $content -Encoding Unicode
 Write-Host 'Done'
 ```
@@ -461,7 +464,8 @@ $content = $content.Replace('%%TRANSPORT%%','THE_TRANSPORT')
 $sessionPath = ''
 $content = $content.Replace('%%SESSION_PATH%%',   $sessionPath)
 $content = $content.Replace('%%ATTACH_LIB_VBS%%', '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs')
-$env:SAPDEV_PIN_FILE = '{WORK_TEMP}\sap_active_session.json'
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 [System.IO.File]::WriteAllText('{WORK_TEMP}\sap_se38_textelm_run.vbs', $content, [System.Text.Encoding]::Unicode)
 Write-Host 'Done'
 ```
@@ -631,7 +635,8 @@ $content  = $content.Replace('%%SESSION_LOCK_VBS%%', '<SAP_DEV_CORE_SHARED_DIR>\
 $sessionPath = ''
 $content  = $content.Replace('%%SESSION_PATH%%',     $sessionPath)
 $content  = $content.Replace('%%ATTACH_LIB_VBS%%',   '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs')
-$env:SAPDEV_PIN_FILE = '{WORK_TEMP}\sap_active_session.json'
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 Set-Content '{WORK_TEMP}\sap_se38_change_attrs_run.vbs' $content -Encoding Unicode
 Write-Host 'Done'
 ```
@@ -742,7 +747,8 @@ $content  = $content.Replace('%%SESSION_LOCK_VBS%%', '<SAP_DEV_CORE_SHARED_DIR>\
 $sessionPath = ''
 $content  = $content.Replace('%%SESSION_PATH%%',     $sessionPath)
 $content  = $content.Replace('%%ATTACH_LIB_VBS%%',   '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs')
-$env:SAPDEV_PIN_FILE = '{WORK_TEMP}\sap_active_session.json'
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 Set-Content '{WORK_TEMP}\sap_se38_delete_run.vbs' $content -Encoding Unicode
 Write-Host 'Done'
 ```
@@ -887,7 +893,8 @@ $content = $content -replace '%%OUTPUT_FILE%%',  $outFile
 $sessionPath = ''
 $content = $content -replace '%%SESSION_PATH%%',   $sessionPath
 $content = $content -replace '%%ATTACH_LIB_VBS%%', '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
-$env:SAPDEV_PIN_FILE = "$workTemp\sap_active_session.json"
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp $workTemp
 Set-Content "$workTemp\sap_se38_check_and_download_run.vbs" $content -Encoding Unicode
 Write-Host 'Done'
 ```

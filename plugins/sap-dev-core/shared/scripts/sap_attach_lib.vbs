@@ -26,11 +26,15 @@
 '     Resolution order (first hit wins):
 '       1. sHint, if non-empty and resolves via findById.
 '       2. Environment variable SAPDEV_SESSION_PATH, if non-empty and
-'          resolves. Set by orchestrators that want to pin a session
-'          for a multi-skill task without threading --session through
-'          every call.
-'       3. First session of first connection — the legacy default.
-'          Preserves the behaviour of unmigrated callers.
+'          resolves. Set by skill wrappers using Get-SapCurrentSessionPath
+'          to point at the AI-session's currently pinned SAP session.
+'       3. Sole-connection / sole-session safe default.
+'       4. Refuse loud — multiple connections with no pin.
+'
+'     Phase 4.2 removed the legacy "SAPDEV_PIN_FILE -> read JSON for
+'     session_path" strategy. Skill wrappers now compute the path in
+'     PowerShell via Get-SapCurrentSessionPath (in sap_connection_lib.ps1)
+'     and pass it via $env:SAPDEV_SESSION_PATH.
 '
 '     On failure: emits `ERROR: <text>` to stdout and calls WScript.Quit 2.
 '     Callers do NOT need their own error-handling block around the call.
@@ -151,36 +155,7 @@ Function AttachSapSession(sHint)
         WScript.Quit 2
     End If
 
-    ' --- Strategy 3: SAPDEV_PIN_FILE env var --------------------------------
-    ' Set by the calling SKILL.md PS wrapper to the pin file produced by
-    ' /sap-login (typically {WORK_TEMP}\sap_active_session.json). The pin
-    ' file's `session_path` field is THE canonical default in multi-
-    ' connection environments: /sap-login --remember writes which session
-    ' the user wants as default.
-    Dim sPinFile, oSes3
-    On Error Resume Next
-    sPinFile = oShell.Environment("Process")("SAPDEV_PIN_FILE")
-    On Error GoTo 0
-    sPinFile = Trim("" & sPinFile)
-    If sPinFile <> "" Then
-        Dim sPinSessionPath : sPinSessionPath = ReadPinSessionPath(sPinFile)
-        If sPinSessionPath <> "" Then
-            On Error Resume Next
-            Set oSes3 = oApp.findById(sPinSessionPath, False)
-            On Error GoTo 0
-            If Not (oSes3 Is Nothing) Then
-                WScript.Echo "INFO: attached to " & sPinSessionPath & " (via SAPDEV_PIN_FILE: " & sPinFile & ")"
-                Set AttachSapSession = oSes3
-                Exit Function
-            End If
-            ' Pin file referenced a session that no longer resolves. Fall
-            ' through to strategies 4/5 rather than failing — the pin may
-            ' be stale and we'd rather attach to a single-connection
-            ' default than refuse outright.
-        End If
-    End If
-
-    ' --- Strategy 4: single-connection / single-session safe default --------
+    ' --- Strategy 3: single-connection / single-session safe default --------
     ' Today's 99% case: exactly one SAP connection attached. With or without
     ' a pin file, this is unambiguous and safe to auto-use.
     If oApp.Children.Count = 1 Then
@@ -195,37 +170,11 @@ Function AttachSapSession(sHint)
         ' Sole connection but >1 session: still unambiguous about which
         ' SAP system to target, but ambiguous which session. Refuse with a
         ' helpful message rather than picking arbitrarily.
-        WScript.Echo "ERROR: 1 SAP connection but " & oOnlyCon.Children.Count & " sessions; pass an explicit path via SESSION_PATH or set SAPDEV_PIN_FILE / SAPDEV_SESSION_PATH."
+        WScript.Echo "ERROR: 1 SAP connection but " & oOnlyCon.Children.Count & " sessions; pass an explicit path via SESSION_PATH or set $env:SAPDEV_SESSION_PATH."
         WScript.Quit 2
     End If
 
-    ' --- Strategy 5: refuse — multiple connections + no hint ----------------
-    WScript.Echo "ERROR: " & oApp.Children.Count & " SAP connections attached; cannot pick one safely. Run '/sap-login --remember' to pin a default, or pass an explicit --session /app/con[N]/ses[M]."
+    ' --- Strategy 4: refuse — multiple connections + no hint ----------------
+    WScript.Echo "ERROR: " & oApp.Children.Count & " SAP connections attached; cannot pick one safely. Run /sap-login to pin a connection, or set $env:SAPDEV_SESSION_PATH explicitly."
     WScript.Quit 2
-End Function
-
-' --- Pin file reader (small enough that VBS regex suffices) -------------------
-' The pin file is flat JSON written by /sap-login Step 6 / Step 0.6 capture.
-' We only need the `session_path` field; bare regex is robust on a flat doc.
-Function ReadPinSessionPath(sPath)
-    ReadPinSessionPath = ""
-    On Error Resume Next
-    Dim oFSO : Set oFSO = CreateObject("Scripting.FileSystemObject")
-    If Not oFSO.FileExists(sPath) Then Exit Function
-    Dim oStream : Set oStream = CreateObject("ADODB.Stream")
-    oStream.Type    = 2     ' text
-    oStream.Charset = "utf-8"
-    oStream.Open
-    oStream.LoadFromFile sPath
-    Dim sJson : sJson = oStream.ReadText()
-    oStream.Close
-    If Err.Number <> 0 Then Err.Clear : Exit Function
-    On Error GoTo 0
-
-    Dim re : Set re = New RegExp
-    re.Pattern    = """session_path""\s*:\s*""([^""]+)"""
-    re.Global     = False
-    re.IgnoreCase = False
-    Dim m : Set m = re.Execute(sJson)
-    If m.Count > 0 Then ReadPinSessionPath = m(0).SubMatches(0)
 End Function

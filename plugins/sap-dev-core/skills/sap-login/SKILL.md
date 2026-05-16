@@ -474,7 +474,7 @@ the step that:
 1. Saves (or merges via 4-step dedup) the profile in `{work_dir}\runtime\connections.json`.
 2. Assigns the profile's UUID as `connection_id` on the live broker registry block (`broker set-connection-id`).
 3. Pins the AI session to that `connection_id` (`broker pin`). On a switch, this releases stale claims from the old connection.
-4. Writes `{WORK_TEMP}\sap_active_session.json` — the pin file every consumer skill's `sap_attach_lib.vbs` reads. (Path unchanged from Phase 3.5: this file is ephemeral — overwritten on every `/sap-login` — so it stays in `temp\`. Durable state — `connections.json`, `session_registry.json`, `ai_session_by_pid/<owner_pid>.txt` — lives in `runtime\`.)
+4. Phase 4.2: the pin file `sap_active_session.json` is **removed entirely**. Consumer skills get the session path via `Get-SapCurrentSessionPath` (from `sap_connection_lib.ps1`) — which reads the broker's `session_registry.json` for the AI-session's pinned connection, finds a usable session there, and returns the path. Version info goes through `Get-SapCurrentConnectionProfile` (reads the profile in `connections.json` by `connection_id`).
 
 ```powershell
 $captured = '<single-line JSON from Step 6>'   # exact string
@@ -491,7 +491,7 @@ powershell -ExecutionPolicy Bypass -File "<SKILL_DIR>\sap_login_select.ps1" `
 
 Expected stdout:
 - `INFO: profile saved id=<UUID> description='<auto-derived or user-supplied>'`
-- `INFO: pin file at {WORK_TEMP}\sap_active_session.json`
+- `INFO: ai_session=... pinned to connection_id=...` (no pin file in Phase 4.2)
 - `SUCCESS: connection_id=<UUID> description='<...>' session_path=/app/con[N]/ses[M]`
 
 Tell the user the connection is ready, including the description and
@@ -514,7 +514,7 @@ Access and free for the user or another AI session.
 Every downstream skill resolves its target session like this:
 
 1. Explicit `--session "<path>"` arg → use it.
-2. Else `{WORK_TEMP}\sap_active_session.json` exists → use its `session_path`. (Phase 4 retained this Phase-3.5 path; the pin file is ephemeral and rewritten on every `/sap-login`. Durable profile state lives in `{work_dir}\runtime\connections.json` and AI-session pin lives in `{work_dir}\runtime\session_registry.json`.)
+2. Else use `Get-SapCurrentSessionPath` (in `sap_connection_lib.ps1`): looks up `session_registry.json`'s `ai_sessions[<id>].connection_id` for this AI session, finds the matching connection block, and returns a usable session path on it. Falls back to sole-connection auto-default for the single-conn case.
 3. Else exactly one connection attached → silent default `/app/con[0]/ses[0]`.
 4. Else refuse with: *"multiple SAP GUI connections detected and no active session pinned; run `/sap-login` first to pick one."*
 

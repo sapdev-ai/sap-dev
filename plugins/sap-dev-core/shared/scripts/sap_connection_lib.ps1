@@ -156,11 +156,19 @@ function Read-SapConnectionStore {
                 # Coerce key fields to string / bool defensively.
                 foreach ($f in @('id','description','logon_pad_entry','system_name','client','user','language',
                                   'password_dpapi','message_server','logon_group','system_id',
-                                  'application_server','system_number','created_at','last_used_at')) {
+                                  'application_server','system_number','created_at','last_used_at',
+                                  'gui_version_raw','server_kernel_release','server_release_family',
+                                  'server_release_marker','server_release_raw')) {
                     if ($p.ContainsKey($f)) { $p[$f] = "$($p[$f])" } else { $p[$f] = '' }
+                }
+                foreach ($i in @('gui_major','gui_minor','gui_patch')) {
+                    if ($p.ContainsKey($i) -and $null -ne $p[$i]) { $p[$i] = [int]$p[$i] } else { $p[$i] = 0 }
                 }
                 foreach ($b in @('is_default_target','rfc_tested','gui_tested')) {
                     if ($p.ContainsKey($b)) { $p[$b] = [bool]$p[$b] } else { $p[$b] = $false }
+                }
+                if (-not $p.ContainsKey('software_components') -or $null -eq $p['software_components']) {
+                    $p['software_components'] = @()
                 }
                 $store.connections += $p
             }
@@ -199,47 +207,71 @@ function New-SapConnectionInfo {
     .SYNOPSIS
         Return a normalised profile hashtable. Use this anywhere a profile-
         shaped object is needed (active SAP connections, user input, etc.).
+    .NOTES
+        Version fields (gui_*, server_*) carry SAP GUI + server release
+        info captured at login time. Used by sap-gui-skill-scaffold and
+        sap_select_vbs_variant.ps1 for version-aware VBS variant selection.
+        Optional — left empty when RFC system info isn't available.
     #>
     [CmdletBinding()]
     param(
-        [string]$Id                = '',
-        [string]$Description       = '',
-        [string]$LogonPadEntry     = '',
-        [string]$SystemName        = '',
-        [string]$Client            = '',
-        [string]$User              = '',
-        [string]$Language          = '',
-        [string]$PasswordDpapi     = '',
-        [string]$MessageServer     = '',
-        [string]$LogonGroup        = '',
-        [string]$SystemId          = '',
-        [string]$ApplicationServer = '',
-        [string]$SystemNumber      = '',
-        [bool]  $IsDefaultTarget   = $false,
-        [string]$CreatedAt         = '',
-        [string]$LastUsedAt        = '',
-        [bool]  $RfcTested         = $false,
-        [bool]  $GuiTested         = $false
+        [string]$Id                  = '',
+        [string]$Description         = '',
+        [string]$LogonPadEntry       = '',
+        [string]$SystemName          = '',
+        [string]$Client              = '',
+        [string]$User                = '',
+        [string]$Language            = '',
+        [string]$PasswordDpapi       = '',
+        [string]$MessageServer       = '',
+        [string]$LogonGroup          = '',
+        [string]$SystemId            = '',
+        [string]$ApplicationServer   = '',
+        [string]$SystemNumber        = '',
+        [bool]  $IsDefaultTarget     = $false,
+        [string]$CreatedAt           = '',
+        [string]$LastUsedAt          = '',
+        [bool]  $RfcTested           = $false,
+        [bool]  $GuiTested           = $false,
+        # Version info (captured at login; optional)
+        [string]$GuiVersionRaw       = '',
+        [int]   $GuiMajor            = 0,
+        [int]   $GuiMinor            = 0,
+        [int]   $GuiPatch            = 0,
+        [string]$ServerKernelRelease = '',
+        [string]$ServerReleaseFamily = '',
+        [string]$ServerReleaseMarker = '',
+        [string]$ServerReleaseRaw    = '',
+        $SoftwareComponents          = $null
     )
     return @{
-        id                 = "$Id"
-        description        = "$Description"
-        logon_pad_entry    = "$LogonPadEntry"
-        system_name        = "$SystemName"
-        client             = "$Client"
-        user               = "$User"
-        language           = "$Language"
-        password_dpapi     = "$PasswordDpapi"
-        message_server     = "$MessageServer"
-        logon_group        = "$LogonGroup"
-        system_id          = "$SystemId"
-        application_server = "$ApplicationServer"
-        system_number      = "$SystemNumber"
-        is_default_target  = [bool]$IsDefaultTarget
-        created_at         = "$CreatedAt"
-        last_used_at       = "$LastUsedAt"
-        rfc_tested         = [bool]$RfcTested
-        gui_tested         = [bool]$GuiTested
+        id                     = "$Id"
+        description            = "$Description"
+        logon_pad_entry        = "$LogonPadEntry"
+        system_name            = "$SystemName"
+        client                 = "$Client"
+        user                   = "$User"
+        language               = "$Language"
+        password_dpapi         = "$PasswordDpapi"
+        message_server         = "$MessageServer"
+        logon_group            = "$LogonGroup"
+        system_id              = "$SystemId"
+        application_server     = "$ApplicationServer"
+        system_number          = "$SystemNumber"
+        is_default_target      = [bool]$IsDefaultTarget
+        created_at             = "$CreatedAt"
+        last_used_at           = "$LastUsedAt"
+        rfc_tested             = [bool]$RfcTested
+        gui_tested             = [bool]$GuiTested
+        gui_version_raw        = "$GuiVersionRaw"
+        gui_major              = [int]$GuiMajor
+        gui_minor              = [int]$GuiMinor
+        gui_patch              = [int]$GuiPatch
+        server_kernel_release  = "$ServerKernelRelease"
+        server_release_family  = "$ServerReleaseFamily"
+        server_release_marker  = "$ServerReleaseMarker"
+        server_release_raw     = "$ServerReleaseRaw"
+        software_components    = if ($null -ne $SoftwareComponents) { $SoftwareComponents } else { @() }
     }
 }
 
@@ -423,6 +455,18 @@ function Save-SapConnection {
                           'logon_group','application_server','system_number')) {
             if (_NotEmpty "$($Profile[$f])") { $match[$f] = "$($Profile[$f])" }
         }
+        # Version info — overwrite when supplied (refreshed on every login;
+        # SAP patches change these between sessions).
+        foreach ($v in @('gui_version_raw','server_kernel_release','server_release_family',
+                          'server_release_marker','server_release_raw')) {
+            if (_NotEmpty "$($Profile[$v])") { $match[$v] = "$($Profile[$v])" }
+        }
+        foreach ($v in @('gui_major','gui_minor','gui_patch')) {
+            if ($Profile.ContainsKey($v) -and [int]$Profile[$v] -gt 0) { $match[$v] = [int]$Profile[$v] }
+        }
+        if ($Profile.ContainsKey('software_components') -and $Profile['software_components']) {
+            $match['software_components'] = $Profile['software_components']
+        }
         # Identity fill-ins: system_name / system_id are part of the profile's
         # identity. We only set them when previously empty (e.g., the profile
         # was migrated from legacy settings.json that didn't carry SystemName,
@@ -456,11 +500,19 @@ function Save-SapConnection {
     }
     foreach ($f in @('id','description','logon_pad_entry','system_name','client','user','language',
                       'password_dpapi','message_server','logon_group','system_id',
-                      'application_server','system_number','created_at','last_used_at')) {
+                      'application_server','system_number','created_at','last_used_at',
+                      'gui_version_raw','server_kernel_release','server_release_family',
+                      'server_release_marker','server_release_raw')) {
         if (-not $new.ContainsKey($f)) { $new[$f] = '' }
+    }
+    foreach ($i in @('gui_major','gui_minor','gui_patch')) {
+        if (-not $new.ContainsKey($i) -or $null -eq $new[$i]) { $new[$i] = 0 }
     }
     foreach ($b in @('is_default_target','rfc_tested','gui_tested')) {
         if (-not $new.ContainsKey($b)) { $new[$b] = $false }
+    }
+    if (-not $new.ContainsKey('software_components') -or $null -eq $new['software_components']) {
+        $new['software_components'] = @()
     }
     $store.connections += $new
     Write-SapConnectionStore -Store $store
@@ -618,6 +670,170 @@ function Get-SapAiSessionId {
         if ($acquired) { try { $mutex.ReleaseMutex() } catch {} }
         try { $mutex.Dispose() } catch {}
     }
+}
+
+# =============================================================================
+# Current-session resolution (Phase 4.2: replaces sap_active_session.json)
+# -----------------------------------------------------------------------------
+# Consumer skills used to read {WORK_TEMP}\sap_active_session.json to find
+# the session path and version info for the currently active SAP connection.
+# Phase 4.2 eliminates that file. The same data is now derived live:
+#   - session_path: broker registry (session_registry.json)'s ai_sessions
+#                   pin -> matching connection block -> a usable session
+#   - version info: from the matching connection's profile in connections.json
+#
+# Use these helpers in any skill wrapper that previously set
+# `$env:SAPDEV_PIN_FILE = '{WORK_TEMP}\sap_active_session.json'`. Replace
+# with:
+#   $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp $WorkTemp
+# and (optionally, for version-aware skills) call
+# Get-SapCurrentConnectionProfile to read gui_major / server_release_marker
+# / etc.
+# =============================================================================
+
+function _Read-SessionRegistry {
+    <#
+    .SYNOPSIS
+        Read the broker's session_registry.json (Phase 4 location).
+    .NOTES
+        Lightweight read — doesn't lock the broker mutex. The broker handles
+        its own write atomicity; readers see a consistent JSON document.
+    #>
+    param([string]$RuntimeDir = '')
+    if ([string]::IsNullOrWhiteSpace($RuntimeDir)) { $RuntimeDir = Get-SapWorkRuntimeDir }
+    $regFile = Join-Path $RuntimeDir 'session_registry.json'
+    if (-not (Test-Path $regFile)) { return $null }
+    try {
+        $raw = Get-Content $regFile -Raw -Encoding UTF8
+        if ([string]::IsNullOrWhiteSpace($raw)) { return $null }
+        return $raw | ConvertFrom-Json
+    } catch { return $null }
+}
+
+function Get-SapCurrentSessionPath {
+    <#
+    .SYNOPSIS
+        Return the SAP GUI session path this AI session should drive.
+        Replacement for the legacy `{WORK_TEMP}\sap_active_session.json`
+        session_path field.
+    .DESCRIPTION
+        Resolution order:
+          1. $env:SAPDEV_SESSION_PATH if set non-empty (explicit override).
+          2. Walk this AI session's pin -> connection block in
+             session_registry.json -> pick a session on that block, preferring
+             entries this AI session has claimed, then any free entry, then
+             the first entry.
+          3. If no AI-session pin: sole-connection fallback (only one
+             connection block in the registry -> first session of it).
+          4. Otherwise return empty string. Caller is responsible for handling
+             "ambiguous, must run /sap-login" — the attach lib's Strategy 4
+             (sole connection) or Strategy 5 (refuse) covers downstream.
+    .PARAMETER WorkTemp
+        Path to {work_dir}\temp (mirrors broker's convention). Used only to
+        derive the runtime dir.
+    .PARAMETER RuntimeDir
+        Override the runtime dir directly (test sandbox).
+    #>
+    param(
+        [string]$WorkTemp    = '',
+        [string]$RuntimeDir  = ''
+    )
+    if (-not [string]::IsNullOrWhiteSpace($env:SAPDEV_SESSION_PATH)) {
+        return $env:SAPDEV_SESSION_PATH
+    }
+
+    if ([string]::IsNullOrWhiteSpace($RuntimeDir)) {
+        if (-not [string]::IsNullOrWhiteSpace($WorkTemp)) {
+            $RuntimeDir = Join-Path (Split-Path -Parent $WorkTemp) 'runtime'
+        } else {
+            $RuntimeDir = Get-SapWorkRuntimeDir
+        }
+    }
+
+    $aid = Get-SapAiSessionId -RuntimeDir $RuntimeDir
+    $reg = _Read-SessionRegistry -RuntimeDir $RuntimeDir
+    if (-not $reg) { return '' }
+
+    # Find this AI session's pinned connection_id.
+    $pinnedConnId = ''
+    if ($reg.ai_sessions -and $reg.ai_sessions.PSObject.Properties[$aid]) {
+        $pinnedConnId = "$($reg.ai_sessions.$aid.connection_id)"
+    }
+
+    # Walk connections looking for the pinned one (or sole-conn fallback).
+    $connBlocks = @()
+    if ($reg.connections) { $connBlocks = @($reg.connections) }
+
+    $target = $null
+    if ($pinnedConnId) {
+        $target = $connBlocks | Where-Object { "$($_.connection_id)" -eq $pinnedConnId } | Select-Object -First 1
+    }
+    if (-not $target -and $connBlocks.Count -eq 1) {
+        # Sole-connection default: no pin, but only one connection — safe.
+        $target = $connBlocks[0]
+    }
+    if (-not $target) { return '' }
+
+    if (-not $target.entries) { return '' }
+
+    # Prefer an entry this AI session has claimed.
+    $entry = $target.entries | Where-Object {
+        "$($_.ai_session_id)" -eq $aid -and "$($_.status)" -eq 'claimed'
+    } | Select-Object -First 1
+    if (-not $entry) {
+        # Then a free entry (Easy Access, no other claim).
+        $entry = $target.entries | Where-Object { "$($_.status)" -eq 'free' } | Select-Object -First 1
+    }
+    if (-not $entry) {
+        # Fall back to the first entry — anything alive on this connection.
+        $entry = $target.entries | Select-Object -First 1
+    }
+    if (-not $entry) { return '' }
+    return "$($entry.path)"
+}
+
+function Get-SapCurrentConnectionProfile {
+    <#
+    .SYNOPSIS
+        Return the connection profile this AI session is pinned to (full
+        profile hashtable from connections.json, including version info).
+        Replacement for the version-info portion of sap_active_session.json.
+    .DESCRIPTION
+        Resolution:
+          1. Read this AI session's pin from session_registry.json
+             (ai_sessions[<id>].connection_id).
+          2. Look up that profile in connections.json by id.
+          3. If no pin (or pinned profile missing), fall back to the
+             default profile (Get-SapDefaultConnection).
+        Returns $null when nothing resolves — caller decides what to do
+        (skills using version info typically default to "no marker" and
+        fall back to non-versioned VBS variants).
+    #>
+    param(
+        [string]$WorkTemp    = '',
+        [string]$RuntimeDir  = ''
+    )
+
+    if ([string]::IsNullOrWhiteSpace($RuntimeDir)) {
+        if (-not [string]::IsNullOrWhiteSpace($WorkTemp)) {
+            $RuntimeDir = Join-Path (Split-Path -Parent $WorkTemp) 'runtime'
+        } else {
+            $RuntimeDir = Get-SapWorkRuntimeDir
+        }
+    }
+
+    $aid = Get-SapAiSessionId -RuntimeDir $RuntimeDir
+    $reg = _Read-SessionRegistry -RuntimeDir $RuntimeDir
+    $pinnedConnId = ''
+    if ($reg -and $reg.ai_sessions -and $reg.ai_sessions.PSObject.Properties[$aid]) {
+        $pinnedConnId = "$($reg.ai_sessions.$aid.connection_id)"
+    }
+
+    if ($pinnedConnId) {
+        $p = Find-SapConnectionById -Id $pinnedConnId
+        if ($p) { return $p }
+    }
+    return (Get-SapDefaultConnection)
 }
 
 # --- Legacy migration -------------------------------------------------------

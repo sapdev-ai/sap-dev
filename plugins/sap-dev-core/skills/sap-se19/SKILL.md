@@ -126,7 +126,8 @@ $content = $content -replace '%%ENH_IMPL_NAME%%','THE_ENH_IMPL_NAME'
 $sessionPath = ''
 $content = $content -replace '%%SESSION_PATH%%', $sessionPath
 $content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
-$env:SAPDEV_PIN_FILE = '{WORK_TEMP}\sap_active_session.json'
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 Set-Content '{WORK_TEMP}\sap_se19_check_run.vbs' $content -Encoding Unicode
 Write-Host 'Done'
 ```
@@ -173,7 +174,8 @@ $content = $content -replace '%%BADI_IMPL_TEXT%%','THE_BADI_IMPL_TEXT'
 $sessionPath = ''
 $content = $content -replace '%%SESSION_PATH%%', $sessionPath
 $content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
-$env:SAPDEV_PIN_FILE = '{WORK_TEMP}\sap_active_session.json'
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 Set-Content '{WORK_TEMP}\sap_se19_create_run.vbs' $content -Encoding Unicode
 Write-Host 'Done'
 ```
@@ -227,7 +229,8 @@ $content = $content -replace '%%ABAP_SOURCE_FILE%%','THE_SOURCE_PATH'
 $sessionPath = ''
 $content = $content -replace '%%SESSION_PATH%%', $sessionPath
 $content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
-$env:SAPDEV_PIN_FILE = '{WORK_TEMP}\sap_active_session.json'
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 Set-Content '{WORK_TEMP}\sap_se19_update_method_run.vbs' $content -Encoding Unicode
 Write-Host 'Done'
 ```

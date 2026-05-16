@@ -76,14 +76,18 @@ cmd /c C:\Windows\SysWOW64\cscript.exe //NoLogo "<SAP_DEV_CORE_SHARED_DIR>\scrip
 If status is not `LOGGED_IN`, stop and tell the user to run `/sap-login` first.
 Log end Status=FAILED ErrorClass=NO_SESSION.
 
-Second, resolve the **active-session pin** (same resolution order as
-`sap-gui-probe` Step 0.6):
+Second, resolve the **active-session pin** via the connection lib:
 
-1. `{WORK_TEMP}\sap_active_session.json` exists (written by `/sap-login` Step 6.5 finalize) → use its `session_path`.
-2. Else exactly one connection attached → silent default `/app/con[0]/ses[0]`.
-3. Else refuse with: *"multiple SAP GUI connections detected and no active session pinned; run `/sap-login` first."* Log end Status=FAILED ErrorClass=NO_PIN.
+```powershell
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+$session = Get-SapCurrentSessionPath           -WorkTemp '{WORK_TEMP}'
+$profile = Get-SapCurrentConnectionProfile     -WorkTemp '{WORK_TEMP}'
+```
 
-*Phase 4 note:* prior versions had a `sap_pinned_session` settings fallback. Removed — cross-AI-session persistence now lives in `{work_dir}\runtime\connections.json` via `default_target_id`, which `/sap-login` consults on a fresh conversation.
+- `$session` is the SAP GUI session path for the AI-session's pinned connection (sole-conn fallback applies). Empty when no pin AND multi-conn — refuse with: *"multiple SAP GUI connections detected and no active session pinned; run `/sap-login` first."* Log end Status=FAILED ErrorClass=NO_PIN.
+- `$profile` is the full connection profile (or `$null` when nothing is pinned). It carries version fields used below.
+
+*Phase 4.2 note:* prior versions read `{WORK_TEMP}\sap_active_session.json` for both session_path AND version info. That file is gone. Session path resolution + version info both go through the lib helpers above. Cross-AI-session persistence lives in `connections.json` via `default_target_id`.
 
 The resolved path is `{PINNED_SESSION}`. Its parent connection (everything
 up to the final `/ses[N]`) is `{PINNED_CONNECTION}`. `{PINNED_SESSION}`
@@ -92,9 +96,9 @@ parallel path (Step 2-Parallel) doesn't use `{PINNED_SESSION}` directly —
 the broker allocates fresh sessions there; `{PINNED_CONNECTION}` is kept
 in scope for diagnostic logging only.
 
-Also copy version fields from the pin file into the scaffolder's run state
+Also copy version fields from `$profile` into the scaffolder's run state
 and into the generated SKILL.md's "Probed against" header:
-- `gui_version_raw`, `gui_major`
+- `gui_version_raw`, `gui_major`     ← `$profile.gui_version_raw`, `$profile.gui_major`
 - `server_release_marker`, `server_release_raw`
 - `system_name`, `client`
 
@@ -235,8 +239,9 @@ powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_
     -TaskId     "scaffold_<runId>_scenario_<i>" `
     -OwnerSkill "sap-gui-skill-scaffold" `
     -OwnerPid   0 `
-    -PinFile    "{WORK_TEMP}\sap_active_session.json" `
     -WorkTemp   "{WORK_TEMP}"
+# (no -PinFile: broker auto-resolves the AI session's pinned connection via
+# Get-SapAiSessionId + session_registry.json's ai_sessions map.)
 ```
 
 **`-PinFile` is REQUIRED** — without a connection resolver, multi-connection
@@ -384,14 +389,14 @@ Last line of stdout: `MERGE OK: probes=<N> touchpoints=<M> parameters=<P> modeSp
 powershell -ExecutionPolicy Bypass -File "<SKILL_DIR>\references\emit_skill_folder.ps1" -MergeReport "{SCAFFOLD_FOLDER}\_merge_report.json" -SkillName "<new-skill-name>" -OutputDir "{SCAFFOLD_FOLDER}" -Tcd "<TXN>" -ServerMarker "<server_release_marker-from-pin-or-empty>"
 ```
 
-`-ServerMarker` is the `server_release_marker` field from
-`{WORK_TEMP}\sap_active_session.json` (e.g. `S4HANA_2022`, `ECC6_EHP8`).
-When non-empty, every emitted mode VBS is named
-`sap_<name>_<mode>.<marker>.vbs` so the version-aware selector
-(`shared/scripts/sap_select_vbs_variant.ps1`) picks it on matching systems
-and falls back to the default `.vbs` on non-matching ones. When the pin
-doesn't have a marker (RFC failed or no pin file), pass empty string and
-filenames stay untagged.
+`-ServerMarker` is `$profile.server_release_marker` from the
+`Get-SapCurrentConnectionProfile` call in the second-step of Step 0
+(e.g. `S4HANA_2022`, `ECC6_EHP8`). When non-empty, every emitted mode
+VBS is named `sap_<name>_<mode>.<marker>.vbs` so the version-aware
+selector (`shared/scripts/sap_select_vbs_variant.ps1`) picks it on
+matching systems and falls back to the default `.vbs` on non-matching
+ones. When the profile has no marker (RFC system info was never captured
+or returned empty), pass an empty string and filenames stay untagged.
 
 The script reads the merge report and writes, into `{SCAFFOLD_FOLDER}`:
 

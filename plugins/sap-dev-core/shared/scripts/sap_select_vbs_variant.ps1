@@ -3,8 +3,9 @@
 # -----------------------------------------------------------------------------
 # Version-aware VBS variant picker. Given a references/ directory and a base
 # name like "sap_se38_update", returns the absolute path of the best-matching
-# .vbs variant for the currently pinned SAP session (read from
-# {WORK_TEMP}\sap_active_session.json).
+# .vbs variant for the currently pinned SAP connection (Phase 4.2: version
+# info comes from connections.json via Get-SapCurrentConnectionProfile, not
+# from the now-removed sap_active_session.json pin file).
 #
 # Filename convention (see plan):
 #   sap_<skill>_<action>.vbs                          # default, no tag
@@ -56,9 +57,8 @@ if (-not $WorkTemp) {
 }
 
 # ------------------------------------------------------------------------------
-# 1. Discover the active-session pin (optional)
+# 1. Resolve version info from the active connection profile (optional)
 # ------------------------------------------------------------------------------
-$pinFile = Join-Path $WorkTemp 'sap_active_session.json'
 $serverMarker = $null
 $guiTag       = $null
 # Normalise the raw oApp.MajorVersion / MinorVersion into a stable filename
@@ -85,17 +85,22 @@ function Get-GuiTag {
     return "GUI{0}{1}" -f $maj, $min
 }
 
-if (Test-Path $pinFile) {
-    try {
-        $pin = Get-Content -Path $pinFile -Raw -Encoding UTF8 | ConvertFrom-Json
-        $serverMarker = "$($pin.server_release_marker)".Trim()
-        if (-not $serverMarker -or $serverMarker -eq 'UNKNOWN_NO_RFC') { $serverMarker = $null }
-        $guiTag = Get-GuiTag -major $pin.gui_major -minor $pin.gui_minor
-    } catch {
-        Write-Warning "sap_active_session.json present but unparseable: $($_.Exception.Message)"
-    }
+# Phase 4.2: version info now lives in the connection profile (connections.json)
+# keyed by the AI session's pinned connection_id. Look it up via the lib helper.
+$libPath = Join-Path (Split-Path -Parent $PSCommandPath) 'sap_connection_lib.ps1'
+if (Test-Path $libPath) { . $libPath }
+
+$profile = $null
+if (Get-Command Get-SapCurrentConnectionProfile -ErrorAction SilentlyContinue) {
+    try { $profile = Get-SapCurrentConnectionProfile -WorkTemp $WorkTemp } catch {}
+}
+
+if ($profile) {
+    $serverMarker = "$($profile.server_release_marker)".Trim()
+    if (-not $serverMarker -or $serverMarker -eq 'UNKNOWN_NO_RFC') { $serverMarker = $null }
+    $guiTag = Get-GuiTag -major $profile.gui_major -minor $profile.gui_minor
 } elseif ($RequirePin) {
-    Write-Error "no active-session pin at $pinFile; run /sap-login first"
+    Write-Error "no current SAP connection profile; run /sap-login first"
     exit 2
 }
 

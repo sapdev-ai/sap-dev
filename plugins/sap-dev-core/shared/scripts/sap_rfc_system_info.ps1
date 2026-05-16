@@ -5,8 +5,10 @@
 # host details, then RFC_READ_TABLE on CVERS to read software-component
 # releases (SAP_BASIS, S4CORE, SAP_APPL, S4CEXT, SAP_HR). Resolves a canonical
 # server_release_marker (e.g. S4HANA_2022, ECC6_EHP8) via
-# shared/tables/sap_release_markers.tsv. Emits a JSON record to stdout that
-# the caller writes to {WORK_TEMP}\sap_active_session.json.
+# shared/tables/sap_release_markers.tsv. Emits a JSON record to stdout
+# that sap_login_select.ps1 -Action finalize folds into the active
+# connection profile in {work_dir}\runtime\connections.json via
+# Save-SapConnection (Phase 4.2 — replaces the legacy pin file).
 #
 # Usage:
 #   powershell -ExecutionPolicy Bypass -File sap_rfc_system_info.ps1 `

@@ -91,7 +91,8 @@ $content = $content -replace '%%TABLE_NAME%%','THE_TABLE_NAME'
 $sessionPath = ''
 $content = $content -replace '%%SESSION_PATH%%', $sessionPath
 $content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
-$env:SAPDEV_PIN_FILE = '{WORK_TEMP}\sap_active_session.json'
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 Set-Content '{WORK_TEMP}\sap_se54_check_run.vbs' $content -Encoding Unicode
 Write-Host 'Done'
 ```
@@ -133,7 +134,8 @@ $content = $content -replace '%%OVERVIEW_SCREEN%%','THE_OVERVIEW_SCREEN'
 $sessionPath = ''
 $content = $content -replace '%%SESSION_PATH%%', $sessionPath
 $content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
-$env:SAPDEV_PIN_FILE = '{WORK_TEMP}\sap_active_session.json'
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 Set-Content '{WORK_TEMP}\sap_se54_generate_run.vbs' $content -Encoding Unicode
 Write-Host 'Done'
 ```

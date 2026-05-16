@@ -87,9 +87,14 @@ powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_
 Pick the SAP GUI session to drive. Resolution order (first hit wins):
 
 1. **Explicit `--session "/app/con[N]/ses[M]"` flag** in `$ARGUMENTS` → use it verbatim.
-2. **`{WORK_TEMP}\sap_active_session.json` exists** (written by `/sap-login` Step 6.5 finalize) → use its `session_path` field.
-3. **Exactly one connection attached** → silent default `/app/con[0]/ses[0]`. Preserves today's behaviour for single-connection users.
-4. **Multiple connections attached and no pin file** → refuse with: *"multiple SAP GUI connections detected and no active session pinned; run /sap-login first to pick one."* Log end Status=FAILED ErrorClass=NO_PIN.
+2. **AI-session pin** → run:
+   ```powershell
+   . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+   $sessionPath = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
+   ```
+   `Get-SapCurrentSessionPath` resolves the AI-session id (via parent-PID walk), looks up `ai_sessions[<id>].connection_id` in `session_registry.json`, finds a usable session on that connection block, and returns its path. Returns empty when no pin and no sole-conn fallback.
+3. **Exactly one connection attached** → `Get-SapCurrentSessionPath` already handles this via its sole-conn fallback; returns `/app/con[0]/ses[0]` automatically. Preserves today's behaviour for single-connection users.
+4. **Multiple connections, no pin** → empty return. Refuse with: *"multiple SAP GUI connections detected and no active session pinned; run /sap-login first to pick one."* Log end Status=FAILED ErrorClass=NO_PIN.
 
 The resolved path is stored as `{SESSION_PATH}` and propagated to every subsequent step:
 - Dump calls in Step 2.1 / 2.7 pass `-SessionPath "{SESSION_PATH}"` to `sap_gui_probe_dump.ps1`.
@@ -97,7 +102,7 @@ The resolved path is stored as `{SESSION_PATH}` and propagated to every subseque
 
 Stale pin guard: if `findById({SESSION_PATH})` returns `Nothing` (the user closed the session), fall back through the same order starting at step 2. If step 3 fires, the probe aborts cleanly.
 
-*Phase 4 note:* prior versions of this skill had a `sap_pinned_session` settings fallback. That mechanism is removed — cross-AI-session persistence now lives in `{work_dir}\runtime\connections.json` via `default_target_id`, which `/sap-login` consults on a fresh conversation.
+*Phase 4.2 note:* prior versions of this skill read `{WORK_TEMP}\sap_active_session.json` for the session path AND used `userConfig.sap_pinned_session` as a fallback. Both removed. Session path resolution now goes through `Get-SapCurrentSessionPath`; version info (when needed) comes from `Get-SapCurrentConnectionProfile`. Cross-AI-session persistence lives in `connections.json` via `default_target_id`.
 
 Also stamp the probe's run state with version info copied from the pin file (if present):
 - `gui_version_raw`, `gui_major`

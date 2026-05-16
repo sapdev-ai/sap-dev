@@ -150,7 +150,8 @@ $content = $content -replace '%%MSG_CLASS%%','THE_MSG_CLASS'
 $sessionPath = ''
 $content = $content -replace '%%SESSION_PATH%%', $sessionPath
 $content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
-$env:SAPDEV_PIN_FILE = '{WORK_TEMP}\sap_active_session.json'
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 Set-Content '{WORK_TEMP}\sap_se91_check_run.vbs' $content -Encoding Unicode
 Write-Host 'Done'
 ```
@@ -275,7 +276,8 @@ $content = $content -replace '%%TRANSPORT%%','THE_TRANSPORT'
 $sessionPath = ''
 $content = $content -replace '%%SESSION_PATH%%', $sessionPath
 $content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
-$env:SAPDEV_PIN_FILE = '{WORK_TEMP}\sap_active_session.json'
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 Set-Content '{WORK_TEMP}\sap_se91_update_run.vbs' $content -Encoding Unicode
 Write-Host 'Done'
 ```
@@ -317,7 +319,8 @@ $content = $content -replace '%%TRANSPORT%%','THE_TRANSPORT'
 $sessionPath = ''
 $content = $content -replace '%%SESSION_PATH%%', $sessionPath
 $content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
-$env:SAPDEV_PIN_FILE = '{WORK_TEMP}\sap_active_session.json'
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 Set-Content '{WORK_TEMP}\sap_se91_create_run.vbs' $content -Encoding Unicode
 Write-Host 'Done'
 ```
@@ -426,7 +429,8 @@ $content  = $content.Replace('%%TRANSPORT%%',   'THE_TRANSPORT')
 $sessionPath = ''
 $content  = $content.Replace('%%SESSION_PATH%%',     $sessionPath)
 $content  = $content.Replace('%%ATTACH_LIB_VBS%%',   '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs')
-$env:SAPDEV_PIN_FILE = '{WORK_TEMP}\sap_active_session.json'
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 Set-Content '{WORK_TEMP}\sap_se91_change_props_run.vbs' $content -Encoding Unicode
 Write-Host 'Done'
 ```

@@ -42,9 +42,11 @@
 #               an existing one). Reads the JSON record produced by
 #               sap_login_capture_active_session.vbs, builds/merges a
 #               profile (dedup via 4-step compare), assigns a connection_id
-#               to the live connection in the broker registry, pins the AI
-#               session, and writes the pin file at
-#               {work_dir}\runtime\sap_active_session.json.
+#               to the live connection in the broker registry, and pins
+#               the AI session. Phase 4.2 removed the pin file —
+#               consumer skills use Get-SapCurrentSessionPath /
+#               Get-SapCurrentConnectionProfile to resolve session path
+#               and version info instead.
 #
 # Output protocol
 # ---------------
@@ -130,7 +132,7 @@ $script:WorkRuntimeDir = Get-SapWorkRuntimeDir
 $script:BrokerPs1      = Join-Path $script:SharedDir 'sap_session_broker.ps1'
 $script:CaptureVbs     = Join-Path $PSScriptRoot 'references\sap_login_capture_active_session.vbs'
 $script:Cscript        = 'C:\Windows\SysWOW64\cscript.exe'
-$script:PinFilePath    = Join-Path $WorkTemp 'sap_active_session.json'
+$script:PinFilePath    = $null   # Phase 4.2: pin file eliminated — see Invoke-Finalize
 
 # ---------------------------------------------------------------------------
 # AI-session id resolution. Delegates to Get-SapAiSessionId in
@@ -501,27 +503,39 @@ function Invoke-Finalize {
     }
 
     # Build a profile candidate from the captured fields + user inputs.
+    # Version fields (gui_*, server_*) come from the merged capture JSON:
+    # GUI side populates gui_*; sap_rfc_system_info.ps1 populates server_*.
+    # All optional — Save-SapConnection only updates non-empty fields.
     $candidate = New-SapConnectionInfo `
-        -SystemName        "$($cap.system_name)" `
-        -Client            "$($cap.client)" `
-        -User              "$($cap.user)" `
-        -Language          "$($cap.language)" `
-        -ApplicationServer "$($cap.application_server)" `
-        -SystemNumber      "$($cap.system_number)" `
-        -MessageServer     "$($cap.message_server)" `
-        -LogonGroup        "$($cap.logon_group)" `
-        -SystemId          "$($cap.system_name)" `
-        -LogonPadEntry     "$NewLogonDescription" `
-        -PasswordDpapi     "$NewPasswordDpapi" `
-        -Description       "$NewLogonDescription" `
-        -GuiTested         $true
+        -SystemName          "$($cap.system_name)" `
+        -Client              "$($cap.client)" `
+        -User                "$($cap.user)" `
+        -Language            "$($cap.language)" `
+        -ApplicationServer   "$($cap.application_server)" `
+        -SystemNumber        "$($cap.system_number)" `
+        -MessageServer       "$($cap.message_server)" `
+        -LogonGroup          "$($cap.logon_group)" `
+        -SystemId            "$($cap.system_name)" `
+        -LogonPadEntry       "$NewLogonDescription" `
+        -PasswordDpapi       "$NewPasswordDpapi" `
+        -Description         "$NewLogonDescription" `
+        -GuiTested           $true `
+        -GuiVersionRaw       "$($cap.gui_version_raw)" `
+        -GuiMajor            ([int]$cap.gui_major) `
+        -GuiMinor            ([int]$cap.gui_minor) `
+        -GuiPatch            ([int]$cap.gui_patch) `
+        -ServerKernelRelease "$($cap.server_kernel_release)" `
+        -ServerReleaseFamily "$($cap.server_release_family)" `
+        -ServerReleaseMarker "$($cap.server_release_marker)" `
+        -ServerReleaseRaw    "$($cap.server_release_raw)" `
+        -SoftwareComponents  $cap.software_components
     # The capture VBS also emits logon_pad_entry (= connection_string). If the
     # user did not supply a new label, prefer the captured Logon-pad entry.
     if (-not $candidate.logon_pad_entry -and $cap.logon_pad_entry) {
         $candidate.logon_pad_entry = "$($cap.logon_pad_entry)"
     }
 
-    # Save (dedup against existing).
+    # Save (dedup against existing). Version fields propagate into the profile.
     $saved = Save-SapConnection -Profile $candidate
 
     # Set connection_id on the live broker registry block.
@@ -539,32 +553,21 @@ function Invoke-Finalize {
                                    '-AiSessionId',$aid,'-ConnectionId',$saved.id,
                                    '-PinReason','login_finalize')
 
-    # Write the active-session pin file so attach_lib's strategy-3 reads it.
-    $pinObj = @{
-        session_path       = $sessionPath
-        connection_path    = $connPath
-        connection_id      = $saved.id
-        ai_session_id      = $aid
-        system_name        = $saved.system_name
-        client             = $saved.client
-        user               = $saved.user
-        language           = $saved.language
-        description        = $saved.description
-        application_server = $saved.application_server
-        system_number      = $saved.system_number
-        message_server     = $saved.message_server
-        logon_group        = $saved.logon_group
-        system_id          = $saved.system_id
-        recorded_at        = (Get-Date).ToString('yyyy-MM-ddTHH:mm:ss')
-        recorded_by_skill  = 'sap-login'
-    }
-    [System.IO.File]::WriteAllText(
-        $script:PinFilePath,
-        ($pinObj | ConvertTo-Json -Depth 6),
-        [System.Text.UTF8Encoding]::new($false))
+    # Populate the registry's entries[] for the pinned connection by running
+    # broker discover. Without this, Get-SapCurrentSessionPath (used by
+    # consumer skills) sees the connection block with connection_id set but
+    # entries[] empty, falls through to sole-connection default, and refuses
+    # in multi-connection scenarios.
+    $null = Invoke-Broker -Args @('-Action','discover','-WorkTemp',$WorkTemp)
+
+    # Phase 4.2: NO pin file written. Consumer skills resolve the session
+    # path via Get-SapCurrentSessionPath (which reads session_registry.json's
+    # ai_sessions pin + broker registry) and version info via
+    # Get-SapCurrentConnectionProfile (which reads connections.json by
+    # connection_id). The pin file is gone.
 
     Write-Host "INFO: profile saved id=$($saved.id) description='$($saved.description)'"
-    Write-Host "INFO: pin file at $($script:PinFilePath)"
+    Write-Host "INFO: ai_session=$aid pinned to connection_id=$($saved.id)"
     Write-Host "SUCCESS: connection_id=$($saved.id) description='$($saved.description)' session_path=$sessionPath"
 }
 

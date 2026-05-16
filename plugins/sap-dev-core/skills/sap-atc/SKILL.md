@@ -167,7 +167,8 @@ $content  = $content.Replace('%%SESSION_LOCK_VBS%%',"$shared\scripts\sap_session
 $sessionPath = ''
 $content  = $content.Replace('%%SESSION_PATH%%',   $sessionPath)
 $content  = $content.Replace('%%ATTACH_LIB_VBS%%', "$shared\scripts\sap_attach_lib.vbs")
-$env:SAPDEV_PIN_FILE = '{WORK_TEMP}\sap_active_session.json'
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 [System.IO.File]::WriteAllText('{WORK_TEMP}\sap_atc_stage1_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 ```
 
@@ -205,7 +206,8 @@ $content  = $content.Replace('%%SESSION_LOCK_VBS%%', "$shared\scripts\sap_sessio
 $sessionPath = ''
 $content  = $content.Replace('%%SESSION_PATH%%',   $sessionPath)
 $content  = $content.Replace('%%ATTACH_LIB_VBS%%', "$shared\scripts\sap_attach_lib.vbs")
-$env:SAPDEV_PIN_FILE = '{WORK_TEMP}\sap_active_session.json'
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 [System.IO.File]::WriteAllText('{WORK_TEMP}\sap_atc_stage2_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 ```
 
@@ -231,7 +233,8 @@ $content  = $content.Replace('%%SESSION_LOCK_VBS%%', "$shared\scripts\sap_sessio
 $sessionPath = ''
 $content  = $content.Replace('%%SESSION_PATH%%',   $sessionPath)
 $content  = $content.Replace('%%ATTACH_LIB_VBS%%', "$shared\scripts\sap_attach_lib.vbs")
-$env:SAPDEV_PIN_FILE = '{WORK_TEMP}\sap_active_session.json'
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 [System.IO.File]::WriteAllText('{WORK_TEMP}\sap_atc_stage3_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 ```
 
@@ -288,7 +291,8 @@ $content  = $content.Replace('%%SESSION_LOCK_VBS%%', "$shared\scripts\sap_sessio
 $sessionPath = ''
 $content  = $content.Replace('%%SESSION_PATH%%',   $sessionPath)
 $content  = $content.Replace('%%ATTACH_LIB_VBS%%', "$shared\scripts\sap_attach_lib.vbs")
-$env:SAPDEV_PIN_FILE = '{WORK_TEMP}\sap_active_session.json'
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 [System.IO.File]::WriteAllText('{WORK_TEMP}\sap_atc_stage4_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 ```
 
@@ -359,7 +363,8 @@ $content  = $content.Replace('%%SESSION_LOCK_VBS%%',"$shared\scripts\sap_session
 $sessionPath = ''
 $content  = $content.Replace('%%SESSION_PATH%%',   $sessionPath)
 $content  = $content.Replace('%%ATTACH_LIB_VBS%%', "$shared\scripts\sap_attach_lib.vbs")
-$env:SAPDEV_PIN_FILE = '{WORK_TEMP}\sap_active_session.json'
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 [System.IO.File]::WriteAllText('{WORK_TEMP}\sap_atc_stage4b_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 ```
 

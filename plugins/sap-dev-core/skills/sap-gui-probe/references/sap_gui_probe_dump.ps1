@@ -33,8 +33,9 @@ param(
 
     # Pinned SAP GUI session, e.g. "/app/con[0]/ses[1]". Default targets the
     # first connection's first session (preserves today's behaviour). If the
-    # caller wants per-AI-session resolution they should look up the pin via
-    # {WORK_TEMP}\sap_active_session.json and pass session_path here.
+    # caller wants per-AI-session resolution they should call
+    # Get-SapCurrentSessionPath (in sap_connection_lib.ps1) and pass the
+    # result here.
     [string] $SessionPath = '/app/con[0]/ses[0]'
 )
 

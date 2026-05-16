@@ -4,7 +4,9 @@
 ' Capture GUI-side metadata for the active SAP GUI session and (optionally)
 ' present a multi-connection picker. Writes a flat JSON snippet to stdout that
 ' the caller (PowerShell side of sap-login Step 7) merges with the server-side
-' record from sap_rfc_system_info.ps1 into {WORK_TEMP}\sap_active_session.json.
+' record from sap_rfc_system_info.ps1 and persists into the connection
+' profile in {work_dir}\runtime\connections.json (via sap_login_select.ps1
+' -Action finalize -> Save-SapConnection).
 '
 ' Usage:
 '   cscript //NoLogo sap_login_capture_active_session.vbs <pinned-session-id>

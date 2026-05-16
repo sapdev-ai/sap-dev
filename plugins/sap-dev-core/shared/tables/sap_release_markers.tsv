@@ -3,7 +3,8 @@
 #	by sap_rfc_system_info.ps1 and sap_select_vbs_variant.ps1.
 #
 #	First-match-wins. Rows are evaluated in file order. The marker becomes
-#	the server_release_marker in {WORK_TEMP}\sap_active_session.json and the
+#	the server_release_marker stored on each connection profile in
+#	{work_dir}\runtime\connections.json (Phase 4.2) and serves as the
 #	filename tag for version-specific VBS variants (e.g.,
 #	sap_se38_update.S4HANA_2022.vbs).
 #
