@@ -475,6 +475,151 @@ function Remove-SapConnection {
     Write-SapConnectionStore -Store $store
 }
 
+# =============================================================================
+# AI-session identity (Phase 4.1: parent-PID-based, NOT machine-global)
+# -----------------------------------------------------------------------------
+# The Phase-4 model pins each Claude Code conversation (and its subagents) to
+# a single SAP connection. The pin is keyed by an AI-session id. The id must
+# satisfy three properties:
+#
+#   1. SAME id for every skill / subagent invocation within ONE conversation.
+#   2. DIFFERENT id across concurrent conversations on the same machine.
+#   3. SURVIVES script-host hops (powershell -> cscript -> nested powershell).
+#
+# The original Phase-4 implementation wrote a single ai_session_id.txt per
+# machine, which silently shared one id across every parallel Claude Code
+# conversation (Bug). The fix below derives the id from the FIRST non-script-
+# host ancestor of the calling PowerShell process. Claude Code itself isn't
+# a script host (powershell/pwsh/cscript/wscript/cmd/conhost) -- it's the
+# CLI binary. So walking up `ParentProcessId` and skipping script-host
+# processes lands on the Claude Code conversation process. Subagents launched
+# from the same conversation share that ancestor, so they share the id.
+# Parallel conversations have different parent PIDs and therefore different
+# ids.
+#
+# State is stored per-ancestor-PID at
+#   {RuntimeDir}\ai_session_by_pid\<owner_pid>.txt
+# GC runs opportunistically on every create -- entries whose ancestor PID
+# is no longer alive are dropped, so the directory stays small even with
+# many short-lived conversations.
+#
+# Override hook: the env var SAPDEV_AI_SESSION_ID takes precedence over the
+# walked id. Tests and one-off manual invocations can use it to pin a
+# specific id without touching files.
+# =============================================================================
+
+$script:_SapAi_ScriptHosts = @('powershell','pwsh','cscript','wscript','cmd','conhost')
+$script:_SapAi_MutexName   = 'SapDevAiSessionId_v1'
+
+function _Get-AiOwnerPid {
+    <#
+    .SYNOPSIS
+        Walk up the process tree from $StartPid (default: current process)
+        until we hit a process whose name is NOT a known script host.
+        Returns that ancestor's PID -- the "AI session owner".
+    .NOTES
+        Capped at 12 hops as a safety against pathological process trees.
+        On any introspection failure, returns the last known PID (best
+        effort -- a stable-but-wrong id is better than throwing).
+    #>
+    param([int]$StartPid = $PID)
+    $current = $StartPid
+    for ($i = 0; $i -lt 12; $i++) {
+        $p = $null
+        try { $p = Get-CimInstance Win32_Process -Filter "ProcessId=$current" -ErrorAction Stop } catch {}
+        if (-not $p) { return $current }
+        $parentPid = [int]$p.ParentProcessId
+        if ($parentPid -le 0) { return $current }
+        $parent = $null
+        try { $parent = Get-CimInstance Win32_Process -Filter "ProcessId=$parentPid" -ErrorAction Stop } catch {}
+        if (-not $parent) { return $current }
+        $parentName = [System.IO.Path]::GetFileNameWithoutExtension("$($parent.Name)").ToLower()
+        if ($script:_SapAi_ScriptHosts -contains $parentName) {
+            $current = $parentPid
+            continue
+        }
+        # Parent is not a script host -- it's the conversation owner.
+        return $parentPid
+    }
+    return $current
+}
+
+function _Invoke-AiSessionGc {
+    param([string]$Dir)
+    if (-not (Test-Path $Dir)) { return }
+    foreach ($f in Get-ChildItem $Dir -Filter '*.txt' -ErrorAction SilentlyContinue) {
+        $stem = [System.IO.Path]::GetFileNameWithoutExtension($f.Name)
+        $ownerPid = 0
+        if (-not [int]::TryParse($stem, [ref]$ownerPid)) { continue }
+        if ($ownerPid -le 0) { continue }
+        $alive = $false
+        try { Get-Process -Id $ownerPid -ErrorAction Stop | Out-Null; $alive = $true } catch {}
+        if (-not $alive) {
+            try { Remove-Item $f.FullName -Force -ErrorAction SilentlyContinue } catch {}
+        }
+    }
+}
+
+function Get-SapAiSessionId {
+    <#
+    .SYNOPSIS
+        Return the AI-session id for THIS Claude Code conversation. Idempotent
+        within a conversation (same parent PID -> same id every call); unique
+        across parallel conversations (different parent PIDs).
+    .PARAMETER RuntimeDir
+        Override for the runtime directory holding ai_session_by_pid/. When
+        empty, resolves via Get-SapWorkRuntimeDir (production default).
+        Passed explicitly by the broker so its -WorkTemp sandbox is honored
+        in tests.
+    #>
+    param([string]$RuntimeDir = '')
+
+    # Honor an explicit env var if set (tests + manual overrides).
+    if (-not [string]::IsNullOrWhiteSpace($env:SAPDEV_AI_SESSION_ID)) {
+        return $env:SAPDEV_AI_SESSION_ID
+    }
+
+    if ([string]::IsNullOrWhiteSpace($RuntimeDir)) {
+        $RuntimeDir = Get-SapWorkRuntimeDir
+    }
+    $dir = Join-Path $RuntimeDir 'ai_session_by_pid'
+    if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
+
+    $ownerPid = _Get-AiOwnerPid -StartPid $PID
+    $file = Join-Path $dir "$ownerPid.txt"
+
+    $mutex = [System.Threading.Mutex]::new($false, $script:_SapAi_MutexName)
+    $acquired = $false
+    try {
+        try { $acquired = $mutex.WaitOne(5000) }
+        catch [System.Threading.AbandonedMutexException] { $acquired = $true }
+        if (-not $acquired) {
+            # Mutex unavailable but file may already exist - best-effort read.
+            if (Test-Path $file) {
+                $v = (Get-Content $file -Raw -Encoding UTF8).Trim()
+                if ($v) { return $v }
+            }
+            throw "sap_connection_lib: could not acquire ai_session mutex within 5000ms"
+        }
+
+        if (Test-Path $file) {
+            $existing = (Get-Content $file -Raw -Encoding UTF8).Trim()
+            if ($existing) { return $existing }
+        }
+
+        $id = [guid]::NewGuid().ToString()
+        [System.IO.File]::WriteAllText($file, $id, [System.Text.UTF8Encoding]::new($false))
+
+        # Opportunistic cleanup of files for dead PIDs.
+        _Invoke-AiSessionGc -Dir $dir
+
+        return $id
+    } finally {
+        if ($acquired) { try { $mutex.ReleaseMutex() } catch {} }
+        try { $mutex.Dispose() } catch {}
+    }
+}
+
 # --- Legacy migration -------------------------------------------------------
 
 function Import-LegacyConnectionFromSettings {

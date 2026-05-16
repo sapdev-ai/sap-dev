@@ -9,10 +9,12 @@
 #
 # Stages (-Action):
 #
-#   init        Bootstrap. Writes {work_dir}\runtime\ai_session_id.txt if
-#               missing; runs a one-shot migration from the legacy
-#               settings.json single-connection fields into connections.json.
-#               Idempotent.
+#   init        Bootstrap. Resolves this conversation's AI-session id
+#               via Get-SapAiSessionId (parent-PID walk; creates
+#               {work_dir}\runtime\ai_session_by_pid\<owner_pid>.txt as
+#               needed) and runs a one-shot migration from the legacy
+#               settings.json single-connection fields into
+#               connections.json. Idempotent.
 #
 #   decide      Inspect (active SAP connections) x (saved profiles) x
 #               (AI-session pin) and emit ONE of these stdout signals:
@@ -128,25 +130,20 @@ $script:WorkRuntimeDir = Get-SapWorkRuntimeDir
 $script:BrokerPs1      = Join-Path $script:SharedDir 'sap_session_broker.ps1'
 $script:CaptureVbs     = Join-Path $PSScriptRoot 'references\sap_login_capture_active_session.vbs'
 $script:Cscript        = 'C:\Windows\SysWOW64\cscript.exe'
-$script:PinFilePath    = Join-Path $script:WorkRuntimeDir 'sap_active_session.json'
-$script:AiSessionFile  = Join-Path $script:WorkRuntimeDir 'ai_session_id.txt'
+$script:PinFilePath    = Join-Path $WorkTemp 'sap_active_session.json'
 
 # ---------------------------------------------------------------------------
-# AI-session bootstrap. The SessionStart hook is the preferred mechanism
-# (writes ai_session_id.txt at conversation start). When the hook is not
-# wired, fall back to deriving an id here and persisting it.
+# AI-session id resolution. Delegates to Get-SapAiSessionId in
+# sap_connection_lib.ps1 which derives a stable id per Claude Code
+# conversation by walking the parent-process tree. Parallel conversations
+# get DIFFERENT ids; subagents within one conversation share the SAME id.
+#
+# Explicit -AiSessionId on the cmdline still wins (used by `switch` to
+# operate on a remembered id from a previous run).
 # ---------------------------------------------------------------------------
 function Resolve-AiSessionId {
     if (-not [string]::IsNullOrWhiteSpace($AiSessionId)) { return $AiSessionId }
-    if ($env:SAPDEV_AI_SESSION_ID) { return $env:SAPDEV_AI_SESSION_ID }
-    if (Test-Path $script:AiSessionFile) {
-        $v = (Get-Content $script:AiSessionFile -Raw -Encoding UTF8).Trim()
-        if ($v) { return $v }
-    }
-    # Fallback: derive + persist. Format: ai_pid<PID>_<YYYYMMDDHHMMSS>.
-    $id = "ai_pid$PID" + "_" + (Get-Date -Format 'yyyyMMddHHmmss')
-    [System.IO.File]::WriteAllText($script:AiSessionFile, $id, [System.Text.UTF8Encoding]::new($false))
-    return $id
+    return Get-SapAiSessionId
 }
 
 # ---------------------------------------------------------------------------

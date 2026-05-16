@@ -96,21 +96,20 @@ powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_
 
 ## Step 0.7 — Bootstrap (AI session + Migration)
 
-Phase-4 selection state needs an AI-session id. The repo convention is to
-wire a SessionStart hook that writes `{work_dir}\runtime\ai_session_id.txt`
-once per Claude Code conversation; subagents inherit by reading the same
-file. The wrapper falls back to deriving an id if the hook didn't run.
+Resolves this conversation's AI-session id (automatic — see "AI-Session
+Identity" section near the end of this file) and creates the per-PID
+file at `{work_dir}\runtime\ai_session_by_pid\<owner_pid>.txt` if needed.
 
 This step also performs a one-shot migration of the legacy single-connection
 fields in `settings.json` into the new `connections.json` store (marking
-them as the default).
+them as the default). Idempotent.
 
 ```bash
 powershell -ExecutionPolicy Bypass -File "<SKILL_DIR>\sap_login_select.ps1" -Action init -WorkTemp "{WORK_TEMP}"
 ```
 
 Stdout signals:
-- `INFO: ai_session_id=...` → record this value (use as `SAPDEV_AI_SESSION_ID` in all subsequent broker calls and skill wrappers within this conversation).
+- `INFO: ai_session_id=...` → the conversation's id; broker auto-resolves the same value on subsequent calls.
 - `INFO: migrated legacy connection id=...` (optional) → notify the user that the previous single-connection settings were imported as the default.
 - `SUCCESS: init complete` → proceed.
 
@@ -475,7 +474,7 @@ the step that:
 1. Saves (or merges via 4-step dedup) the profile in `{work_dir}\runtime\connections.json`.
 2. Assigns the profile's UUID as `connection_id` on the live broker registry block (`broker set-connection-id`).
 3. Pins the AI session to that `connection_id` (`broker pin`). On a switch, this releases stale claims from the old connection.
-4. Writes `{work_dir}\runtime\sap_active_session.json` — the pin file every other skill's `sap_attach_lib.vbs` reads.
+4. Writes `{WORK_TEMP}\sap_active_session.json` — the pin file every consumer skill's `sap_attach_lib.vbs` reads. (Path unchanged from Phase 3.5: this file is ephemeral — overwritten on every `/sap-login` — so it stays in `temp\`. Durable state — `connections.json`, `session_registry.json`, `ai_session_by_pid/<owner_pid>.txt` — lives in `runtime\`.)
 
 ```powershell
 $captured = '<single-line JSON from Step 6>'   # exact string
@@ -492,7 +491,7 @@ powershell -ExecutionPolicy Bypass -File "<SKILL_DIR>\sap_login_select.ps1" `
 
 Expected stdout:
 - `INFO: profile saved id=<UUID> description='<auto-derived or user-supplied>'`
-- `INFO: pin file at {work_dir}\runtime\sap_active_session.json`
+- `INFO: pin file at {WORK_TEMP}\sap_active_session.json`
 - `SUCCESS: connection_id=<UUID> description='<...>' session_path=/app/con[N]/ses[M]`
 
 Tell the user the connection is ready, including the description and
@@ -515,7 +514,7 @@ Access and free for the user or another AI session.
 Every downstream skill resolves its target session like this:
 
 1. Explicit `--session "<path>"` arg → use it.
-2. Else `{work_dir}\runtime\sap_active_session.json` exists → use its `session_path`. *(Path moved from `{WORK_TEMP}` in Phase 4; the file is now under `runtime\` so it survives `sap-dev-clean` temp wipes.)*
+2. Else `{WORK_TEMP}\sap_active_session.json` exists → use its `session_path`. (Phase 4 retained this Phase-3.5 path; the pin file is ephemeral and rewritten on every `/sap-login`. Durable profile state lives in `{work_dir}\runtime\connections.json` and AI-session pin lives in `{work_dir}\runtime\session_registry.json`.)
 3. Else exactly one connection attached → silent default `/app/con[0]/ses[0]`.
 4. Else refuse with: *"multiple SAP GUI connections detected and no active session pinned; run `/sap-login` first to pick one."*
 
@@ -545,38 +544,31 @@ Suggested `<CLASS>`: `LOGIN_FAILED`, `RFC_LOGON_FAILED`, `GUI_TIMEOUT`.
 
 ---
 
-## Recommended: SessionStart Hook for `SAPDEV_AI_SESSION_ID`
+## AI-Session Identity (automatic, parent-PID-based)
 
-The Phase-4 AI-session pin scope is identified by the env var
-`SAPDEV_AI_SESSION_ID`. Subagents inherit a shared working directory but
-not env vars set inside a tool call, so the canonical mechanism is to
-write the id to `{work_dir}\runtime\ai_session_id.txt` once per Claude
-Code conversation, then read it from there in every skill wrapper.
+The Phase-4 AI-session pin scope is identified by an id derived from
+the **parent-process PID** of the running skill. `Get-SapAiSessionId` in
+`sap_connection_lib.ps1` walks up the process tree from the current
+PowerShell/cscript, skipping script-host processes (`powershell`, `pwsh`,
+`cscript`, `wscript`, `cmd`, `conhost`), and stops at the first
+non-script-host ancestor — that's the Claude Code conversation process.
+Subagents launched from the same conversation share that ancestor and
+therefore share the id; parallel conversations have different parent
+PIDs and therefore get different ids.
 
-If you have not wired the hook, `/sap-login` Step 0.7 still writes the
-file as a fallback — but only on first invocation. Other skills (e.g.
-`/sap-se16n`, `/sap-se38`) launched **before** the first `/sap-login`
-would see no pin and could land on the wrong connection in a
-multi-connection scenario.
+State lives at `{work_dir}\runtime\ai_session_by_pid\<owner_pid>.txt`
+(one file per conversation). Opportunistic GC drops files for PIDs that
+are no longer alive, so the directory stays small.
 
-Wire the hook via `/update-config` (recommended):
+**No SessionStart hook needed.** Earlier drafts of Phase 4 used a write-
+once-if-missing `ai_session_id.txt` file written by a hook, but that
+silently shared one id across parallel conversations. The parent-PID
+mechanism is automatic, scoped correctly, and has no external setup
+requirement.
 
-```
-/update-config hooks.SessionStart += {
-  "command": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"$d='C:\\sap_dev_work\\runtime'; New-Item -ItemType Directory -Force -Path $d | Out-Null; $f=Join-Path $d 'ai_session_id.txt'; if (-not (Test-Path $f)) { [guid]::NewGuid().ToString() | Set-Content -NoNewline $f }\""
-}
-```
-
-Adjust the path if your `work_dir` is not `C:\sap_dev_work`. The hook is
-idempotent (no-op if the file already exists), so it is safe to wire at
-the user level.
-
-To verify the hook is working, run `/sap-login --list` after a fresh
-Claude Code restart and confirm `ai_session_id` matches the file content:
-
-```bash
-type "%work_dir%\runtime\ai_session_id.txt"
-```
+**Override:** the env var `SAPDEV_AI_SESSION_ID`, if set non-empty, takes
+precedence over the walked id. Tests and manual one-offs use it; normal
+operation doesn't.
 
 ---
 

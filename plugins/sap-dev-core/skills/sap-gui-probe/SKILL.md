@@ -87,24 +87,17 @@ powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_
 Pick the SAP GUI session to drive. Resolution order (first hit wins):
 
 1. **Explicit `--session "/app/con[N]/ses[M]"` flag** in `$ARGUMENTS` → use it verbatim.
-2. **`{WORK_TEMP}\sap_active_session.json` exists** (written by `/sap-login` Step 6) → use its `session_path` field.
-3. **`userConfig.sap_pinned_session` (merged via `sap_settings_lib.ps1`) is non-empty** (written by `/sap-login --remember` in a previous AI session) → use that path AND auto-regenerate the temp pin file:
-   - Read the hint via the shared lib:
-     ```bash
-     powershell -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1'; Get-SapSettingValue 'sap_pinned_session'"
-     ```
-   - Run `sap_login_capture_active_session.vbs "<hinted_path>"` to re-capture GUI-side fields against the hinted session.
-   - Best-effort: invoke `sap_rfc_system_info.ps1` if RFC credentials are available; otherwise stamp the temp file with only the GUI fields and `server_release_marker = "UNKNOWN_NO_RFC"`.
-   - Write the merged record to `{WORK_TEMP}\sap_active_session.json`.
-   - If the hinted session no longer resolves via `findById`, clear the hint via `Set-SapUserSetting sap_pinned_session ''` (writes to `settings.local.json`) and fall through to step 4.
-4. **Exactly one connection attached** → silent default `/app/con[0]/ses[0]`. Preserves today's behaviour for single-connection users.
-5. **Multiple connections attached and no pin file** → refuse with: *"multiple SAP GUI connections detected and no active session pinned; run /sap-login first to pick one."* Log end Status=FAILED ErrorClass=NO_PIN.
+2. **`{WORK_TEMP}\sap_active_session.json` exists** (written by `/sap-login` Step 6.5 finalize) → use its `session_path` field.
+3. **Exactly one connection attached** → silent default `/app/con[0]/ses[0]`. Preserves today's behaviour for single-connection users.
+4. **Multiple connections attached and no pin file** → refuse with: *"multiple SAP GUI connections detected and no active session pinned; run /sap-login first to pick one."* Log end Status=FAILED ErrorClass=NO_PIN.
 
 The resolved path is stored as `{SESSION_PATH}` and propagated to every subsequent step:
 - Dump calls in Step 2.1 / 2.7 pass `-SessionPath "{SESSION_PATH}"` to `sap_gui_probe_dump.ps1`.
 - Action JSONs in Step 2.3 include a `"session": "{SESSION_PATH}"` field, which `sap_gui_probe_action.vbs` resolves via `oApp.findById(...)`.
 
-Stale pin guard: if `findById({SESSION_PATH})` returns `Nothing` (the user closed the session), fall back through the same order starting at step 3. If step 4 fires, the probe aborts cleanly.
+Stale pin guard: if `findById({SESSION_PATH})` returns `Nothing` (the user closed the session), fall back through the same order starting at step 2. If step 3 fires, the probe aborts cleanly.
+
+*Phase 4 note:* prior versions of this skill had a `sap_pinned_session` settings fallback. That mechanism is removed — cross-AI-session persistence now lives in `{work_dir}\runtime\connections.json` via `default_target_id`, which `/sap-login` consults on a fresh conversation.
 
 Also stamp the probe's run state with version info copied from the pin file (if present):
 - `gui_version_raw`, `gui_major`

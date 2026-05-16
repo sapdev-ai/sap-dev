@@ -130,6 +130,22 @@ if (-not (Test-Path $WorkTemp)) {
     New-Item -ItemType Directory -Path $WorkTemp -Force | Out-Null
 }
 
+# Phase 4.1: dot-source sap_connection_lib.ps1 for Get-SapAiSessionId.
+# The lib has no top-level param() block so it cannot clobber our params.
+# It dot-sources sap_settings_lib.ps1 lazily inside Get-SapWorkDir (also
+# param-block-free), so the broker's own param block is safe.
+. (Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Path) 'sap_connection_lib.ps1')
+
+# Resolve AiSessionId once for this broker invocation. If the caller
+# (sap_login_select.ps1 etc.) passed -AiSessionId explicitly, honour it.
+# Otherwise walk the parent-process tree to find this Claude Code
+# conversation's owner PID and look up its id. Subagents within one
+# conversation converge on the same id; parallel conversations diverge.
+if ([string]::IsNullOrWhiteSpace($AiSessionId)) {
+    try { $AiSessionId = Get-SapAiSessionId -RuntimeDir $WorkRuntime }
+    catch { $AiSessionId = '' }   # non-fatal — actions that need it will fail loud later
+}
+
 # Per-invocation cache for SAP state.
 $script:CachedInfo = $null
 

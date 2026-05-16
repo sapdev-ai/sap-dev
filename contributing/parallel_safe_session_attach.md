@@ -180,18 +180,31 @@ subagents) on a single SAP connection for its lifetime.
 
 ### What changed
 
-1. **`{work_dir}\runtime\` is the new home for durable broker state.**
+1. **`{work_dir}\runtime\` is the new home for DURABLE broker state.**
    `session_registry.json` moved from `{work_dir}\temp\` to
    `{work_dir}\runtime\` so it survives `sap-dev-clean` temp wipes. The
    broker auto-migrates on first call after upgrade.
+   The pin file `sap_active_session.json` stays in `{WORK_TEMP}` (Phase 3.5
+   location, unchanged) — it's ephemeral, rewritten on every `/sap-login`,
+   and 40+ consumer skills read it from there. Only the truly durable
+   files (`connections.json`, `session_registry.json`, `ai_session_by_pid/<owner_pid>.txt`)
+   live in `runtime\`.
 2. **`{work_dir}\runtime\connections.json` stores saved profiles.**
    Multi-profile, DPAPI-encrypted passwords, identified by stable UUIDs.
    Library: `shared/scripts/sap_connection_lib.ps1` (4-step compare,
    dedup-on-save, legacy migration).
-3. **`{work_dir}\runtime\ai_session_id.txt`** holds the AI-session id.
-   Written by a SessionStart hook (recommended) or as a fallback by
-   `/sap-login` Step 0.7. Skills read this via the new
-   `SAPDEV_AI_SESSION_ID` env var convention.
+3. **AI-session id is derived automatically** from the parent-process tree.
+   `Get-SapAiSessionId` in `sap_connection_lib.ps1` walks `ParentProcessId`
+   skipping script-host processes (`powershell`, `pwsh`, `cscript`,
+   `wscript`, `cmd`, `conhost`) and stops at the first non-script-host
+   ancestor — that's the Claude Code conversation process. State lives at
+   `{work_dir}\runtime\ai_session_by_pid\<owner_pid>.txt`. Subagents
+   inherit the parent's owner PID and therefore the same id; parallel
+   Claude Code conversations have different parent PIDs and get different
+   ids. Opportunistic GC drops files for dead PIDs.
+   The env var `SAPDEV_AI_SESSION_ID` is honoured if set (test/override
+   only); normal operation derives it from the process tree without any
+   external setup.
 4. **Broker new actions**: `pin`, `unpin`, `set-connection-id`, `stuck`.
    New parameters on existing actions: `-AiSessionId`, `-WasCreated`,
    `-ForceUnpin`, `-ConnectionId`, `-Program`, `-Screen`, `-WorkRuntime`.
@@ -243,27 +256,21 @@ duplicated as `Test-IdentityMatch` in `sap_session_broker.ps1`.
 
 Every PS skill wrapper that calls the broker MUST:
 
-1. Resolve `$env:SAPDEV_AI_SESSION_ID` at top of the wrapper:
-   ```powershell
-   if (-not $env:SAPDEV_AI_SESSION_ID) {
-       $aif = "$work_dir\runtime\ai_session_id.txt"
-       if (Test-Path $aif) { $env:SAPDEV_AI_SESSION_ID = (Get-Content $aif -Raw).Trim() }
-       if (-not $env:SAPDEV_AI_SESSION_ID) {
-           $env:SAPDEV_AI_SESSION_ID = "ai_pid$PID" + "_" + (Get-Date -Format 'yyyyMMddHHmmss')
-           Set-Content -NoNewline -Path $aif -Value $env:SAPDEV_AI_SESSION_ID
-       }
-   }
-   ```
-2. Pass `-AiSessionId $env:SAPDEV_AI_SESSION_ID` to every `broker acquire` / `release` / `stuck` call.
-3. Wrap SAP-driving work in `try { ... } finally { broker release ... }` so reset is best-effort even on exception.
-4. Pass `-WasCreated` to `release` when the wrapper itself spawned the session (vs claiming a pre-existing free one).
+1. **AI session id: no action required.** The broker auto-resolves
+   `-AiSessionId` via `Get-SapAiSessionId` (parent-process walk) when the
+   caller doesn't pass one. Skill wrappers can omit `-AiSessionId`
+   entirely and still get correct pin enforcement for their conversation.
+   Pass `-AiSessionId` explicitly only when overriding (e.g.,
+   `sap-login --switch` operates on a remembered id from a previous run).
+2. Wrap SAP-driving work in `try { ... } finally { broker release ... }` so reset is best-effort even on exception.
+3. Pass `-WasCreated` to `release` when the wrapper itself spawned the session (vs claiming a pre-existing free one).
 
 ### CI gate additions
 
 `sap-dev/scripts/check-consistency.mjs` Phase-4 checks (see CI source):
 - Skills calling `acquire` should pass `-AiSessionId`.
 - Skills using `release -WasCreated` should not also `RESET` the session.
-- Operational SKILL.md wrappers must read `ai_session_id.txt` before invoking the broker.
+- The broker auto-resolves AI session id via parent-PID walk — no wrapper bootstrap code needed (Phase 4.1).
 
 ---
 

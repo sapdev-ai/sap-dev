@@ -79,10 +79,11 @@ Log end Status=FAILED ErrorClass=NO_SESSION.
 Second, resolve the **active-session pin** (same resolution order as
 `sap-gui-probe` Step 0.6):
 
-1. `{WORK_TEMP}\sap_active_session.json` exists → use its `session_path`.
-2. Else `userConfig.sap_pinned_session` (read via `sap_settings_lib.ps1` `Get-SapSettingValue`, which merges `settings.local.json` over `settings.json` per Rule 7) is non-empty (written by `/sap-login --remember` in a previous AI session) → use that path AND auto-regenerate the temp pin file by running `sap_login_capture_active_session.vbs "<hinted_path>"` to re-capture GUI fields, then merge with RFC-side info (best-effort if credentials available). If the hinted session no longer resolves, clear via `Set-SapUserSetting sap_pinned_session ''` and fall through.
-3. Else exactly one connection attached → silent default `/app/con[0]/ses[0]`.
-4. Else refuse with: *"multiple SAP GUI connections detected and no active session pinned; run `/sap-login` first."* Log end Status=FAILED ErrorClass=NO_PIN.
+1. `{WORK_TEMP}\sap_active_session.json` exists (written by `/sap-login` Step 6.5 finalize) → use its `session_path`.
+2. Else exactly one connection attached → silent default `/app/con[0]/ses[0]`.
+3. Else refuse with: *"multiple SAP GUI connections detected and no active session pinned; run `/sap-login` first."* Log end Status=FAILED ErrorClass=NO_PIN.
+
+*Phase 4 note:* prior versions had a `sap_pinned_session` settings fallback. Removed — cross-AI-session persistence now lives in `{work_dir}\runtime\connections.json` via `default_target_id`, which `/sap-login` consults on a fresh conversation.
 
 The resolved path is `{PINNED_SESSION}`. Its parent connection (everything
 up to the final `/ses[N]`) is `{PINNED_CONNECTION}`. `{PINNED_SESSION}`

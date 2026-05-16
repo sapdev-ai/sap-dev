@@ -252,9 +252,11 @@ for (const plugin of mp.plugins) {
 // reset` or invoke RESET on the COM helper for the same session — that's
 // double cleanup and risks killing a freshly spawned replacement session.
 //
-// Wrappers that drive SAP via cscript SHOULD set $env:SAPDEV_AI_SESSION_ID
-// from the runtime\ai_session_id.txt file before launching cscript so
-// the attach lib can record it in its diagnostic INFO line.
+// Wrappers that drive SAP via cscript don't need to bootstrap an AI
+// session id (Phase 4.1): the broker auto-resolves it via parent-PID
+// walk on every acquire/release. If a wrapper wants to surface the id
+// to the VBS for diagnostic logging, it can set $env:SAPDEV_AI_SESSION_ID
+// to the value Get-SapAiSessionId returned — but it's optional.
 //
 // Exempt from these checks: the same TIER3_EXEMPT_VBS files (bootstrap),
 // plus the broker / connection / capture scripts themselves.

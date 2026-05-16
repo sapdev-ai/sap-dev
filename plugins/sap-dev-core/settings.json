@@ -35,41 +35,6 @@
                                                       "sensitive":  false,
                                                       "value":  ""
                                                   },
-                       "sap_logon_description":  {
-                                                     "description":  "SAP Logon pad entry name (e.g. 'DEV_100'). If blank, uses connection string instead.",
-                                                     "sensitive":  false,
-                                                     "value":  ""
-                                                 },
-                       "sap_application_server":  {
-                                                      "description":  "SAP application server hostname or IP (e.g. '10.0.0.1')",
-                                                      "sensitive":  false,
-                                                      "value":  ""
-                                                  },
-                       "sap_system_number":  {
-                                                 "description":  "SAP system number, 2 digits (e.g. '00')",
-                                                 "sensitive":  false,
-                                                 "value":  ""
-                                             },
-                       "sap_client":  {
-                                          "description":  "SAP client number, 3 digits (e.g. '100')",
-                                          "sensitive":  false,
-                                          "value":  ""
-                                      },
-                       "sap_user":  {
-                                        "description":  "SAP logon username",
-                                        "sensitive":  false,
-                                        "value":  ""
-                                    },
-                       "sap_password":  {
-                                            "description":  "SAP logon password",
-                                            "sensitive":  true,
-                                            "value":  ""
-                                        },
-                       "sap_language":  {
-                                            "description":  "SAP logon language, 2 letters (e.g. 'EN', 'JA')",
-                                            "sensitive":  false,
-                                            "value":  ""
-                                        },
                        "work_dir":  {
                                         "description":  "Working directory for all SAP dev operations. Subdirectories (temp, custom, design_docs, source_code) are auto-created when skills run. Default: C:\\sap_dev_work",
                                         "sensitive":  false,
@@ -169,11 +134,6 @@
                                                             "description":  "Set to true after sap-dev-init Step 1b successfully persists SAP GUI Security trust for {work_dir}. Subsequent runs skip the warmup when true.",
                                                             "sensitive":  false,
                                                             "value":  ""
-                                                        },
-                       "sap_pinned_session":  {
-                                                  "description":  "Persistent active-session hint, populated by '/sap-login --remember'. A SAP GUI Scripting session path like '/app/con[0]/ses[0]'. When the per-AI-session pin file at {WORK_TEMP}\\sap_active_session.json is missing or stale, consumer skills fall back to this hint and re-capture version info on the fly. Cleared automatically if findById can no longer resolve it. Leave blank to require an explicit /sap-login each AI session.",
-                                                  "sensitive":  false,
-                                                  "value":  ""
-                                              }
+                                                        }
                    }
 }
