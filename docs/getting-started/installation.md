@@ -31,46 +31,53 @@ Welcome to the **sap-dev** marketplace - a curated collection of production-test
 # Login + bootstrap
 /sap-login --add → /sap-dev-init
 ```
-***When you use Application server to connect.***
-Provide all SAP login information at once. You can refer to SAP Logon for details.
-sap_logon_description = 
-sap_application_server = 
-sap_system_number = 
-sap_client = 
-sap_user = 
-sap_password = 
-sap_language = 
+***When asked for login information, provide all at once. You can refer to SAP Logon for details.***
 
-Sample
-sap_logon_description = S4H [S42022.xxxx.com]
-sap_application_server = S42022.xxxx.com
-sap_system_number = 00
-sap_client = 100
-sap_user = XXXXXX
-sap_password = YYYYYYYY
-sap_language = EN
+When you use Application server to connect.
+|Login info (Application server)|
+|-------|
+| sap_logon_description = |
+| sap_application_server = |
+| sap_system_number = |
+| sap_client = |
+| sap_user = |
+| sap_password = |
+| sap_language = |
+
+|Sample Login info (Application server)|
+|-------|
+|sap_logon_description = S4H [S42022.xxxx.com] |
+|sap_application_server = S42022.xxxx.com |
+|sap_system_number = 00 |
+|sap_client = 100 |
+|sap_user = XXXXXX |
+|sap_password = YYYYYYYY |
+|sap_language = EN |
 
 
-***When you use Message server to connect.***
-Provide all SAP login information at once. You can refer to SAP Logon for details.
-sap_logon_description = 
-sap_message_server = 
-sap_logon_group = 
-sap_system_id = 
-sap_client = 
-sap_user = 
-sap_password = 
-sap_language = 
+When you use Message server to connect.
+|Login info (Message server)|
+|-------|
+|sap_logon_description = |
+|sap_message_server = |
+|sap_logon_group = |
+|sap_system_id = |
+|sap_client = |
+|sap_user = |
+|sap_password = |
+|sap_language = |
 
-Sample
-sap_logon_description = S4D [msgsrv.xxxx.com]
-sap_message_server = msgsrv.xxxx.com
-sap_logon_group = 
-sap_system_id = S4D
-sap_client = 100
-sap_user = XXXXXX
-sap_password = YYYYYYYY
-sap_language = EN
+|Sample Login info (Message server)|
+|-------|
+|sap_logon_description = S4D [msgsrv.xxxx.com] |
+|sap_message_server = msgsrv.xxxx.com |
+|sap_logon_group =  |
+|sap_system_id = S4D |
+|sap_client = 100 |
+|sap_user = XXXXXX |
+|sap_password = YYYYYYYY |
+|sap_language = EN |
+
 
 **Step 4: Use the skills**
 
