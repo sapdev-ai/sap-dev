@@ -63,7 +63,13 @@ $report = Get-Content -Path $MergeReport -Raw -Encoding UTF8 | ConvertFrom-Json
 if ($ForceParam -and $ForceParam.Count -gt 0) {
     $forceUpper = @($ForceParam | ForEach-Object { $_.ToUpperInvariant() })
     foreach ($tp in $report.touchpoints) {
-        if ($tp.class -ne 'constant') { continue }
+        # Force-promote both `constant` (same value across all probes) AND
+        # `mode-specific` (only some probes touched it -- e.g. when a warmup
+        # probe followed a different flow). Before this change ForceParam
+        # silently no-op'd on mode-specific touchpoints, leaving the field
+        # baked as a literal in the canonical-probe body and untokenized
+        # in popup handler fallbacks -- breaking any per-call override.
+        if ($tp.class -ne 'constant' -and $tp.class -ne 'mode-specific') { continue }
         if ([string]::IsNullOrWhiteSpace($tp.target)) { continue }
         if ($tp.target -notmatch '([A-Z][A-Z0-9_/]*-[A-Z][A-Z0-9_]*)$') { continue }
         $field = $matches[1]
@@ -79,6 +85,12 @@ if ($ForceParam -and $ForceParam.Count -gt 0) {
             if ($hit) { $perProbe[$p.id] = "$($hit.value)" }
         }
         $tp.per_probe_values = $perProbe
+        # When promoting mode-specific -> parameter, ensure the touchpoint's
+        # `modes` list covers EVERY mode in the run -- otherwise downstream
+        # Get-ModeParameters / dispatch-table filtering will hide the param
+        # from modes whose canonical probe didn't observe the field.
+        $allModes = @($report.probes | ForEach-Object { $_.mode } | Sort-Object -Unique)
+        $tp.modes = $allModes
     }
 }
 
@@ -178,8 +190,11 @@ function Get-PopupHandler {
     switch ("$Program/$Screen") {
         'SAPLSTRD/100' {
             # Object Directory Entry popup. Needs L_DEVCLASS filled before Save.
+            # Fallback token name matches the DDIC field tail (L_DEVCLASS) so
+            # callers passing `-ForceParam L_DEVCLASS` get a single coherent
+            # name across SKILL.md argument-hint, dispatch table, and VBS body.
             $pkgVal = _Find-TouchpointValue -Touchpoints $Touchpoints -TargetSuffix 'ctxtKO007-L_DEVCLASS'
-            if (-not $pkgVal) { $pkgVal = '%%PACKAGE%%' }   # TODO -- wrapper must fill
+            if (-not $pkgVal) { $pkgVal = '%%L_DEVCLASS%%' }   # TODO -- wrapper must fill; pass -ForceParam L_DEVCLASS
             $lines.Add('    ' + "' SAPLSTRD/100 = Object Directory Entry popup -- fill package then Save")
             $lines.Add('    ' + "oSess.findById(`"wnd[1]/usr/ctxtKO007-L_DEVCLASS`").Text = `"$pkgVal`"")
             $lines.Add('    ' + 'oSess.findById("wnd[1]/tbar[0]/btn[0]").press')
@@ -189,7 +204,7 @@ function Get-PopupHandler {
         'SAPLSTRD/300' {
             # Workbench Request popup. Needs TRKORR filled before Save.
             $trVal = _Find-TouchpointValue -Touchpoints $Touchpoints -TargetSuffix 'ctxtKO008-TRKORR'
-            if (-not $trVal) { $trVal = '%%TR%%' }          # TODO -- wrapper must fill
+            if (-not $trVal) { $trVal = '%%TRKORR%%' }          # TODO -- wrapper must fill; pass -ForceParam TRKORR
             $lines.Add('    ' + "' SAPLSTRD/300 = Workbench Request popup -- fill TR then Save")
             $lines.Add('    ' + "oSess.findById(`"wnd[1]/usr/ctxtKO008-TRKORR`").Text = `"$trVal`"")
             $lines.Add('    ' + 'oSess.findById("wnd[1]/tbar[0]/btn[0]").press')

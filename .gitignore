@@ -14,8 +14,8 @@ dist/
 # sap_settings_lib.{ps1,vbs}. Holds SAP credentials, server, etc.
 plugins/*/settings.local.json
 
-# Temp & scratch
-Temp/
+# temp & scratch
+temp/
 *.tmp
 *.bak
 *.log

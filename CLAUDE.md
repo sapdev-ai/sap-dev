@@ -165,6 +165,22 @@ The full contract is in
 - **Onboarding**: `pwsh ./scripts/dev-setup.ps1`, or run `/sap-login`,
   or hand-copy and edit. See `docs/settings-local-faq.md`.
 
+### 8. ALWAYS Write Test Reports to `sap-dev/temp/testReport/`
+
+Any markdown report that documents a test run, a scaffold invocation's
+findings, an end-to-end skill exercise, or per-run observations MUST be
+written to `sap-dev/temp/testReport/<descriptive-name>_<YYYYMMDD>.md`.
+
+| Directory | Use for |
+|---|---|
+| `sap-dev/temp/testReport/` | **Test/run reports** — ephemeral per-invocation findings, scaffold test outcomes, skill exercise logs |
+| `sap-dev/contributing/` | Shipped architectural rules read by repo authors (e.g. `parallel_safe_session_attach.md`) |
+| `sap-dev/docs/` | End-user documentation (getting-started, FAQs) |
+
+Do NOT place test reports under `contributing/` — that path is reserved
+for durable architectural docs that the CI gate / repo authors rely on.
+Mixing ephemeral test artifacts there pollutes the signal-to-noise.
+
 ## Marketplace System
 
 Structure: Dual-level manifests (plugin + skill plugin.json)
