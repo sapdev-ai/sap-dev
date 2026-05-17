@@ -430,6 +430,166 @@ function New-SapConnectionAutoDescription {
     return $base
 }
 
+# --- ApplicationServer reconciliation --------------------------------------
+#
+# SAP GUI's GuiSessionInfo.ApplicationServer returns the SAP host's INTERNAL
+# identity (the hostname as the SAP host knows itself, per its profile
+# parameters like SAPSYSTEMNAME / INSTANCE_NAME). On LAN deployments this
+# usually equals the DNS name the user typed into SAP Logon Pad. But on
+# NAT / dynamic-DNS / reverse-proxy deployments the two diverge: SAP returns
+# e.g. "s4sapdev" while the workstation can only reach the host via
+# "sap1.vicp.cc". SAP GUI keeps working (it routes through saplogon.ini's
+# ConnectionString), but NCo/RFC cannot resolve the internal name and every
+# `Connect-SapRfc` fails with "hostname unknown".
+#
+# This block adds a three-step resolver: DNS-test the captured value, then
+# the user-typed hint (if any), then the actual server hostname from the SAP
+# Logon Pad entry's SAPUILandscape.xml / saplogon.ini config. First DNS hit
+# wins; on total failure return the captured value with a flag so callers
+# can WARN (never block — SAP GUI still works).
+
+function Test-SapHostResolvable {
+    <#
+    .SYNOPSIS
+        $true when the given hostname resolves via DNS / hosts file / IP literal.
+    .DESCRIPTION
+        Wraps [System.Net.Dns]::GetHostEntry with error suppression. IPv4/IPv6
+        literals short-circuit (no DNS round-trip). Empty input returns $false.
+    #>
+    param([string] $HostName)
+    if ([string]::IsNullOrWhiteSpace($HostName)) { return $false }
+    $ip = $null
+    if ([System.Net.IPAddress]::TryParse($HostName, [ref]$ip)) { return $true }
+    try {
+        $null = [System.Net.Dns]::GetHostEntry($HostName)
+        return $true
+    } catch {
+        return $false
+    }
+}
+
+function Get-SapLogonPadEntryServer {
+    <#
+    .SYNOPSIS
+        Look up the host:port that a SAP Logon Pad entry resolves to.
+    .DESCRIPTION
+        Reads (in order):
+          1. %APPDATA%\SAP\Common\SAPUILandscape.xml       (per-user)
+          2. %PROGRAMDATA%\SAP\Common\SAPUILandscapeGlobal.xml (global)
+          3. %APPDATA%\SAP\Common\saplogon.ini             (legacy INI)
+        for a service/section whose name matches $EntryName. Returns
+        @{ server='host'; port='3270'; sysnr='70' } on first hit, or $null
+        when no match.
+
+        SCOPE: direct-server entries only. Load-balanced SAPUILandscape
+        entries (no `server=` attribute; carry `messageServer=` + `group=`
+        + `systemid=` instead) return $null on purpose. Reason: the
+        capture VBS already extracts message_server / logon_group /
+        system_id directly from SAP GUI's Info object (with a parse-
+        connection-string fallback for builds where Info.MessageServer
+        is blank), so load-balanced profiles never need to consult the
+        XML for routing. If a future build forces us to do that lookup,
+        extend this function to return a shape like
+        @{ type='load_balanced'; message_server='...'; logon_group='...';
+           system_id='...' }.
+    #>
+    param([Parameter(Mandatory)] [string] $EntryName)
+    if ([string]::IsNullOrWhiteSpace($EntryName)) { return $null }
+
+    $xmlPaths = @(
+        (Join-Path $env:APPDATA      'SAP\Common\SAPUILandscape.xml')
+        (Join-Path $env:PROGRAMDATA  'SAP\Common\SAPUILandscapeGlobal.xml')
+    )
+    foreach ($p in $xmlPaths) {
+        if (-not (Test-Path $p)) { continue }
+        try { [xml]$doc = Get-Content -Path $p -Raw -ErrorAction Stop } catch { continue }
+        # Service nodes live at //Services/Service with name= and server= attrs.
+        $node = $doc.SelectSingleNode("//Service[@name='$EntryName']")
+        if (-not $node) { continue }
+        $srv = "$($node.server)"
+        if ([string]::IsNullOrWhiteSpace($srv)) { continue }
+        $hostName = $srv; $port = ''; $sysnr = ''
+        if ($srv -match '^(.+?):(\d+)$') {
+            $hostName = $matches[1]
+            $port = $matches[2]
+            $portInt = [int]$port
+            if ($portInt -ge 3200 -and $portInt -le 3298) {
+                $sysnr = '{0:D2}' -f ($portInt - 3200)
+            }
+        }
+        return @{ server = $hostName; port = $port; sysnr = $sysnr }
+    }
+
+    # Legacy saplogon.ini (SAP GUI < 7.40)
+    $ini = Join-Path $env:APPDATA 'SAP\Common\saplogon.ini'
+    if (Test-Path $ini) {
+        $inSection = $false
+        foreach ($l in (Get-Content $ini)) {
+            if ($l -match '^\[(.+?)\]\s*$') { $inSection = ($matches[1] -eq $EntryName); continue }
+            if ($inSection -and $l -match '^\s*Server\s*=\s*(\S+)(?:\s+(\d+))?') {
+                $hostName = $matches[1]; $sysnr = ''
+                if ($matches[2]) { $sysnr = '{0:D2}' -f [int]$matches[2] }
+                return @{ server = $hostName; port = ''; sysnr = $sysnr }
+            }
+        }
+    }
+    return $null
+}
+
+function Resolve-SapApplicationServer {
+    <#
+    .SYNOPSIS
+        Reconcile the captured ApplicationServer with what the workstation can resolve.
+    .DESCRIPTION
+        Three-step cascade — first DNS hit wins:
+          1. Captured value (Info.ApplicationServer) resolves          -> keep captured.
+          2. User-typed hint resolves                                  -> use hint.
+          3. SAPUILandscape.xml / saplogon.ini lookup for the logon-pad
+             entry returns a server that resolves                     -> use that.
+        On total failure, returns the captured value with Source=
+        'captured_unresolvable' so the caller can WARN. Never throws;
+        never blocks GUI work — RFC degradation only.
+    .OUTPUTS
+        Hashtable: @{
+            Server     = 'hostname-to-save'
+            Source     = 'captured' | 'user_hint' | 'saplogon' | 'captured_unresolvable' | 'none'
+            Sysnr      = '00'    # populated when source='saplogon' and port encoded sysnr
+            CaptureRaw = '<original captured value>'
+            Resolvable = $true | $false
+        }
+    #>
+    param(
+        [string] $CapturedAppServer,
+        [string] $UserHint        = '',
+        [string] $LogonPadEntry   = ''
+    )
+    $captureRaw = "$CapturedAppServer"
+
+    if ([string]::IsNullOrWhiteSpace($captureRaw) -and
+        [string]::IsNullOrWhiteSpace($UserHint) -and
+        [string]::IsNullOrWhiteSpace($LogonPadEntry)) {
+        return @{ Server=''; Source='none'; Sysnr=''; CaptureRaw=''; Resolvable=$false }
+    }
+
+    if ((_NotEmpty $captureRaw) -and (Test-SapHostResolvable $captureRaw)) {
+        return @{ Server=$captureRaw; Source='captured'; Sysnr='';
+                  CaptureRaw=$captureRaw; Resolvable=$true }
+    }
+    if ((_NotEmpty $UserHint) -and (Test-SapHostResolvable $UserHint)) {
+        return @{ Server="$UserHint"; Source='user_hint'; Sysnr='';
+                  CaptureRaw=$captureRaw; Resolvable=$true }
+    }
+    if (_NotEmpty $LogonPadEntry) {
+        $padHit = Get-SapLogonPadEntryServer -EntryName $LogonPadEntry
+        if ($padHit -and (Test-SapHostResolvable $padHit.server)) {
+            return @{ Server="$($padHit.server)"; Source='saplogon';
+                      Sysnr="$($padHit.sysnr)"; CaptureRaw=$captureRaw; Resolvable=$true }
+        }
+    }
+    return @{ Server=$captureRaw; Source='captured_unresolvable';
+              Sysnr=''; CaptureRaw=$captureRaw; Resolvable=$false }
+}
+
 function Save-SapConnection {
     <#
     .SYNOPSIS

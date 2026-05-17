@@ -196,7 +196,9 @@ configure:
 - **SAP Logon pad entry** (simplest) — just the entry-name string. Then ask
   for client / user / password / language.
 - **Direct connect** — app server hostname/IP, 2-digit system number, plus
-  client / user / password / language.
+  client / user / password / language. **Remember the hostname the user
+  typed** — pass it as `-UserAppServerHint` to Step 6.5 finalize so the
+  resolver can replace any divergent value returned by `Info.ApplicationServer`.
 - **Load-balanced** — message server, logon group (default `SPACE`),
   3-letter SystemID (R3NAME), plus client / user / password / language.
 
@@ -475,28 +477,41 @@ convention.
 Hand the captured JSON to `sap_login_select.ps1 -Action finalize`. This is
 the step that:
 
-1. Saves (or merges via 4-step dedup) the profile in `{work_dir}\runtime\connections.json`.
-2. Assigns the profile's UUID as `connection_id` on the live broker registry block (`broker set-connection-id`).
-3. Pins the AI session to that `connection_id` (`broker pin`). On a switch, this releases stale claims from the old connection.
-4. Phase 4.2: the pin file `sap_active_session.json` is **removed entirely**. Consumer skills get the session path via `Get-SapCurrentSessionPath` (from `sap_connection_lib.ps1`) — which reads the broker's `session_registry.json` for the AI-session's pinned connection, finds a usable session there, and returns the path. Version info goes through `Get-SapCurrentConnectionProfile` (reads the profile in `connections.json` by `connection_id`).
+1. **Reconciles `application_server`** via `Resolve-SapApplicationServer`. SAP GUI's `Info.ApplicationServer` returns the host's *internal* identity (e.g. `s4sapdev`), which is not DNS-resolvable from NAT / dynamic-DNS / reverse-proxy workstations. The resolver runs a three-step cascade: captured value → user hint (`-UserAppServerHint`) → SAP Logon Pad entry's `SAPUILandscape.xml` / `saplogon.ini` lookup. First DNS hit wins; on total failure the captured value is kept and a `WARN:` is emitted (SAP GUI keeps working; RFC will be the casualty).
+2. Saves (or merges via 4-step dedup) the profile in `{work_dir}\runtime\connections.json`.
+3. Assigns the profile's UUID as `connection_id` on the live broker registry block (`broker set-connection-id`).
+4. Pins the AI session to that `connection_id` (`broker pin`). On a switch, this releases stale claims from the old connection.
+5. Phase 4.2: the pin file `sap_active_session.json` is **removed entirely**. Consumer skills get the session path via `Get-SapCurrentSessionPath` (from `sap_connection_lib.ps1`) — which reads the broker's `session_registry.json` for the AI-session's pinned connection, finds a usable session there, and returns the path. Version info goes through `Get-SapCurrentConnectionProfile` (reads the profile in `connections.json` by `connection_id`).
 
 ```powershell
 $captured = '<single-line JSON from Step 6>'   # exact string
 $newDesc  = '<user-supplied Logon description, or empty>'
 $newPwd   = '<dpapi:... ciphertext, or empty>'
+$userHost = '<hostname the user typed in Step 2b ADD flow, or empty>'
 
 powershell -ExecutionPolicy Bypass -File "<SKILL_DIR>\sap_login_select.ps1" `
     -Action finalize `
     -WorkTemp "{WORK_TEMP}" `
     -CapturedJson $captured `
     -NewLogonDescription $newDesc `
-    -NewPasswordDpapi $newPwd
+    -NewPasswordDpapi $newPwd `
+    -UserAppServerHint $userHost
 ```
 
-Expected stdout:
+Pass `-UserAppServerHint` when the user typed the application-server hostname directly in Step 2b's ADD flow — it takes precedence over the SAPUILandscape lookup. For SAP-Logon-Pad-only flows (existing entry), leave it empty and the resolver auto-discovers from saplogon.
+
+Expected stdout (one of):
+- `INFO: application_server='<host>' (captured; DNS-resolvable)` — happy path; no rewrite.
+- `INFO: application_server='<host>' (user hint resolves; replacing captured '<x>')`
+- `INFO: application_server='<host>' (resolved via SAP Logon Pad entry '<entry>'; replacing captured '<x>')`
+- `WARN: application_server='<x>' is NOT DNS-resolvable from this workstation. SAP GUI will work; RFC will not until you correct this value (edit connections.json or rerun /sap-login with -UserAppServerHint <hostname>).`
+
+Then:
 - `INFO: profile saved id=<UUID> description='<auto-derived or user-supplied>'`
 - `INFO: ai_session=... pinned to connection_id=...` (no pin file in Phase 4.2)
 - `SUCCESS: connection_id=<UUID> description='<...>' session_path=/app/con[N]/ses[M]`
+
+If the `WARN:` fires AND the user expects RFC to work, **prompt for the correct hostname via `AskUserQuestion`** and rerun finalize with `-UserAppServerHint <answer>`. **Do NOT block the GUI flow** — RFC is optional for most SAP work; the profile is still saved with the captured value as a placeholder.
 
 Tell the user the connection is ready, including the description and
 whether it became the new default.

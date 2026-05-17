@@ -85,7 +85,11 @@ param(
     # finalize-mode inputs
     [string]$CapturedJson        = '',   # raw JSON from capture VBS (one-line)
     [string]$NewLogonDescription = '',   # user-supplied label, optional
-    [string]$NewPasswordDpapi    = ''    # ciphertext from sap_dpapi.ps1, optional
+    [string]$NewPasswordDpapi    = '',   # ciphertext from sap_dpapi.ps1, optional
+    [string]$UserAppServerHint   = ''    # hostname the user typed in Step 2b ADD flow,
+                                         # optional. Used by Resolve-SapApplicationServer
+                                         # when the captured Info.ApplicationServer is
+                                         # an internal name that doesn't DNS-resolve.
 )
 
 $ErrorActionPreference = 'Stop'
@@ -104,6 +108,7 @@ $script:_ParamProfileId           = $ProfileId
 $script:_ParamCapturedJson        = $CapturedJson
 $script:_ParamNewLogonDescription = $NewLogonDescription
 $script:_ParamNewPasswordDpapi    = $NewPasswordDpapi
+$script:_ParamUserAppServerHint   = $UserAppServerHint
 
 # ---------------------------------------------------------------------------
 # Resolve shared paths.
@@ -123,6 +128,7 @@ $ProfileId           = $script:_ParamProfileId
 $CapturedJson        = $script:_ParamCapturedJson
 $NewLogonDescription = $script:_ParamNewLogonDescription
 $NewPasswordDpapi    = $script:_ParamNewPasswordDpapi
+$UserAppServerHint   = $script:_ParamUserAppServerHint
 
 if ([string]::IsNullOrWhiteSpace($WorkTemp)) {
     $WorkTemp = Join-Path (Get-SapWorkDir) 'temp'
@@ -515,6 +521,45 @@ function Invoke-Finalize {
         Write-Host "ERROR: -CapturedJson is not valid JSON: $($_.Exception.Message)"; exit 1
     }
 
+    # Reconcile the captured ApplicationServer with what the workstation can
+    # actually DNS-resolve. SAP's Info.ApplicationServer returns the host's
+    # internal identity, which on NAT / dynamic-DNS / reverse-proxy
+    # deployments is NOT routable from the client. Cascade: captured ->
+    # user hint -> SAPUILandscape.xml / saplogon.ini lookup. Never blocks;
+    # on total failure we keep the captured value and emit a WARN so RFC
+    # consumers know to expect a hostname-unknown error.
+    #
+    # SKIPPED for load-balanced logins: when message_server is non-empty,
+    # routing goes through the message server + logon group + system_id;
+    # application_server in that case is a post-routing internal name SAP
+    # GUI reports for diagnostic purposes only, not used for RFC. Saving
+    # it unchanged is correct — Connect-SapRfc's profile-fallback logic
+    # prefers load-balanced when both endpoints are populated.
+    $padHint = "$($cap.logon_pad_entry)"
+    $capMsgSrv = "$($cap.message_server)"
+    if (-not [string]::IsNullOrWhiteSpace($capMsgSrv)) {
+        $appServerForSave = "$($cap.application_server)"
+        $sysnrForSave     = "$($cap.system_number)"
+        Write-Host "INFO: load-balanced login detected (message_server='$capMsgSrv'); RFC will route via -MessageServer / -LogonGroup / -SystemID. application_server='$appServerForSave' saved as informational (not used for RFC routing)."
+    } else {
+        $reslv = Resolve-SapApplicationServer `
+            -CapturedAppServer "$($cap.application_server)" `
+            -UserHint          "$UserAppServerHint" `
+            -LogonPadEntry     $padHint
+        $appServerForSave = "$($reslv.Server)"
+        $sysnrForSave     = "$($cap.system_number)"
+        if ([string]::IsNullOrWhiteSpace($sysnrForSave) -and (_NotEmpty $reslv.Sysnr)) {
+            $sysnrForSave = "$($reslv.Sysnr)"   # only fill from saplogon if capture left it blank
+        }
+        switch ("$($reslv.Source)") {
+            'captured'              { Write-Host "INFO: application_server='$appServerForSave' (captured; DNS-resolvable)" }
+            'user_hint'             { Write-Host "INFO: application_server='$appServerForSave' (user hint resolves; replacing captured '$($reslv.CaptureRaw)')" }
+            'saplogon'              { Write-Host "INFO: application_server='$appServerForSave' (resolved via SAP Logon Pad entry '$padHint'; replacing captured '$($reslv.CaptureRaw)')" }
+            'captured_unresolvable' { Write-Host "WARN: application_server='$appServerForSave' is NOT DNS-resolvable from this workstation. SAP GUI will work; RFC will not until you correct this value (edit connections.json or rerun /sap-login with -UserAppServerHint <hostname>)." }
+            'none'                  { Write-Host "WARN: no application_server captured or hinted; RFC will not work." }
+        }
+    }
+
     # Build a profile candidate from the captured fields + user inputs.
     # Version fields (gui_*, server_*) come from the merged capture JSON:
     # GUI side populates gui_*; sap_rfc_system_info.ps1 populates server_*.
@@ -524,8 +569,8 @@ function Invoke-Finalize {
         -Client              "$($cap.client)" `
         -User                "$($cap.user)" `
         -Language            "$($cap.language)" `
-        -ApplicationServer   "$($cap.application_server)" `
-        -SystemNumber        "$($cap.system_number)" `
+        -ApplicationServer   "$appServerForSave" `
+        -SystemNumber        "$sysnrForSave" `
         -MessageServer       "$($cap.message_server)" `
         -LogonGroup          "$($cap.logon_group)" `
         -SystemId            "$($cap.system_name)" `

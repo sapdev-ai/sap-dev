@@ -115,6 +115,13 @@ function Connect-SapRfc {
         if ($v.StartsWith('%%') -and $v.EndsWith('%%')) { return $true }
         return $false
     }
+    # Remember whether each endpoint slot came from the caller (explicit)
+    # vs. was filled by the profile fallback below. Used after fallback to
+    # decide direct-vs-load-balanced when the profile carries BOTH (which
+    # happens routinely for load-balanced logins — SAP GUI also reports
+    # an internal-name application_server alongside the message_server).
+    $explicitServer        = -not (_Needs $Server)
+    $explicitMessageServer = -not (_Needs $MessageServer)
     $needAny = (_Needs $Server) -and (_Needs $MessageServer)   # at least one endpoint
     if (-not $needAny) { $needAny = (_Needs $Client) -or (_Needs $User) -or (_Needs $Password) }
     if ($needAny) {
@@ -167,8 +174,22 @@ function Connect-SapRfc {
     if ([string]::IsNullOrWhiteSpace($Password)) { Write-Host "ERROR: Connect-SapRfc -Password is empty. Save the password on this connection via /sap-login (Step 5b)."; return $null }
 
     # Validate exactly one endpoint mode is selected. If both -Server and
-    # -MessageServer are non-blank, prefer direct (matches the historic
-    # implicit behaviour) but warn.
+    # -MessageServer are non-blank, the precedence depends on PROVENANCE:
+    #   * Caller passed BOTH explicitly                    -> prefer direct
+    #     (historic behaviour; explicit overrides win, with a WARN).
+    #   * Caller explicitly passed direct AND profile      -> direct wins
+    #     supplied message_server                              (explicit beats fallback).
+    #   * Caller explicitly passed message_server          -> load-balanced wins
+    #     AND profile supplied application_server              (explicit beats fallback).
+    #   * BOTH came from the profile fallback              -> prefer LOAD-BALANCED.
+    #     SAP GUI captures both fields for load-balanced
+    #     logins (Info.ApplicationServer returns whichever
+    #     physical instance the message server routed to —
+    #     usually an internal name that won't DNS-resolve
+    #     from the workstation). The user's *intent* is
+    #     load-balanced — that's what they typed. Picking
+    #     direct silently downgrades to a routing that will
+    #     fail on `hostname unknown`.
     $useDirect = -not [string]::IsNullOrWhiteSpace($Server)
     $useMsg    = -not [string]::IsNullOrWhiteSpace($MessageServer)
     if (-not $useDirect -and -not $useMsg) {
@@ -176,8 +197,22 @@ function Connect-SapRfc {
         return $null
     }
     if ($useDirect -and $useMsg) {
-        Write-Host "WARN: Connect-SapRfc got both -Server and -MessageServer; using direct (-Server)."
-        $useMsg = $false
+        if ($explicitServer -and $explicitMessageServer) {
+            Write-Host "WARN: Connect-SapRfc got both -Server and -MessageServer (both explicit); using direct (-Server)."
+            $useMsg = $false
+        } elseif ($explicitServer) {
+            # Caller wanted direct; profile happened to add message_server.
+            $useMsg = $false
+        } elseif ($explicitMessageServer) {
+            # Caller wanted load-balanced; profile happened to add application_server.
+            $useDirect = $false
+        } else {
+            # Both filled from profile fallback — load-balanced is the
+            # deliberate signal (user typed message_server at login time;
+            # application_server is the post-routing internal name).
+            Write-Host "INFO: Connect-SapRfc: profile has both endpoints; preferring load-balanced (-MessageServer) — message_server is the user's deliberate choice, application_server is the post-routing internal name."
+            $useDirect = $false
+        }
     }
     if ($useDirect -and [string]::IsNullOrWhiteSpace($Sysnr)) {
         Write-Host "ERROR: Connect-SapRfc -Server requires -Sysnr (2-digit system number)."
