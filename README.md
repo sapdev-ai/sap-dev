@@ -9,11 +9,11 @@ SAP development automation skills for AI coding assistants.
 
 Project home: <https://sapdev.ai>
 
-## Available Plugins (3 plugins · 47 skills · 1 agent)
+## Available Plugins (3 plugins · 49 skills · 1 agent · v0.2.0)
 
 | Plugin | Skills | Description |
 |--------|--------|-------------|
-| **sap-dev-core** | 34 + agent | Foundation. Login (DPAPI-encrypted credentials), TR resolution, package / function-group management, ABAP Workbench (SE38 / SE37 / SE24 / SE11 / SE91 / SE16N / SE21 / SE01 / SE19 / SE41 / SE51 / SE54 / SNRO / SP02 / CMOD), ATC quality gate, standalone activator, package mover, where-used list, RFC wrapper generators, BDC executor, GUI recording / inspection / visual diagnostics, structured logging, log analysis, dev-env lifecycle (init / status / clean). Ships the **`abap-developer` agent** (BUILD / FIX / DEPLOY) that reads your Customer Brief and orchestrates the skills. |
+| **sap-dev-core** | 36 + agent | Foundation. **Multi-profile login** (DPAPI-encrypted credentials per SAP system, AI-session pin so each Claude conversation drives one SAP), TR resolution, package / function-group management, ABAP Workbench (SE38 / SE37 / SE24 / SE11 / SE91 / SE16N / SE21 / SE01 / SE19 / SE41 / SE51 / SE54 / SNRO / SP02 / CMOD), 4-stage ATC quality gate, standalone activator, package mover, where-used list, RFC wrapper generators, BDC executor, GUI recording / inspection / visual diagnostics, **skill-authoring tooling** (`gui-probe` + `gui-skill-scaffold` — probe an unknown transaction with natural-language scenarios → scaffold a working skill draft), structured logging, log analysis, dev-env lifecycle (init / status / clean), **session broker** for parallel execution against multiple SAP sessions. Ships the **`abap-developer` agent** (BUILD / FIX / DEPLOY) that reads your Customer Brief and orchestrates the skills. |
 | **sap-gen-code** | 10 | Spec → ABAP pipeline. Customise spec-template layout per customer, extract from Excel / Word / PDF, normalise via customer rules, validate DDIC and process, generate ABAP per Customer Brief profile (with FM-signature pre-fetch + per-system cache), validate naming / types / SQL / FM args via live RFC, auto-fix detected issues. |
 | **sap-tcd** | 3 | Business process automation: Business Partner (BP), Material Master (MM01 / MM02 / MM03), Sales Order (VA01 / VA02 / VA03). |
 
@@ -31,7 +31,7 @@ sap-dev/
 │   │   │   ├── scripts/          # Reusable PS1 / VBS helpers
 │   │   │   ├── rules/            # AI guidance conventions (mandatory)
 │   │   │   └── templates/        # Customer Brief, sample spec layouts
-│   │   └── skills/               # 34 skills
+│   │   └── skills/               # 36 skills
 │   ├── sap-gen-code/             # Plugin: spec → ABAP
 │   └── sap-tcd/                  # Plugin: business transactions
 ├── schemas/
@@ -54,12 +54,16 @@ Add the marketplace to Claude Code:
 /plugin install sap-dev-core@sap-dev
 ```
 
-After install, run once:
+After install, run once per SAP system:
 
 ```text
-/sap-login           # Configure SAP connection (DPAPI-encrypted)
+/sap-login --add     # Save a SAP connection profile (DPAPI-encrypted)
 /sap-dev-init        # Bootstrap TR + package + function group + utility programs
 ```
+
+Manage multiple saved profiles with `/sap-login --list`, `--switch <id>`,
+`--set-default <id>`, `--delete <id>`. Each Claude Code conversation pins
+to one profile; subagents inherit the pin.
 
 See [docs/getting-started/installation.md](docs/getting-started/installation.md) for details.
 
