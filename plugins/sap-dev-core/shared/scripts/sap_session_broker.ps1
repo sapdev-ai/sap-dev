@@ -1026,7 +1026,19 @@ function Invoke-Release {
         }
         if (-not $matched) {
             Persist-IfSwept -Registry $reg -Swept $swept
-            $script:Result = 'NOT_FOUND'
+            # Distinguish "task_id was here but the reactive cleanup just
+            # dropped it" from "never seen this task_id". The first case
+            # is the common scaffolder pattern — long-running parallel
+            # batches hit the default 600s TTL between acquire and release.
+            # Both outcomes are idempotent (the SAP-side state is whatever
+            # the sweep left), but the message is the caller's only signal
+            # to know whether their bookkeeping was honored or expired.
+            # Exit code stays 0 — release remains non-fatal-by-design.
+            if ($swept -gt 0) {
+                $script:Result = "NOT_FOUND: task=$TaskId (entry was here but dropped by reactive cleanup before this release fired — likely ttl_expired or session_closed; raise -TtlSeconds on acquire if batches are long-running)"
+            } else {
+                $script:Result = "NOT_FOUND: task=$TaskId (no matching claim in registry — already released, or never acquired with this task_id)"
+            }
             return
         }
 

@@ -190,19 +190,25 @@ block its session.
 ### 2.0 — Stale-state guard (parallel-safety) — REQUIRED before step 01
 
 Before action 1, dump the current screen state and verify the session is
-at SAP Easy Access (transaction `SMEN`, screen `101` or `40`). When the
-scaffolder is running probes in parallel, a session may have been left
-mid-flow by a previous probe that crashed, or by an unrelated agent. If
-the session is NOT at Easy Access, send `/n` (reset to Easy Access),
-sleep 600 ms, dump again, and verify.
+at SAP Easy Access. When the scaffolder is running probes in parallel,
+a session may have been left mid-flow by a previous probe that crashed,
+or by an unrelated agent. If the session is NOT at Easy Access, send
+`/n` (reset to Easy Access), sleep 600 ms, dump again, and verify.
 
 ```bash
 powershell -ExecutionPolicy Bypass -File "<SKILL_DIR>\references\sap_gui_probe_dump.ps1" -Mode wnd -Filter 0 -OutputFile "{RUN_FOLDER}\step_00_pre.txt" -SessionPath "{SESSION_PATH}"
 ```
 
-Read the dump. Confirm:
-- `Transaction:` is empty or `SMEN`.
-- `Screen:` is `101` or `40`.
+Read the dump. Easy Access is identified by **any** of these matches
+(SAP renames the transaction and renumbers the screen across releases —
+match liberally, don't pick one canonical pair):
+- `Transaction:` is **empty**, `SMEN`, or `SESSION_MANAGER`.
+- `Screen:` is **`100`**, `101`, or `40`.
+- `Program:` is `SAPLSMTR_NAVIGATION` (most reliable single signal — the
+  program code is stable across S/4HANA / ECC / BW; only the transaction
+  alias and screen number drift).
+
+Also require:
 - No popup window (`POPUP WINDOW wnd[1]` absent).
 
 If any check fails, send a reset action and re-dump:

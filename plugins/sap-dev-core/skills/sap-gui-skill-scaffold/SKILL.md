@@ -355,14 +355,17 @@ agents' behalf):
 ```bash
 # For each scenario i in this batch:
 powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_session_broker.ps1" `
-    -Action     acquire `
-    -TaskId     "scaffold_<runId>_scenario_<i>" `
-    -OwnerSkill "sap-gui-skill-scaffold" `
-    -OwnerPid   0 `
-    -WorkTemp   "{WORK_TEMP}"
+    -Action      acquire `
+    -TaskId      "scaffold_<runId>_scenario_<i>" `
+    -OwnerSkill  "sap-gui-skill-scaffold" `
+    -OwnerPid    0 `
+    -TtlSeconds  1800 `
+    -WorkTemp    "{WORK_TEMP}"
 # (no -PinFile: broker auto-resolves the AI session's pinned connection via
 # Get-SapAiSessionId + session_registry.json's ai_sessions map.)
 ```
+
+**`-TtlSeconds 1800` is INTENTIONAL** for the scaffolder. The broker's default TTL is 600s (10 min), which is fine for typical Tier 3 skill runs but tight for parallel scaffolder batches — each sub-agent probe can take 7-9 min, and the scaffolder waits for the SLOWEST of 4 before releasing. The default 600s TTL routinely fires on batches that take longer than 10 min wall-clock, dropping entries before release can fire. The release call then returns `NOT_FOUND: task=... entry was here but dropped by reactive cleanup` instead of `RELEASED:` — idempotent but misleading. Bumping to 1800s (30 min) gives generous margin over the longest expected probe runtime.
 
 **`-PinFile` is REQUIRED** — without a connection resolver, multi-connection
 setups (any operator with two or more SAP Logon entries attached) get
@@ -377,12 +380,13 @@ connections, swap `-PinFile` for `-ConnectionPath "{PINNED_CONNECTION}"`
 orchestrator (Claude) spawns a transient `pwsh.exe` process whose PID dies
 immediately on return. Passing `-OwnerPid $PID` from inside such a call
 would record a dead PID and the broker's reactive sweep would drop the
-entry on the next operation. The scaffolder relies on TTL (10 min default)
-for crash recovery instead — long enough to outlast any normal batch,
-short enough that abandoned scaffolds get cleaned up. **Skill wrappers
-that run as a single long-lived `pwsh` process (the typical Tier 3 case)
-SHOULD pass `-OwnerPid $PID`** — they benefit from immediate pid_dead
-detection.
+entry on the next operation. The scaffolder relies on TTL (raised to 30
+min via `-TtlSeconds 1800` above) for crash recovery instead — long
+enough to outlast any normal parallel batch, short enough that abandoned
+scaffolds get cleaned up. **Skill wrappers that run as a single
+long-lived `pwsh` process (the typical Tier 3 case) SHOULD pass
+`-OwnerPid $PID`** — they benefit from immediate pid_dead detection AND
+can leave TTL at the default.
 
 Stdout last line is one of:
 
@@ -395,7 +399,9 @@ ERROR:    <reason>     # exit 2 -- SAP unreachable
 On `DENIED`/`ERROR` for ANY scenario in the batch, **release all already-
 acquired claims for this batch** (`release -TaskId scaffold_<runId>_scenario_<j>` for j<i) and abort. The
 broker's `release` is idempotent — calling it for an unknown task_id
-returns `NOT_FOUND` and is a no-op.
+returns one of:
+- `NOT_FOUND: task=... (no matching claim ...)` — never acquired (real bug or duplicate release).
+- `NOT_FOUND: task=... (entry was here but dropped by reactive cleanup ...)` — TTL or session_closed swept the entry before release fired. Idempotent; usually means `-TtlSeconds` was too tight for batch wall-clock.
 
 The `task_id` MUST be unique per acquired claim across the whole scaffold
 run; the suggested shape `scaffold_<runId>_scenario_<i>` satisfies that.
