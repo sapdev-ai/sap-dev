@@ -169,9 +169,41 @@ function Connect-SapRfc {
         }
     }
     if ([string]::IsNullOrWhiteSpace($Language)) { $Language = 'EN' }
-    if ([string]::IsNullOrWhiteSpace($Client))   { Write-Host "ERROR: Connect-SapRfc -Client is empty and no pinned profile resolved Client. Run /sap-login first."; return $null }
-    if ([string]::IsNullOrWhiteSpace($User))     { Write-Host "ERROR: Connect-SapRfc -User is empty and no pinned profile resolved User. Run /sap-login first."; return $null }
-    if ([string]::IsNullOrWhiteSpace($Password)) { Write-Host "ERROR: Connect-SapRfc -Password is empty. Save the password on this connection via /sap-login (Step 5b)."; return $null }
+
+    # Phase 4.4: classify the failure mode so the error is actionable.
+    # When the fallback ran but produced nothing usable, inspect the store
+    # to tell the user WHY -- no profiles, multiple profiles + no pin, or
+    # one profile but password missing.
+    if ($needAny -and -not $prof) {
+        $store = $null
+        try {
+            if (Get-Command Read-SapConnectionStore -ErrorAction SilentlyContinue) {
+                $store = Read-SapConnectionStore
+            }
+        } catch { }
+        $profileCount = 0
+        if ($store -and $store.connections) { $profileCount = @($store.connections).Count }
+        if ($profileCount -eq 0) {
+            Write-Host "ERROR: Connect-SapRfc: no SAP connection profiles saved. Run /sap-login to add one."
+            return $null
+        }
+        if ($profileCount -gt 1) {
+            Write-Host "ERROR: Connect-SapRfc: $profileCount SAP profiles saved but none pinned to this AI session. Run /sap-login --switch <SID> (e.g. S4D) or /sap-login --list to see options."
+            return $null
+        }
+        $single = @($store.connections)[0]
+        if ([string]::IsNullOrWhiteSpace("$($single.password_dpapi)")) {
+            Write-Host "ERROR: Connect-SapRfc: profile '$($single.description)' has no saved password. Run /sap-login Step 5b to save it (or /sap-login to log in interactively)."
+            return $null
+        }
+        # Profile found, password present, but resolution still came up empty
+        # -- fall through to the field-by-field checks below for a final
+        # message that names the missing slot.
+    }
+
+    if ([string]::IsNullOrWhiteSpace($Client))   { Write-Host "ERROR: Connect-SapRfc -Client is empty and no pinned profile resolved Client. Run /sap-login --list to see saved profiles, then /sap-login --switch <ref>."; return $null }
+    if ([string]::IsNullOrWhiteSpace($User))     { Write-Host "ERROR: Connect-SapRfc -User is empty and no pinned profile resolved User. Run /sap-login --list to see saved profiles, then /sap-login --switch <ref>."; return $null }
+    if ([string]::IsNullOrWhiteSpace($Password)) { Write-Host "ERROR: Connect-SapRfc -Password is empty. Save the password on this connection via /sap-login (Step 5b), or run /sap-login --check to confirm DPAPI decryption works."; return $null }
 
     # Validate exactly one endpoint mode is selected. If both -Server and
     # -MessageServer are non-blank, the precedence depends on PROVENANCE:

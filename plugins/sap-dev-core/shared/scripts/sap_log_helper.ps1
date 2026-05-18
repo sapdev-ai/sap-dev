@@ -85,6 +85,17 @@ switch ($Action) {
         } catch {
             Write-Host "log_helper: start failed: $($_.Exception.Message)"
         }
+        # Banner: emit one line summarising the currently pinned SAP connection
+        # so every sap-* skill output starts with "which system am I hitting?".
+        # Best-effort: silently no-ops on lib-load failure or when no pin exists.
+        try {
+            $connLib = Join-Path $PSScriptRoot 'sap_connection_lib.ps1'
+            if (Test-Path -LiteralPath $connLib) {
+                . $connLib
+                $banner = Format-SapBannerLine
+                if ($banner) { Write-Host "INFO: $banner" }
+            }
+        } catch { }
     }
 
     'step' {

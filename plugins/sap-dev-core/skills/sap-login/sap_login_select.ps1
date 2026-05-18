@@ -69,7 +69,7 @@
 
 [CmdletBinding()]
 param(
-    [ValidateSet('init','decide','list','set-default','switch','delete','finalize')]
+    [ValidateSet('init','decide','list','set-default','switch','delete','finalize','check')]
     [string]$Action = 'decide',
 
     [string]$WorkTemp = '',
@@ -79,8 +79,15 @@ param(
     [string]$PickProfileId      = '',
     [string]$PickConnectionPath = '',
 
-    # set-default / switch / delete
+    # set-default / switch / delete: accepts hint forms (UUID, SID, SID/CLIENT,
+    # SID/CLIENT/USER, description substring, 'last', 'default'). UUIDs work as
+    # before — the matcher's first rule is UUID exact, so legacy callers passing
+    # a GUID see no behaviour change.
     [string]$ProfileId = '',
+
+    # switch-mode: skip the GUI fall-through. Default behaviour is "re-pin + open
+    # GUI session for the new profile"; pass -NoConnect to re-pin only.
+    [switch]$NoConnect,
 
     # finalize-mode inputs
     [string]$CapturedJson        = '',   # raw JSON from capture VBS (one-line)
@@ -105,6 +112,7 @@ $script:_ParamAiSessionId         = $AiSessionId
 $script:_ParamPickProfileId       = $PickProfileId
 $script:_ParamPickConnectionPath  = $PickConnectionPath
 $script:_ParamProfileId           = $ProfileId
+$script:_ParamNoConnect           = [bool]$NoConnect
 $script:_ParamCapturedJson        = $CapturedJson
 $script:_ParamNewLogonDescription = $NewLogonDescription
 $script:_ParamNewPasswordDpapi    = $NewPasswordDpapi
@@ -125,6 +133,7 @@ $AiSessionId         = $script:_ParamAiSessionId
 $PickProfileId       = $script:_ParamPickProfileId
 $PickConnectionPath  = $script:_ParamPickConnectionPath
 $ProfileId           = $script:_ParamProfileId
+$NoConnect           = [switch]$script:_ParamNoConnect
 $CapturedJson        = $script:_ParamCapturedJson
 $NewLogonDescription = $script:_ParamNewLogonDescription
 $NewPasswordDpapi    = $script:_ParamNewPasswordDpapi
@@ -474,40 +483,97 @@ function Format-EndpointSummary {
 }
 
 # =============================================================================
+# Hint resolution -- shared by set-default / switch / delete.
+# =============================================================================
+function Resolve-ProfileFromRef {
+    <#
+    .SYNOPSIS
+        Resolve $ProfileId (now a hint, not necessarily a UUID) to a single
+        profile, applying the output protocol on no-match / ambiguous.
+    .OUTPUTS
+        Profile object on single match. On no-match emits ERROR + exits 1.
+        On multi-match emits AMBIGUOUS: <json> + exits 2 so the SKILL.md
+        dispatch can drive a picker and re-invoke with the chosen UUID.
+    #>
+    if (-not $ProfileId) { Write-Host 'ERROR: -ProfileId required'; exit 1 }
+    $matches = @(Resolve-SapProfileHint -Hint $ProfileId)
+    if ($matches.Count -eq 0) {
+        Write-Host "ERROR: no profile matches '$ProfileId'. Run /sap-login --list."
+        exit 1
+    }
+    if ($matches.Count -gt 1) {
+        $options = @($matches | ForEach-Object {
+            @{
+                profile_id  = "$($_.id)"
+                description = "$($_.description)"
+                system_name = "$($_.system_name)"
+                client      = "$($_.client)"
+                user        = "$($_.user)"
+                endpoint_summary = (Format-EndpointSummary $_)
+            }
+        })
+        $json = @{ options = $options } | ConvertTo-Json -Depth 6 -Compress
+        $json = _NormalizeEmptyArrays -Json $json
+        Write-Host ("AMBIGUOUS: " + $json)
+        exit 2
+    }
+    return $matches[0]
+}
+
+# =============================================================================
 # Action: set-default
 # =============================================================================
 function Invoke-SetDefault {
-    if (-not $ProfileId) { Write-Host 'ERROR: -ProfileId required'; exit 1 }
-    $p = Find-SapConnectionById -Id $ProfileId
-    if (-not $p) { Write-Host "ERROR: profile id=$ProfileId not found"; exit 1 }
-    Set-SapDefaultConnection -Id $ProfileId
-    Write-Host "SUCCESS: default_target_id=$ProfileId description='$($p.description)'"
+    $p = Resolve-ProfileFromRef
+    Set-SapDefaultConnection -Id $p.id
+    Write-Host "SUCCESS: default_target_id=$($p.id) description='$($p.description)'"
 }
 
 # =============================================================================
 # Action: switch  -- re-pin AI session to a different profile.
+#
+# Phase 4.4: also bumps last_used_at so `--switch last` reflects the most
+# recent switch (not just the last login finalize). Without -NoConnect the
+# action emits CONTINUE_TO_STEP1 after SUCCESS so the SKILL.md dispatch
+# falls through to opening the GUI session for the new profile.
 # =============================================================================
 function Invoke-Switch {
-    if (-not $ProfileId) { Write-Host 'ERROR: -ProfileId required'; exit 1 }
-    $p = Find-SapConnectionById -Id $ProfileId
-    if (-not $p) { Write-Host "ERROR: profile id=$ProfileId not found"; exit 1 }
+    $p = Resolve-ProfileFromRef
     $aid = Resolve-AiSessionId
     $r = Invoke-Broker -Args @('-Action','pin','-WorkTemp',$WorkTemp,
                                 '-AiSessionId',$aid,'-ConnectionId',$p.id,
                                 '-PinReason','user_switched')
     foreach ($line in $r.raw) { Write-Host $line }
+
+    # Bump last_used_at so `--switch last` reflects the most recent switch.
+    try {
+        $store = Read-SapConnectionStore
+        $target = $store.connections | Where-Object { "$($_.id)" -eq "$($p.id)" } | Select-Object -First 1
+        if ($target) {
+            $target.last_used_at = (Get-Date).ToString('o')
+            Write-SapConnectionStore -Store $store
+        }
+    } catch {
+        Write-Host "WARN: failed to bump last_used_at: $($_.Exception.Message)"
+    }
+
     Write-Host "SUCCESS: switched ai_session=$aid -> connection_id=$($p.id) description='$($p.description)'"
+
+    if (-not $NoConnect) {
+        # Tell the SKILL.md dispatch to fall through to Step 1 (connect).
+        # The skill driver re-runs `decide` for the new pin; from there
+        # ATTACH_ACTIVE / CONNECT_PROFILE take over.
+        Write-Host "CONTINUE_TO_STEP1: connection_id=$($p.id) description='$($p.description)'"
+    }
 }
 
 # =============================================================================
 # Action: delete
 # =============================================================================
 function Invoke-Delete {
-    if (-not $ProfileId) { Write-Host 'ERROR: -ProfileId required'; exit 1 }
-    $p = Find-SapConnectionById -Id $ProfileId
-    if (-not $p) { Write-Host "ERROR: profile id=$ProfileId not found"; exit 1 }
-    Remove-SapConnection -Id $ProfileId
-    Write-Host "SUCCESS: deleted profile id=$ProfileId description='$($p.description)'"
+    $p = Resolve-ProfileFromRef
+    Remove-SapConnection -Id $p.id
+    Write-Host "SUCCESS: deleted profile id=$($p.id) description='$($p.description)'"
 }
 
 # =============================================================================
@@ -630,6 +696,152 @@ function Invoke-Finalize {
 }
 
 # =============================================================================
+# Action: check  -- per-profile health doctor (Phase 4.4).
+#
+# Gates per profile, in order: DPAPI decrypt, DNS resolve, RFC ping, live GUI
+# session. Read-only — never mutates connections.json or session_registry.json.
+# RFC gate shells out to 32-bit Windows PowerShell (SAP NCo is 32-bit only).
+# Plaintext password rides via process env var SAPDEV_RFC_PING_PAYLOAD (b64
+# JSON), removed in a finally block after each profile.
+# =============================================================================
+function Invoke-Check {
+    $store = Read-SapConnectionStore
+    if (-not $store -or -not $store.connections -or $store.connections.Count -eq 0) {
+        Write-Host "INFO: no saved profiles."
+        return
+    }
+
+    # Read live registry for GUI gate (no broker discover — read-only doctor).
+    $liveConnIds = @{}
+    try {
+        $regPath = Join-Path $script:WorkRuntimeDir 'session_registry.json'
+        if (Test-Path -LiteralPath $regPath) {
+            $reg = Get-Content -LiteralPath $regPath -Raw -Encoding UTF8 | ConvertFrom-Json
+            if ($reg -and $reg.connections) {
+                foreach ($c in $reg.connections) {
+                    if ("$($c.connection_id)") { $liveConnIds["$($c.connection_id)"] = $true }
+                }
+            }
+        }
+    } catch { }
+
+    $fmt = "{0,-32} {1,-6} {2,-6} {3,-6} {4,-4} {5}"
+    Write-Host ($fmt -f 'DESCRIPTION','DPAPI','DNS','RFC','GUI','NOTE')
+    Write-Host ('-' * 100)
+
+    $dpapiPs = Join-Path $script:SharedDir 'sap_dpapi.ps1'
+    $rfcLib  = Join-Path $script:SharedDir 'sap_rfc_lib.ps1'
+    $psSys32 = 'C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe'
+
+    $childCmd = @'
+try {
+  $b = $env:SAPDEV_RFC_PING_PAYLOAD
+  if (-not $b) { Write-Output 'RFC_FAIL: no payload'; exit 1 }
+  $j = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($b)) | ConvertFrom-Json
+  . 'RFCLIB_PATH'
+  $d = Connect-SapRfc -Server $j.Server -Sysnr $j.Sysnr -Client $j.Client -User $j.User -Password $j.Password -Language $j.Language -MessageServer $j.MessageServer -LogonGroup $j.LogonGroup -SystemID $j.SystemID
+  if (-not $d) { Write-Output 'RFC_FAIL: Connect returned null'; exit 1 }
+  $null = $d.Ping()
+  Disconnect-SapRfc
+  Write-Output 'RFC_OK'
+} catch { Write-Output ('RFC_FAIL: ' + $_.Exception.Message); exit 1 }
+'@
+    $childCmd = $childCmd.Replace('RFCLIB_PATH', $rfcLib)
+
+    foreach ($p in $store.connections) {
+        $dpapi = 'skip'; $dns = 'skip'; $rfc = 'skip'; $gui = 'no'; $note = ''
+        $plaintext = ''
+
+        # ---- DPAPI gate -----------------------------------------------------
+        $pwdField = "$($p.password_dpapi)"
+        if ($pwdField) {
+            if ($pwdField -like 'dpapi:*') {
+                try {
+                    $out = & $dpapiPs -Action unprotect -Value $pwdField 2>&1
+                    $rc = $LASTEXITCODE
+                    $plaintext = ("$out").Trim()
+                    if ($rc -eq 0 -and $plaintext) {
+                        $dpapi = 'ok'
+                    } else {
+                        $dpapi = 'fail'
+                        $note = 'decrypt failed (different Windows user / machine?)'
+                        $plaintext = ''
+                    }
+                } catch {
+                    $dpapi = 'fail'
+                    $note = "decrypt threw: $($_.Exception.Message)"
+                    $plaintext = ''
+                }
+            } else {
+                # Legacy plaintext at rest — flag and reuse for RFC.
+                $dpapi = 'plain'
+                $note = 'password stored in plaintext'
+                $plaintext = $pwdField
+            }
+        }
+
+        # ---- DNS gate -------------------------------------------------------
+        $hostToCheck = ''
+        if     ("$($p.message_server)")     { $hostToCheck = "$($p.message_server)" }
+        elseif ("$($p.application_server)") { $hostToCheck = "$($p.application_server)" }
+        if ($hostToCheck) {
+            if (Test-SapHostResolvable -HostName $hostToCheck) {
+                $dns = 'ok'
+            } else {
+                $dns = 'fail'
+                if (-not $note) { $note = "$hostToCheck unresolvable" }
+            }
+        }
+
+        # ---- RFC gate -------------------------------------------------------
+        if (($dpapi -eq 'ok' -or $dpapi -eq 'plain') -and $dns -eq 'ok') {
+            $payload = @{
+                Server        = "$($p.application_server)"
+                Sysnr         = "$($p.system_number)"
+                Client        = "$($p.client)"
+                User          = "$($p.user)"
+                Password      = $plaintext
+                Language      = $(if ("$($p.language)") { "$($p.language)" } else { 'EN' })
+                MessageServer = "$($p.message_server)"
+                LogonGroup    = "$($p.logon_group)"
+                SystemID      = "$($p.system_id)"
+            }
+            $json = $payload | ConvertTo-Json -Compress
+            $b64  = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($json))
+            $env:SAPDEV_RFC_PING_PAYLOAD = $b64
+            try {
+                $out = & $psSys32 -NoProfile -ExecutionPolicy Bypass -Command $childCmd 2>&1
+                $rc  = $LASTEXITCODE
+                $tail = ("$out").Trim()
+                if ($rc -eq 0 -and $tail -match 'RFC_OK') {
+                    $rfc = 'ok'
+                } else {
+                    $rfc = 'fail'
+                    if (-not $note) {
+                        # Pick the last non-empty line as the reason.
+                        $reason = ($tail -split "`r?`n" | Where-Object { $_ } | Select-Object -Last 1)
+                        if ($reason) { $note = $reason -replace '^RFC_FAIL:\s*', '' }
+                    }
+                }
+            } catch {
+                $rfc = 'fail'
+                if (-not $note) { $note = $_.Exception.Message }
+            } finally {
+                Remove-Item Env:SAPDEV_RFC_PING_PAYLOAD -ErrorAction SilentlyContinue
+            }
+        }
+
+        # ---- GUI gate -------------------------------------------------------
+        if ($liveConnIds["$($p.id)"]) { $gui = 'yes' }
+
+        # ---- Render row -----------------------------------------------------
+        $desc = "$($p.description)"
+        if ($desc.Length -gt 32) { $desc = $desc.Substring(0, 30) + '..' }
+        Write-Host ($fmt -f $desc, $dpapi, $dns, $rfc, $gui, $note)
+    }
+}
+
+# =============================================================================
 # Dispatch
 # =============================================================================
 switch ($Action) {
@@ -640,5 +852,6 @@ switch ($Action) {
     'switch'       { Invoke-Switch }
     'delete'       { Invoke-Delete }
     'finalize'     { Invoke-Finalize }
+    'check'        { Invoke-Check }
 }
 exit 0

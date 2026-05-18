@@ -13,6 +13,9 @@
 '   %%SAP_MESSAGE_SERVER%%       Message server hostname             (load-balanced)
 '   %%SAP_LOGON_GROUP%%          Logon group  (default: SPACE)       (load-balanced)
 '   %%SAP_SYSTEM_ID%%            3-letter R3NAME / SID               (load-balanced)
+'   %%SAP_SYSTEM_NAME%%          SAP logical system name (Info.SystemName)
+'                                Empty = legacy / no-SID profile -> identity
+'                                match falls back to Client+User only.
 '   %%SAP_CLIENT%%               3-digit client
 '   %%SAP_USER%%                 SAP username
 '   %%SAP_PASSWORD%%             SAP password (blank = wait for manual login)
@@ -36,6 +39,7 @@ Const SAP_SYSNR         = "%%SAP_SYSTEM_NUMBER%%"
 Const SAP_MESSAGE_SRV   = "%%SAP_MESSAGE_SERVER%%"
 Const SAP_LOGON_GROUP   = "%%SAP_LOGON_GROUP%%"
 Const SAP_SYSTEM_ID     = "%%SAP_SYSTEM_ID%%"
+Const SAP_SYSTEM_NAME   = "%%SAP_SYSTEM_NAME%%"
 Const SAP_CLIENT        = "%%SAP_CLIENT%%"
 Const SAP_USER          = "%%SAP_USER%%"
 Const SAP_PASSWORD      = "%%SAP_PASSWORD%%"
@@ -45,25 +49,28 @@ Const VKEY_ENTER        = 0
 ' Detect unsubstituted tokens. PowerShell .Replace() is global, so we build
 ' the sentinel at runtime from Chr() codes — wrapper substitution cannot
 ' touch a Chr-built string. Pattern lifted from sap_attach_lib.vbs.
-Dim UNSUB_DESC, UNSUB_SRV, UNSUB_MSRV, UNSUB_GRP, UNSUB_SID
-UNSUB_DESC = Chr(37) & Chr(37) & "SAP_LOGON_DESCRIPTION" & Chr(37) & Chr(37)
-UNSUB_SRV  = Chr(37) & Chr(37) & "SAP_APPLICATION_SERVER" & Chr(37) & Chr(37)
-UNSUB_MSRV = Chr(37) & Chr(37) & "SAP_MESSAGE_SERVER" & Chr(37) & Chr(37)
-UNSUB_GRP  = Chr(37) & Chr(37) & "SAP_LOGON_GROUP" & Chr(37) & Chr(37)
-UNSUB_SID  = Chr(37) & Chr(37) & "SAP_SYSTEM_ID" & Chr(37) & Chr(37)
+Dim UNSUB_DESC, UNSUB_SRV, UNSUB_MSRV, UNSUB_GRP, UNSUB_SID, UNSUB_SYSNAME
+UNSUB_DESC    = Chr(37) & Chr(37) & "SAP_LOGON_DESCRIPTION" & Chr(37) & Chr(37)
+UNSUB_SRV     = Chr(37) & Chr(37) & "SAP_APPLICATION_SERVER" & Chr(37) & Chr(37)
+UNSUB_MSRV    = Chr(37) & Chr(37) & "SAP_MESSAGE_SERVER" & Chr(37) & Chr(37)
+UNSUB_GRP     = Chr(37) & Chr(37) & "SAP_LOGON_GROUP" & Chr(37) & Chr(37)
+UNSUB_SID     = Chr(37) & Chr(37) & "SAP_SYSTEM_ID" & Chr(37) & Chr(37)
+UNSUB_SYSNAME = Chr(37) & Chr(37) & "SAP_SYSTEM_NAME" & Chr(37) & Chr(37)
 
 ' Effective values — empty when the wrapper left the token unsubstituted.
-Dim eDesc, eSrv, eMsrv, eGrp, eSid
-eDesc = SAP_LOGON_DESC
-eSrv  = SAP_SERVER
-eMsrv = SAP_MESSAGE_SRV
-eGrp  = SAP_LOGON_GROUP
-eSid  = SAP_SYSTEM_ID
-If eDesc = UNSUB_DESC Then eDesc = ""
-If eSrv  = UNSUB_SRV  Then eSrv  = ""
-If eMsrv = UNSUB_MSRV Then eMsrv = ""
-If eGrp  = UNSUB_GRP  Then eGrp  = ""
-If eSid  = UNSUB_SID  Then eSid  = ""
+Dim eDesc, eSrv, eMsrv, eGrp, eSid, eSysName
+eDesc    = SAP_LOGON_DESC
+eSrv     = SAP_SERVER
+eMsrv    = SAP_MESSAGE_SRV
+eGrp     = SAP_LOGON_GROUP
+eSid     = SAP_SYSTEM_ID
+eSysName = SAP_SYSTEM_NAME
+If eDesc    = UNSUB_DESC    Then eDesc    = ""
+If eSrv     = UNSUB_SRV     Then eSrv     = ""
+If eMsrv    = UNSUB_MSRV    Then eMsrv    = ""
+If eGrp     = UNSUB_GRP     Then eGrp     = ""
+If eSid     = UNSUB_SID     Then eSid     = ""
+If eSysName = UNSUB_SYSNAME Then eSysName = ""
 
 Dim oSAPGUI, oApplication, oSession
 
@@ -143,18 +150,52 @@ If eSrv <> "" And SAP_SYSNR <> "" Then
     sExpectedDesc3 = "/H/" & eSrv & "/S/" & sPortMatch
 End If
 
+' Two-tier match strategy:
+'   (1) Identity match on oSession.Info (SystemName + Client + User). Two
+'       endpoint shapes (pad-entry vs /M/.../G/.../S/... vs /H/.../S/...)
+'       for the SAME backend produce different GuiConnection.Description
+'       strings but the same Info, so identity catches the duplicate-tab
+'       case the description-only match used to miss.
+'   (2) Description-equality fallback. Covers sessions still on SAPMSYST
+'       where Info is unreadable for ~500ms after open, and the legacy
+'       no-SID profile case where eSysName is empty.
 Set oSession = Nothing
 Dim oCandidate, oSessIter, oSessInfo
 Dim oLoginScreenCheck
 Dim sCandDesc, bSystemMatch
+Dim oFirstSes, oCandInfo
+Dim sCandSys, sCandClient, sCandUser
 On Error Resume Next
 For Each oCandidate In oApplication.Children
     Err.Clear
-    sCandDesc = oCandidate.Description
     bSystemMatch = False
-    If sExpectedDesc1 <> "" And sCandDesc = sExpectedDesc1 Then bSystemMatch = True
-    If sExpectedDesc2 <> "" And sCandDesc = sExpectedDesc2 Then bSystemMatch = True
-    If sExpectedDesc3 <> "" And sCandDesc = sExpectedDesc3 Then bSystemMatch = True
+    sCandDesc = oCandidate.Description
+
+    ' (1) Identity match.
+    If oCandidate.Children.Count > 0 Then
+        Set oFirstSes = oCandidate.Children(0)
+        Err.Clear
+        Set oCandInfo = oFirstSes.Info
+        If Err.Number = 0 And Not (oCandInfo Is Nothing) Then
+            sCandSys    = oCandInfo.SystemName
+            sCandClient = oCandInfo.Client
+            sCandUser   = oCandInfo.User
+            If (eSysName = "" Or StrComp(sCandSys, eSysName, vbTextCompare) = 0) _
+               And StrComp(sCandClient, SAP_CLIENT, vbTextCompare) = 0 _
+               And StrComp(sCandUser, SAP_USER, vbTextCompare) = 0 Then
+                bSystemMatch = True
+            End If
+        End If
+        Err.Clear
+    End If
+
+    ' (2) Description-equality fallback.
+    If Not bSystemMatch Then
+        If sExpectedDesc1 <> "" And sCandDesc = sExpectedDesc1 Then bSystemMatch = True
+        If sExpectedDesc2 <> "" And sCandDesc = sExpectedDesc2 Then bSystemMatch = True
+        If sExpectedDesc3 <> "" And sCandDesc = sExpectedDesc3 Then bSystemMatch = True
+    End If
+
     If bSystemMatch Then
         ' Prefer a session at the login screen (we'll fill credentials below).
         ' If none, take the first session — it's already logged in for THIS
@@ -275,6 +316,27 @@ If oSession Is Nothing Then
     If oSession Is Nothing Then
         WScript.Echo "ERROR: Could not obtain a SAP GUI session."
         WScript.Quit 1
+    End If
+
+    ' Defense-in-depth: assert the freshly-opened session belongs to the
+    ' requested SAP system. Catches any regression where the wait loop
+    ' attaches to an unrelated already-logged-in connection. Silent when
+    ' eSysName is empty (legacy / no-SID profile) or when Info is still
+    ' unreadable on SAPMSYST (Step 4 will surface the wrong-system case
+    ' via its login-screen check).
+    If eSysName <> "" Then
+        On Error Resume Next
+        Err.Clear
+        Dim oNewInfo
+        Set oNewInfo = oSession.Info
+        If Err.Number = 0 And Not (oNewInfo Is Nothing) Then
+            If StrComp(oNewInfo.SystemName, eSysName, vbTextCompare) <> 0 Then
+                WScript.Echo "WARN: Attached session SystemName='" & oNewInfo.SystemName & "' does not match requested '" & eSysName & "'."
+                WScript.Quit 2
+            End If
+        End If
+        Err.Clear
+        On Error GoTo 0
     End If
 End If
 WScript.Echo "INFO: Session acquired."

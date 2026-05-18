@@ -379,6 +379,109 @@ function Get-SapDefaultConnection {
     return ($store.connections | Where-Object { $_.is_default_target } | Select-Object -First 1)
 }
 
+function Resolve-SapProfileHint {
+    <#
+    .SYNOPSIS
+        Resolve a human-friendly hint to one or more stored profiles.
+    .DESCRIPTION
+        Hint grammar (single shell token):
+          <UUID>                            - exact UUID
+          last                              - profile with most recent last_used_at
+          default                            - the default target (Get-SapDefaultConnection)
+          <SID>                              - profiles whose system_name == <SID>
+          <SID>/<CLIENT>                     - + client filter
+          <SID>/<CLIENT>/<USER>              - + user filter
+          <description>                      - exact description, then substring on
+                                               description or system_name
+        Slash-form is recognized when the hint contains 1 or 2 `/` AND every
+        non-empty segment looks SID/client/user-shaped (alphanumeric, no
+        whitespace). This keeps descriptions containing `/` (e.g. "dev/test")
+        from being mis-routed.
+        Returns an array of matching profile objects (possibly empty, possibly
+        single, possibly many — callers decide what "many" means).
+    .OUTPUTS
+        Array of profile pscustomobjects.
+    #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$Hint)
+
+    # NB: callers must wrap with @(...) -- e.g. `$matches = @(Resolve-SapProfileHint -Hint $h)`.
+    # The function streams matches via PowerShell's normal output pipeline; an
+    # empty result yields nothing (caller's @() turns it into an empty array),
+    # a single match yields one object (caller's @() wraps it), and a multi
+    # result streams them all. Do NOT prepend `,` -- that wraps in a 1-element
+    # outer array and defeats the caller's @() unwrap.
+
+    $store = Read-SapConnectionStore
+    if (-not $store -or -not $store.connections) { return }
+
+    $h = "$Hint".Trim()
+    if ([string]::IsNullOrWhiteSpace($h)) { return }
+
+    # 1. UUID exact (preserves all today's callers).
+    $byId = $store.connections | Where-Object { "$($_.id)" -eq $h } | Select-Object -First 1
+    if ($byId) { return $byId }
+
+    # 2. Reserved 'last' -> most recent last_used_at.
+    if ($h -ieq 'last') {
+        $sorted = @($store.connections | Sort-Object { try { [datetime]$_.last_used_at } catch { [datetime]::MinValue } } -Descending)
+        if ($sorted.Count -gt 0) { return $sorted[0] }
+        return
+    }
+
+    # 3. Reserved 'default'.
+    if ($h -ieq 'default') {
+        $d = Get-SapDefaultConnection
+        if ($d) { return $d }
+        return
+    }
+
+    # 4. Structured <SID>[/<CLIENT>[/<USER>]] - detected by 1 or 2 slashes,
+    #    all segments alphanumeric (no whitespace). Anything else falls
+    #    through to description matching below.
+    $segs = $h.Split('/')
+    $isStructured = ($segs.Count -ge 2 -and $segs.Count -le 3)
+    if ($isStructured) {
+        foreach ($s in $segs) {
+            if ([string]::IsNullOrEmpty($s)) { $isStructured = $false; break }
+            if ($s -notmatch '^[A-Za-z0-9_-]+$') { $isStructured = $false; break }
+        }
+    }
+    if ($isStructured) {
+        $needSid    = $segs[0]
+        $needClient = if ($segs.Count -ge 2) { $segs[1] } else { $null }
+        $needUser   = if ($segs.Count -ge 3) { $segs[2] } else { $null }
+        $byStruct = @($store.connections | Where-Object {
+            $sysOk    = ("$($_.system_name)".ToUpperInvariant() -eq $needSid.ToUpperInvariant())
+            $clientOk = ($null -eq $needClient) -or ("$($_.client)" -eq "$needClient")
+            $userOk   = ($null -eq $needUser)   -or ("$($_.user)".ToUpperInvariant() -eq $needUser.ToUpperInvariant())
+            $sysOk -and $clientOk -and $userOk
+        })
+        # Stream each match; empty $byStruct streams nothing.
+        return $byStruct
+    }
+
+    # 5. system_name exact (case-insensitive).
+    $bySid = @($store.connections | Where-Object {
+        "$($_.system_name)".ToUpperInvariant() -eq $h.ToUpperInvariant()
+    })
+    if ($bySid.Count -ge 1) { return $bySid }
+
+    # 6. description exact (case-insensitive).
+    $byDescExact = @($store.connections | Where-Object {
+        "$($_.description)".ToUpperInvariant() -eq $h.ToUpperInvariant()
+    })
+    if ($byDescExact.Count -eq 1) { return $byDescExact }
+
+    # 7. substring on description OR system_name.
+    $needle = $h.ToUpperInvariant()
+    $bySub = @($store.connections | Where-Object {
+        "$($_.description)".ToUpperInvariant().Contains($needle) -or
+        "$($_.system_name)".ToUpperInvariant().Contains($needle)
+    })
+    return $bySub
+}
+
 # --- Mutation ---------------------------------------------------------------
 
 function Set-SapDefaultConnection {
@@ -972,19 +1075,26 @@ function Get-SapCurrentConnectionProfile {
         profile hashtable from connections.json, including version info).
         Replacement for the version-info portion of sap_active_session.json.
     .DESCRIPTION
-        Resolution:
-          1. Read this AI session's pin from session_registry.json
+        Resolution order:
+          1. AI session's pin from session_registry.json
              (ai_sessions[<id>].connection_id).
-          2. Look up that profile in connections.json by id.
-          3. If no pin (or pinned profile missing), fall back to the
-             default profile (Get-SapDefaultConnection).
+          2. Default profile (Get-SapDefaultConnection).
+          3. Phase 4.4 auto-bootstrap: exactly one saved profile with a
+             non-empty password_dpapi -> return that profile, emit INFO
+             to stderr so the action is visible. Skip when -StrictMode is
+             set (callers that must fail on ambiguity).
         Returns $null when nothing resolves — caller decides what to do
         (skills using version info typically default to "no marker" and
         fall back to non-versioned VBS variants).
+    .PARAMETER StrictMode
+        When set, skip the Phase 4.4 single-profile auto-bootstrap. The
+        function returns the pin or default exactly; ambiguous / empty
+        states return $null instead of guessing.
     #>
     param(
         [string]$WorkTemp    = '',
-        [string]$RuntimeDir  = ''
+        [string]$RuntimeDir  = '',
+        [switch]$StrictMode
     )
 
     if ([string]::IsNullOrWhiteSpace($RuntimeDir)) {
@@ -1006,7 +1116,119 @@ function Get-SapCurrentConnectionProfile {
         $p = Find-SapConnectionById -Id $pinnedConnId
         if ($p) { return $p }
     }
-    return (Get-SapDefaultConnection)
+
+    $defp = Get-SapDefaultConnection
+    if ($defp) { return $defp }
+
+    if ($StrictMode) { return $null }
+
+    # Phase 4.4 auto-bootstrap. Only triggers when:
+    #   - no pin for this AI session,
+    #   - no default profile set,
+    #   - exactly one saved profile has a non-empty password_dpapi.
+    # That's the "single-system happy path" — user has saved a profile, hasn't
+    # bothered to mark it default, and now runs an RFC skill before /sap-login.
+    # Better to proceed (with a visible INFO line) than fail opaquely.
+    try {
+        $store = Read-SapConnectionStore
+        if ($store -and $store.connections) {
+            $candidates = @($store.connections | Where-Object {
+                -not [string]::IsNullOrWhiteSpace("$($_.password_dpapi)")
+            })
+            if ($candidates.Count -eq 1) {
+                $only = $candidates[0]
+                # Stderr so the line surfaces above the skill's normal output
+                # without contaminating stdout that downstream JSON parsers consume.
+                [Console]::Error.WriteLine("INFO: auto-bootstrap pinned single saved profile id=$($only.id) description='$($only.description)' (no default; password present)")
+                return $only
+            }
+        }
+    } catch { }
+    return $null
+}
+
+# =============================================================================
+# Banner emission (Phase 4.4)
+# -----------------------------------------------------------------------------
+# Format a single-line summary of the currently pinned connection for
+# emission at the top of every sap-* skill (wired into sap_log_helper.ps1
+# -Action start). Cached per-process: the parent-PID walk inside
+# Get-SapAiSessionId costs ~50-200ms cold via Get-CimInstance, so callers
+# can hit this once and reuse the answer for the rest of the process.
+# =============================================================================
+
+$script:_SapBannerCache = $null
+$script:_SapBannerCachePopulated = $false
+
+function Format-SapBannerLine {
+    <#
+    .SYNOPSIS
+        Render the active-connection banner: one line, or empty when no
+        pin / no profile resolves. Safe to call from any sap-* skill.
+    .OUTPUTS
+        String. Shape:
+          [active: <SID>/<CLIENT>/<USER> via <endpoint> | TR=... PKG=... FG=...]
+        Endpoint priority: message_server -> application_server -> pad:<entry>.
+        Dev-defaults segment included only when dev_defaults has at least
+        one set field; entirely omitted when empty.
+    .PARAMETER WorkTemp
+        Optional override for the work temp dir (mirrors broker convention).
+    .PARAMETER IncludeDevDefaults
+        Append the `| TR=… PKG=… FG=…` tail when dev_defaults are set.
+        Defaults to $true.
+    .PARAMETER NoCache
+        Bypass the per-process cache and re-resolve. Set to $true after the
+        pin changes within the same process (rare).
+    #>
+    param(
+        [string]$WorkTemp = '',
+        [bool]$IncludeDevDefaults = $true,
+        [bool]$NoCache = $false
+    )
+
+    $p = $null
+    if (-not $NoCache -and $script:_SapBannerCachePopulated) {
+        $p = $script:_SapBannerCache
+    } else {
+        try {
+            $p = Get-SapCurrentConnectionProfile -WorkTemp $WorkTemp
+        } catch {
+            $p = $null
+        }
+        $script:_SapBannerCache = $p
+        $script:_SapBannerCachePopulated = $true
+    }
+    if (-not $p) { return '' }
+
+    $sid = if ("$($p.system_name)") { "$($p.system_name)" } else { '?' }
+    $where = ''
+    if     ("$($p.message_server)")     { $where = "$($p.message_server)" }
+    elseif ("$($p.application_server)") { $where = "$($p.application_server)" }
+    elseif ("$($p.logon_pad_entry)")    { $where = "pad:$($p.logon_pad_entry)" }
+    else                                 { $where = '?' }
+
+    $core = "active: $sid/$($p.client)/$($p.user) via $where"
+
+    if ($IncludeDevDefaults -and $p.dev_defaults) {
+        $parts = @()
+        $dd = $p.dev_defaults
+        if ("$($dd.sap_dev_transport_request)") { $parts += "TR=$($dd.sap_dev_transport_request)" }
+        if ("$($dd.sap_dev_package)")           { $parts += "PKG=$($dd.sap_dev_package)" }
+        if ("$($dd.sap_dev_function_group)")    { $parts += "FG=$($dd.sap_dev_function_group)" }
+        if ($parts.Count -gt 0) { $core += ' | ' + ($parts -join ' ') }
+    }
+
+    return "[$core]"
+}
+
+function Clear-SapBannerCache {
+    <#
+    .SYNOPSIS
+        Invalidate the per-process banner cache. Call after switching the
+        pin in-process (e.g. sap_login_select.ps1's switch action).
+    #>
+    $script:_SapBannerCache = $null
+    $script:_SapBannerCachePopulated = $false
 }
 
 # =============================================================================

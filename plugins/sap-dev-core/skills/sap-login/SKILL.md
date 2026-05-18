@@ -32,7 +32,7 @@ Task: $ARGUMENTS
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/skill_operating_rules.md` | *(rule)* | Mandatory operating rules |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/language_independence_rules.md` | *(rule)* | GUI-scripting language independence — identify by component ID + DDIC field name, status-bar checks via `MessageType` codes (S/W/E/I/A), VKey instead of menu-text, no branching on `.Text`/`.Tooltip`/window titles |
 | `sap-dev-core/shared/scripts/sap_check_gui_login_status.vbs` | *(none — static)* | Check session status |
-| `sap-dev-core/shared/scripts/sap_login.vbs` | *(template)* | SAP GUI login VBScript. Tokens: `%%SAP_LOGON_DESCRIPTION%%`, `%%SAP_APPLICATION_SERVER%%`, `%%SAP_SYSTEM_NUMBER%%`, `%%SAP_MESSAGE_SERVER%%`, `%%SAP_LOGON_GROUP%%`, `%%SAP_SYSTEM_ID%%`, `%%SAP_CLIENT%%`, `%%SAP_USER%%`, `%%SAP_PASSWORD%%`, `%%SAP_LANGUAGE%%`. |
+| `sap-dev-core/shared/scripts/sap_login.vbs` | *(template)* | SAP GUI login VBScript. Tokens: `%%SAP_LOGON_DESCRIPTION%%`, `%%SAP_APPLICATION_SERVER%%`, `%%SAP_SYSTEM_NUMBER%%`, `%%SAP_MESSAGE_SERVER%%`, `%%SAP_LOGON_GROUP%%`, `%%SAP_SYSTEM_ID%%`, `%%SAP_SYSTEM_NAME%%`, `%%SAP_CLIENT%%`, `%%SAP_USER%%`, `%%SAP_PASSWORD%%`, `%%SAP_LANGUAGE%%`. |
 | `sap-dev-core/shared/scripts/sap_rfc_connect.ps1` | *(template)* | SAP NCo 3.1 RFC connection PowerShell. Now supports load-balanced login via `MessageServer + LogonGroup + SystemID`. |
 | `sap-dev-core/shared/scripts/sap_rfc_lib.ps1` | `%%RFC_LIB_PS1%%` | NCo helpers. `Connect-SapRfc` accepts either direct (`-Server` + `-Sysnr`) or load-balanced (`-MessageServer` + `-LogonGroup` + `-SystemID`). |
 | `sap-dev-core/shared/scripts/sap_dpapi.ps1` | *(none — static)* | DPAPI encrypt/decrypt for passwords at rest. CLI mode: `-Action protect|unprotect -Value <text>`. |
@@ -69,12 +69,40 @@ Branch on `$ARGUMENTS` before running anything below. Each mode is a single
 PowerShell call to `sap_login_select.ps1`; the rest of this skill (Steps 1–6)
 runs only for the **default mode** (connect-and-pin).
 
+### Hint forms for `<ref>` (Phase 4.4)
+
+`--switch`, `--set-default`, and `--delete` all accept a hint instead of a
+raw UUID. The matcher tries these in order — first hit wins:
+
+| Hint form | Meaning | Example |
+|---|---|---|
+| `<UUID>` | exact UUID (preserves legacy callers) | `df91fed6-8913-…` |
+| `last` | profile with most recent `last_used_at` | `--switch last` |
+| `default` | the configured default target | `--switch default` |
+| `<SID>` | `system_name` exact match | `--switch S4D` |
+| `<SID>/<CLIENT>` | SID + client filter (disambiguates same-SID profiles) | `--switch S4D/200` |
+| `<SID>/<CLIENT>/<USER>` | SID + client + user | `--switch S4D/200/CONSULTANT` |
+| `<description>` | exact, then substring on description OR system_name | `--switch dev-box` |
+
+The slash form is recognised when the hint has 1 or 2 `/` AND every segment
+is alphanumeric. Descriptions containing `/` still match via the description
+rules below.
+
+On match: action proceeds with the resolved UUID.
+On **no match**: stdout `ERROR: no profile matches '<hint>'. Run /sap-login --list.` + exit 1.
+On **multiple matches**: stdout `AMBIGUOUS: <json>` + exit 2. The JSON has an
+`options[]` array of `{profile_id, description, system_name, client, user,
+endpoint_summary}`. Run `AskUserQuestion`, then re-invoke with `-ProfileId <chosen-UUID>`.
+
+### Modes
+
 | Mode | Trigger phrase / arg | What runs |
 |---|---|---|
 | **list** | `--list`, "list connections", "show profiles" | `sap_login_select.ps1 -Action list` → emit `LIST: <json>`. Present a readable table to the user. **Done.** |
-| **set-default** | `--set-default <id>` | `sap_login_select.ps1 -Action set-default -ProfileId <id>` → emit `SUCCESS: default_target_id=...`. **Done.** |
-| **switch** | `--switch <id>`, "switch to X" | `sap_login_select.ps1 -Action switch -ProfileId <id>` → re-pins AI session, releases old claims. Then runs Step 2 (decide) for the new connection. |
-| **delete** | `--delete <id>` | Ask user to confirm deletion (`AskUserQuestion`); on confirm, `sap_login_select.ps1 -Action delete -ProfileId <id>`. **Done.** |
+| **set-default** | `--set-default <ref>` | `sap_login_select.ps1 -Action set-default -ProfileId <ref>` → resolves via hint matcher → emit `SUCCESS: default_target_id=...`. **Done.** |
+| **switch** | `--switch <ref>`, "switch to X" | `sap_login_select.ps1 -Action switch -ProfileId <ref>` → resolves via hint matcher → re-pins AI session, bumps `last_used_at`, releases old claims. Emits `CONTINUE_TO_STEP1:` and the skill **falls through to Step 1** (connect to the new system). Pass `-NoConnect` (or trigger `--switch <ref> --no-connect`) to re-pin only — `SUCCESS:` line appears without `CONTINUE_TO_STEP1:` and the skill is **Done.** |
+| **delete** | `--delete <ref>` | Ask user to confirm deletion (`AskUserQuestion`); on confirm, `sap_login_select.ps1 -Action delete -ProfileId <ref>`. **Done.** |
+| **check** | `--check`, "health-check connections", "doctor" | `sap_login_select.ps1 -Action check` → emit a per-profile health table covering DPAPI, DNS, RFC, and live GUI session. Read-only. **Done.** |
 | **add** | `--add` | Skip Step 2 (decide); jump to ADD_NEEDED handler in Step 2. Treat as user-initiated new-profile entry. |
 | **(default)** | no flag / no relevant arg | Run Steps 0.5 → 6.5 as documented below. |
 
@@ -265,6 +293,7 @@ $content = $content.Replace('%%SAP_SYSTEM_NUMBER%%','THE_SYSNR')
 $content = $content.Replace('%%SAP_MESSAGE_SERVER%%','THE_MSG_SERVER')
 $content = $content.Replace('%%SAP_LOGON_GROUP%%','THE_LOGON_GROUP')
 $content = $content.Replace('%%SAP_SYSTEM_ID%%','THE_SYSTEM_ID')
+$content = $content.Replace('%%SAP_SYSTEM_NAME%%','THE_SYSTEM_NAME')
 $content = $content.Replace('%%SAP_CLIENT%%','THE_CLIENT')
 $content = $content.Replace('%%SAP_USER%%','THE_USER')
 $content = $content.Replace('%%SAP_PASSWORD%%','THE_PASSWORD')
@@ -282,6 +311,7 @@ Token-fill rules (the VBS picks among three connection methods):
 - For **SAP Logon pad** profiles: set `THE_LOGON_DESC` to the entry name; leave server/sysnr/msrv/grp/sid empty.
 - For **direct** profiles: set `THE_SERVER` + `THE_SYSNR`; leave logon_desc/msrv/grp/sid empty.
 - For **load-balanced** profiles: set `THE_MSG_SERVER` + `THE_LOGON_GROUP` (blank → VBS uses " ") + `THE_SYSTEM_ID`; leave logon_desc/server/sysnr empty.
+- `THE_SYSTEM_NAME` is **always** the profile's `system_name` (SID — e.g. `S4D`, `S4H`). Used by the VBS reuse-loop's identity match — independent of which of the three endpoint methods is chosen. Leave empty for legacy profiles with no SID; the VBS falls back to Client+User matching.
 
 If a field is unused in the chosen method, substitute the empty string `""`.
 
