@@ -438,7 +438,7 @@ function New-SapConnectionAutoDescription {
 # usually equals the DNS name the user typed into SAP Logon Pad. But on
 # NAT / dynamic-DNS / reverse-proxy deployments the two diverge: SAP returns
 # e.g. "s4sapdev" while the workstation can only reach the host via
-# "sap1.vicp.cc". SAP GUI keeps working (it routes through saplogon.ini's
+# "xxxsap.xxx.com". SAP GUI keeps working (it routes through saplogon.ini's
 # ConnectionString), but NCo/RFC cannot resolve the internal name and every
 # `Connect-SapRfc` fails with "hostname unknown".
 #
