@@ -40,7 +40,7 @@ Task: $ARGUMENTS
 | `sap-dev-core/shared/scripts/sap_session_broker.ps1` | *(none — invoke)* | Broker. New Phase-4 actions: `pin`, `unpin`, `set-connection-id`, `stuck`. New flags: `-AiSessionId`, `-WasCreated`, `-ForceUnpin`. |
 | `sap-dev-core/shared/scripts/sap_rfc_system_info.ps1` | *(none — direct invoke)* | RFC_SYSTEM_INFO + CVERS query. Step 6.2 calls this to capture `server_release_marker`, `software_components`. |
 | `sap-dev-core/shared/tables/sap_release_markers.tsv` | *(none — read by sap_rfc_system_info.ps1)* | (component, release range) → canonical marker lookup. |
-| `<SKILL_DIR>/sap_login_select.ps1` | *(none — direct invoke)* | **Selection driver**. Actions: `init`, `decide`, `list`, `set-default`, `switch`, `delete`, `finalize`. Emits structured signals (`RESOLVED:`, `ATTACH_ACTIVE:`, `CONNECT_PROFILE:`, `PICK_NEEDED:`, `ADD_NEEDED:`, `SUCCESS:`). |
+| `<SKILL_DIR>/sap_login_select.ps1` | *(none — direct invoke)* | **Selection driver**. Actions: `init`, `decide`, `list`, `set-default`, `switch`, `delete`, `finalize`, `check`, `landscape-entries`. Emits structured signals (`RESOLVED:`, `ATTACH_ACTIVE:`, `CONNECT_PROFILE:`, `PICK_NEEDED:`, `ADD_NEEDED:`, `SUCCESS:`, `AMBIGUOUS:`, `CONTINUE_TO_STEP1:`, `LANDSCAPE:`). |
 | `<SKILL_DIR>/references/sap_login_capture_active_session.vbs` | *(none — static)* | GUI-side capture. Phase-4 fields: `system_name`, `client`, `user`, `language`, `application_server`, `system_number`, `message_server`, `logon_group`, `program`, `screen_number`, plus GUI version. Emits flat JSON or `MULTI:<array>`. |
 
 ---
@@ -217,6 +217,35 @@ Windows user or machine) → prompt the user for the password fresh and
 remember to re-encrypt + save it in Step 6.5.
 
 ### Step 2b — For `ADD_NEEDED:` or `--add`: collect new credentials
+
+**Step 2b-pre — Check the SAP Logon Pad landscape for known entries.**
+
+Before asking the user to type endpoint values from scratch, enumerate the
+entries they already have configured in SAP Logon (`SAPUILandscape.xml`,
+`SAPUILandscapeGlobal.xml`, and legacy `saplogon.ini`):
+
+```bash
+powershell -ExecutionPolicy Bypass -File "<SKILL_DIR>\sap_login_select.ps1" -Action landscape-entries -WorkTemp "{WORK_TEMP}"
+```
+
+Parse the **last** stdout line:
+
+| Signal | Action |
+|---|---|
+| `LANDSCAPE: []` | No entries found. Skip to the manual flow below. |
+| `LANDSCAPE: [<json>]` | Parse the array. Each element has `name`, `kind` (`direct`/`load_balanced`), `server`, `system_number`, `message_server`, `logon_group`, `system_id`, `description`, `source`. Present a picker via `AskUserQuestion` whose options are each entry (label = `<name> — <kind> — <endpoint summary>`) plus one extra "Manual entry…" option. **One question, multi-select=false.** |
+
+On entry-pick: **use the SAP Logon Pad method** — set `THE_LOGON_DESC` to
+the picked `name`, and use the picked `system_id` / `system_name` for the
+profile's `system_name` field (so the new reuse-loop identity check from
+Phase 4.4 works). Leave server / system_number / msrv / grp / sid token
+fields empty in Step 3 — SAP GUI resolves them from the pad entry. Then
+ask only for client / user / password / language. The user types four
+fields instead of ten.
+
+On "Manual entry": fall through to the manual prompt below.
+
+**Step 2b-manual — Type endpoint values directly.**
 
 Ask the user via `AskUserQuestion` for whichever endpoint set they want to
 configure:

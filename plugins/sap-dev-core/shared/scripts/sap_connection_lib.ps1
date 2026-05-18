@@ -639,6 +639,166 @@ function Get-SapLogonPadEntryServer {
     return $null
 }
 
+function Get-SapLogonLandscapeEntries {
+    <#
+    .SYNOPSIS
+        Enumerate ALL SAP Logon Pad entries (direct + load-balanced) from
+        SAPUILandscape.xml / SAPUILandscapeGlobal.xml / saplogon.ini.
+    .DESCRIPTION
+        Returns a flat array of [pscustomobject] entries — each holds enough
+        to pre-fill a new connection profile in /sap-login's ADD_NEEDED flow.
+        Per-user XML wins over global XML wins over legacy INI; duplicate
+        entry names (case-insensitive) are kept only on first hit.
+    .OUTPUTS
+        Array of objects with fields:
+          name             - entry display name (the SAP Logon Pad label)
+          kind             - 'direct' | 'load_balanced'
+          server           - app server host (direct)
+          system_number    - 2-digit (derived from port for direct)
+          message_server   - msg server host (load_balanced)
+          logon_group      - logon group (load_balanced)
+          system_id        - SID / R3NAME (both kinds)
+          system_name      - same as system_id (compatibility shim)
+          description      - free-text description from XML (may be empty)
+          source           - 'user_xml' | 'global_xml' | 'ini'
+        Returns @() when no source files exist or no entries match.
+    #>
+    $entries = New-Object System.Collections.Generic.List[Object]
+    $seenNames = New-Object 'System.Collections.Generic.HashSet[string]' -ArgumentList ([System.StringComparer]::OrdinalIgnoreCase)
+
+    $xmlSources = @(
+        @{ Path = (Join-Path $env:APPDATA     'SAP\Common\SAPUILandscape.xml');       Tag = 'user_xml' },
+        @{ Path = (Join-Path $env:PROGRAMDATA 'SAP\Common\SAPUILandscapeGlobal.xml'); Tag = 'global_xml' }
+    )
+    foreach ($src in $xmlSources) {
+        if (-not (Test-Path $src.Path)) { continue }
+        try { [xml]$doc = Get-Content -Path $src.Path -Raw -ErrorAction Stop } catch { continue }
+
+        # Pre-index Messageservers by uuid so load-balanced Service nodes (which
+        # reference message servers via a `msid` attribute, not inline) can be
+        # resolved without a second XPath per Service.
+        $msMap = @{}
+        foreach ($ms in $doc.SelectNodes('//Messageserver')) {
+            $msid = "$($ms.uuid)"
+            if (-not $msid) { $msid = "$($ms.id)" }
+            if ($msid) {
+                $msMap[$msid] = @{
+                    Host = "$($ms.host)"
+                    Port = "$($ms.port)"
+                    Name = "$($ms.name)"
+                }
+            }
+        }
+
+        foreach ($n in $doc.SelectNodes('//Service')) {
+            $name = "$($n.name)"
+            if ([string]::IsNullOrWhiteSpace($name)) { continue }
+            if ($seenNames.Contains($name)) { continue }
+
+            $srv  = "$($n.server)"
+            $msid = "$($n.msid)"
+            $grp  = "$($n.group)"
+            $sid  = "$($n.systemid)"
+            $desc = "$($n.description)"
+
+            $kind = ''; $hostName = ''; $sysnr = ''; $msHost = ''
+            if ($srv) {
+                $kind = 'direct'
+                $hostName = $srv
+                if ($srv -match '^(.+?):(\d+)$') {
+                    $hostName = $matches[1]
+                    $portInt = [int]$matches[2]
+                    if ($portInt -ge 3200 -and $portInt -le 3298) {
+                        $sysnr = '{0:D2}' -f ($portInt - 3200)
+                    }
+                }
+            } elseif ($msid -and $msMap.ContainsKey($msid)) {
+                $kind = 'load_balanced'
+                $msHost = $msMap[$msid].Host
+            } else {
+                # Not recognisable as either direct or load-balanced; skip
+                # silently — the entry list isn't supposed to be exhaustive,
+                # just useful.
+                continue
+            }
+
+            [void]$entries.Add([pscustomobject]@{
+                name           = $name
+                kind           = $kind
+                server         = $hostName
+                system_number  = $sysnr
+                message_server = $msHost
+                logon_group    = $grp
+                system_id      = $sid
+                system_name    = $sid
+                description    = $desc
+                source         = $src.Tag
+            })
+            [void]$seenNames.Add($name)
+        }
+    }
+
+    # Legacy saplogon.ini (SAP GUI < 7.40). Sections look like:
+    #   [Entry Name]
+    #   Server=host port
+    #   SID=S4D
+    # or load-balanced:
+    #   [Entry Name]
+    #   MSSRV=msrv-host
+    #   Group=DEFAULT
+    #   SID=S4D
+    $ini = Join-Path $env:APPDATA 'SAP\Common\saplogon.ini'
+    if (Test-Path $ini) {
+        $section = ''
+        $cur = @{}
+        $flush = {
+            param($SectionName, $Cur)
+            if (-not $SectionName) { return }
+            if ($seenNames.Contains($SectionName)) { return }
+            $kindL = ''; $hostL = ''; $sysnrL = ''; $msrvL = ''; $grpL = ''; $sidL = "$($Cur.SID)"
+            $srvL = "$($Cur.Server)"
+            if ($srvL -match '^(\S+)(?:\s+(\d+))?') {
+                $kindL = 'direct'
+                $hostL = $matches[1]
+                if ($matches[2]) { $sysnrL = '{0:D2}' -f [int]$matches[2] }
+            } elseif ("$($Cur.MSSRV)") {
+                $kindL = 'load_balanced'
+                $msrvL = "$($Cur.MSSRV)"
+                $grpL  = "$($Cur.Group)"
+            }
+            if ($kindL) {
+                [void]$entries.Add([pscustomobject]@{
+                    name           = $SectionName
+                    kind           = $kindL
+                    server         = $hostL
+                    system_number  = $sysnrL
+                    message_server = $msrvL
+                    logon_group    = $grpL
+                    system_id      = $sidL
+                    system_name    = $sidL
+                    description    = ''
+                    source         = 'ini'
+                })
+                [void]$seenNames.Add($SectionName)
+            }
+        }
+        foreach ($l in (Get-Content $ini)) {
+            if ($l -match '^\[(.+?)\]\s*$') {
+                & $flush $section $cur
+                $section = $matches[1]
+                $cur = @{}
+                continue
+            }
+            if ($l -match '^\s*([A-Za-z_]+)\s*=\s*(.+?)\s*$') {
+                $cur[$matches[1]] = $matches[2]
+            }
+        }
+        & $flush $section $cur
+    }
+
+    return $entries.ToArray()
+}
+
 function Resolve-SapApplicationServer {
     <#
     .SYNOPSIS

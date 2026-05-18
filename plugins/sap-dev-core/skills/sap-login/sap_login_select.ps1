@@ -69,7 +69,7 @@
 
 [CmdletBinding()]
 param(
-    [ValidateSet('init','decide','list','set-default','switch','delete','finalize','check')]
+    [ValidateSet('init','decide','list','set-default','switch','delete','finalize','check','landscape-entries')]
     [string]$Action = 'decide',
 
     [string]$WorkTemp = '',
@@ -842,16 +842,45 @@ try {
 }
 
 # =============================================================================
+# Action: landscape-entries  (Phase 4.4)
+#
+# Enumerate SAP Logon Pad entries so the ADD_NEEDED flow can show a picker
+# instead of asking the user to retype endpoint values. Emits one structured
+# line:
+#   LANDSCAPE: <json-array>
+# Each element: { name, kind, server, system_number, message_server,
+# logon_group, system_id, system_name, description, source }.
+# Read-only — never touches connections.json.
+# =============================================================================
+function Invoke-LandscapeEntries {
+    $list = @(Get-SapLogonLandscapeEntries)
+    if (-not $list -or $list.Count -eq 0) {
+        Write-Host "LANDSCAPE: []"
+        return
+    }
+    # Order: user_xml first (highest signal), then global_xml, then ini.
+    # Within a source, keep XML enumeration order (matches what SAP Logon shows).
+    $sortKey = @{ 'user_xml' = 0; 'global_xml' = 1; 'ini' = 2 }
+    $ordered = $list | Sort-Object { $sortKey["$($_.source)"] }
+    $json = $ordered | ConvertTo-Json -Depth 4 -Compress
+    # A single-element ConvertTo-Json emits a JSON object, not an array. Force
+    # array shape for the SKILL.md JSON parser.
+    if ($ordered.Count -eq 1) { $json = '[' + $json + ']' }
+    Write-Host ("LANDSCAPE: " + $json)
+}
+
+# =============================================================================
 # Dispatch
 # =============================================================================
 switch ($Action) {
-    'init'         { Invoke-Init }
-    'decide'       { Invoke-Decide }
-    'list'         { Invoke-List }
-    'set-default'  { Invoke-SetDefault }
-    'switch'       { Invoke-Switch }
-    'delete'       { Invoke-Delete }
-    'finalize'     { Invoke-Finalize }
-    'check'        { Invoke-Check }
+    'init'              { Invoke-Init }
+    'decide'            { Invoke-Decide }
+    'list'              { Invoke-List }
+    'set-default'       { Invoke-SetDefault }
+    'switch'            { Invoke-Switch }
+    'delete'            { Invoke-Delete }
+    'finalize'          { Invoke-Finalize }
+    'check'             { Invoke-Check }
+    'landscape-entries' { Invoke-LandscapeEntries }
 }
 exit 0
