@@ -30,6 +30,12 @@ temp/
 # PowerPoint / Excel lock files
 ~$*
 
+# Claude Code plugin-load lock. Appears when the plugin's cache dir at
+# ~/.claude/plugins/cache/<marketplace>/<plugin>/<version> is a directory
+# junction pointing at this source tree (dev workflow). Contents are
+# {pid, procStart}; auto-cleans on session exit, GC'd on next load.
+.in_use/
+
 # Skill runtime artefacts (per-run state, generated runners, work-folder snapshots)
 *.upload.txt
 # SAP NCo 3.1 dev trace — should land in {work_dir}\logs (sap_rfc_lib.ps1
