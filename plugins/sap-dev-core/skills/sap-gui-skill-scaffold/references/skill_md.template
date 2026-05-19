@@ -129,6 +129,12 @@ reference end-state in its final `step_NN_after.txt`.
 
 ---
 
+{{KNOWN_ISSUES_SECTION}}
+
+{{FAILURE_MODES_SECTION}}
+
+{{RECOVERY_STRATEGIES_SECTION}}
+
 ## Final — Log end and report
 
 ```bash

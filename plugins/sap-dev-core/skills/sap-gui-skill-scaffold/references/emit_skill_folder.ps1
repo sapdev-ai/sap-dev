@@ -245,10 +245,97 @@ function Get-WorklistMatchValue {
 }
 
 # ------------------------------------------------------------------------------
-# Emit one VBS per mode.
+# Pick the canonical probe per mode (Bug #3 fix).
+#
+# When N probes share the same mode label (e.g. all 12 SE11-domain probes
+# end up as `create-domain`), the old behaviour was "last probe written
+# wins" — Set-Content on the same VBS path silently overwrote earlier
+# iterations. That made the canonical body whichever probe happened to
+# sort last (dict-order, not semantically). Result: probe_12 (INT4, no
+# DECIMALS field) won over probe_5 (DEC, has DECIMALS), and the DECIMALS
+# parameter ended up declared in SKILL.md but unreferenced in the body.
+#
+# Score each probe by **how many of its action targets are SHARED with
+# at least one other probe in the same mode-group**. Targets unique to
+# one probe (typical of the warmup-scenario pattern: probe_1 may do
+# /nSE01 + /nSE21 prerequisite setup that no other probe in the group
+# does) are EXCLUDED from the score. So the winner is the probe that
+# best represents the SHARED flow of the mode — not the one with the
+# longest action list. For SE11-domain the warmup (probe_1) has many
+# unique SE01/SE21 targets and zero shared-unique targets above the
+# baseline; DEC/CURR/QUAN each have the shared baseline PLUS the
+# shared-extra DECIMALS target → they win.
+#
+# Tie-break: lowest action_count (least quirky / fewest popup-recovery
+# detours like the TIMS double-Enter).
+# ------------------------------------------------------------------------------
+function Get-SharedTargetSet {
+    param($Probes)
+    # Count how many probes touch each distinct target. Any target seen
+    # in >=2 probes is "shared"; targets unique to one probe are not.
+    $counts = @{}
+    foreach ($p in $Probes) {
+        $seenInThisProbe = @{}
+        foreach ($a in $p.actions) {
+            $t = "$($a.target)"
+            if ([string]::IsNullOrWhiteSpace($t)) { $t = "<verb=$($a.verb)>" }
+            if (-not $seenInThisProbe.ContainsKey($t)) {
+                $seenInThisProbe[$t] = $true
+                if ($counts.ContainsKey($t)) { $counts[$t] += 1 } else { $counts[$t] = 1 }
+            }
+        }
+    }
+    $shared = New-Object 'System.Collections.Generic.HashSet[string]'
+    foreach ($k in $counts.Keys) {
+        if ($counts[$k] -ge 2) { [void]$shared.Add($k) }
+    }
+    return $shared
+}
+
+function Get-ProbeSharedCoverageScore {
+    param($Probe, $SharedTargets)
+    $hits = @{}
+    foreach ($a in $Probe.actions) {
+        $t = "$($a.target)"
+        if ([string]::IsNullOrWhiteSpace($t)) { $t = "<verb=$($a.verb)>" }
+        if ($SharedTargets.Contains($t) -and -not $hits.ContainsKey($t)) {
+            $hits[$t] = $true
+        }
+    }
+    return $hits.Count
+}
+
+$canonicalProbeIds = New-Object 'System.Collections.Generic.HashSet[string]'
+foreach ($mode in $modes) {
+    $candidates = @($report.probes | Where-Object { $_.mode -eq $mode })
+    if ($candidates.Count -eq 1) {
+        [void]$canonicalProbeIds.Add("$($candidates[0].id)")
+        continue
+    }
+    $sharedTargets = Get-SharedTargetSet -Probes $candidates
+    $scored = $candidates | ForEach-Object {
+        [pscustomobject]@{
+            id           = $_.id
+            shared_cov   = (Get-ProbeSharedCoverageScore -Probe $_ -SharedTargets $sharedTargets)
+            action_count = [int]$_.action_count
+        }
+    } | Sort-Object @{Expression='shared_cov';Descending=$true},
+                    @{Expression='action_count';Descending=$false}
+    $best = $scored | Select-Object -First 1
+    [void]$canonicalProbeIds.Add("$($best.id)")
+    Write-Host ("INFO: mode='{0}' canonical probe={1} (shared_coverage={2}/{3} action_count={4}; other candidates: {5})" -f `
+        $mode, $best.id, $best.shared_cov, $sharedTargets.Count, $best.action_count,
+        (($scored | Select-Object -Skip 1 | ForEach-Object { "$($_.id)(sc=$($_.shared_cov),ac=$($_.action_count))" }) -join ', '))
+}
+
+# ------------------------------------------------------------------------------
+# Emit one VBS per mode (only the canonical probe per mode emits its body;
+# non-canonical probes are still listed in _source_probes/INDEX.txt for
+# full provenance, just not selected as the body source).
 # ------------------------------------------------------------------------------
 $probeProvenance = @()
 foreach ($p in $report.probes) {
+    if (-not $canonicalProbeIds.Contains("$($p.id)")) { continue }
     $mode = $p.mode
     $params = Get-ModeParameters -mode $mode -touchpoints $report.touchpoints
     $worklistMatch = Get-WorklistMatchValue -probeActions $p.actions
@@ -267,7 +354,10 @@ foreach ($p in $report.probes) {
         $a = $probeActionList[$ai]
         $nextA = $null
         if ($ai + 1 -lt $probeActionList.Count) { $nextA = $probeActionList[$ai + 1] }
-        $nextTargetsPopup = $nextA -and ("$($nextA.target)" -like 'wnd[1]/*')
+        # CAREFUL: PowerShell -like treats `[1]` as a character class, so
+        # `'wnd[1]/foo' -like 'wnd[1]/*'` is FALSE (matches "wnd1/..." literally).
+        # Use StartsWith for a plain substring test. Bug fixed 2026-05-17.
+        $nextTargetsPopup = $nextA -and "$($nextA.target)".StartsWith('wnd[1]/')
         $vbsActions.Add("' --- step $('{0:D2}' -f $a.step) | $($a.verb) | $($a.note)")
 
         # Find this action's touchpoint to know if its value is a parameter.
@@ -335,32 +425,66 @@ foreach ($p in $report.probes) {
         $vbsActions.Add('WScript.Sleep 800')
 
         # If ANY probe observed a popup at this step, emit a branch.
-        #   - If THIS probe's next action targets wnd[1]/*, the popup is the
-        #     canonical popup-fill flow recorded by the probe; emit nothing
-        #     and let the next step's findById run naturally. (The previous
-        #     emit version blindly dismissed the popup with btn[0] BEFORE
-        #     the next step ran, which broke the chain — see Bug 13.)
-        #   - Otherwise dispatch to the popup-signature catalog (SAPLSTRD/100,
-        #     /300, ...) for a smart fill+save when we can; fall back to
-        #     generic dismiss when the popup signature is not in the catalog.
-        $popupHere = @($report.popups_observed | Where-Object { $_.step -eq $a.step })
-        if ($popupHere.Count -gt 0 -and -not $nextTargetsPopup) {
-            $popupModes = ($popupHere | ForEach-Object { $_.mode } | Sort-Object -Unique) -join ', '
-            $popupProg  = "$($popupHere[0].after.program)"
-            $popupScrn  = "$($popupHere[0].after.screen)"
+        #
+        # Suppression rule (Bug #4 fix): suppress the auto-dismiss branch ONLY
+        # when THIS PROBE itself saw the popup AND its next action targets
+        # wnd[1]/* (canonical popup-fill recorded by the probe — next step's
+        # findById handles it naturally). Suppressing based on next-action
+        # alone — without confirming this probe observed the popup — let
+        # cross-probe popup observations leak into the suppression decision,
+        # producing the "popup-reminder fires before recovery" symptom seen
+        # in the 2026-05-17 test run.
+        #
+        # The all-probes count is kept for the informational comment so the
+        # human reviewer sees how many probes hit the popup across the run.
+        $popupHereAll = @($report.popups_observed | Where-Object { $_.step -eq $a.step })
+        $thisProbeId = "$($p.id)"
+        $popupHereThisProbe = @($popupHereAll | Where-Object { "$($_.probe_id)" -eq $thisProbeId })
+        $thisProbeHandlesPopup = $nextTargetsPopup -and ($popupHereThisProbe.Count -gt 0)
+        if ($popupHereAll.Count -gt 0 -and -not $thisProbeHandlesPopup) {
+            $popupModes = ($popupHereAll | ForEach-Object { $_.mode } | Sort-Object -Unique) -join ', '
+            $popupProg  = "$($popupHereAll[0].after.program)"
+            $popupScrn  = "$($popupHereAll[0].after.screen)"
             $handler = Get-PopupHandler -Program $popupProg -Screen $popupScrn -Touchpoints $report.touchpoints
             $vbsActions.Add('')
-            $vbsActions.Add("' POPUP REMINDER: $($popupHere.Count) probe(s) observed a wnd[1] popup at this step (modes: $popupModes; program=$popupProg screen=$popupScrn).")
+            $vbsActions.Add("' POPUP REMINDER: $($popupHereAll.Count) probe(s) observed a wnd[1] popup at this step (modes: $popupModes; program=$popupProg screen=$popupScrn).")
             $vbsActions.Add("' TODO (human review): confirm dismiss / fill logic for this popup.")
             $vbsActions.Add('If IsPopupOpen(oSess) Then')
             foreach ($l in $handler) { $vbsActions.Add($l) }
             $vbsActions.Add('End If')
             $vbsActions.Add('')
-        } elseif ($popupHere.Count -gt 0) {
+        } elseif ($popupHereAll.Count -gt 0) {
             $vbsActions.Add('')
-            $vbsActions.Add("' Popup observed by $($popupHere.Count) probe(s) at this step, but next action targets wnd[1] -- next step handles it; no auto-dismiss emitted.")
+            $vbsActions.Add("' Popup observed by $($popupHereAll.Count) probe(s) at this step; this probe's next action targets wnd[1] -- next step handles it; no auto-dismiss emitted.")
             $vbsActions.Add('')
         }
+    }
+
+    # Orphan-param TODO sentinel (Bug #3 followup).
+    #
+    # The canonical probe may not touch every parameter declared for this
+    # mode (e.g. INT4 doesn't set DD01D-DECIMALS, but CURR/QUAN/DEC do; if
+    # the richest-probe scoring above happened to pick INT4 anyway, the
+    # DECIMALS line would be missing from the body). Walk the declared
+    # params and verify each `%%TOKEN%%` appears at least once in the
+    # emitted action lines. For each orphan, append a TODO at the end of
+    # the body so the human author sees what's missing.
+    $bodyText = $vbsActions -join "`n"
+    $orphanParams = @($params | Where-Object { $bodyText -notmatch [regex]::Escape("%%$($_.token)%%") })
+    if ($orphanParams.Count -gt 0) {
+        $vbsActions.Add('')
+        $vbsActions.Add("' ============================================================================")
+        $vbsActions.Add("' TODO (human review): orphan parameters declared but not referenced in body")
+        $vbsActions.Add("' ----------------------------------------------------------------------------")
+        $vbsActions.Add("' The following parameters were detected across the probe set but the")
+        $vbsActions.Add("' canonical probe chosen for this mode did NOT include a SET_TEXT for them.")
+        $vbsActions.Add("' Insert SET_TEXT lines at appropriate screen positions before the Save")
+        $vbsActions.Add("' action. The target paths are listed below for copy-paste convenience.")
+        foreach ($op in $orphanParams) {
+            $vbsActions.Add("'   - %%$($op.token)%%   target: $($op.target)   ($($op.verb))")
+        }
+        $vbsActions.Add("' ============================================================================")
+        $vbsActions.Add('')
     }
 
     # Param doc block for the VBS header
@@ -439,6 +563,159 @@ $descLine = if ($Tcd) {
 $provenanceBullets = $probeProvenance -join "`r`n"
 
 # ------------------------------------------------------------------------------
+# Generate the three failure-mode documentation sections (B4 in the plan).
+# All three are derived from the merge report; each section emits empty
+# when its underlying observation array is empty so legacy scaffolds and
+# pure-success runs don't get noise sections.
+# ------------------------------------------------------------------------------
+
+# Suggested-recovery hint for a popup (program, screen). Mirrors
+# Get-PopupHandler's catalog so the SKILL.md mentions the same recovery
+# strategy the VBS injects.
+function Get-PopupRecoveryHint {
+    param([string]$Program, [string]$Screen)
+    $sig = "$Program/$Screen"
+    switch ($sig) {
+        'SAPLSTRD/100'         { return 'Fill `wnd[1]/usr/ctxtKO007-L_DEVCLASS` (package) then Save (Enter).' }
+        'SAPLSTRD/300'         { return 'Fill `wnd[1]/usr/ctxtKO008-TRKORR` (transport) then Continue (Enter).' }
+        'SAPLSEWORKINGAREA/205'{ return 'Inactive Objects worklist — Deselect All (`tbar[0]/btn[21]`), then SELECT_ROW the target by OBJ_NAME, then Continue.' }
+        default                { return 'Default: dismiss with Continue (`wnd[1]/tbar[0]/btn[0]`). Review whether this is the right recovery for `' + $sig + '`.' }
+    }
+}
+
+# ---- Known Issues Observed During Scaffolding -------------------------------
+$knownIssuesLines = New-Object System.Collections.Generic.List[string]
+$hasStatusBar = ($report.status_bar_observations -and $report.status_bar_observations.Count -gt 0)
+$hasPopupAgg  = ($report.popups_observed       -and $report.popups_observed.Count       -gt 0)
+$hasNoops     = ($report.noop_events           -and $report.noop_events.Count           -gt 0)
+
+if ($hasStatusBar -or $hasPopupAgg -or $hasNoops) {
+    $successCount = @($report.probes | Where-Object { (-not $_.scenario_type) -or $_.scenario_type -eq 'success' }).Count
+    $failureCount = $report.probe_count - $successCount
+    $knownIssuesLines.Add("## Known Issues Observed During Scaffolding")
+    $knownIssuesLines.Add("")
+    $knownIssuesLines.Add("Generated from $($report.probe_count) probes ($successCount success, $failureCount failure-expected). Review the popup branches in the per-mode VBS and adjust recovery actions if any of these are runtime concerns.")
+    $knownIssuesLines.Add("")
+
+    if ($hasStatusBar) {
+        $knownIssuesLines.Add("### Status-bar warnings/errors")
+        $knownIssuesLines.Add("")
+        $knownIssuesLines.Add("| Step | MessageType | Text observed | Frequency |")
+        $knownIssuesLines.Add("|---|---|---|---|")
+        $sortedSbar = @($report.status_bar_observations) |
+            Sort-Object @{Expression={[int]$_.step}}, message_type
+        foreach ($e in $sortedSbar) {
+            $texts = @($e.sbar_text_seen) -join ' / '
+            if ($texts.Length -gt 120) { $texts = $texts.Substring(0,117) + '...' }
+            $knownIssuesLines.Add("| $($e.step) | $($e.message_type) | $texts | $($e.frequency_text) |")
+        }
+        $knownIssuesLines.Add("")
+    }
+
+    if ($hasPopupAgg) {
+        # Aggregate popups by (step, program, screen) so the table is concise.
+        $popKeyMap = @{}
+        foreach ($p in $report.popups_observed) {
+            $prog = "$($p.after.program)"; $scrn = "$($p.after.screen)"
+            $k = "$($p.step)|$prog|$scrn"
+            if (-not $popKeyMap.ContainsKey($k)) {
+                $popKeyMap[$k] = @{ step=$p.step; program=$prog; screen=$scrn; probes=New-Object 'System.Collections.Generic.HashSet[string]' }
+            }
+            [void]$popKeyMap[$k].probes.Add($p.probe_id)
+        }
+        $knownIssuesLines.Add("### Popups encountered")
+        $knownIssuesLines.Add("")
+        $knownIssuesLines.Add("| Step | Program/Screen | Frequency | Suggested recovery |")
+        $knownIssuesLines.Add("|---|---|---|---|")
+        # Sort by step number (numeric), then alphabetically by program/screen.
+        $sortedKeys = $popKeyMap.Keys |
+            Sort-Object @{Expression={[int]$popKeyMap[$_].step}},
+                        @{Expression={"$($popKeyMap[$_].program)/$($popKeyMap[$_].screen)"}}
+        foreach ($k in $sortedKeys) {
+            $e = $popKeyMap[$k]
+            $hint = Get-PopupRecoveryHint -Program $e.program -Screen $e.screen
+            $knownIssuesLines.Add("| $($e.step) | $($e.program)/$($e.screen) | $($e.probes.Count)/$($report.probe_count) probes | $hint |")
+        }
+        $knownIssuesLines.Add("")
+    }
+
+    if ($hasNoops) {
+        $knownIssuesLines.Add("### NOOPs and retries")
+        $knownIssuesLines.Add("")
+        $knownIssuesLines.Add("| Step | Probe | Verb | Target / Screen |")
+        $knownIssuesLines.Add("|---|---|---|---|")
+        $sortedNoops = @($report.noop_events) | Sort-Object @{Expression={[int]$_.step}}, probe_id
+        foreach ($n in $sortedNoops) {
+            $knownIssuesLines.Add("| $($n.step) | $($n.probe_id) | $($n.verb) | $($n.target) (screen $($n.screen)) |")
+        }
+        $knownIssuesLines.Add("")
+        $knownIssuesLines.Add("A NOOP usually means a field-validation error left the screen unchanged. Read the corresponding ``step_NN_after.txt`` in ``_source_probes/`` for the sbar text.")
+        $knownIssuesLines.Add("")
+    }
+}
+$knownIssuesSection = $knownIssuesLines -join "`r`n"
+
+# ---- Failure Modes Handled --------------------------------------------------
+$failureModesLines = New-Object System.Collections.Generic.List[string]
+$failureProbes = @($report.probes | Where-Object { $_.scenario_type -and $_.scenario_type -ne 'success' })
+if ($failureProbes.Count -gt 0) {
+    $failureModesLines.Add("## Failure Modes Handled")
+    $failureModesLines.Add("")
+    $failureModesLines.Add("This skill was scaffolded with $($failureProbes.Count) expected-failure probe(s). Each mode below documents the observed end state of the corresponding failure scenario. Callers of this skill should expect these end states when invoking the matching mode; the VBS replays the probe's path through them, but the **recovery / error-classification logic in the caller is the human author's responsibility** — adjust the per-mode VBS popup branches and add ``If StatusBarType=`"E`"`` checks as needed.")
+    $failureModesLines.Add("")
+    foreach ($fp in $failureProbes) {
+        $failureModesLines.Add("### Mode: ``$($fp.mode)`` (scenario_type=``$($fp.scenario_type)``)")
+        $failureModesLines.Add("")
+        $failureModesLines.Add("- Source probe: ``$($fp.folder)``")
+        if ($fp.observed) {
+            $obs = $fp.observed
+            if ($obs.final_message_type)  { $failureModesLines.Add("- Final status-bar MessageType: ``$($obs.final_message_type)``") }
+            if ($obs.final_sbar_text)     { $failureModesLines.Add("- Final status-bar text: ""$($obs.final_sbar_text)""") }
+            if ($obs.popups_seen -and @($obs.popups_seen).Count -gt 0) {
+                $popList = @($obs.popups_seen) | ForEach-Object { "$($_.program)/$($_.screen)" }
+                $failureModesLines.Add("- Popups seen: $($popList -join ', ')")
+            }
+            if ($null -ne $obs.completed_steps) { $failureModesLines.Add("- Completed steps before end: $($obs.completed_steps)") }
+            if ($null -ne $obs.aborted)         { $failureModesLines.Add("- Probe aborted: $($obs.aborted)") }
+        } else {
+            $failureModesLines.Add("- (no observed{} block — probe may pre-date end-of-run summary capture)")
+        }
+        $failureModesLines.Add("- Caller advice: after running this mode, check the status-bar via the shared `StatusBarType` helper. ``E`` / ``A`` = the expected failure mode reproduced. ``S`` = unexpected — the probe's failure path may not have triggered this run.")
+        $failureModesLines.Add("")
+    }
+}
+$failureModesSection = $failureModesLines -join "`r`n"
+
+# ---- Recovery Strategies ----------------------------------------------------
+$recoveryLines = New-Object System.Collections.Generic.List[string]
+if ($hasPopupAgg) {
+    # Distinct (program, screen) pairs across the full run, regardless of step.
+    $popSigMap = @{}
+    foreach ($p in $report.popups_observed) {
+        $sig = "$($p.after.program)/$($p.after.screen)"
+        if (-not $popSigMap.ContainsKey($sig)) {
+            $popSigMap[$sig] = @{ program=$p.after.program; screen=$p.after.screen; count=0 }
+        }
+        $popSigMap[$sig].count += 1
+    }
+    if ($popSigMap.Count -gt 0) {
+        $recoveryLines.Add("## Recovery Strategies")
+        $recoveryLines.Add("")
+        $recoveryLines.Add("Distinct popups observed across the probe set, with the recovery the scaffolder's popup catalog suggests. The per-mode VBS already injects these as `If IsPopupOpen Then ... End If` blocks (with TODO markers); use this table to cross-check that the injected handler matches your operational intent.")
+        $recoveryLines.Add("")
+        $recoveryLines.Add("| Popup signature | Observations | Suggested recovery |")
+        $recoveryLines.Add("|---|---|---|")
+        foreach ($k in ($popSigMap.Keys | Sort-Object)) {
+            $e = $popSigMap[$k]
+            $hint = Get-PopupRecoveryHint -Program $e.program -Screen $e.screen
+            $recoveryLines.Add("| ``$($e.program)/$($e.screen)`` | $($e.count) | $hint |")
+        }
+        $recoveryLines.Add("")
+    }
+}
+$recoverySection = $recoveryLines -join "`r`n"
+
+# ------------------------------------------------------------------------------
 # Emit SKILL.md
 # ------------------------------------------------------------------------------
 $skillMd = Get-Content $tplSkill -Raw
@@ -453,6 +730,9 @@ $skillMd = $skillMd.Replace('{{PROBE_PROVENANCE_BULLETS}}',  $provenanceBullets)
 $skillMd = $skillMd.Replace('{{MODE_DISPATCH_TABLE}}',       $dispatchTable)
 $skillMd = $skillMd.Replace('{{PARAM_HINT}}',                $paramHint)
 $skillMd = $skillMd.Replace('{{PARAM_MAP_HINT}}',            $paramMapHint)
+$skillMd = $skillMd.Replace('{{KNOWN_ISSUES_SECTION}}',      $knownIssuesSection)
+$skillMd = $skillMd.Replace('{{FAILURE_MODES_SECTION}}',     $failureModesSection)
+$skillMd = $skillMd.Replace('{{RECOVERY_STRATEGIES_SECTION}}', $recoverySection)
 
 Set-Content -Path (Join-Path $OutputDir 'SKILL.md') -Value $skillMd -Encoding UTF8
 

@@ -60,6 +60,42 @@ function Get-ProbeHeader {
     return $h
 }
 
+# Read step_NN_post.json sidecar emitted by sap_gui_probe_action.vbs.
+# Returns $null when the sidecar is absent (older probe runs, or the
+# action wrote a sidecar suffix variant). Best-effort: malformed JSON
+# silently returns $null so a single bad sidecar can't break the merge.
+function Get-StepPostSidecar {
+    param([string] $ProbeFolder, [int] $StepNum)
+    $p = Join-Path $ProbeFolder ("step_{0:D2}_post.json" -f $StepNum)
+    if (-not (Test-Path $p)) { return $null }
+    try {
+        return Get-Content -Path $p -Raw -Encoding UTF8 | ConvertFrom-Json
+    } catch {
+        return $null
+    }
+}
+
+# Read the probe's run state file for scenario_type + observed summary.
+# Returns @{ scenario_type=..., observed=@{...} } or empty hashtable on
+# absence/error (probes from before A1+A4 don't have this field).
+function Get-ProbeRunState {
+    param([string] $ProbeFolder)
+    $p = Join-Path $ProbeFolder 'sap_gui_probe_run.json'
+    if (-not (Test-Path $p)) { return @{} }
+    try {
+        $obj = Get-Content -Path $p -Raw -Encoding UTF8 | ConvertFrom-Json
+        $result = @{}
+        if ($obj.scenario_type) { $result.scenario_type = "$($obj.scenario_type)" }
+        if ($obj.observed)      { $result.observed      = $obj.observed }
+        if ($obj.params -and $obj.params.scenario_type) {
+            $result.scenario_type = "$($obj.params.scenario_type)"
+        }
+        return $result
+    } catch {
+        return @{}
+    }
+}
+
 $probes = @()
 for ($i = 0; $i -lt $ProbeFolders.Count; $i++) {
     $folder = $ProbeFolders[$i]
@@ -88,6 +124,7 @@ for ($i = 0; $i -lt $ProbeFolders.Count; $i++) {
         $beforeDump = Join-Path $folder ("step_{0:D2}_before.txt" -f $stepNum)
         $afterDump  = Join-Path $folder ("step_{0:D2}_after.txt"  -f $stepNum)
 
+        $post = Get-StepPostSidecar -ProbeFolder $folder -StepNum $stepNum
         $actions += [pscustomobject]@{
             step   = $stepNum
             verb   = "$($obj.verb)".ToUpperInvariant()
@@ -98,13 +135,20 @@ for ($i = 0; $i -lt $ProbeFolders.Count; $i++) {
             note   = "$($obj.note)"
             before = Get-ProbeHeader $beforeDump
             after  = Get-ProbeHeader $afterDump
+            # Post-action sidecar (A2 in /sap-gui-probe). Null for probes
+            # that predate sidecar capture; downstream observation builders
+            # must tolerate that.
+            post   = $post
         }
     }
+    $runState = Get-ProbeRunState -ProbeFolder $folder
     $probes += [pscustomobject]@{
-        id      = "probe_$($i + 1)"
-        folder  = $folder
-        mode    = $mode
-        actions = $actions
+        id            = "probe_$($i + 1)"
+        folder        = $folder
+        mode          = $mode
+        scenario_type = if ($runState.scenario_type) { "$($runState.scenario_type)" } else { 'success' }
+        observed      = $runState.observed
+        actions       = $actions
     }
 }
 
@@ -237,17 +281,105 @@ foreach ($k in ($touchpoints.Keys | Sort-Object)) {
 # Popup observations. A popup is "observed" at step N of probe P if its
 # step_N_after.txt header reports popup=true. We record the probe + step so
 # the emit phase can insert popup branches at the matching point in mode VBS.
+#
+# The per-step sidecar (when present) provides program+screen identity of
+# the popup; we copy those into the popup record so the emit step can
+# pick a smart handler (SAPLSTRD/100 → fill L_DEVCLASS; SAPLSTRD/300 →
+# fill TRKORR; etc.) instead of the generic default-Continue.
 # ------------------------------------------------------------------------------
 $popups = @()
 foreach ($p in $probes) {
     foreach ($a in $p.actions) {
-        if ($a.after.popup) {
-            $popups += [pscustomobject]@{
-                probe_id = $p.id
-                mode     = $p.mode
-                step     = $a.step
-                after    = $a.after
+        $hasPopup = $false
+        if ($a.after.popup) { $hasPopup = $true }
+        if ($a.post -and $a.post.popup_present) { $hasPopup = $true }
+        if (-not $hasPopup) { continue }
+        # Prefer post-sidecar program/screen (captured immediately after
+        # the action); fall back to after-dump header otherwise.
+        $afterCopy = $a.after
+        if ($a.post -and $a.post.popup_present) {
+            $afterCopy = @{
+                program     = "$($a.post.popup_program)"
+                screen      = "$($a.post.popup_screen)"
+                transaction = "$($a.after.transaction)"
+                title       = "$($a.after.title)"
+                popup       = $true
             }
+        }
+        $popups += [pscustomobject]@{
+            probe_id = $p.id
+            mode     = $p.mode
+            step     = $a.step
+            after    = $afterCopy
+        }
+    }
+}
+
+# ------------------------------------------------------------------------------
+# Status-bar observations. Walk every step's sidecar; collect non-success
+# MessageType events (E / W / A; ignore S and I and empty). Group by
+# (step, message_type) so the emit step can produce a per-step table.
+# ------------------------------------------------------------------------------
+$statusBarEvents = @{}
+foreach ($p in $probes) {
+    foreach ($a in $p.actions) {
+        if (-not $a.post) { continue }
+        $mt = "$($a.post.message_type)"
+        if ([string]::IsNullOrWhiteSpace($mt) -or $mt -eq 'S' -or $mt -eq 'I') { continue }
+        $key = "{0}|{1}" -f $a.step, $mt
+        if (-not $statusBarEvents.ContainsKey($key)) {
+            $statusBarEvents[$key] = @{
+                step          = $a.step
+                message_type  = $mt
+                texts         = New-Object 'System.Collections.Generic.HashSet[string]'
+                probe_ids     = New-Object 'System.Collections.Generic.HashSet[string]'
+            }
+        }
+        $txt = "$($a.post.sbar_text)"
+        if (-not [string]::IsNullOrWhiteSpace($txt)) { [void]$statusBarEvents[$key].texts.Add($txt) }
+        [void]$statusBarEvents[$key].probe_ids.Add($p.id)
+    }
+}
+$statusBarObservations = @()
+foreach ($k in ($statusBarEvents.Keys | Sort-Object)) {
+    $e = $statusBarEvents[$k]
+    $statusBarObservations += [pscustomobject]@{
+        step             = $e.step
+        message_type     = $e.message_type
+        sbar_text_seen   = @($e.texts)
+        probe_ids        = @($e.probe_ids)
+        frequency_text   = "$($e.probe_ids.Count)/$($probes.Count) probes"
+    }
+}
+
+# ------------------------------------------------------------------------------
+# NOOP events. A step is a candidate NOOP when before/after dumps have
+# identical (program, transaction, screen) AND the sidecar reports no
+# popup AND message_type is empty / 'S' (no error). The probe's own loop
+# may have asked the user to continue past these in real time; here we
+# record them for documentation.
+# ------------------------------------------------------------------------------
+$noopEvents = @()
+foreach ($p in $probes) {
+    foreach ($a in $p.actions) {
+        if (-not $a.before -or -not $a.after) { continue }
+        $bp = "$($a.before.program)"
+        $bs = "$($a.before.screen)"
+        $ap = "$($a.after.program)"
+        $as = "$($a.after.screen)"
+        if ($bp -eq '' -or $ap -eq '') { continue }
+        if ($bp -ne $ap -or $bs -ne $as) { continue }
+        if ($a.after.popup) { continue }
+        $mt = ''
+        if ($a.post) { $mt = "$($a.post.message_type)" }
+        if ($mt -ne '' -and $mt -ne 'S') { continue }   # error elsewhere; not a quiet NOOP
+        $noopEvents += [pscustomobject]@{
+            probe_id    = $p.id
+            mode        = $p.mode
+            step        = $a.step
+            verb        = $a.verb
+            target      = $a.target
+            screen      = "$bp/$bs"
         }
     }
 }
@@ -260,11 +392,13 @@ $report = [pscustomobject]@{
     probe_count      = $probes.Count
     probes           = $probes | ForEach-Object {
         [pscustomobject]@{
-            id           = $_.id
-            folder       = $_.folder
-            mode         = $_.mode
-            action_count = $_.actions.Count
-            actions      = $_.actions | ForEach-Object {
+            id            = $_.id
+            folder        = $_.folder
+            mode          = $_.mode
+            scenario_type = $_.scenario_type
+            observed      = $_.observed
+            action_count  = $_.actions.Count
+            actions       = $_.actions | ForEach-Object {
                 [pscustomobject]@{
                     step   = $_.step
                     verb   = $_.verb
@@ -277,8 +411,10 @@ $report = [pscustomobject]@{
             }
         }
     }
-    touchpoints      = $tpReport
-    popups_observed  = $popups
+    touchpoints              = $tpReport
+    popups_observed          = $popups
+    status_bar_observations  = $statusBarObservations
+    noop_events              = $noopEvents
 }
 
 $outDir = Split-Path -Parent $OutputFile
@@ -290,6 +426,8 @@ $report | ConvertTo-Json -Depth 12 | Set-Content -Path $OutputFile -Encoding UTF
 $paramCount        = @($tpReport | Where-Object class -eq 'parameter').Count
 $modeSpecificCount = @($tpReport | Where-Object class -eq 'mode-specific').Count
 $constantCount     = @($tpReport | Where-Object class -eq 'constant').Count
-Write-Output "MERGE OK: probes=$($probes.Count) touchpoints=$($tpReport.Count) parameters=$paramCount constants=$constantCount modeSpecific=$modeSpecificCount popups=$($popups.Count)"
+$failureProbeCount = @($probes | Where-Object { $_.scenario_type -and $_.scenario_type -ne 'success' }).Count
+Write-Output ("MERGE OK: probes={0} ({1} failure-expected) touchpoints={2} parameters={3} constants={4} modeSpecific={5} popups={6} sbar_events={7} noops={8}" -f `
+    $probes.Count, $failureProbeCount, $tpReport.Count, $paramCount, $constantCount, $modeSpecificCount, $popups.Count, $statusBarObservations.Count, $noopEvents.Count)
 Write-Output "REPORT: $OutputFile"
 exit 0

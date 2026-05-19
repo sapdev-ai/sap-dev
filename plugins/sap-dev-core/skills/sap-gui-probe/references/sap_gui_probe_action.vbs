@@ -288,11 +288,134 @@ Select Case sVerb
 End Select
 On Error GoTo 0
 
+If nSleep > 0 Then WScript.Sleep nSleep
+
+' --- Post-action sidecar capture --------------------------------------------
+' Write step_NN_post.json next to the source step_NN_action.json with
+' observed state immediately AFTER the action ran:
+'   * wnd[0]/sbar MessageType + text (for SET_TEXT validation errors,
+'     SAVE success/fail, ACTIVATE results)
+'   * wnd[1] popup presence + program/screen identity (for popup
+'     transitions and unexpected modals)
+'   * wnd[0] screen identity (Program / Transaction / Screen number)
+'
+' Captured on BOTH success (sErr="") and failure (sErr<>"") paths so the
+' downstream merge step sees state at the failure point too. All reads
+' guarded with On Error Resume Next — a missing property must never
+' break the probe loop.
+'
+' File naming: input path is "<dir>\step_NN_action.json"; output is
+' "<dir>\step_NN_post.json" (same dir, suffix swap). Skips silently if
+' the input name doesn't follow the convention (e.g. cleanup actions
+' like step_00_reset.json or step_99_action.json — we still try the
+' suffix swap so even those get a sidecar).
+Dim sPostMsgType, sPostSbarText, sPostScreenProg, sPostScreenTxn, sPostScreenNum
+Dim bPostPopup, sPostPopupProg, sPostPopupScrn
+sPostMsgType    = ""
+sPostSbarText   = ""
+sPostScreenProg = ""
+sPostScreenTxn  = ""
+sPostScreenNum  = ""
+bPostPopup      = False
+sPostPopupProg  = ""
+sPostPopupScrn  = ""
+
+On Error Resume Next
+Dim oSbar : Set oSbar = oSess.findById("wnd[0]/sbar", False)
+If Not (oSbar Is Nothing) Then
+    sPostMsgType  = oSbar.MessageType
+    sPostSbarText = oSbar.Text
+End If
+sPostScreenProg = oSess.Info.Program
+sPostScreenTxn  = oSess.Info.Transaction
+Dim nScreen
+nScreen = oSess.Info.ScreenNumber
+If Err.Number = 0 Then sPostScreenNum = CStr(nScreen)
+Err.Clear
+Dim oPopup : Set oPopup = oSess.findById("wnd[1]", False)
+If Not (oPopup Is Nothing) Then
+    bPostPopup = True
+    ' Read program/screen from the SESSION info (we don't have a
+    ' separate Info object per window; the session reports the
+    ' currently-active modal frame).
+    sPostPopupProg = oSess.Info.Program
+    sPostPopupScrn = sPostScreenNum
+End If
+On Error GoTo 0
+
+' Helper: JSON-escape a string (replace \ " newlines / tabs).
+Function JsonEsc(s)
+    Dim t : t = "" & s
+    t = Replace(t, "\", "\\")
+    t = Replace(t, """", "\""")
+    t = Replace(t, vbCrLf, "\n")
+    t = Replace(t, vbCr,   "\n")
+    t = Replace(t, vbLf,   "\n")
+    t = Replace(t, vbTab,  "\t")
+    JsonEsc = t
+End Function
+
+Function JsonBool(b)
+    If b Then JsonBool = "true" Else JsonBool = "false"
+End Function
+
+' Extract step number from input filename if it matches step_NN_action.json
+' or step_NN_*.json. Used purely for the "step" field of the sidecar.
+Dim sStepNum : sStepNum = ""
+Dim sBase : sBase = oFso.GetFileName(sActionPath)
+Dim reStep : Set reStep = New RegExp
+reStep.Pattern = "^step_(\d+)_"
+reStep.IgnoreCase = True
+Dim mStep : Set mStep = reStep.Execute(sBase)
+If mStep.Count > 0 Then sStepNum = mStep(0).SubMatches(0)
+
+' Compose JSON record. `step` is the numeric step extracted from the
+' filename (e.g. step_07_action.json -> 7) or `null` when the filename
+' doesn't match the convention.
+Dim sStepField : sStepField = "null"
+If sStepNum <> "" Then sStepField = sStepNum
+Dim sErrField : sErrField = ""
+If sErr <> "" Then sErrField = """action_error"":""" & JsonEsc(sErr) & ""","
+Dim sJsonOut
+sJsonOut = "{""step"":" & sStepField & "," & _
+    sErrField & _
+    """message_type"":""" & JsonEsc(sPostMsgType) & """," & _
+    """sbar_text"":""" & JsonEsc(sPostSbarText) & """," & _
+    """popup_present"":" & JsonBool(bPostPopup) & "," & _
+    """popup_program"":""" & JsonEsc(sPostPopupProg) & """," & _
+    """popup_screen"":""" & JsonEsc(sPostPopupScrn) & """," & _
+    """screen_program"":""" & JsonEsc(sPostScreenProg) & """," & _
+    """screen_transaction"":""" & JsonEsc(sPostScreenTxn) & """," & _
+    """screen_id"":""" & JsonEsc(sPostScreenNum) & """}"
+
+' Build the sidecar path. Replace "_action.json" / any "_*.json" suffix with
+' "_post.json"; if the suffix doesn't match the convention, fall back to
+' appending ".post.json" so we still emit something.
+Dim sPostPath
+Dim rePostName : Set rePostName = New RegExp
+rePostName.Pattern = "_action\.json$"
+rePostName.IgnoreCase = True
+If rePostName.Test(sActionPath) Then
+    sPostPath = rePostName.Replace(sActionPath, "_post.json")
+Else
+    sPostPath = sActionPath & ".post.json"
+End If
+
+On Error Resume Next
+Dim oStream : Set oStream = CreateObject("ADODB.Stream")
+oStream.Type    = 2
+oStream.Charset = "utf-8"
+oStream.Open
+oStream.WriteText sJsonOut
+oStream.SaveToFile sPostPath, 2   ' 2 = adSaveCreateOverWrite
+oStream.Close
+On Error GoTo 0
+' (sidecar write failure is non-fatal; the action result is what matters)
+
+' --- Final exit -------------------------------------------------------------
 If sErr <> "" Then
     WScript.Echo "ERROR: " & sErr
     WScript.Quit 3
 End If
-
-If nSleep > 0 Then WScript.Sleep nSleep
 WScript.Echo "DONE"
 WScript.Quit 0

@@ -175,7 +175,7 @@ right system. Without this guard, the per-connection mapping is moot.
 `$ARGUMENTS` shape:
 
 ```
-<new-skill-name> --scenario "<s1>" --scenario "<s2>" ...
+<new-skill-name> --scenario "<s1>" [--scenario-type <t1>] --scenario "<s2>" [--scenario-type <t2>] ...
 <new-skill-name> --manifest <path-to-manifest.txt>
 <new-skill-name> --scenario "<s1>" ... --force-overwrite
 ```
@@ -186,7 +186,19 @@ Parse rules:
    (CLAUDE.md naming convention). Reject otherwise.
 2. **`--manifest <path>`**: UTF-8 file, one scenario per line, blank lines and
    `#`-prefixed lines ignored. Read and treat as if each was `--scenario "..."`.
+   Manifest line may carry a leading `<type>:` prefix (e.g.
+   `not_found: MM03 display ZNONEXISTENT`) — the prefix sets that scenario's
+   `scenario_type` and is stripped from the scenario text. Recognised
+   prefixes: `success:`, `not_found:`, `auth_error:`, `popup_recovery:`,
+   `validation_error:`. Lines without a prefix default to `success`.
 3. **`--scenario "..."`** (repeatable): collect into an ordered list.
+3b. **`--scenario-type <type>`** (optional, repeatable, paired): immediately
+    after a `--scenario` arg, set that scenario's type. One of
+    `success` (default) / `not_found` / `auth_error` / `popup_recovery` /
+    `validation_error`. Pairs by ORDER — the Nth `--scenario-type` flag
+    binds to the Nth `--scenario`. Unbalanced pairing (more `--scenario-type`
+    than `--scenario`, or interleaved out of order) → refuse with a clear
+    message before running any probe.
 4. **`--force-overwrite`** (optional): if a skill folder with this name
    already exists inside any installed plugin's `skills/` dir, snapshot the
    old folder under `{SCAFFOLD_FOLDER}\.scaffold-overlay\` before generating.
@@ -257,11 +269,21 @@ After parsing:
   the merge produced ZERO parameters (then the collapse was a real
   accident, not intentional value-variance).
 
+  **Pass 3 — scenario_type suffix**: when this scenario's
+  `scenario_type` ≠ `success`, append `-<scenario_type>` (with
+  underscores preserved) to the mode label. So a `display-material`
+  scenario with `--scenario-type not_found` becomes mode
+  `display-material-not_found`. This keeps happy-path and
+  failure-mode probes in SEPARATE generated VBS files — callers of
+  the generated skill pick which behaviour they want via the mode
+  argument, and the SKILL.md dispatch table documents each.
+
 Echo the parsed plan to the user before Step 2:
 
 > Scaffolding **<new-skill-name>** from N scenario(s):
-> 1. mode=`display` -- "<scenario 1 verbatim>"
-> 2. mode=`delete` -- "<scenario 2 verbatim>"
+> 1. mode=`display` (type=success) -- "<scenario 1 verbatim>"
+> 2. mode=`display-not_found` (type=not_found) -- "<scenario 2 verbatim>"
+> 3. mode=`delete` (type=success) -- "<scenario 3 verbatim>"
 > ...
 > Output folder: `<SCAFFOLD_FOLDER>`
 
@@ -276,13 +298,17 @@ The execution path branches on `--parallel`:
 Use the Skill tool to invoke `/sap-gui-probe` with each scenario, in order.
 Always append `--auto` to the scenario string -- the scaffolder is
 non-interactive; the human authorised this whole run by typing the scenarios.
+**If the scenario's `scenario_type` ≠ `success`, also append
+`--scenario-type <type>`** so the probe relaxes its abort conditions
+appropriately (see /sap-gui-probe SKILL.md Step 2.8 tolerance table).
+
 After each probe, capture the resulting run folder path from the probe's
 final report and append to your in-memory probe list:
 
 ```
 [
-  { "scenario": "<s1>", "mode": "display",  "folder": "{work_dir}\\probes\\SE37_20260512-200000" },
-  { "scenario": "<s2>", "mode": "delete",   "folder": "{work_dir}\\probes\\SE37_20260512-200430" },
+  { "scenario": "<s1>", "scenario_type": "success",   "mode": "display",            "folder": "{work_dir}\\probes\\SE37_20260512-200000" },
+  { "scenario": "<s2>", "scenario_type": "not_found", "mode": "display-not_found",  "folder": "{work_dir}\\probes\\SE37_20260512-200430" },
   ...
 ]
 ```
@@ -418,21 +444,31 @@ descriptors = [
 ```
 
 **2.2 — Spawn N general-purpose Task sub-agents** in a single tool message.
-Each sub-agent's prompt:
+Each sub-agent's prompt. **Append `--scenario-type <type>` when the
+scenario's type ≠ `success`** so the probe relaxes its abort conditions
+(see /sap-gui-probe SKILL.md Step 2.8 tolerance table). The literal flag
+text appears in the probe args verbatim.
 
 > You are probe runner #i of N for a sap-gui-skill-scaffold run. Your
 > assigned SAP GUI session is `<session>`. The orchestrator has already
 > acquired this session through the broker; you do NOT need to touch the
 > broker. Invoke `/sap-gui-probe` with this argument string verbatim:
 >
->     <scenario> --auto --session <session>
+>     <scenario> --auto --session <session> [--scenario-type <type>]
+>
+> (Drop the bracketed `--scenario-type` flag entirely when type is
+> `success`.)
 >
 > When the skill finishes successfully, return ONLY the absolute path of
 > the resulting run folder as the LAST line of your message (no extra
 > prose after it).
 >
 > If the probe fails or is abandoned, return the literal token
-> `FAILED:<short reason>` as the last line.
+> `FAILED:<short reason>` as the last line. **Failure-expected scenarios
+> (`scenario_type ≠ success`) report SUCCESS when they reach a recognizable
+> end state matching their expected failure mode** — the probe's tolerance
+> table decides what counts as recognition. Return FAILED only when the
+> probe truly couldn't complete (max_steps hit, action.vbs error, etc.).
 >
 > Do not touch any other SAP GUI session. Do not invoke unrelated skills.
 

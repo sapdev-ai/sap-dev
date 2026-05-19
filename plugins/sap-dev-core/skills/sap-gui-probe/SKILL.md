@@ -140,10 +140,25 @@ The argument is opaque free text. You (Claude) parse it. Extract:
     quotes) appears, capture `<path>` and strip the flag. Overrides the
     Step 0.6 resolution and pins the probe to that session for every dump
     and action call.
+2c. **Scenario-type flag** -- if `--scenario-type <type>` appears, capture
+    `<type>` and strip the flag. Allowed values:
+
+    | scenario_type | Meaning |
+    |---|---|
+    | `success` (default) | Happy-path probe. Abort on any status-bar `E`/`A` or unexpected popup. |
+    | `not_found` | Object-doesn't-exist probe. Don't halt on entry-screen error messages — they ARE the expected end state. |
+    | `auth_error` | Missing-permission probe. Don't halt on authorization-error messages. |
+    | `popup_recovery` | Probe of a known recoverable popup chain (e.g. SAPLSETX master-language popup). Don't halt on unexpected `wnd[1]`; record signature and continue. |
+    | `validation_error` | Field-validation-failure probe. Don't halt on sbar `E` immediately following a SET_TEXT (field rejected value). |
+
+    Stored in `sap_gui_probe_run.json` (state file) and exported as env var
+    `SAPDEV_PROBE_SCENARIO_TYPE` so any sub-process (action.vbs, dump.ps1)
+    can read it. Logged via `sap_log_helper -ParamsJson '{... "scenario_type":"<type>" ...}'`.
+
 3. **Flow summary** -- a one-line plan in your own words. Echo it to the
    user before Step 2 so they can correct course early. Example:
 
-   > Probing **SE37** in **confirm** mode. Plan: open SE37 → enter FM
+   > Probing **SE37** in **confirm** mode (scenario-type=`success`). Plan: open SE37 → enter FM
    > `RFC_READ_TABLE` → press Display → land on the FM display tabs → F3
    > back twice to SAP Easy Access. ~6 steps expected.
 
@@ -152,6 +167,10 @@ The argument is opaque free text. You (Claude) parse it. Extract:
 If `MODE = auto`, emit a single line warning before Step 2:
 
 > ⚠️  AUTO MODE — write actions (Save/Activate/Delete) will run without confirmation.
+
+If `scenario_type` ≠ `success`, emit a single line warning before Step 2:
+
+> ℹ️  FAILURE-EXPECTED MODE (`<type>`) — the probe tolerates errors that would normally abort the run. End state will be classified in Final.
 
 ---
 
@@ -319,16 +338,38 @@ Use `-Mode tree` (no window scope) here -- a popup may have appeared.
 ### 2.8 — Compare and decide whether to continue
 
 Read the new dump's header. Compare `Program / Transaction / Screen` between
-before and after. Cases:
+before and after. Also read `step_NN_post.json` (sidecar emitted by
+action.vbs) for the post-action sbar MessageType + popup signature.
+
+Cases:
 
 - **Different screen** -- progress; increment `N`, loop.
-- **Same screen, no popup** -- NOOP. The action didn't change anything.
+- **Same screen, no popup, sbar clean** -- NOOP. The action didn't change anything.
   Surface the situation to the user (action verb, target, current screen)
   with AskUserQuestion: `Continue with a different action`, `Abort`.
 - **Same main screen but a popup appeared** -- handle the popup in the next
   iteration; increment `N`, loop. (You'll see `POPUP WINDOW wnd[1]` in the
   dump.)
+- **Status-bar MessageType `E` / `A`** -- branch on `scenario_type` (see
+  tolerance table below). Default behaviour: abort with a diagnostic.
 - **Scenario complete** -- exit the loop and go to Step 3.
+
+#### Tolerance table (per scenario_type)
+
+When the post-action sbar reports MessageType `E`/`A` OR an unexpected
+`wnd[1]` popup appears, the abort decision branches on `scenario_type`:
+
+| scenario_type | sbar `E`/`A` handling | Unexpected `wnd[1]` handling |
+|---|---|---|
+| `success` | **Abort** with diagnostic. Today's behaviour. | **Abort.** |
+| `not_found` | If step ≥ 2: **record and end the run as observed** (the error IS the expected end state). If step 1 (still at entry screen): treat as anomaly, abort. | Record signature, attempt default-Continue dismiss, continue. |
+| `auth_error` | **Record and end.** Authorization errors are the expected end state regardless of step. | Record signature, dismiss, continue. |
+| `popup_recovery` | Don't auto-abort on `W`; surface `E`/`A` as anomaly. | **Record signature and dismiss with Continue** (`wnd[1]/tbar[0]/btn[0]`). Continue the loop — the probe was authored to drive AT LEAST one popup recovery. |
+| `validation_error` | If the previous step was a `SET_TEXT` and current sbar is `E`/`W`: **record the field-validation message and end** (the rejection IS the expected end state). Otherwise abort. | Record, dismiss, continue. |
+
+"Record" means: write the current dump header + sbar text + popup
+signature into the probe's run state file (Step 4 picks them up). Don't
+prompt the user — the probe runs unattended in failure-expected mode.
 
 If `N > 30`, abort: tell the user the hard cap was hit and the scenario may
 need to be split; log end Status=ABANDONED.
@@ -348,7 +389,9 @@ with a step-delimited comment + the `note`, and ends with `WScript.Echo
 
 ---
 
-## Step 4 — Cleanup
+## Step 4 — Cleanup + end-of-run summary
+
+### 4a — Cleanup
 
 Best-effort return to SAP Easy Access. Use SET_OKCD via the action dispatcher:
 
@@ -359,6 +402,46 @@ C:/Windows/SysWOW64/cscript.exe //NoLogo "<SKILL_DIR>\references\sap_gui_probe_a
 
 If a modal popup is open and `/n` doesn't work, surface that to the user
 and stop -- don't keep retrying.
+
+### 4b — Write end-of-run summary into run state
+
+Append an `observed{}` block to `{RUN_FOLDER}\sap_gui_probe_run.json`
+capturing what the probe SAW across the run. The scaffolder merge step
+(see `/sap-gui-skill-scaffold`) consumes this block to classify whether
+the run reproduced the scenario_type's expected failure mode.
+
+Walk every `step_NN_post.json` in `{RUN_FOLDER}` and aggregate:
+- `final_message_type` — MessageType of the LAST step's sidecar (the
+  state the user would see on the final screen).
+- `final_sbar_text` — text of the same.
+- `popups_seen[]` — distinct `(program, screen)` pairs across all
+  sidecars where `popup_present=true`.
+- `noops[]` — step indices where the before/after dumps had identical
+  Program/Transaction/Screen AND the sbar was empty/`S` (i.e. the
+  action was silently no-op'd).
+- `completed_steps` — count of step_NN_post.json sidecars present.
+- `aborted` — true when the probe exited the loop via abort path; false
+  on normal completion.
+- `scenario_type` — copied from Step 1.
+
+Shape:
+
+```json
+{ "scenario_type":"not_found",
+  "observed":{
+    "final_message_type":"E",
+    "final_sbar_text":"Material XYZ does not exist",
+    "popups_seen":[{"program":"SAPLSPO1","screen":"100"}],
+    "noops":[],
+    "completed_steps":3,
+    "aborted":false } }
+```
+
+Done with PowerShell merge into the existing run state file (the
+log_helper-managed JSON; use the same write pattern as `sap_log_lib.ps1`).
+
+The probe does NOT itself decide whether `observed` matches the
+declared `scenario_type` — that's the scaffolder merge step's job.
 
 ---
 
