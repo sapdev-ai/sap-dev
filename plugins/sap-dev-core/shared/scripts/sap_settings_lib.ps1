@@ -119,10 +119,42 @@ function Get-SapSettingValue {
 }
 
 function Set-SapUserSetting {
+    <#
+    .SYNOPSIS
+        Persist a userConfig value. Writes go to settings.local.json (the
+        gitignored override file); settings.json itself is never mutated.
+    .DESCRIPTION
+        Phase 4.4: per-connection routing. When $Key is in the
+        SapPerConnectionDevKeys list (TR / package / function group /
+        mode / TR-workflow keys), the write is delegated to
+        Set-SapCurrentDevDefault — which targets the pinned connection's
+        dev_defaults block in connections.json, falling back to
+        settings.local.json only when no profile is pinned. This stops
+        cross-system contamination (e.g. saving an S4D-prefixed TR value
+        while pinned to S4H would otherwise leak across systems).
+    .PARAMETER SkipPerConnRouting
+        Internal use. Set-SapCurrentDevDefault's no-pin fallback calls back
+        into Set-SapUserSetting with this switch on so the per-conn check
+        is bypassed and we don't recurse forever.
+    #>
     param(
         [Parameter(Mandatory)] [string] $Key,
-        [Parameter(Mandatory)] [AllowEmptyString()] [string] $Value
+        [Parameter(Mandatory)] [AllowEmptyString()] [string] $Value,
+        [switch] $SkipPerConnRouting
     )
+
+    # Phase 4.4 write-path routing.
+    if (-not $SkipPerConnRouting -and (Get-Command Get-SapPerConnectionDevKeys -ErrorAction SilentlyContinue)) {
+        $perConnKeys = Get-SapPerConnectionDevKeys
+        if ($perConnKeys -contains $Key) {
+            if (Get-Command Set-SapCurrentDevDefault -ErrorAction SilentlyContinue) {
+                Set-SapCurrentDevDefault -Key $Key -Value $Value
+                Reset-SapSettingsCache
+                return
+            }
+        }
+    }
+
     Resolve-SapSettingsPaths
 
     if (Test-Path $script:SapSettingsLocalPath) {

@@ -1414,9 +1414,13 @@ function Clear-SapBannerCache {
 # =============================================================================
 
 $script:SapPerConnectionDevKeys = @(
-    'sap_dev_transport_request',
-    'sap_dev_package',
-    'sap_dev_function_group'
+    'sap_dev_transport_request',     # Phase 4.3
+    'sap_dev_package',               # Phase 4.3
+    'sap_dev_function_group',        # Phase 4.3
+    'sap_dev_mode',                  # Phase 4.4 — GUI/RFC/BDC; system capability varies
+    'way_to_get_transport_request',  # Phase 4.4 — TR-workflow policy varies per project
+    'rule_of_tr_description',        # Phase 4.4 — naming-convention varies per customer
+    'tr_description_template'        # Phase 4.4 — coupled to rule_of_tr_description
 )
 
 function Get-SapPerConnectionDevKeys {
@@ -1475,7 +1479,10 @@ function Set-SapCurrentDevDefault {
     try { $profile = Get-SapCurrentConnectionProfile } catch {}
     if (-not $profile -or -not (_NotEmpty "$($profile.id)")) {
         if (Get-Command Set-SapUserSetting -ErrorAction SilentlyContinue) {
-            Set-SapUserSetting -Key $Key -Value $Value
+            # -SkipPerConnRouting breaks the cycle: Set-SapUserSetting routes
+            # per-conn keys through us; we route no-pin writes back through it.
+            # Without the switch, the two would call each other forever.
+            Set-SapUserSetting -Key $Key -Value $Value -SkipPerConnRouting
             return
         }
         throw "Set-SapCurrentDevDefault: no pinned connection and Set-SapUserSetting unavailable."
@@ -1487,7 +1494,10 @@ function Set-SapCurrentDevDefault {
     }
     if (-not $target) {
         if (Get-Command Set-SapUserSetting -ErrorAction SilentlyContinue) {
-            Set-SapUserSetting -Key $Key -Value $Value
+            # -SkipPerConnRouting breaks the cycle: Set-SapUserSetting routes
+            # per-conn keys through us; we route no-pin writes back through it.
+            # Without the switch, the two would call each other forever.
+            Set-SapUserSetting -Key $Key -Value $Value -SkipPerConnRouting
             return
         }
         throw "Set-SapCurrentDevDefault: pinned connection id=$($profile.id) not found in store."
