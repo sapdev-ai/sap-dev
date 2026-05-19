@@ -5,8 +5,10 @@ description: |
   Reads SHDB recording files from the bdc/ folder, connects via
   SAP NCo 3.1, calls ABAP4_CALL_TRANSACTION, and outputs
   full BDCMSGCOLL messages to a result file.
-  Connection parameters from settings.json (sap-dev-core plugin).
-  Prerequisites: SAP NCo 3.1 (32-bit, .NET 4.0) installed in GAC.
+  Connection parameters resolved from the AI session's pinned profile in
+  connections.json (saved via /sap-login).
+  Prerequisites: SAP profile saved via /sap-login (RFC password required).
+  SAP NCo 3.1 (32-bit, .NET 4.0) in GAC.
 argument-hint: "<transaction-code> [<display-mode>] [<update-mode>]"
 ---
 

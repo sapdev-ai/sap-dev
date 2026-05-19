@@ -13,9 +13,9 @@ description: |
   passed, so a follow-up /sap-dev-init re-creates the same names.
   The canonical "blow away and rebuild" sequence is:
   /sap-dev-clean ; /sap-dev-init.
-  Prerequisites: SAP NCo 3.1 in GAC + active SAP GUI session
-  (clean delegates to GUI-driven delete skills like /sap-se37,
-  /sap-se11, /sap-se38, /sap-function-group, /sap-se21).
+  Prerequisites: Active SAP GUI session (use /sap-login first); SAP NCo 3.1
+  (32-bit, .NET 4.0) in GAC. Clean delegates to GUI-driven delete skills
+  like /sap-se37, /sap-se11, /sap-se38, /sap-function-group, /sap-se21.
 argument-hint: "[--settings] [--force] [--dry-run]"
 ---
 
@@ -43,6 +43,8 @@ Task: $ARGUMENTS
 ## Step 0 — Resolve Work Directory and Settings
 
 **Settings reads/writes follow `shared/rules/settings_lookup.md`** — merge `settings.local.json` over `settings.json` per-key on the `.value` field; writes always go to `settings.local.json`. Read `work_dir`, `sap_dev_transport_request`, `sap_dev_package`, `sap_dev_function_group`, plus the standard SAP RFC connection keys.
+
+**Per-connection keys (Phase 4.4)**: `sap_dev_transport_request`, `sap_dev_package`, `sap_dev_function_group` are SAP-system-specific. Per `settings_lookup.md` § Per-connection exception, read them from `connections.json[pinned-profile].dev_defaults` FIRST (resolve the pin via `{work_dir}\runtime\session_registry.json` `ai_sessions[<id>]`); only fall back to the two-file merge when `dev_defaults` is empty. Critical for `clean` since deleting an artefact named in one system's dev_defaults must NOT touch a different system's artefacts.
 
 Set `{WORK_TEMP}` = `{work_dir}\temp`. Ensure it exists.
 

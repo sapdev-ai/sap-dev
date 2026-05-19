@@ -119,6 +119,42 @@ Surface the login error verbatim and ask the user to resolve it before
 re-invoking. **Do not** attempt to continue with offline-only steps; the
 pipeline requires DDIC checks, deploy, and ATC, all of which need SAP.
 
+### 0.3a Verify the pinned system matches the user's intent
+
+After `/sap-login` succeeds, confirm which SAP system Claude is now
+pinned to and that it matches the user's stated target. Skipping this is
+how an "deploy on S4H" request can silently land artefacts on S4D.
+
+```bash
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\..\skills\sap-login\sap_login_select.ps1" -Action list
+```
+
+Parse the `LIST: <json>` line. The pinned profile is at
+`<json>.active_connections[0]` when the AI session has a pin (otherwise
+look at `<json>.profiles[*].is_default_target=true`). Extract its
+`system_name`, `client`, `user`.
+
+Cross-check against the user's invocation:
+
+- **User named a target SID** in the task (e.g. "deploy on S4H",
+  "build this on the QA system S4Q") and the pin's `system_name` does
+  NOT match → STOP. Print the active pin (e.g. `[active: S4D/100/MICHAELLI]`)
+  and ask: "You asked to work on `<requested SID>` but Claude is pinned
+  to `<actual SID>`. Switch to `<requested SID>` (`/sap-login --switch
+  <requested SID>`) or proceed on `<actual SID>`? (switch / proceed /
+  cancel)". On `switch`, run `/sap-login --switch <requested SID>` and
+  re-run this verify step. On `proceed`, log the override in the
+  transcript and continue.
+
+- **User did NOT name a target SID** → print one informational line so
+  the user sees which system this run is hitting:
+  `INFO: agent run targeting <SID>/<client>/<user>`. Proceed without
+  asking.
+
+- **No pin resolved** (Phase 4.4 auto-bootstrap fired, picker still
+  pending, etc.) → defer to the standard `/sap-login` PICK_NEEDED /
+  ADD_NEEDED flow. Don't proceed past this step until a pin exists.
+
 ### 0.4 Confirm `sap-dev-init` artefacts are present (RFC pre-flight)
 
 Several skills downstream (`/sap-rfc-wrapper-fm`, `/sap-update-addon`,

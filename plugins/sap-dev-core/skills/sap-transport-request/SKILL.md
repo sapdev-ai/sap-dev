@@ -9,7 +9,10 @@ description: |
   themselves. When a new TR is required, delegates creation to /sap-se01
   (GUI mode) or to its built-in RFC creator (CTS_API_CREATE_CHANGE_REQUEST).
   Honours rule_of_tr_description for the description text.
-  Prerequisites: SAP NCo 3.1 (32-bit, .NET 4.0) installed in GAC.
+  Prerequisites: SAP profile saved via /sap-login (RFC password required).
+  SAP NCo 3.1 (32-bit, .NET 4.0) in GAC for RFC paths; active SAP GUI session
+  (use /sap-login first) is additionally required when way_to_get_transport_request=CREATE_NEW
+  delegates creation to /sap-se01 (GUI).
 argument-hint: "[transport-request-number] [OBJECT_TYPE=<...>] [OBJECT_DESCRIPTION=<...>]"
 ---
 
@@ -36,6 +39,8 @@ Task: $ARGUMENTS
 ## Step 0 — Resolve Work Directory
 
 **Settings reads/writes follow `shared/rules/settings_lookup.md`** — merge `settings.local.json` over `settings.json` per-key on the `.value` field; writes always go to `settings.local.json`. Resolve sap-dev-core paths: 2 levels up from `<SKILL_DIR>` to the plugin root, then `settings.json` and (if present) `settings.local.json`. Read `work_dir`.
+
+**Per-connection keys (Phase 4.4)**: `way_to_get_transport_request` and `sap_dev_transport_request` are SAP-system-specific. Per `settings_lookup.md` § Per-connection exception, read them from `connections.json[pinned-profile].dev_defaults` FIRST (resolve the pin via `{work_dir}\runtime\session_registry.json` `ai_sessions[<id>]`); only fall back to the two-file merge when `dev_defaults` is empty. Skipping this step is what causes the silent cross-system contamination Phase 4.3 was meant to fix.
 
 | Setting | Default if blank |
 |---|---|

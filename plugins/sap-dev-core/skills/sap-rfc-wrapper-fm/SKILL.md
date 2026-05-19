@@ -5,7 +5,8 @@ description: |
   Reads the target FM's interface using RPY_FUNCTIONMODULE_READ_NEW, validates
   user-supplied parameter values, builds asXML payloads, invokes the wrapper FM
   via direct RFC, and returns the deserialized output parameters.
-  Prerequisites: SAP connection configured in sap-dev-core settings.
+  Prerequisites: SAP profile saved via /sap-login (RFC password required).
+  SAP NCo 3.1 (32-bit, .NET 4.0) in GAC.
   Z_GENERIC_RFC_WRAPPER_TBL must already exist in the SAP system (deploy via /sap-dev-init).
 argument-hint: "<function-module-name> [param=value ...]"
 ---

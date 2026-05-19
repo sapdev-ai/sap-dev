@@ -6,7 +6,9 @@ description: |
   generates a deployable ABAP function module that internally calls the class method,
   and deploys it via /sap-se37.
   The generated FM name follows the pattern Z_CLSWRP_<CLASS>_<METHOD> (truncated to 30 chars).
-  Prerequisites: SAP connection configured in sap-dev-core settings.
+  Prerequisites: SAP profile saved via /sap-login (RFC password required).
+  SAP NCo 3.1 (32-bit, .NET 4.0) in GAC. Active SAP GUI session (use
+  /sap-login first) for the /sap-se37 deploy sub-step.
 argument-hint: "<class-name> <method-name> [function-group] [package] [transport]"
 ---
 

@@ -7,7 +7,8 @@ description: |
   Mode-aware: respects `sap_dev_mode` (GUI / RFC / BDC) and selects the
   preferred skill variant for each step, falling back to the next mode in
   the chain when no implementation exists for the preferred mode.
-  Prerequisites: SAP GUI installed, SAP connection configured in sap-dev-core settings.
+  Prerequisites: Active SAP GUI session (use /sap-login first). SAP NCo 3.1
+  (32-bit, .NET 4.0) in GAC for RFC sub-steps.
 argument-hint: ""
 ---
 
@@ -33,6 +34,8 @@ Task: $ARGUMENTS
 ## Step 0 — Resolve Work Directory and Mode
 
 **Settings reads/writes follow `shared/rules/settings_lookup.md`** — merge `settings.local.json` over `settings.json` per-key on the `.value` field; writes always go to `settings.local.json`. Resolve sap-dev-core paths: 2 levels up from `<SKILL_DIR>` to the plugin root, then `settings.json` and (if present) `settings.local.json`. Read `work_dir`, `custom_url`, `sap_dev_mode`.
+
+**Per-connection keys (Phase 4.4)**: `sap_dev_mode` is SAP-system-specific (GUI/RFC/BDC capability varies per system). Per `settings_lookup.md` § Per-connection exception, read it from `connections.json[pinned-profile].dev_defaults` FIRST (resolve the pin via `{work_dir}\runtime\session_registry.json` `ai_sessions[<id>]`); only fall back to the two-file merge when `dev_defaults` is empty. Sub-steps that delegate to `/sap-transport-request`, `/sap-se21`, `/sap-function-group` inherit the same per-connection routing for TR/PKG/FG.
 
 | Setting | Default if blank |
 |---|---|
