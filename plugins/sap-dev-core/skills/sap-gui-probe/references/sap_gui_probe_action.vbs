@@ -372,8 +372,12 @@ If mStep.Count > 0 Then sStepNum = mStep(0).SubMatches(0)
 ' Compose JSON record. `step` is the numeric step extracted from the
 ' filename (e.g. step_07_action.json -> 7) or `null` when the filename
 ' doesn't match the convention.
+' CRITICAL: must strip leading zeros — emitting "08" or "09" as a raw JSON
+' number is treated by strict parsers (including PowerShell 5.1's
+' ConvertFrom-Json) as INVALID OCTAL ("Input string '08' is not a valid
+' number"). Round-trip through CInt to drop the leading zeros.
 Dim sStepField : sStepField = "null"
-If sStepNum <> "" Then sStepField = sStepNum
+If sStepNum <> "" Then sStepField = CStr(CInt(sStepNum))
 Dim sErrField : sErrField = ""
 If sErr <> "" Then sErrField = """action_error"":""" & JsonEsc(sErr) & ""","
 Dim sJsonOut

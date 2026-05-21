@@ -463,12 +463,20 @@ text appears in the probe args verbatim.
 > the resulting run folder as the LAST line of your message (no extra
 > prose after it).
 >
-> If the probe fails or is abandoned, return the literal token
-> `FAILED:<short reason>` as the last line. **Failure-expected scenarios
-> (`scenario_type ≠ success`) report SUCCESS when they reach a recognizable
-> end state matching their expected failure mode** — the probe's tolerance
-> table decides what counts as recognition. Return FAILED only when the
-> probe truly couldn't complete (max_steps hit, action.vbs error, etc.).
+> Return SUCCESS (= absolute run folder path on the LAST line) whenever
+> the probe COMPLETES through to cleanup, regardless of whether the
+> observed end state matches the `scenario_type` prediction. The
+> scaffolder's merge step classifies based on what the probe actually
+> observed — your job is to drive and observe, not to validate the
+> hypothesis. **If a `validation_error` scenario silently activates
+> (SAP didn't reject the input as you expected), that's STILL a SUCCESS
+> from the probe's perspective** — the observed end state goes into the
+> merge report and the scaffolder labels it accordingly.
+>
+> Return `FAILED:<short reason>` ONLY when the probe truly cannot complete:
+> action.vbs returns ERROR, max_steps cap (30) hit, session destroyed
+> (Shift+F3 / `oSession.Close`), or NOOP-loop detected with no recovery.
+> Misclassified scenario-type is NOT a failure.
 >
 > Do not touch any other SAP GUI session. Do not invoke unrelated skills.
 

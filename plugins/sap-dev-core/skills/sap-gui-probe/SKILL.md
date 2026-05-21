@@ -405,40 +405,47 @@ and stop -- don't keep retrying.
 
 ### 4b — Write end-of-run summary into run state
 
-Append an `observed{}` block to `{RUN_FOLDER}\sap_gui_probe_run.json`
-capturing what the probe SAW across the run. The scaffolder merge step
-(see `/sap-gui-skill-scaffold`) consumes this block to classify whether
-the run reproduced the scenario_type's expected failure mode.
+**MANDATORY.** Even on the success scenario_type, the scaffolder's merge
+step REQUIRES `sap_gui_probe_run.json` to contain `scenario_type` and
+`observed{}` — without it, the merge defaults `scenario_type='success'`
+and the per-mode failure-modes documentation is empty. Skipping this
+step silently breaks the failure-mode catalog.
 
-Walk every `step_NN_post.json` in `{RUN_FOLDER}` and aggregate:
-- `final_message_type` — MessageType of the LAST step's sidecar (the
-  state the user would see on the final screen).
-- `final_sbar_text` — text of the same.
-- `popups_seen[]` — distinct `(program, screen)` pairs across all
-  sidecars where `popup_present=true`.
-- `noops[]` — step indices where the before/after dumps had identical
-  Program/Transaction/Screen AND the sbar was empty/`S` (i.e. the
-  action was silently no-op'd).
-- `completed_steps` — count of step_NN_post.json sidecars present.
-- `aborted` — true when the probe exited the loop via abort path; false
-  on normal completion.
-- `scenario_type` — copied from Step 1.
+Invoke the shared aggregator (no inline PowerShell — easier to keep all
+probes consistent):
 
-Shape:
-
-```json
-{ "scenario_type":"not_found",
-  "observed":{
-    "final_message_type":"E",
-    "final_sbar_text":"Material XYZ does not exist",
-    "popups_seen":[{"program":"SAPLSPO1","screen":"100"}],
-    "noops":[],
-    "completed_steps":3,
-    "aborted":false } }
+```bash
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_probe_end_of_run.ps1" `
+    -RunFolder    "{RUN_FOLDER}" `
+    -ScenarioType "<scenario_type-from-Step-1>" `
+    -Aborted      $false
 ```
 
-Done with PowerShell merge into the existing run state file (the
-log_helper-managed JSON; use the same write pattern as `sap_log_lib.ps1`).
+(Pass `-Aborted $true` when the probe is exiting via abort/abandoned path.)
+
+The helper:
+- Walks every `step_NN_post.json` in the run folder (excluding cleanup
+  step_99).
+- Aggregates `final_message_type` + `final_sbar_text` from the LAST
+  sidecar, distinct `popups_seen[]` `(program, screen)` pairs, and
+  `completed_steps` count.
+- Merges into the existing run state file (or creates one). Idempotent
+  on re-run.
+- Always exits 0 — never blocks the probe's own exit path.
+
+Resulting state file shape:
+
+```json
+{ "skill": "sap-gui-probe",
+  "scenario_type": "not_found",
+  "observed": {
+    "final_message_type": "E",
+    "final_sbar_text": "Material XYZ does not exist",
+    "popups_seen": [{"program":"SAPLSPO1","screen":"100"}],
+    "noops": [],
+    "completed_steps": 3,
+    "aborted": false } }
+```
 
 The probe does NOT itself decide whether `observed` matches the
 declared `scenario_type` — that's the scaffolder merge step's job.
