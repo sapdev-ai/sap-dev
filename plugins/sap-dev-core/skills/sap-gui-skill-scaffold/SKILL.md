@@ -9,7 +9,7 @@ description: |
   values that stay constant bake in), popup-branch guards at every step where
   any probe observed a wnd[1] popup. Output is a ready-to-test draft.
   Prerequisites: active SAP GUI session (use /sap-login first).
-argument-hint: "<new-skill-name> --scenario \"...\" --scenario \"...\" [...]   or  <name> --manifest <path>"
+argument-hint: "<new-skill-name> --goal \"<one-line goal>\"   |   <name> --scenario \"...\" --scenario \"...\"   |   <name> --manifest <path>"
 ---
 
 # SAP GUI Skill Scaffold
@@ -32,6 +32,9 @@ Task: $ARGUMENTS
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/settings_lookup.md` | Two-file settings model — merge `settings.local.json` over `settings.json` per-key on `.value`; writes always go to `settings.local.json` |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/language_independence_rules.md` | GUI-scripting language independence — generated VBS templates MUST follow these rules (identify by component ID + DDIC field name, status-bar checks via `MessageType` codes, VKey instead of menu-text, no branching on `.Text`/`.Tooltip`/window titles) |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/abap_code_quality_rules.md` | ABAP code-quality rules — when scaffolding skills that emit or paste ABAP source (deploy / codegen / fix templates), the generated SKILL.md must reference this file and the templated VBS must not embed literal MESSAGE strings or other quality anti-patterns |
+| `<SKILL_DIR>/references/scenario_catalog.tsv` | Known-stuck-point catalog consulted by **Step 0.9** (`--goal` mode). Tab-separated; keyed by `txn` + `object_type`; each row maps a trap to a `scenario_type` + `applies` gate + `probe_hint`. Read by Claude (Read tool), not VBS. |
+| `<SKILL_DIR>/references/run_mode_test.ps1` | **Step 5.5** test-runner — substitutes a generated mode VBS's tokens, runs it via 32-bit cscript, captures end-state (MessageType / popup / screen) into `result.json`. |
+| `<SKILL_DIR>/references/verify_create_object.ps1` | **Step 5.5** create-mode verifier — routes by object type (DDIC → `sap_se11_post_activate_verify.ps1`; PROGRAM/FM/CLASS → RFC). Returns ACTIVE / INACTIVE / MISSING. Run under 32-bit PowerShell. |
 
 ---
 
@@ -170,7 +173,106 @@ right system. Without this guard, the per-connection mapping is moot.
 
 ---
 
+## Step 0.9 — Imagine scenarios (only when `--goal` is supplied)
+
+**When this runs:** only if `$ARGUMENTS` contains `--goal "<one-line goal>"`
+AND contains no `--scenario` / `--manifest`. If `--scenario`/`--manifest` are
+present, skip this step (the user enumerated scenarios explicitly). If BOTH
+`--goal` and `--scenario` appear, prefer the explicit `--scenario` list and note
+that `--goal` was ignored. This step builds the same ordered
+`{scenario_text, scenario_type}` list Step 1 would otherwise parse from flags,
+then hands off to Step 1.
+
+This step takes **no human checkpoint** before probing — by product decision the
+scaffolder may brainstorm and probe autonomously once `--goal` is given. You
+still ECHO the imagined plan (Step 1's echo block) so the user can interrupt,
+but you do not pause for confirmation. (The human gate is the *final acceptance
+test* the user runs after Step 5.5, not here.)
+
+**0.9.1 — Parse `--goal`.** Capture the quoted goal. Strip it from the working
+`$ARGUMENTS` so Step 1 doesn't reparse it. Keep `--tcd`, `--parallel`,
+`--parallel-cap`, `--force-overwrite`, `--no-test`, `--test-budget-min` — they
+still apply.
+
+**0.9.2 — Extract transaction + object type.**
+- *Transaction:* prefer an explicit `--tcd <TXN>`; else scan the goal for a
+  transaction token (e.g. `SE11`, `SE38`); else derive from the new-skill name
+  (`sap-se11-domain` → `SE11`). If none can be found, ask the user once for the
+  transaction (the only allowed interaction in `--goal` mode).
+- *Object type:* scan the goal AND the skill-name suffix with the SAME object
+  discriminator table as Step 1 Pass 2 (`-domain`, `-table`, `-structure`,
+  `-dataelement`, `-tabletype`, `-program`, `-fm`, `-class`, …). Normalise to an
+  UPPERCASE catalog key (`DOMAIN`, `TABLE`, `PROGRAM`, `FM`, `CLASS`, …). If no
+  object noun appears, use `*`.
+
+**0.9.3 — Consult the scenario catalog.** Read
+`<SKILL_DIR>\references\scenario_catalog.tsv` (skip `#`/blank lines; split each
+row on TAB into the 8 columns documented in its header). Select rows where `txn`
+equals the extracted transaction AND (`object_type` equals the extracted object
+type OR is `*`). **Honour the `applies` gate** on each matched row:
+- `always` — include unconditionally.
+- `object_type in (A,B,C)` — include only if the extracted object type is in the
+  list. (This is why the sub-type-popup row fires for STRUCTURE/DATAELEMENT/
+  TABLETYPE but not DOMAIN.)
+- `requires_existing` — include only when the goal operates on an object that
+  must already exist (delete / display / change). For a pure "create" goal, drop
+  it.
+- `master_lang_differs` — include only if you can plausibly reach that state;
+  otherwise drop with a one-line note.
+
+A row whose `value_hint` begins with `(` is a NON-PROBE note (e.g. the
+`post-activate-verify` row) — do not emit a probe for it; it reminds you what the
+generated skill must assert. Skip it for scenario generation.
+
+**0.9.4 — Brainstorm the scenario set, in this fixed order:**
+1. **Exactly one happy-path scenario** (`scenario_type=success`) — always first
+   (it is the mandatory warmup probe in Step 2). Use the catalog's `*-happy` row
+   for this txn+object, or synthesise one from the goal.
+2. **One scenario per remaining matched catalog row**, mapped to that row's
+   `scenario_type`. These regression-anchored failure modes come BEFORE any
+   AI-invented ones because they encode verified traps.
+3. **AI gap-fill (optional):** only if after 1–2 you have fewer than 3 scenarios
+   AND you can name a concrete, reachable additional failure mode from the
+   taxonomy. Do not invent speculative traps the probe can't reach in ≤30 steps.
+
+**0.9.5 — Render each scenario** as the natural-language string `/sap-gui-probe`
+parses (`<TXN>: <flow> then exit`):
+- Start with `<TXN>: ` so the probe's TXN heuristic locks on.
+- Use the catalog `probe_hint` as the flow spine.
+- Substitute a concrete test value — from the goal if given, else the row's
+  `value_hint`, else a minted sandbox name (`Z<tag>SCAF<NN>`, e.g.
+  `ZDOMSCAF001`). `not_found` scenarios use a deliberately nonexistent name
+  (`ZNONEXIST_SCAF`).
+- Append ` then exit` so the probe returns to Easy Access (bounds the step count).
+- The scenario's `scenario_type` is the catalog row's value.
+
+**0.9.6 — Bound the count** at **5 scenarios total (1 success + up to 4
+failure-mode)**. If the catalog yields more than 4 failure rows, keep the 4
+highest-value (rank `popup_recovery` / `validation_error` from a verified
+memory/skill source above generic `not_found`). Always keep ≥ 2 (Step 1's
+minimum). If zero rows matched AND you cannot gap-fill even one failure mode,
+fall back to the happy path + a generic `not_found` of the same flow. If even 2
+is impossible (read-only txn, no not-found path), STOP with: *"--goal produced
+only one viable scenario; run /sap-gui-probe directly with: `<the one
+scenario>`"* and Log end Status=SKIPPED ErrorClass=INSUFFICIENT_SCENARIOS.
+
+**0.9.7 — Hand off to Step 1.** Materialise the imagined list as the ordered
+`{scenario_text, scenario_type}` structure Step 1 builds after flag-parsing, set
+`scenarios_imagined = true`, and proceed into Step 1 at the mode-name-derivation
+sub-step.
+
+---
+
 ## Step 1 — Parse arguments
+
+**Input source.** Scenarios reach Step 1 two ways: (a) the user typed
+`--scenario`/`--manifest` (parse per the rules below); or (b) Step 0.9 already
+imagined them from `--goal` and set `scenarios_imagined = true` — then the
+ordered `{scenario_text, scenario_type}` list already exists, so **skip parse
+rules 2, 3, 3b** and go straight to "After parsing" (mode-name derivation).
+Rules 1 (skill-name validation), 4 (`--force-overwrite`), 5 (`--tcd`), 6/7
+(`--parallel*`), and 8/9 (`--no-test` / `--test-budget-min`) always apply
+regardless of source.
 
 `$ARGUMENTS` shape:
 
@@ -214,6 +316,13 @@ Parse rules:
    Capped at 6 because SAP's default `rdisp/max_alt_modes` is 6 sessions
    per connection. If `--parallel` is set and scenario count > cap, run
    in batches of `cap`.
+8. **Optional `--no-test`**: skip the autonomous test/fix loop (Step 5.5). The
+   draft is emitted and self-reviewed but never exercised against SAP. Use when
+   you only want the generated artifacts (e.g. on a system where create/delete
+   test fixtures are undesirable).
+9. **Optional `--test-budget-min N`** (default 20): global wall-clock budget for
+   the Step 5.5 test/fix loop. When exceeded, the loop stops, runs fixture
+   cleanup, and reports `Status=ABORTED_BUDGET` with the partial results.
 
 After parsing:
 - If scenario count < 2, refuse with: *"scaffolding from one probe is just
@@ -278,7 +387,10 @@ After parsing:
   the generated skill pick which behaviour they want via the mode
   argument, and the SKILL.md dispatch table documents each.
 
-Echo the parsed plan to the user before Step 2:
+Echo the parsed plan to the user before Step 2. When Step 0.9 imagined the
+scenarios from `--goal`, prefix the block with two lines — the verbatim goal and
+the catalog match (e.g. `Imagined 4 scenario(s) (catalog SE11/DOMAIN, 3 trap
+row(s) matched)`):
 
 > Scaffolding **<new-skill-name>** from N scenario(s):
 > 1. mode=`display` (type=success) -- "<scenario 1 verbatim>"
@@ -636,8 +748,165 @@ Surface to the user any obvious gaps:
    they shouldn't have been collapsed. When parameter count is > 0 the
    collapse was the intended outcome (the variance lives in the
    parameter tokens), so DO NOT warn.
+5. **CATALOG-CANDIDATE** (only when scenarios came from `--goal`) -- compare
+   each probe's `sap_gui_probe_run.json.observed` (`popups_seen`,
+   `final_message_type`) against what `scenario_catalog.tsv` predicted for this
+   `txn`/`object_type`. If a probe hit a popup `(program, screen)` or an
+   `E`/`A` end state the catalog did NOT have a row for, emit a
+   `CATALOG-CANDIDATE` finding: a proposed new TSV row (txn, object_type, a
+   `popup_recovery`/`validation_error` type, a `probe_hint` derived from the
+   observed signature, `source=<this run's report path>`). This is a
+   *suggestion* for the human to hand-add — never auto-write the TSV (CLAUDE.md
+   Directive 2).
 
 Output a concise findings list; do not modify the generated files.
+
+---
+
+## Step 5.5 — Autonomous test / fix loop
+
+**Purpose:** exercise the just-emitted DRAFT skill against the live SAP system,
+classify each mode pass/fail, auto-fix the fixable failures by editing the DRAFT
+files **in `{SCAFFOLD_FOLDER}` only** (never shared scripts or installed skills),
+re-run, and stop when all modes are green or progress stalls. The human's *final
+acceptance test* (Step 6 hand-off) is the gate after this — this loop just gets
+the draft into a state worth handing over.
+
+**Skip entirely when `--no-test` was passed.** Otherwise run it. Test runs
+create/delete real objects, so everything here is namespaced and cleaned up.
+
+All loop artifacts live under `{SCAFFOLD_FOLDER}\_test\`. Before the FIRST
+auto-fix edit, copy the draft `SKILL.md` + every `references\sap_*_*.vbs` into
+`{SCAFFOLD_FOLDER}\_test\_pre_autofix\` so the human can diff what the loop
+changed.
+
+### 5.5a — Generate test cases
+
+For each emitted mode (read the dispatch table in the generated `SKILL.md` and
+the `touchpoints[].per_probe_values` in `_merge_report.json`):
+
+- **Default each parameter token** to the canonical probe's recorded value.
+  Override object-name tokens (tails like `*_VAL`, `RS38M-PROGRAMM`,
+  `RS38L-NAME`) with a freshly-minted **throwaway name**:
+  `Z<SLOT><RUNTAG><SEQ>` — `<SLOT>` = 2–3-char class tag for cleanup routing
+  (`DM` domain, `DE` dataelement, `TB` table, `ST` structure, `TT` tabletype,
+  `SH` searchhelp, `LO` lockobject, `VW` view, `PG` program, `FM` fm, `CL`
+  class, `IF` interface); `<RUNTAG>` = `T` + last 5 digits of the scaffolder run
+  id (Step 0.5) so parallel runs across AI sessions never collide; `<SEQ>` =
+  2-digit per-mode counter.
+- **`L_DEVCLASS`** → a throwaway test package or `$TMP` (local). **`TRKORR`** →
+  resolve via `/sap-transport-request` (never hard-code — CLAUDE.md Directive 4).
+- **Per `scenario_type`:** `success` create → brand-new name (persists; recorded
+  for cleanup). `not_found` → a name guaranteed not to exist (`...99` /
+  `ZNONEXIST_SCAF`; never created). `validation_error` → the probe's bad input
+  but a NEW name. `auth_error` → as-is. `popup_recovery` → new name.
+- **Modes that need an existing object** (display / change / delete) create a
+  fixture first — run the draft's own `create` mode (dogfoods the skill) or the
+  matching workbench skill — using an `F`-infixed name and `is_fixture:true`.
+
+**Write `{SCAFFOLD_FOLDER}\_test\test_plan.json` BEFORE running anything** — the
+run tag + every planned name + `created`/`is_fixture` flags. A mid-loop crash
+then still leaves an authoritative cleanup list. **Order:** create/fixture modes
+first, display/change next, delete last (delete consumes its own fixtures).
+
+### 5.5b — Run a mode
+
+Run serially against `{PINNED_SESSION}` (Step 0.7). For each `(mode, iteration)`:
+
+```bash
+powershell -ExecutionPolicy Bypass -File "<SKILL_DIR>\references\run_mode_test.ps1" `
+    -SkillFolder "{SCAFFOLD_FOLDER}" -SkillName "<new-skill-name>" -Mode "<mode>" `
+    -ParamsJson '{"DOMNAME_VAL":"ZDMT<runtag>01","L_DEVCLASS":"$TMP"}' `
+    -SessionPath "{PINNED_SESSION}" `
+    -OutputDir "{SCAFFOLD_FOLDER}\_test\<mode>\iter_<N>" -WorkTemp "{WORK_TEMP}"
+```
+
+It substitutes the tokens (exactly like the generated wrapper does), runs the
+mode VBS via 32-bit cscript, and writes `result.json` (exit_code, stdout_tail,
+message_type, popup_left_open, end_screen_*). Read that file.
+
+### 5.5c — Classify pass / fail
+
+For **create** modes, also run the verifier (32-bit PowerShell, NCo lives in the
+32-bit GAC):
+
+```bash
+C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass `
+    -File "<SKILL_DIR>\references\verify_create_object.ps1" -ObjectType <TYPE> -ObjectName <NAME>
+```
+
+(last line `ACTIVE` / `INACTIVE` / `MISSING` / `ERROR`). Verdict by `scenario_type`:
+
+| scenario_type | PASS when | FAIL when |
+|---|---|---|
+| `success` (non-create) | `exit_code=0`, no popup left open, `end_screen_*` matches the probe's final `step_NN_after`, MessageType not `E`/`A` | exit 3, popup open, screen mismatch |
+| `success` (create) | the above **and** verify == `ACTIVE` | `INACTIVE` (→ enh-category/activate fix) or `MISSING` |
+| `not_found` | the not-found message reproduced, no object created | exit 0 with object actually created |
+| `validation_error` | SAP rejected (`E`/`A`) **OR silently accepted matching the probe's `observed`** — both PASS-with-note | a NEW error class not in `observed`, or stuck screen |
+| `auth_error` | the authz message reproduced | clean success (test user has too many rights — note it) |
+| `popup_recovery` | popup dismissed (`exit_code=0`) + (create) `ACTIVE` | popup left open / exit 3 |
+
+On a stuck screen or popup-left-open, invoke `/sap-gui-object-details` FIRST
+(structural — gives the wnd[1] program/screen + field ids a fix needs);
+`/sap-gui-diagnose` (visual PNG) only when the structural tree is inconclusive.
+
+### 5.5d — Auto-fix (DRAFT files only)
+
+Auto-fix these classes, then re-run just that mode and re-run Step 5's
+language-independence grep on the edited VBS:
+
+| Symptom | Fix | File edited |
+|---|---|---|
+| popup left open, known program/screen, no guard | insert `If IsPopupOpen(oSess) Then … End If` with the catalog dismiss/fill (SAPLSTRD/100→`L_DEVCLASS`, SAPLSTRD/300→`TRKORR`, worklist→Continue) | mode VBS |
+| `findById` ERROR (id drift) | correct the id from object-details | mode VBS |
+| missing/wrong `%%TOKEN%%` substitution | fix the param map + dispatch table (or the VBS literal) | SKILL.md (+ VBS) |
+| wrong VKey / missing 2nd Enter (e.g. TIMS) | correct `sendVKey` / add Enter from `observed` | mode VBS |
+| table/structure `INACTIVE` (enh-category missing) | insert the enhancement-category step before Activate | mode VBS |
+| `not_found` name collided with a real object | bump `<SEQ>` | test_plan.json |
+
+**Do NOT auto-fix** (flag for the human, keep looping other modes): genuine SAP
+authorization gaps, ambiguous business-logic popups (Yes/No/data-loss with no
+catalog entry — leave the existing TODO), object already exists / locked (SM12),
+SAP-release layout drift (needs `/sap-gui-record`).
+
+### 5.5e — Iteration control
+
+- **Max 3 iterations per mode** (per-mode, so a hard mode doesn't starve the
+  rest). 3 distinct single-edit fixes not turning a mode green almost always
+  means a NOT-auto-fixable cause; more attempts just thrash the draft.
+- **Global budget** `--test-budget-min` (default 20). On exceed →
+  `Status=ABORTED_BUDGET`, still clean up + report.
+- **Stop a mode** on `FAILED_MAX_ITERS` (3 iters) or `FAILED_NO_PROGRESS` (the
+  verdict signature `exit_code|end_screen|message_type|popup` repeats, or a fix
+  flips A→B→A).
+- **Audit:** append one line per iteration to `{SCAFFOLD_FOLDER}\_test\iterations.jsonl`
+  (`ts, mode, iter, verdict, exit_code, end_screen, popup, fix_applied,
+  fix_target_file, triage_artifacts[]`).
+
+### 5.5f — Fixture cleanup (unconditional)
+
+At loop end (success, max-iters, or budget abort), read `test_plan.json` and
+delete every `created:true` object in reverse-creation order, routed by `<SLOT>`
+to the matching delete mode via the Skill tool (`/sap-se11` for DDIC, `/sap-se38`
+program, `/sap-se37` FM, `/sap-se24` class/interface), using the same TR that
+created it. After each delete, run the documented post-delete verify (catalog
+table + `TADIR OBJ_NAME=<name>`): clean if both empty; **TADIR orphan** if the
+catalog row is gone but the `TADIR` row persists → record the exact SE03 (repo
+browser) / SE14 `RS_DD_TABDEL` (table) recovery step in the report, never
+silently swallow it. If a delete itself fails, record the survivor under a bold
+**MANUAL CLEANUP REQUIRED** heading with the precise command and set run-end
+`Status=SUCCESS_WITH_DIRTY_FIXTURES` so `/sap-log-analyze` surfaces it.
+
+### Hand-off
+
+Write a report to `sap-dev/temp/testReport/<new-skill-name>_autotest_<YYYYMMDD>.md`
+(CLAUDE.md Rule 8 — test reports go under `temp/testReport/`, never
+`contributing/`). Sections: (1) SAP system/client/release + run tag; (2) modes
+table `mode | scenario_type | iterations | verdict | fixes`; (3) auto-fixes
+applied (pointer to `_test\_pre_autofix\`); (4) residual human-only items;
+(5) objects created/cleaned/orphaned (+ the MANUAL CLEANUP block if non-empty);
+(6) acceptance checklist. The chat hand-off points to this report and states the
+user's manual acceptance test is the next gate.
 
 ---
 
@@ -672,11 +941,34 @@ powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_
 ```
 
 Suggested ErrorClass on failure: `PROBE_FAILED`, `MERGE_FAILED`,
-`EMIT_FAILED`, `NO_SESSION`, `BAD_SKILL_NAME`, `INSUFFICIENT_SCENARIOS`.
+`EMIT_FAILED`, `NO_SESSION`, `BAD_SKILL_NAME`, `INSUFFICIENT_SCENARIOS`,
+`PIN_SYSTEM_MISMATCH`, `NO_PIN`.
+
+When the Step 5.5 test/fix loop ran, set the end `Status` to reflect its
+outcome instead of a bare `SUCCESS`:
+- `SUCCESS` — every tested mode passed (or `--no-test` / `--test-budget-min`
+  was honoured and the draft emitted cleanly).
+- `TEST_FIXED` — one or more modes needed an auto-fix but all ended green.
+- `TEST_FAILED_MODES` — one or more modes hit `FAILED_MAX_ITERS` /
+  `FAILED_NO_PROGRESS`; the report lists which and why (still exit 0 — the
+  draft + report are the deliverable for the human to finish).
+- `SUCCESS_WITH_DIRTY_FIXTURES` — modes passed but fixture cleanup left
+  residue; the report's **MANUAL CLEANUP REQUIRED** block has the commands.
+- `ABORTED_BUDGET` — the test budget was exhausted; partial results reported.
 
 ---
 
 ## Recipes
+
+**Goal mode — one-line goal, scenarios imagined + auto-tested (recommended):**
+```
+/sap-gui-skill-scaffold sap-se11-domain --goal "use SE11 to create a domain"
+```
+Step 0.9 reads `scenario_catalog.tsv` for `SE11`/`DOMAIN`, imagines a happy-path
+plus the matched traps (not-found, bad-length validation, delete-leaves-TADIR),
+probes each, emits the draft, then Step 5.5 tests + auto-fixes it and writes a
+report. Add `--no-test` to stop at the draft, or `--test-budget-min 30` to widen
+the test budget.
 
 **Two-mode SE37 skill (display + delete):**
 ```

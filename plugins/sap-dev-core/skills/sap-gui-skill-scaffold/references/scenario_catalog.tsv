@@ -1,0 +1,49 @@
+# =============================================================================
+# scenario_catalog.tsv
+# Known SAP stuck-points, consulted by sap-gui-skill-scaffold Step 0.9 (--goal).
+# -----------------------------------------------------------------------------
+# Parsed by Claude (Read tool), NOT by VBS. Tab-separated with REAL tab bytes.
+# Skip rule: ignore blank lines and lines beginning with '#'. Split each data
+# row on TAB into the 8 columns documented below.
+#
+# COLUMNS (tab-separated, in order):
+#   1 txn            SAP transaction code, uppercase (SE11, SE38, SE37, ...).
+#   2 object_type    Catalog key the object discriminator maps to
+#                    (DOMAIN, TABLE, STRUCTURE, DATAELEMENT, TABLETYPE, VIEW,
+#                     SEARCHHELP, LOCKOBJECT, PROGRAM, FM, CLASS, INTERFACE),
+#                    or '*' for traps that apply to every object in that txn.
+#   3 trap_name      Short identifier for the stuck-point (feeds the mode label).
+#   4 scenario_type  One of the 5 probe taxonomy values: success / not_found /
+#                    auth_error / popup_recovery / validation_error.
+#   5 applies        Selection gate. One of: always | object_type in (A,B,C) |
+#                    requires_existing | master_lang_differs.
+#                    Step 0.9.3 evaluates this and skips non-matching rows.
+#   6 probe_hint     The flow spine Claude turns into the probe scenario text.
+#   7 value_hint     Concrete/templated test value when --goal supplies none.
+#                    A leading '(' marks a non-probe note (no scenario emitted).
+#   8 source         Provenance (memory-file stem or skill SKILL.md section).
+#
+# MAINTENANCE (append-on-discovery): when a --goal run's probe surfaces a popup
+# or error this catalog did not predict for a txn+object, Step 5 self-review
+# emits a CATALOG-CANDIDATE finding. A human reviews and hand-adds the row here
+# (manual edit only, per CLAUDE.md Directive 2 — no script rewrites this file).
+# Mirror new shipped-skill Known Limitations into this catalog in the same PR.
+# =============================================================================
+SE11	DOMAIN	create-happy	success	always	create a domain with DATATYPE CHAR length 10, save as local object ($TMP), activate, then F3 back to the entry screen	ZDOMSCAF001	sap-se11/SKILL.md Step 5b
+SE11	DOMAIN	domain-not-found	not_found	always	display a domain that does not exist; expect a "does not exist" message at the SE11 entry screen	ZNONEXIST_SCAF	sap-se11/SKILL.md Step 4
+SE11	DOMAIN	bad-length-validation	validation_error	always	create a domain DATATYPE CHAR with a LENGTH far over the type maximum; expect a field-validation rejection	ZDOMSCAF002	domain_datatypes.tsv (per-type max length)
+SE11	DOMAIN	delete-leaves-tadir	popup_recovery	requires_existing	delete an existing domain; watch for the SAPLSETX original/logon-language popup and confirm the TADIR row is actually removed afterwards	ZDOMSCAF001	feedback_se11_delete_leaves_tadir
+SE11	TABLE	create-happy	success	always	create a transparent table with MANDT plus one data-element field, set technical settings + delivery class, set enhancement category, activate	ZTBSCAF001	sap-se11/SKILL.md Step 5b
+SE11	TABLE	enhancement-category-popup	popup_recovery	object_type in (TABLE,STRUCTURE)	create + activate a Z table/structure with NO enhancement category preset; expect the "not classified / enhancement category" dialog mid-activate	ZTBSCAF002	feedback_se11_enhancement_category
+SE11	TABLE	subtype-popup	popup_recovery	object_type in (STRUCTURE,DATAELEMENT,TABLETYPE)	press Create on the DATATYPE radio; expect the sub-type selection popup (Structure / Data element / Table type) — DOMAIN never shows it	ZSTSCAF001	sap-se11/SKILL.md "Sub-type popup detected"
+SE11	TABLE	direct-datatype-readonly	validation_error	object_type in (TABLE,STRUCTURE)	add a field by typing DATATYPE+LENGTH directly with no data element; expect the read-only-type abort (DD03D-DATATYPE Changeable=False)	ZTBSCAF003	sap-se11/SKILL.md "Field Data Types Are Read-Only"
+SE11	TABLE	table-no-delete-fn	not_found	requires_existing	attempt an SE11 delete of a database table; expect "no delete function" — SE14 / RS_DD_TABDEL is the real path	ZTBSCAF001	sap-se11/SKILL.md "SE11 Has No Delete Function for Tables"
+SE11	*	post-activate-verify	success	always	after activate, confirm the object is ACTIVE via the post-activate RFC verify; a status-bar MessageType E must fail-closed, not report false success	(reuse happy-path value)	feedback_sap_se11_create_missing_verify
+SE38	PROGRAM	create-happy	success	always	create a minimal report, paste source, syntax check (Ctrl+F2), activate (Ctrl+F3), verify the active state	ZPGSCAF001R	sap-se38/SKILL.md Step 5b
+SE38	PROGRAM	program-not-found	not_found	always	display a program that does not exist; expect not-found at the SE38 entry screen	ZNONEXIST_SCAF	sap-se38/SKILL.md Step 4
+SE38	PROGRAM	delete-saplsetx	popup_recovery	requires_existing	delete a program whose master language differs from the logon language; expect the SAPLSETX original/logon-language popup — choose "maintain in original language", then confirm PROGDIR/TADIR are gone	ZPGSCAF001R	feedback_sap_se38_delete_saplsetx
+SE38	PROGRAM	activation-verify-screen101	success	always	activate then re-open; screen 101 is ambiguous — accept success only when the status-bar MessageType is not E/A	ZPGSCAF001R	feedback_sap_se38_success_misreport
+SE37	FM	create-happy	success	always	create an RFC-enabled function module in an existing function group, paste the source, activate	Z_FM_SCAF001	sap-se37/SKILL.md Step 5b
+SE37	FM	create-zh-master-lang-info	popup_recovery	master_lang_differs	create an FM when the install master language differs from the logon language; expect the "object maintenance only possible in original language" info popup — press Continue, the FM is still created	Z_FM_SCAF002	feedback_sap_se37_create_zh_master_lang
+SE37	FM	fm-not-found	not_found	always	display a function module that does not exist	Z_NONEXIST_SCAF	sap-se37/SKILL.md Step 4
+SE37	FM	activate-worklist-continue	popup_recovery	requires_existing	activate an FM; the inactive-objects worklist popup offers Continue only (no Select-All) — pressing Continue with nothing selected hangs	Z_FM_SCAF001	sap-se37/SKILL.md "Inactive Objects popup"

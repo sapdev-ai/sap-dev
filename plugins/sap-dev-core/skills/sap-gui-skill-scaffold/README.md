@@ -43,6 +43,42 @@ Output lands in `{work_dir}\skill_scaffolds\sap-mm03-mini_<timestamp>\`:
 Copy the folder into a plugin's `skills/` dir, register in `marketplace.json`,
 and the skill is callable.
 
+## Goal mode (`--goal`)
+
+Instead of enumerating scenarios, hand it a one-line goal and let it imagine the
+scenario set:
+
+```
+/sap-gui-skill-scaffold sap-se11-domain --goal "use SE11 to create a domain"
+```
+
+What happens (fully autonomous up to your final acceptance test):
+
+1. **Imagine (Step 0.9).** The transaction + object type are derived from the
+   goal / skill name, then `references/scenario_catalog.tsv` is consulted for the
+   known stuck-points of that `txn`/`object_type`. The scaffolder brainstorms
+   **1 happy-path + up to 4 failure-mode** scenarios (mapped to the 5-state
+   taxonomy: `success` / `not_found` / `auth_error` / `popup_recovery` /
+   `validation_error`), seeded by traps that real test runs already discovered.
+2. **Probe → merge → emit** exactly as in scenario mode.
+3. **Test + fix (Step 5.5).** Each generated mode is run against SAP with minted
+   throwaway objects, classified pass/fail (status-bar `MessageType` + a
+   post-create RFC verify), and the fixable failures (missing popup guard, drifted
+   control id, missing token, missing enhancement-category step, …) are auto-fixed
+   in the DRAFT and re-run — up to 3 iterations per mode. Test fixtures are then
+   deleted; a report lands in `sap-dev/temp/testReport/`.
+4. **You** run the final acceptance test before installing/releasing.
+
+Flags: `--no-test` stops at the draft; `--test-budget-min N` widens the test
+budget (default 20 min). The catalog grows over time — when a probe hits a trap
+the catalog didn't predict, Step 5 surfaces a `CATALOG-CANDIDATE` row for you to
+hand-add.
+
+The catalog is the natural granularity for these skills: per-object-type
+(`sap-se11-domain`, `sap-se11-table`, …) because DDIC object types share almost
+no screen touchpoints. Lean on the existing shared helpers so the generated
+skills stay thin.
+
 ## Cross-probe diff
 
 The technical core is `references/merge_probes.ps1`. For every unique
