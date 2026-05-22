@@ -167,8 +167,25 @@ Select Case sVerb
     Case "SET_TEXT"
         If sTarget = "" Then sErr = "SET_TEXT requires 'target'"
         If sErr = "" Then
-            oSess.findById(sTarget).Text = sValue
-            If Err.Number <> 0 Then sErr = "findById/Text failed: " & Err.Description
+            Dim oST, sSTType
+            Err.Clear
+            Set oST = oSess.findById(sTarget)
+            If Err.Number <> 0 Then
+                sErr = "findById failed: " & Err.Description
+            Else
+                sSTType = "" : Err.Clear
+                sSTType = oST.Type : If Err.Number <> 0 Then sSTType = "" : Err.Clear
+                Err.Clear
+                If sSTType = "GuiComboBox" Then
+                    ' GuiComboBox.Text is READONLY — select an entry by its .Key
+                    ' (e.g. lock mode cmbENQMODE: Key 'E'=Write, 'S'=Shared).
+                    oST.Key = sValue
+                    If Err.Number <> 0 Then sErr = "set (combobox .Key) failed: " & Err.Description
+                Else
+                    oST.Text = sValue
+                    If Err.Number <> 0 Then sErr = "findById/Text failed: " & Err.Description
+                End If
+            End If
         End If
 
     Case "SET_OKCD"

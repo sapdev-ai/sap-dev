@@ -381,7 +381,14 @@ foreach ($p in $report.probes) {
 
         switch ($a.verb) {
             'SET_TEXT' {
-                $vbsActions.Add("oSess.findById(`"$($a.target)`").Text = `"$vbsValue`"")
+                # GuiComboBox (cmb* leaf, e.g. lock mode cmbENQMODE) has a
+                # READONLY .Text — select the entry via .Key instead.
+                $stLeaf = ($a.target -split '/')[-1]
+                if ($stLeaf -match '^cmb') {
+                    $vbsActions.Add("oSess.findById(`"$($a.target)`").Key = `"$vbsValue`"")
+                } else {
+                    $vbsActions.Add("oSess.findById(`"$($a.target)`").Text = `"$vbsValue`"")
+                }
             }
             'SET_OKCD' {
                 $tgt = if ($a.target) { $a.target } else { 'wnd[0]/tbar[0]/okcd' }
