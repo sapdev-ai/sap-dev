@@ -189,11 +189,36 @@ Run:
 powershell -ExecutionPolicy Bypass -File "{WORK_TEMP}\sap_se16n_run.ps1"
 ```
 
-### Execute
+### Execute (with SAP GUI Security guard)
 
-The VBS template uses 32-bit COM automation, so use the 32-bit cscript:
-```bash
-C:\Windows\SysWOW64\cscript.exe //NoLogo {WORK_TEMP}\sap_se16n_run.vbs
+SE16N's "download to local file" is **SAP-GUI-side file IO**, so it raises the
+modal **SAP GUI Security** dialog when the output path isn't allow-listed (Default
+Action = Ask) — and that modal suspends the Scripting API, hanging the cscript.
+Per `shared/rules/sap_gui_security_handling.md`, pre-check the rules and run the
+OS-level watcher around the export. Run as one PowerShell block (the 32-bit
+cscript is inside it). Substitute `THE_SID` / `THE_CLIENT` with the pinned
+system / client:
+
+```powershell
+$shared = '<SAP_DEV_CORE_SHARED_DIR>\scripts'
+$out    = '{WORK_TEMP}\se16n_THE_TABLE.txt'
+# 1. Pre-check the allow-list (read-only; informational + lets us skip the watcher).
+& "$shared\sap_gui_security_precheck.ps1" -Path $out -Access w -System 'THE_SID' -Client 'THE_CLIENT' -Transaction 'SE16N' | Out-Host
+$allowed = ($LASTEXITCODE -eq 0)
+# 2. If not already allow-listed, launch the OS-level watcher BEFORE the
+#    (blocking) export. It detects the #32770 dialog and clicks Remember+Allow,
+#    which also persists a rule so subsequent runs pre-check ALLOWED.
+$watcher = $null
+if (-not $allowed) {
+    $watcher = Start-Process powershell -PassThru -WindowStyle Hidden -ArgumentList @(
+        '-NoProfile','-ExecutionPolicy','Bypass','-File',"$shared\sap_gui_security_sidecar.ps1",'-TimeoutSeconds','40')
+    Start-Sleep -Milliseconds 800
+}
+# 3. Run the export (32-bit cscript). If the dialog appears it blocks here until
+#    the watcher dismisses it; then the export completes.
+& 'C:/Windows/SysWOW64/cscript.exe' //NoLogo '{WORK_TEMP}\sap_se16n_run.vbs'
+# 4. Reap the watcher.
+if ($watcher) { $watcher | Wait-Process -Timeout 45 -ErrorAction SilentlyContinue }
 ```
 
 ---

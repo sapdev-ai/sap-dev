@@ -22,7 +22,8 @@
 '
 ' Verb notes:
 '   PRESS    -- auto-dispatches by control type: GuiRadioButton -> .Select,
-'               GuiCheckBox -> Selected=True, everything else -> .press.
+'               GuiCheckBox -> Selected=True, GuiTab -> .Select,
+'               GuiMenu -> .Select, everything else -> .press.
 '               Safe default when the caller does not know the type.
 '   SELECT   -- explicit selection verb. Radios always select on; check
 '               boxes honour "value" ("true"/"x"/"1"/"" = on, anything
@@ -219,6 +220,20 @@ Select Case sVerb
                 ElseIf sCtrlType = "GuiCheckBox" Then
                     oCtrl.Selected = True
                     If Err.Number <> 0 Then sErr = "set (checkbox) failed: " & Err.Description
+                ElseIf sCtrlType = "GuiTab" Then
+                    ' GuiTab (tabp* tab page) is "pressed" via .Select, not
+                    ' .press -- .press is not exposed on a tab and raises
+                    ' "property or method not supported". Needed for any DDIC
+                    ' flow that switches tabs (data element field labels, table
+                    ' fields, lock-object tabs, domain value range, ...).
+                    oCtrl.Select
+                    If Err.Number <> 0 Then sErr = "select (tab) failed: " & Err.Description
+                ElseIf sCtrlType = "GuiMenu" Then
+                    ' GuiMenu (mbar menu item, e.g. Extras > Enhancement
+                    ' Category) is activated via .Select; .press is not exposed.
+                    ' Required for menu-only DDIC actions with no toolbar/VKey.
+                    oCtrl.Select
+                    If Err.Number <> 0 Then sErr = "select (menu) failed: " & Err.Description
                 Else
                     oCtrl.press
                     If Err.Number <> 0 Then sErr = "press failed: " & Err.Description
@@ -258,6 +273,12 @@ Select Case sVerb
                         oSCtrl.Selected = False
                     End If
                     If Err.Number <> 0 Then sErr = "set (checkbox) failed: " & Err.Description
+                ElseIf sSCtrlType = "GuiTab" Then
+                    oSCtrl.Select
+                    If Err.Number <> 0 Then sErr = "select (tab) failed: " & Err.Description
+                ElseIf sSCtrlType = "GuiMenu" Then
+                    oSCtrl.Select
+                    If Err.Number <> 0 Then sErr = "select (menu) failed: " & Err.Description
                 Else
                     ' Unknown control type for SELECT -- fall back to .press
                     ' so the verb still has a defined behaviour.

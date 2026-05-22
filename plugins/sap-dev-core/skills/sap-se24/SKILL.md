@@ -44,6 +44,9 @@ Task: $ARGUMENTS
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/tr_resolution.md` | TR resolution flow — this skill delegates to `/sap-transport-request` (Step 1b) |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/language_independence_rules.md` | GUI-scripting language independence — identify by component ID + DDIC field name, status-bar checks via `MessageType` codes (S/W/E/I/A), VKey instead of menu-text, no branching on `.Text`/`.Tooltip`/window titles |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/abap_code_quality_rules.md` | ABAP code-quality rules — deployed class/interface source must follow modern syntax, exception-class conventions, no literal MESSAGE strings. Run `/sap-check-abap` before deploy when the source isn't generator-emitted. |
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/sap_gui_security_handling.md` | SAP GUI Security dialog handling — the check-and-fix **class source download** (Step A) is SAP-GUI-side file IO, so it can raise the modal "SAP GUI Security" dialog (which suspends the Scripting API and hangs cscript). Pre-check + OS-level watcher wrap that download. |
+| `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_gui_security_precheck.ps1` | Read-only allow-list pre-check (`saprules.xml`) — `ALLOWED` (exit 0) / `NOT_COVERED` (exit 1). Used by Step A before the source download. |
+| `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_gui_security_sidecar.ps1` | OS-level (Win32) watcher that auto-dismisses the SAP GUI Security dialog (ticks Remember + clicks Allow). Launched as a background process before the Step A download. |
 
 ---
 
@@ -717,9 +720,37 @@ Run:
 powershell -ExecutionPolicy Bypass -File "{WORK_TEMP}\sap_se24_check_and_download_run.ps1"
 ```
 
-### Execute
-```bash
-powershell -Command "& 'C:\Windows\SysWOW64\cscript.exe' //NoLogo '{WORK_TEMP}\sap_se24_check_and_download_run.vbs' 2>&1"
+### Execute (with SAP GUI Security guard)
+
+The check-and-download step makes SAP GUI write the class source to a local
+file — **SAP-GUI-side file IO**, so it raises the modal **SAP GUI Security**
+dialog when the output path isn't allow-listed (Default Action = Ask), and that
+modal suspends the Scripting API, hanging the cscript. Per
+`shared/rules/sap_gui_security_handling.md`, pre-check the rules and run the
+OS-level watcher around the download. Run as one PowerShell block (the 32-bit
+cscript is inside it). Substitute `THE_SID` / `THE_CLIENT` with the pinned
+system / client:
+
+```powershell
+$shared = '<SAP_DEV_CORE_SHARED_DIR>\scripts'
+$out    = '{WORK_TEMP}\THE_CLASS_NAME_from_sap.txt'   # the path SAP GUI will write
+# 1. Pre-check the allow-list (read-only; informational + lets us skip the watcher).
+& "$shared\sap_gui_security_precheck.ps1" -Path $out -Access w -System 'THE_SID' -Client 'THE_CLIENT' -Transaction 'SE24' | Out-Host
+$allowed = ($LASTEXITCODE -eq 0)
+# 2. If not already allow-listed, launch the OS-level watcher BEFORE the
+#    (blocking) download. It detects the #32770 dialog and clicks Remember+Allow,
+#    which also persists a rule so subsequent runs pre-check ALLOWED.
+$watcher = $null
+if (-not $allowed) {
+    $watcher = Start-Process powershell -PassThru -WindowStyle Hidden -ArgumentList @(
+        '-NoProfile','-ExecutionPolicy','Bypass','-File',"$shared\sap_gui_security_sidecar.ps1",'-TimeoutSeconds','40')
+    Start-Sleep -Milliseconds 800
+}
+# 3. Run the check + download (32-bit cscript). If the dialog appears it blocks
+#    here until the watcher dismisses it; then the download completes.
+& 'C:/Windows/SysWOW64/cscript.exe' //NoLogo '{WORK_TEMP}\sap_se24_check_and_download_run.vbs'
+# 4. Reap the watcher.
+if ($watcher) { $watcher | Wait-Process -Timeout 45 -ErrorAction SilentlyContinue }
 ```
 
 **Parse the output:**

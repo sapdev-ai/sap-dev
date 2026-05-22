@@ -54,26 +54,53 @@ End Function
 ' --- helper: select a row by matching a cell value (language-independent) ---
 ' Used for inactive-objects worklist popups where the row index changes
 ' depending on what other inactive objects coexist. Returns True on hit.
+' NOTE: GuiTableControl has no GetCell(row, columnName) overload — GetCell takes
+' integer (row, col) indices, and only the rows in the rendered band are
+' scriptable. A cell findById id (txtWORK_ITEMS-<col>[col,visRow]) addresses the
+' VISIBLE-relative row; getAbsoluteRow() takes the ABSOLUTE index. When the
+' table is scrolled, absolute rows outside the rendered band raise err 613, so
+' we page through the whole table via verticalScrollbar.position and guard every
+' getAbsoluteRow call. Scan a few column positions since the visible column
+' index varies.
 Function SelectRowByCellValue(sess, tblId, columnName, cellValue)
     On Error Resume Next
     Dim tbl : Set tbl = sess.findById(tblId, False)
     On Error GoTo 0
     SelectRowByCellValue = False
     If tbl Is Nothing Then Exit Function
-    Dim i, c, r
-    For i = 0 To tbl.RowCount - 1
-        Set r = tbl.getAbsoluteRow(i)
+    Dim total, vis, top, i, jj, c, absIdx
+    total = tbl.RowCount
+    vis   = tbl.VisibleRowCount
+    If vis <= 0 Then vis = 1
+    top = 0
+    Do While top < total
         On Error Resume Next
-        Set c = tbl.GetCell(i, columnName)
+        tbl.verticalScrollbar.position = top      ' show absolute rows [top, top+vis)
+        Set tbl = sess.findById(tblId, False)     ' re-resolve after scroll
         On Error GoTo 0
-        If Not c Is Nothing Then
-            If Trim(c.Text) = Trim(cellValue) Then
-                r.Selected = True
-                SelectRowByCellValue = True
-                Exit Function
+        If tbl Is Nothing Then Exit Function
+        For i = 0 To vis - 1
+            absIdx = top + i
+            If absIdx >= total Then Exit For
+            Set c = Nothing
+            For jj = 0 To 9
+                On Error Resume Next
+                Set c = sess.findById(tblId & "/txtWORK_ITEMS-" & columnName & "[" & jj & "," & i & "]", False)
+                On Error GoTo 0
+                If Not c Is Nothing Then Exit For
+            Next
+            If Not c Is Nothing Then
+                If Trim(c.Text) = Trim(cellValue) Then
+                    On Error Resume Next
+                    tbl.getAbsoluteRow(absIdx).Selected = True
+                    On Error GoTo 0
+                    SelectRowByCellValue = True
+                    Exit Function
+                End If
             End If
-        End If
-    Next
+        Next
+        top = top + vis
+    Loop
 End Function
 
 ' --- begin scenario actions -------------------------------------------------

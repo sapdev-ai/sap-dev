@@ -19,7 +19,7 @@ param(
     [string]$Step,
     [string]$Message,
     [ValidateSet('DEBUG','INFO','WARN','ERROR')][string]$Level = 'INFO',
-    [ValidateSet('SUCCESS','FAILED','SKIPPED','EXISTED','ABANDONED')][string]$Status = 'SUCCESS',
+    [ValidateSet('SUCCESS','FAILED','SKIPPED','EXISTED','ABANDONED','TEST_FIXED','TEST_FAILED_MODES','SUCCESS_WITH_DIRTY_FIXTURES','ABORTED_BUDGET')][string]$Status = 'SUCCESS',
     [int]$ExitCode = 0,
     [string]$ErrorClass,
     [string]$ErrorMsg
@@ -118,7 +118,21 @@ switch ($Action) {
         } catch {
             Write-Host "log_helper: end failed: $($_.Exception.Message)"
         }
-        Remove-Item -LiteralPath $StateFile -Force -ErrorAction SilentlyContinue
+        # Do NOT delete the state file when it also carries a probe end-of-run
+        # summary. /sap-gui-probe Step 4b writes observed{}/scenario_type into
+        # the SAME sap_gui_probe_run.json via sap_probe_end_of_run.ps1, and the
+        # scaffolder's merge step reads it. Deleting here wiped that summary, so
+        # the merge defaulted every probe to scenario_type=success (the
+        # failure-mode catalog came out empty). Keep the file when it has been
+        # augmented; transient logging-only state files are still cleaned up.
+        $keepState = $false
+        try {
+            $raw = Get-Content -LiteralPath $StateFile -Raw -Encoding UTF8 -ErrorAction SilentlyContinue
+            if ($raw -and ($raw -match '"observed"' -or $raw -match '"scenario_type"')) { $keepState = $true }
+        } catch {}
+        if (-not $keepState) {
+            Remove-Item -LiteralPath $StateFile -Force -ErrorAction SilentlyContinue
+        }
     }
 }
 

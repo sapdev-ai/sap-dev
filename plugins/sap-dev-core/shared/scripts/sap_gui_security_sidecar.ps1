@@ -3,60 +3,47 @@
 #
 # Why this script exists
 # ----------------------
-# When the SAP GUI Security dialog is modal, the SAP GUI Scripting COM API
-# is fully suspended — even `oSess.findById("wnd[0]")` returns nothing.
-# That means every VBS-based attempt to detect and dismiss the dialog
-# (helper.vbs, poller.vbs, warmup.vbs) is blocked from doing anything,
-# because they all rely on the Scripting API seeing the modal.
+# When the SAP GUI Security dialog is modal, the SAP GUI Scripting COM API is
+# fully suspended — even `oSess.findById("wnd[0]")` returns nothing. So a VBS/
+# cscript skill that triggered the file IO blocks, and cannot dismiss the
+# dialog itself. Detection + dismissal must happen at the OS level, in a
+# separate process that is not blocked by the modal.
 #
-# This sidecar uses Windows UI Automation (System.Windows.Automation) and,
-# as a last-resort fallback, raw SendKeys. UIA is process-and-window aware
-# at the OS level and sees the dialog regardless of whether SAP GUI's
-# Scripting API exposes it.
+# Detection (validated 2026-05-22 on SAP GUI 7.70 / S/4HANA 1909)
+# ---------------------------------------------------------------
+# The dialog is a STANDARD Win32 dialog: window class `#32770`, caption
+# "SAP GUI Security", **owned** by the SAP GUI process (saplogon.exe). Two
+# consequences that broke earlier attempts:
+#   * It is an OWNED top-level window, so `FindWindow(null,"SAP GUI Security")`
+#     (which matches non-owned top-level windows) returns 0.
+#   * SAP GUI does NOT expose it through the standard UI Automation tree — a
+#     UIA descendant scan from the root finds zero checkboxes / no dialog.
+# `EnumWindows` (which DOES enumerate owned top-level windows) finds it, and
+# its child controls are real Win32 `Button`s — `&Remember my decision`,
+# `&Allow`, `&Deny`, `&Help` — enumerable via `EnumChildWindows` and
+# clickable via `SendMessage(BM_CLICK)` with no focus/foreground dependency.
 #
-# Detection strategy (language-agnostic)
-# --------------------------------------
-# 1. Enumerate top-level windows owned by saplogon.exe / sapgui.exe.
-# 2. For each, count Buttons + CheckBoxes + TextElements.
-# 3. The security dialog matches: >= 3 buttons, >= 1 checkbox, and at
-#    least one Text element whose Name contains a path separator (`:\`
-#    on Windows or `/`).
-# 4. Click the LEFTMOST button (Allow is leftmost in every locale tested:
-#    EN, JA, ZH). Tick the FIRST checkbox before clicking (Remember My
-#    Decision). UIA exposes both a Toggle pattern (for the checkbox) and
-#    an Invoke pattern (for the button).
+# So this sidecar polls `EnumWindows` for a visible `#32770` window that is
+# the security dialog (caption matches /SAP GUI Security/i, OR — locale-proof —
+# it has both an "Allow" and a "Deny" child button), then ticks the Remember
+# checkbox (BM_SETCHECK) and clicks Allow (BM_CLICK). Ticking Remember makes
+# SAP GUI persist an Allow rule into %APPDATA%\SAP\Common\saprules.xml LIVE
+# (no GUI restart) — so the next sap_gui_security_precheck.ps1 for that path
+# returns ALLOWED and no dialog appears.
 #
-# If UIA fails to find the dialog (rare — would mean the dialog is fully
-# custom-drawn with no UIA-accessible elements), the script falls back to
-# SendKeys: focus the topmost window of the SAP GUI process, send Tab+Tab+
-# Space (tick the Remember checkbox by tab order) then Tab+Enter (move to
-# leftmost button and press it). This is fragile and locale-independent
-# only if the dialog's tab order is stable across releases.
-#
-# Usage
-# -----
-# Run as a separate background process from the orchestrator (PowerShell
-# from /sap-dev-init Step 1b, or any future skill that triggers a file IO):
-#
-#   $sidecar = Start-Process -FilePath powershell -NoNewWindow -PassThru `
-#       -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass',
-#                       '-File', '<this script>',
-#                       '-TimeoutSeconds', '30',
-#                       '-LogPath', "$env:TEMP\sap_secdlg_sidecar.log")
-#   # ... trigger the dialog (Hardcopy, Upload, Download, ...) ...
-#   $sidecar | Wait-Process -Timeout 35
+# Usage (run as a background process BEFORE the file-IO action; see
+# shared/rules/sap_gui_security_handling.md):
+#   $w = Start-Process powershell -PassThru -WindowStyle Hidden -ArgumentList @(
+#       '-NoProfile','-ExecutionPolicy','Bypass','-File','<this script>',
+#       '-TimeoutSeconds','40','-LogPath',"$env:TEMP\sap_secdlg.log")
+#   # ... trigger the dialog (Upload/Download/Export/Hardcopy) ...
+#   $w | Wait-Process -Timeout 45
 #
 # Stdout contract (last line):
-#   DISMISSED:UIA          -> Found and dismissed via UI Automation
-#   DISMISSED:SENDKEYS     -> Found via UIA presence but dismissed via SendKeys fallback
-#   TIMEOUT                -> Timeout expired with no dialog seen
-#   NO_SAP_GUI             -> No saplogon.exe / sapgui.exe processes running
-#   ERROR: <message>       -> Anything else
-#
-# Logging
-# -------
-# If -LogPath is provided, every detection pass writes a line to that file.
-# Useful for debugging WHY UIA isn't seeing the dialog on a customer site.
+#   DISMISSED:WIN32   -> Found and dismissed (Remember ticked + Allow clicked)
+#   TIMEOUT           -> Timeout expired with no dialog seen
+#   NO_SAP_GUI        -> No SAP GUI process running at all
+#   ERROR: <message>  -> Win32 interop load failure
 # =============================================================================
 
 param(
@@ -73,169 +60,108 @@ function Write-Log([string]$msg) {
     }
 }
 
-# ----- Load UI Automation assemblies -----------------------------------------
 try {
-    Add-Type -AssemblyName UIAutomationClient -ErrorAction Stop
-    Add-Type -AssemblyName UIAutomationTypes -ErrorAction Stop
+    Add-Type @"
+using System;
+using System.Text;
+using System.Runtime.InteropServices;
+public class SapSecWin {
+    [DllImport("user32.dll")] public static extern bool EnumWindows(EnumProc cb, IntPtr l);
+    [DllImport("user32.dll")] public static extern bool EnumChildWindows(IntPtr h, EnumProc cb, IntPtr l);
+    [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetWindowText(IntPtr h, StringBuilder s, int m);
+    [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetClassName(IntPtr h, StringBuilder s, int m);
+    [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+    [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);
+    [DllImport("user32.dll")] public static extern IntPtr SendMessage(IntPtr h, uint m, IntPtr w, IntPtr l);
+    public delegate bool EnumProc(IntPtr h, IntPtr l);
+}
+"@ -ErrorAction Stop
 } catch {
-    Write-Output "ERROR: Failed to load UIAutomation assemblies: $($_.Exception.Message)"
+    Write-Output "ERROR: Failed to load Win32 interop: $($_.Exception.Message)"
     exit 1
 }
 
-# ----- Load Win32 SendKeys helper (fallback path) ----------------------------
-$win32Sig = @"
-using System;
-using System.Runtime.InteropServices;
-public static class Win32 {
-    [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
-    [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
-    [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
-}
-"@
-try { Add-Type -TypeDefinition $win32Sig -ErrorAction SilentlyContinue } catch {}
-Add-Type -AssemblyName System.Windows.Forms -ErrorAction SilentlyContinue
+$BM_SETCHECK = 0x00F1
+$BM_CLICK    = 0x00F5
 
-# ----- Helpers ---------------------------------------------------------------
-$AE = [System.Windows.Automation.AutomationElement]
-$Ctrl = [System.Windows.Automation.ControlType]
-$Scope = [System.Windows.Automation.TreeScope]
-$TogglePatternId = [System.Windows.Automation.TogglePattern]::Pattern
-$InvokePatternId = [System.Windows.Automation.InvokePattern]::Pattern
+function Get-WinText([IntPtr]$h)  { $sb = New-Object System.Text.StringBuilder 512; [void][SapSecWin]::GetWindowText($h, $sb, 512); return $sb.ToString() }
+function Get-WinClass([IntPtr]$h) { $sb = New-Object System.Text.StringBuilder 256; [void][SapSecWin]::GetClassName($h, $sb, 256); return $sb.ToString() }
 
-function Get-SapGuiProcessIds {
-    return (Get-Process -Name saplogon, sapgui -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id)
-}
-
-function Get-WindowsForProcess([int]$processPid) {
-    $root = $AE::RootElement
-    $cond = New-Object System.Windows.Automation.PropertyCondition($AE::ProcessIdProperty, $processPid)
-    return @($root.FindAll($Scope::Children, $cond))
-}
-
-function Test-IsSecurityDialog([System.Windows.Automation.AutomationElement]$win) {
-    if ($null -eq $win) { return $false }
-    $btnCond = New-Object System.Windows.Automation.PropertyCondition($AE::ControlTypeProperty, $Ctrl::Button)
-    $chkCond = New-Object System.Windows.Automation.PropertyCondition($AE::ControlTypeProperty, $Ctrl::CheckBox)
-    $txtCond = New-Object System.Windows.Automation.PropertyCondition($AE::ControlTypeProperty, $Ctrl::Text)
-
-    $buttons    = @($win.FindAll($Scope::Descendants, $btnCond))
-    $checkboxes = @($win.FindAll($Scope::Descendants, $chkCond))
-    $texts      = @($win.FindAll($Scope::Descendants, $txtCond))
-
-    if ($buttons.Count -lt 3) { return $false }
-    if ($checkboxes.Count -lt 1) { return $false }
-
-    $hasPathLike = $false
-    foreach ($t in $texts) {
-        $name = $t.Current.Name
-        if ($name -and ($name -match ':\\' -or $name -match '/')) { $hasPathLike = $true; break }
-    }
-    return $hasPathLike
-}
-
-function Invoke-DismissViaUIA([System.Windows.Automation.AutomationElement]$win) {
-    $btnCond = New-Object System.Windows.Automation.PropertyCondition($AE::ControlTypeProperty, $Ctrl::Button)
-    $chkCond = New-Object System.Windows.Automation.PropertyCondition($AE::ControlTypeProperty, $Ctrl::CheckBox)
-
-    $buttons    = @($win.FindAll($Scope::Descendants, $btnCond))
-    $checkboxes = @($win.FindAll($Scope::Descendants, $chkCond))
-
-    # Tick the first checkbox (Remember My Decision).
-    if ($checkboxes.Count -ge 1) {
-        try {
-            $tp = $null
-            if ($checkboxes[0].TryGetCurrentPattern($TogglePatternId, [ref]$tp)) {
-                if ($tp.Current.ToggleState -ne [System.Windows.Automation.ToggleState]::On) {
-                    $tp.Toggle()
-                    Write-Log "Toggled Remember checkbox via UIA"
-                }
-            }
-        } catch {
-            Write-Log "Toggle failed: $($_.Exception.Message)"
+# Collect this dialog's child Buttons as {h, txt}.
+function Get-DialogButtons([IntPtr]$dlg) {
+    $script:_sapSecKids = New-Object System.Collections.ArrayList
+    $cb = [SapSecWin+EnumProc]{
+        param($hh, $ll)
+        if ((Get-WinClass $hh) -eq 'Button') {
+            [void]$script:_sapSecKids.Add([pscustomobject]@{ h = $hh; txt = (Get-WinText $hh) })
         }
+        return $true
     }
+    [void][SapSecWin]::EnumChildWindows($dlg, $cb, [IntPtr]::Zero)
+    return $script:_sapSecKids
+}
 
-    # Press the leftmost button (Allow).
-    if ($buttons.Count -ge 1) {
-        $sorted = $buttons | Sort-Object { $_.Current.BoundingRectangle.Left }
-        $allow = $sorted[0]
-        try {
-            $ip = $null
-            if ($allow.TryGetCurrentPattern($InvokePatternId, [ref]$ip)) {
-                $ip.Invoke()
-                Write-Log "Invoked leftmost button via UIA"
-                return $true
-            }
-        } catch {
-            Write-Log "Invoke failed: $($_.Exception.Message)"
-        }
+# Is this #32770 window the SAP GUI Security dialog? Caption match (fast) OR
+# the locale-proof structural test: it has both an Allow and a Deny button.
+function Test-IsSecurityDialog([IntPtr]$h, [string]$title) {
+    if ($title -match '(?i)SAP\s*GUI\s*Security') { return $true }
+    $btns = Get-DialogButtons $h
+    $hasAllow = $false; $hasDeny = $false
+    foreach ($b in $btns) {
+        if ($b.txt -match '(?i)allow') { $hasAllow = $true }
+        if ($b.txt -match '(?i)deny')  { $hasDeny  = $true }
     }
+    return ($hasAllow -and $hasDeny)
+}
+
+function Invoke-Dismiss([IntPtr]$dlg) {
+    $btns = Get-DialogButtons $dlg
+    $remember = $btns | Where-Object { $_.txt -match '(?i)remember' } | Select-Object -First 1
+    if ($remember) {
+        [void][SapSecWin]::SendMessage($remember.h, $BM_SETCHECK, [IntPtr]1, [IntPtr]::Zero)
+        Write-Log "ticked '$($remember.txt)'"
+        Start-Sleep -Milliseconds 150
+    }
+    $allow = $btns | Where-Object { $_.txt -match '(?i)allow' } | Select-Object -First 1
+    if ($allow) {
+        [void][SapSecWin]::SendMessage($allow.h, $BM_CLICK, [IntPtr]::Zero, [IntPtr]::Zero)
+        Write-Log "clicked '$($allow.txt)'"
+        return $true
+    }
+    Write-Log "no Allow button found among $($btns.Count) child buttons"
     return $false
 }
 
-function Invoke-DismissViaSendKeys([System.Windows.Automation.AutomationElement]$win) {
-    # SendKeys fallback: bring the dialog to foreground, send keys to tick
-    # the checkbox and press Allow. Tab order in SAP GUI Security dialog
-    # (verified across SAP GUI 7.50/7.60/7.70):
-    #   focus on entry -> Allow button (focused by default)
-    #   Tab -> Deny
-    #   Tab -> Help
-    #   Tab -> Remember checkbox
-    # So: Tab Tab Tab Space (tick Remember), Shift+Tab Shift+Tab Shift+Tab (back to Allow), Enter.
-    try {
-        $hwnd = $win.Current.NativeWindowHandle
-        if ($hwnd -eq 0) { Write-Log "SendKeys: no native handle"; return $false }
-        [Win32]::SetForegroundWindow([IntPtr]$hwnd) | Out-Null
-        Start-Sleep -Milliseconds 150
-        [System.Windows.Forms.SendKeys]::SendWait("{TAB}{TAB}{TAB} ")  # 3x Tab to checkbox, Space to tick
-        Start-Sleep -Milliseconds 100
-        [System.Windows.Forms.SendKeys]::SendWait("+{TAB}+{TAB}+{TAB}{ENTER}")  # 3x Shift+Tab back to Allow, Enter
-        Write-Log "SendKeys fallback dispatched"
+# Find candidate security dialogs among visible #32770 top-level windows.
+function Find-SecurityDialogs {
+    $script:_sapSecHits = New-Object System.Collections.ArrayList
+    $cb = [SapSecWin+EnumProc]{
+        param($hh, $ll)
+        if ([SapSecWin]::IsWindowVisible($hh)) {
+            if ((Get-WinClass $hh) -eq '#32770') {
+                if (Test-IsSecurityDialog $hh (Get-WinText $hh)) { [void]$script:_sapSecHits.Add($hh) }
+            }
+        }
         return $true
-    } catch {
-        Write-Log "SendKeys failed: $($_.Exception.Message)"
-        return $false
     }
+    [void][SapSecWin]::EnumWindows($cb, [IntPtr]::Zero)
+    return $script:_sapSecHits
 }
 
 # ----- Main poll loop --------------------------------------------------------
+$sawSap = $false
+try { $sawSap = [bool](Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -match '(?i)sap' }) } catch {}
 
 $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
-$pidsCheckedLastTime = @()
-
 while ((Get-Date) -lt $deadline) {
-    $sapPids = Get-SapGuiProcessIds
-    if (-not $sapPids -or $sapPids.Count -eq 0) {
-        if ($pidsCheckedLastTime.Count -gt 0) {
-            Write-Output "NO_SAP_GUI"
-            exit 2
-        }
-        Start-Sleep -Milliseconds $PollIntervalMs
-        continue
+    foreach ($d in (Find-SecurityDialogs)) {
+        $pid2 = 0; [void][SapSecWin]::GetWindowThreadProcessId($d, [ref]$pid2)
+        Write-Log "detected #32770 security dialog hwnd=$d pid=$pid2"
+        if (Invoke-Dismiss $d) { Write-Output "DISMISSED:WIN32"; exit 0 }
     }
-    $pidsCheckedLastTime = $sapPids
-
-    foreach ($processPid in $sapPids) {
-        $windows = Get-WindowsForProcess -processPid $processPid
-        foreach ($win in $windows) {
-            if (Test-IsSecurityDialog -win $win) {
-                Write-Log "Detected security dialog under PID $processPid"
-                if (Invoke-DismissViaUIA -win $win) {
-                    Write-Output "DISMISSED:UIA"
-                    exit 0
-                }
-                if (Invoke-DismissViaSendKeys -win $win) {
-                    Write-Output "DISMISSED:SENDKEYS"
-                    exit 0
-                }
-                Write-Output "ERROR: Dialog detected but neither UIA nor SendKeys dismiss path succeeded"
-                exit 1
-            }
-        }
-    }
-
     Start-Sleep -Milliseconds $PollIntervalMs
 }
 
+if (-not $sawSap) { Write-Output "NO_SAP_GUI"; exit 2 }
 Write-Output "TIMEOUT"
 exit 3

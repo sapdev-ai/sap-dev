@@ -35,6 +35,7 @@ temp/
 # junction pointing at this source tree (dev workflow). Contents are
 # {pid, procStart}; auto-cleans on session exit, GC'd on next load.
 .in_use/
+.orphaned_at
 
 # Skill runtime artefacts (per-run state, generated runners, work-folder snapshots)
 *.upload.txt

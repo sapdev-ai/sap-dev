@@ -393,7 +393,60 @@ foreach ($p in $report.probes) {
                 $vbsActions.Add("oSess.findById(`"$tgt`").sendVKey $($a.vkey)")
             }
             'PRESS' {
-                $vbsActions.Add("oSess.findById(`"$($a.target)`").press")
+                # Control-type discrimination by id leaf (language-independent):
+                # GuiRadioButton (rad*) needs .select, GuiCheckBox (chk*) needs
+                # .selected=True; only GuiButton (btn*/push*) takes .press.
+                # Emitting .press on a radio throws "method not supported".
+                $leaf = ($a.target -split '/')[-1]
+                $pressLine = if ("$($a.target)" -match '/mbar/') {
+                    # GuiMenu (menu bar item) is selected, not pressed.
+                    "oSess.findById(`"$($a.target)`").select"
+                } elseif ($leaf -match '^rad') {
+                    "oSess.findById(`"$($a.target)`").select"
+                } elseif ($leaf -match '^tabp') {
+                    # GuiTab (tab page) is selected, not pressed.
+                    "oSess.findById(`"$($a.target)`").select"
+                } elseif ($leaf -match '^chk') {
+                    "oSess.findById(`"$($a.target)`").selected = True"
+                } else {
+                    "oSess.findById(`"$($a.target)`").press"
+                }
+                # Guard popup-targeted actions: on replay the popup may not be
+                # open if timing differs from the probe, and an unconditional
+                # findById on wnd[1]/wnd[2] throws "control could not be found".
+                if ("$($a.target)".StartsWith('wnd[1]/') -or "$($a.target)".StartsWith('wnd[2]/')) {
+                    $vbsActions.Add("If Not oSess.findById(`"$($a.target)`", False) Is Nothing Then")
+                    $vbsActions.Add("    $pressLine")
+                    $vbsActions.Add('End If')
+                } else {
+                    $vbsActions.Add($pressLine)
+                }
+            }
+            'SELECT' {
+                # SELECT is a first-class probe verb (sap_gui_probe_action.vbs):
+                # radios/tabs select, checkboxes tick. Without this case the
+                # emit dropped every SELECT action as "unknown verb" and the
+                # generated VBS skipped radio/tab selection entirely.
+                $leaf = ($a.target -split '/')[-1]
+                $selLine = if ("$($a.target)" -match '/mbar/') {
+                    "oSess.findById(`"$($a.target)`").select"
+                } elseif ($leaf -match '^rad') {
+                    "oSess.findById(`"$($a.target)`").select"
+                } elseif ($leaf -match '^tabp') {
+                    "oSess.findById(`"$($a.target)`").select"
+                } elseif ($leaf -match '^chk') {
+                    $on = if ("$($a.value)".Trim().ToLower() -in @('','true','x','1')) { 'True' } else { 'False' }
+                    "oSess.findById(`"$($a.target)`").selected = $on"
+                } else {
+                    "oSess.findById(`"$($a.target)`").press"
+                }
+                if ("$($a.target)".StartsWith('wnd[1]/') -or "$($a.target)".StartsWith('wnd[2]/')) {
+                    $vbsActions.Add("If Not oSess.findById(`"$($a.target)`", False) Is Nothing Then")
+                    $vbsActions.Add("    $selLine")
+                    $vbsActions.Add('End If')
+                } else {
+                    $vbsActions.Add($selLine)
+                }
             }
             'SELECT_ROW' {
                 if ($a.target -match 'SAPLSEWORKINGAREA' -and $worklistMatch) {

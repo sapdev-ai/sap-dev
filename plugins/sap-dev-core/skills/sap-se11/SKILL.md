@@ -36,6 +36,9 @@ Task: $ARGUMENTS
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/language_independence_rules.md` | GUI-scripting language independence — identify by component ID + DDIC field name, status-bar checks via `MessageType` codes (S/W/E/I/A), VKey instead of menu-text, no branching on `.Text`/`.Tooltip`/window titles |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/ddic_excel_layout_rules.md` | DDIC Excel-spec authoring rules — when the spec was extracted via `/sap-docs-extract`, check naming-suffix consistency, primitive-type-as-DTEL trap, currency reference, column order before deploying. |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/abap_code_quality_rules.md` | ABAP code-quality rules — informs DDIC choices that affect ABAP source quality downstream (data-element vs. primitive type, currency reference, length consistency); also applies when the user supplies hand-written DDIC ABAP code (search helps with exit FMs, lock-object Z modules). |
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/sap_gui_security_handling.md` | SAP GUI Security dialog handling — the **activation-log "Save Local File"** path (`CaptureActivationLog`, fired on an activation error during create/update) is SAP-GUI-side file IO, so it can raise the modal "SAP GUI Security" dialog (which suspends the Scripting API and hangs cscript). The create/update Execute steps run the OS-level watcher around the cscript so the dialog is auto-dismissed if the activation-log save trips it. |
+| `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_gui_security_precheck.ps1` | Read-only allow-list pre-check (`saprules.xml`) — `ALLOWED` (exit 0) / `NOT_COVERED` (exit 1). Used by the create/update Execute steps for the activation-log path. |
+| `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_gui_security_sidecar.ps1` | OS-level (Win32) watcher that auto-dismisses the SAP GUI Security dialog (ticks Remember + clicks Allow). Launched as a background process before the create/update cscript, since the activation-log save fires conditionally on an activation error. |
 
 ---
 
@@ -702,10 +705,40 @@ Run:
 powershell -ExecutionPolicy Bypass -File "{WORK_TEMP}\sap_se11_update_run.ps1"
 ```
 
-### Execute
+### Execute (with SAP GUI Security guard)
 
-```bash
-cscript //NoLogo {WORK_TEMP}\sap_se11_update_run.vbs
+If activation fails, the VBS calls `CaptureActivationLog`, which drives
+**Utilities > Activation Log → Log > Save Local File** — **SAP-GUI-side file
+IO** that can raise the modal **SAP GUI Security** dialog (Default Action = Ask),
+suspending the Scripting API and hanging the cscript. The save only fires on an
+activation error, so per `shared/rules/sap_gui_security_handling.md` we run the
+OS-level watcher **unconditionally** around the cscript (it harmlessly times out
+if no dialog appears). The pre-check targets the activation-log path so the
+watcher is skipped once a rule has been persisted. Run as one PowerShell block
+(the 32-bit cscript is inside it). Substitute `THE_OBJECT_NAME` /
+`THE_SID` / `THE_CLIENT`:
+
+```powershell
+$shared = '<SAP_DEV_CORE_SHARED_DIR>\scripts'
+$log    = '{WORK_TEMP}\THE_OBJECT_NAME.activation_log.txt'   # path the activation-log save would write
+# 1. Pre-check the allow-list (read-only; lets us skip the watcher once a rule exists).
+& "$shared\sap_gui_security_precheck.ps1" -Path $log -Access w -System 'THE_SID' -Client 'THE_CLIENT' -Transaction 'SE11' | Out-Host
+$allowed = ($LASTEXITCODE -eq 0)
+# 2. Launch the OS-level watcher BEFORE the (potentially blocking) cscript. The
+#    activation-log save is conditional, so the watcher is best-effort: it ticks
+#    Remember+Allow if the dialog appears, else times out harmlessly.
+$watcher = $null
+if (-not $allowed) {
+    $watcher = Start-Process powershell -PassThru -WindowStyle Hidden -ArgumentList @(
+        '-NoProfile','-ExecutionPolicy','Bypass','-File',"$shared\sap_gui_security_sidecar.ps1",'-TimeoutSeconds','40')
+    Start-Sleep -Milliseconds 800
+}
+# 3. Run the update + activate (32-bit cscript). If activation errors and the
+#    activation-log save raises the dialog, it blocks here until the watcher
+#    dismisses it; then the log is saved and the run completes.
+& 'C:/Windows/SysWOW64/cscript.exe' //NoLogo '{WORK_TEMP}\sap_se11_update_run.vbs'
+# 4. Reap the watcher.
+if ($watcher) { $watcher | Wait-Process -Timeout 45 -ErrorAction SilentlyContinue }
 ```
 
 Proceed to Step 6 to evaluate the result.
@@ -820,10 +853,40 @@ Run:
 powershell -ExecutionPolicy Bypass -File "{WORK_TEMP}\sap_se11_create_run.ps1"
 ```
 
-### Execute
+### Execute (with SAP GUI Security guard)
 
-```bash
-cscript //NoLogo {WORK_TEMP}\sap_se11_create_run.vbs
+If activation fails, the VBS calls `CaptureActivationLog`, which drives
+**Utilities > Activation Log → Log > Save Local File** — **SAP-GUI-side file
+IO** that can raise the modal **SAP GUI Security** dialog (Default Action = Ask),
+suspending the Scripting API and hanging the cscript. The save only fires on an
+activation error, so per `shared/rules/sap_gui_security_handling.md` we run the
+OS-level watcher **unconditionally** around the cscript (it harmlessly times out
+if no dialog appears). The pre-check targets the activation-log path so the
+watcher is skipped once a rule has been persisted. Run as one PowerShell block
+(the 32-bit cscript is inside it). Substitute `THE_OBJECT_NAME` /
+`THE_SID` / `THE_CLIENT`:
+
+```powershell
+$shared = '<SAP_DEV_CORE_SHARED_DIR>\scripts'
+$log    = '{WORK_TEMP}\THE_OBJECT_NAME.activation_log.txt'   # path the activation-log save would write
+# 1. Pre-check the allow-list (read-only; lets us skip the watcher once a rule exists).
+& "$shared\sap_gui_security_precheck.ps1" -Path $log -Access w -System 'THE_SID' -Client 'THE_CLIENT' -Transaction 'SE11' | Out-Host
+$allowed = ($LASTEXITCODE -eq 0)
+# 2. Launch the OS-level watcher BEFORE the (potentially blocking) cscript. The
+#    activation-log save is conditional, so the watcher is best-effort: it ticks
+#    Remember+Allow if the dialog appears, else times out harmlessly.
+$watcher = $null
+if (-not $allowed) {
+    $watcher = Start-Process powershell -PassThru -WindowStyle Hidden -ArgumentList @(
+        '-NoProfile','-ExecutionPolicy','Bypass','-File',"$shared\sap_gui_security_sidecar.ps1",'-TimeoutSeconds','40')
+    Start-Sleep -Milliseconds 800
+}
+# 3. Run the create + activate (32-bit cscript). If activation errors and the
+#    activation-log save raises the dialog, it blocks here until the watcher
+#    dismisses it; then the log is saved and the run completes.
+& 'C:/Windows/SysWOW64/cscript.exe' //NoLogo '{WORK_TEMP}\sap_se11_create_run.vbs'
+# 4. Reap the watcher.
+if ($watcher) { $watcher | Wait-Process -Timeout 45 -ErrorAction SilentlyContinue }
 ```
 
 Proceed to Step 6 to evaluate the result.

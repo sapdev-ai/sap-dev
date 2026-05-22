@@ -350,7 +350,7 @@ function Write-SapLog {
 function Stop-SapLog {
     param(
         [Parameter(Mandatory)]$Run,
-        [ValidateSet('SUCCESS','FAILED','SKIPPED','EXISTED','ABANDONED')][string]$Status = 'SUCCESS',
+        [ValidateSet('SUCCESS','FAILED','SKIPPED','EXISTED','ABANDONED','TEST_FIXED','TEST_FAILED_MODES','SUCCESS_WITH_DIRTY_FIXTURES','ABORTED_BUDGET')][string]$Status = 'SUCCESS',
         [int]$ExitCode = 0,
         [string]$ErrorClass,
         $ErrorObject,
