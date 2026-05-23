@@ -233,11 +233,25 @@ function Get-PopupHandler {
 function Get-WorklistMatchValue {
     param($probeActions)
     # Walk earlier actions in the same probe; pick the FIRST SET_TEXT whose
-    # target ends in "-<NAME>_VAL" (the SE11 / repo-browser entry-screen
-    # convention) — that's the name the worklist will display in its OBJ_NAME
-    # column.
+    # target is a repo-object NAME-entry field — that's the name the
+    # inactive-objects worklist will display in its OBJ_NAME column.
+    #
+    # Two families are recognised (both are stable DDIC field names, so this
+    # stays language-independent):
+    #   * SE11 / repo-browser entry screens: "-<NAME>_VAL" suffix
+    #     (e.g. ctxtRSRD1-DOMA_VAL, ctxtRSRD1-TBMA_VAL).
+    #   * SE37 / SE38 / SE24 initial-screen name fields:
+    #     RS38L-NAME (FM), RS38M-PROGRAMM (program), SEOCLASS-CLSNAME /
+    #     -CLSKEY (class/interface), RS38L-AREA (function group).
+    # Without the second family, SE37/SE38/SE24 scaffolds fell back to the
+    # brittle absolute getAbsoluteRow(N) baked from the probe — which raised
+    # "invalid argument" whenever the worklist contents differed from probe
+    # time (regression caught by the sap-se37-v02 autotest, 2026-05-22).
     foreach ($a in $probeActions) {
-        if ($a.verb -eq 'SET_TEXT' -and $a.target -match '-[A-Z][A-Z0-9_]*_VAL$') {
+        if ($a.verb -eq 'SET_TEXT' -and (
+                $a.target -match '-[A-Z][A-Z0-9_]*_VAL$' -or
+                $a.target -match '-(RS38L-NAME|RS38M-PROGRAMM|SEOCLASS-CLSNAME|SEOCLASS-CLSKEY|RS38L-AREA)$' -or
+                $a.target -match '/(ctxt|txt)(RS38L-NAME|RS38M-PROGRAMM|SEOCLASS-CLSNAME|SEOCLASS-CLSKEY)$')) {
             return @{ value = "$($a.value)"; target = $a.target }
         }
     }
@@ -386,7 +400,38 @@ foreach ($p in $report.probes) {
                 $stLeaf = ($a.target -split '/')[-1]
                 if ($stLeaf -match '^cmb') {
                     $vbsActions.Add("oSess.findById(`"$($a.target)`").Key = `"$vbsValue`"")
-                } else {
+                }
+                elseif ($vbsValue -match "`r|`n") {
+                    # MULTI-LINE value (e.g. an ABAP source paste into the
+                    # SE37/SE38 AbapEditor shell). A raw inline VBScript string
+                    # literal CANNOT span physical lines — emitting it directly
+                    # produces "unterminated string constant" at compile time
+                    # (regression caught by the sap-se37-v02 autotest,
+                    # 2026-05-22). Build the value as a vbCrLf-joined string and
+                    # write it under On Error Resume Next: the AbapEditor
+                    # GuiShell .Text is READ-ONLY in a headless/background
+                    # scripting session, so the assignment may fail — in which
+                    # case we proceed on SAP's auto-generated template (which
+                    # still syntax-checks / saves / activates) rather than
+                    # aborting the whole replay.
+                    $stVar = 'sTxt' + $ai
+                    $lines = $vbsValue -split "`r`n|`r|`n"
+                    for ($li = 0; $li -lt $lines.Count; $li++) {
+                        $esc = $lines[$li].Replace('"', '""')
+                        if ($li -eq 0) {
+                            $vbsActions.Add("$stVar = `"$esc`"")
+                        } elseif ($li -eq $lines.Count - 1) {
+                            $vbsActions.Add("$stVar = $stVar & vbCrLf & `"$esc`"")
+                        } else {
+                            $vbsActions.Add("$stVar = $stVar & vbCrLf & `"$esc`"")
+                        }
+                    }
+                    $vbsActions.Add("On Error Resume Next")
+                    $vbsActions.Add("oSess.findById(`"$($a.target)`").Text = $stVar")
+                    $vbsActions.Add("If Err.Number <> 0 Then WScript.Echo `"INFO: target .Text is read-only in this session; proceeding (Err `" & Err.Number & `").`" : Err.Clear")
+                    $vbsActions.Add("On Error GoTo 0")
+                }
+                else {
                     $vbsActions.Add("oSess.findById(`"$($a.target)`").Text = `"$vbsValue`"")
                 }
             }
