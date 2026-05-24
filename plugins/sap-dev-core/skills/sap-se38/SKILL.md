@@ -371,13 +371,41 @@ Proceed to Step 6 to evaluate the result.
 
 ## Step 5c — Update Text Elements (Report Programs Only)
 
-**When to run:** After successful activation (Step 5a or 5b), if the program type is `1`
-(Executable Report / 螳溯｡悟庄閭ｽ繝励Ο繧ｰ繝ｩ繝) AND the ABAP source contains `PARAMETERS` or
-`SELECT-OPTIONS` statements with Japanese selection texts to set.
+Reached only after **successful activation** (Step 5a or 5b printed `SUCCESS:`
+with exit code 0). If activation failed — including on a syntax-error retry
+path where the first attempt aborted — Step 5c never runs on that attempt;
+it only runs on the attempt that actually activates the program. This is by
+design (you can't update text elements on an inactive program), and it is
+**not** the case that the recovery flow "forgets" Step 5c — when the
+recovery attempt succeeds, control returns here.
 
-**Skip this step** if:
-- Program type is not `1` (Include, Module Pool, etc.)
-- No `PARAMETERS` / `SELECT-OPTIONS` AND no `TEXT-NNN` references AND no sibling `.text_elements.txt` file
+### Run-or-skip decision
+
+Evaluate the conditions below in order. The decision is binary: **RUN** or
+**SKIP-WITH-NOTE**. There is no implicit "silently skip" — if a text
+source is missing but the program structure says texts are expected,
+the operator MUST log the explicit skip reason so it is visible in Step 6.
+
+| Condition | Decision |
+|---|---|
+| Program type ≠ `1` (Include, Module Pool, Subroutine Pool, Class, FuGr) | **SKIP** — text elements do not apply. No note required. |
+| Program type = `1` AND a text source resolves (Source 1 sibling, OR Source 2 inline-comment / design-doc extraction) | **RUN** with the resolved source. |
+| Program type = `1` AND source contains `PARAMETERS` / `SELECT-OPTIONS` / `TEXT-NNN` AND NO text source resolves | **SKIP-WITH-NOTE** — the program declares text-bearing constructs but no usable text data is available. Emit a clear note in Step 6's report (e.g. `WARN: Step 5c skipped — program declares PARAMETERS/TEXT-NNN but no .text_elements.txt sibling, no inline comments, and no design-doc context.`). |
+| Program type = `1` AND source has NO `PARAMETERS`, NO `SELECT-OPTIONS`, NO `TEXT-NNN`, NO sibling | **SKIP** — nothing to set. No note required. |
+
+The **SKIP-WITH-NOTE** row is the case that silently bit the
+`ZMMRMAT037R02` deploy on 2026-05-25: source had `PARAMETERS` + `TEXT-s01`
+but no sibling text file, so the operator must either supply a text
+source (preferred — ask the user, look for design doc, scrape inline
+comments) or emit the explicit WARN note. A silent skip is a bug.
+
+### Source-resolution order (used to populate the "text source resolves" check above)
+
+1. **Source 1 (preferred)** — `{source_dir}\<PROGRAM_NAME>.text_elements.txt` sibling file emitted by `/sap-gen-abap` (per `abap_code_quality_rules.md` §21).
+2. **Source 2 (fallback)** — extract `PARAM=text` pairs from inline `*"` comments adjacent to each `PARAMETERS:` / `SELECT-OPTIONS:` line, or from the design-doc workbook referenced in the file header.
+3. **Source 3 (last resort)** — ASK the user for a pipe-delimited list (`P_BUKRS=Company|P_WERKS=Plant|…`).
+
+If none of 1–3 resolves, the **SKIP-WITH-NOTE** decision applies.
 
 ### Source 1 (preferred) — read `<PROGRAM_NAME>.text_elements.txt`
 
