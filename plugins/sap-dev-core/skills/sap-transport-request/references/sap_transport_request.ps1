@@ -4,6 +4,16 @@
 # Checks if a given transport request is modifiable. If not (released or
 # not found), creates a new workbench transport request.
 #
+# TR_READ_REQUEST is NOT a remote-enabled FM, so the verify branch routes
+# the call through Z_GENERIC_RFC_WRAPPER_TBL (deployed by /sap-dev-init).
+# The wrapper FM is invoked exactly the way /sap-rfc-wrapper-fm does it:
+# build a CT_PARAMS table with IV_TRKORR (IMPORTING) + CS_REQUEST (CHANGING),
+# call the wrapper, then parse the returned asXML to extract H/TRSTATUS.
+# Direct RFC invocation of TR_READ_REQUEST fails on NCo 3.1 with
+# "cannot find STRUCTURE specified by TRWBO_REQUEST" because TRWBO_REQUEST
+# contains deep substructures the .NET-side metadata cannot bind for a
+# non-RFC-enabled function.
+#
 # Run with **32-bit PowerShell**:
 #   C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File ...
 #
@@ -45,35 +55,143 @@ $g_dest = Connect-SapRfc -Server   "%%SAP_APPLICATION_SERVER%%" `
                          -DestName "SAPDEV_TR"
 if (-not $g_dest) { Write-Host "RESULT_STATUS: ERROR"; exit 1 }
 
+# --- Helper: extract a leaf element value from CS_REQUEST asXML -------------
+function Get-XmlLeafValue {
+    param([string]$Xml, [string]$Element)
+    # asXML for CS_REQUEST nests fields like <H><TRSTATUS>D</TRSTATUS>...</H>.
+    # A single <H>...</H> block can match an element multiple times if
+    # nested structures repeat the same name; for TR header fields the
+    # H-level instance is the first one. Regex is sufficient — no XML
+    # parser dependency, and CS_REQUEST never carries CDATA or attributes
+    # on these leaf elements. Self-closing form <X/> is the asXML rendering
+    # of an empty char element and resolves to "".
+    $pattern = "<$Element>([^<]*)</$Element>|<$Element\s*/>"
+    $m = [regex]::Match($Xml, $pattern)
+    if ($m.Success) { return $m.Groups[1].Value.Trim() }
+    return ""
+}
+
+# --- Helper: classify TR_READ_REQUEST output --------------------------------
+# Returns: 'D' / 'L' / 'R' / 'O' / 'N' / '' (TR not found) / $null (error)
+function Get-TrStatusViaWrapper {
+    param($Dest, [string]$Trkorr)
+
+    # asXML scalar payloads. Use a single line — the wrapper FM
+    # concatenates chunks RESPECTING BLANKS, so any newline becomes part
+    # of the payload and breaks CALL TRANSFORMATION id.
+    $xmlTrkorr = '<?xml version="1.0" encoding="utf-16"?>' +
+                 '<asx:abap xmlns:asx="http://www.sap.com/abapxml" version="1.0">' +
+                 '<asx:values><DATA>' + $Trkorr + '</DATA></asx:values></asx:abap>'
+    $xmlFlagX  = '<?xml version="1.0" encoding="utf-16"?>' +
+                 '<asx:abap xmlns:asx="http://www.sap.com/abapxml" version="1.0">' +
+                 '<asx:values><DATA>X</DATA></asx:values></asx:abap>'
+
+    try {
+        $fn = $Dest.Repository.CreateFunction("Z_GENERIC_RFC_WRAPPER_TBL")
+        $fn.SetValue("IV_FUNCNAME", "TR_READ_REQUEST")
+        $tbl = $fn.GetTable("CT_PARAMS")
+
+        # Row 1: IV_TRKORR (IMPORTING, TRKORR)
+        $tbl.Append() | Out-Null
+        $tbl.SetValue("PNAME",     "IV_TRKORR")
+        $tbl.SetValue("PSEQ",      1)
+        $tbl.SetValue("PTYPE",     "I")
+        $tbl.SetValue("PTYPENAME", "TRKORR")
+        $tbl.SetValue("PVALUE",    $xmlTrkorr)
+
+        # Row 2: IV_READ_E070 = 'X'  — without this flag, TR_READ_REQUEST
+        # fills only CS_REQUEST-H-TRKORR and leaves the rest of H blank,
+        # which we'd misread as "TR not found". With the flag, the FM
+        # populates TRSTATUS / TRFUNCTION / AS4USER / AS4DATE / etc.
+        # PTYPENAME = XFELD (standard CHAR1 flag data element) — the
+        # wrapper does CREATE DATA lr_data TYPE (<ptypename>), which
+        # needs a resolvable DDIC name; bare 'C' would fail (no length).
+        $tbl.Append() | Out-Null
+        $tbl.SetValue("PNAME",     "IV_READ_E070")
+        $tbl.SetValue("PSEQ",      1)
+        $tbl.SetValue("PTYPE",     "I")
+        $tbl.SetValue("PTYPENAME", "XFELD")
+        $tbl.SetValue("PVALUE",    $xmlFlagX)
+
+        # Row 3: CS_REQUEST (CHANGING, TRWBO_REQUEST) — empty payload,
+        # wrapper allocates a default-initialized structure for the FM to
+        # populate, then serializes the result back as asXML.
+        $tbl.Append() | Out-Null
+        $tbl.SetValue("PNAME",     "CS_REQUEST")
+        $tbl.SetValue("PSEQ",      1)
+        $tbl.SetValue("PTYPE",     "C")
+        $tbl.SetValue("PTYPENAME", "TRWBO_REQUEST")
+    } catch {
+        Write-Host "INFO: Wrapper FM setup failed: $($_.Exception.Message)"
+        return $null
+    }
+
+    try {
+        $fn.Invoke($Dest)
+    } catch {
+        # Z_GENERIC_RFC_WRAPPER_TBL raises DYNAMIC_CALL_FAILED if
+        # TR_READ_REQUEST itself raises (e.g., TR doesn't exist on this
+        # system). Treat that as "TR not found" — TRSTATUS="".
+        $msg = $_.Exception.Message
+        if ($msg -match "DYNAMIC_CALL_FAILED" -or
+            $msg -match "FM_NOT_FOUND" -or
+            $msg -match "DESERIALIZATION_FAILED" -or
+            $msg -match "SERIALIZATION_FAILED") {
+            Write-Host "INFO: Wrapper invocation failed (treating as TR-not-found): $msg"
+            return ""
+        }
+        Write-Host "INFO: Wrapper invocation error: $msg"
+        return $null
+    }
+
+    # Reassemble CS_REQUEST chunks from the returned CT_PARAMS.
+    $tblOut = $fn.GetTable("CT_PARAMS")
+    $accum = ""
+    for ($i = 0; $i -lt $tblOut.RowCount; $i++) {
+        $tblOut.CurrentIndex = $i
+        $pname  = $tblOut.GetString("PNAME").Trim()
+        $ptype  = $tblOut.GetString("PTYPE").Trim()
+        $pvalue = $tblOut.GetString("PVALUE")
+        if ($pname -eq "CS_REQUEST" -and $ptype -eq "C") {
+            $accum += $pvalue
+        }
+    }
+    if ($accum -eq "") {
+        # Wrapper succeeded but returned no payload — the FM populated an
+        # empty structure (TR doesn't exist) or the type couldn't be
+        # resolved on the ABAP side (the wrapper emits a single
+        # placeholder row in that case — surfaces as accum="").
+        return ""
+    }
+
+    $sStatus = Get-XmlLeafValue -Xml $accum -Element "TRSTATUS"
+    return $sStatus
+}
+
 # --- 2. Check existing TR if provided ---------------------------------------
 $bNeedCreate = $true
 $sTrkorr = $TR_INPUT.Trim()
 
 if ($sTrkorr -ne "") {
-    Write-Host "INFO: Checking transport request $sTrkorr..."
-    try {
-        $fnRead = $g_dest.Repository.CreateFunction("TR_READ_REQUEST")
-        $fnRead.SetValue("IV_TRKORR", $sTrkorr)
-        $fnRead.Invoke($g_dest)
-        $headers = $fnRead.GetTable("ET_REQUEST_HEADER")
-        if ($headers.RowCount -gt 0) {
-            $headers.CurrentIndex = 0
-            $sStatus = $headers.GetString("TRSTATUS").Trim()
-            Write-Host "INFO: TR $sTrkorr status = $sStatus"
-            if ($sStatus -eq "D") {
-                Write-Host "RESULT_TR: $sTrkorr"
-                Write-Host "RESULT_STATUS: EXISTING_MODIFIABLE"
-                $bNeedCreate = $false
-            } elseif ($sStatus -eq "R") {
-                Write-Host "INFO: TR $sTrkorr is released. Will create a new one."
-            } else {
-                Write-Host "INFO: TR $sTrkorr has status '$sStatus'. Will create a new one."
-            }
+    Write-Host "INFO: Checking transport request $sTrkorr via Z_GENERIC_RFC_WRAPPER_TBL..."
+    $sStatus = Get-TrStatusViaWrapper -Dest $g_dest -Trkorr $sTrkorr
+    if ($null -eq $sStatus) {
+        Write-Host "INFO: Could not verify TR $sTrkorr via wrapper. Will create a new transport request."
+    } elseif ($sStatus -eq "") {
+        Write-Host "INFO: TR $sTrkorr not found in system. Will create a new transport request."
+    } else {
+        Write-Host "INFO: TR $sTrkorr status = $sStatus"
+        if ($sStatus -eq "D" -or $sStatus -eq "L") {
+            # D = Modifiable. L = Modifiable + protected (still writeable
+            # by owner). Treat both as usable for development work.
+            Write-Host "RESULT_TR: $sTrkorr"
+            Write-Host "RESULT_STATUS: EXISTING_MODIFIABLE"
+            $bNeedCreate = $false
+        } elseif ($sStatus -eq "R" -or $sStatus -eq "O" -or $sStatus -eq "N") {
+            Write-Host "INFO: TR $sTrkorr is released/in-release ($sStatus). Will create a new one."
         } else {
-            Write-Host "INFO: TR $sTrkorr not found or empty header. Will create a new one."
+            Write-Host "INFO: TR $sTrkorr has unrecognised status '$sStatus'. Will create a new one."
         }
-    } catch {
-        Write-Host "INFO: TR_READ_REQUEST exception: $($_.Exception.Message). Will create a new transport request."
     }
 }
 
