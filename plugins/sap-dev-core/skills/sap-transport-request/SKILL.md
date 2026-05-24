@@ -90,8 +90,9 @@ Validate `way_to_get_transport_request`. Allowed: `DEFAULT`, `ASK`,
 
 ## Step 1a — Apply the way_to_get_transport_request Policy
 
-Pick a candidate TR per the table below, then proceed to Step 2 to verify it
-(or to creation if "create new").
+Pick a candidate TR per the table below, then proceed to **Step 1b** to verify
+it (or jump straight to the **Create Path** below if the policy demands a new
+TR).
 
 ### `DEFAULT`
 
@@ -101,7 +102,7 @@ Pick a candidate TR per the table below, then proceed to Step 2 to verify it
    > type `new` to create one."
    - User supplies TR → candidate = that TR.
    - User types `new` → skip to **Create Path**.
-3. Verify candidate (Step 2). If not modifiable, repeat the prompt above.
+3. Verify candidate (Step 1b — mode-aware). If not modifiable, repeat the prompt above.
 4. On success, **persist** the resolved TR to `sap_dev_transport_request` via
    `/update-config` (so future `DEFAULT` calls reuse it).
 
@@ -112,7 +113,7 @@ Pick a candidate TR per the table below, then proceed to Step 2 to verify it
    > "Which transport request should I use? (TR number, or `new` to create one)"
    - TR number → candidate = that TR.
    - `new` → Create Path.
-3. Verify candidate (Step 2). If not modifiable, repeat.
+3. Verify candidate (Step 1b — mode-aware). If not modifiable, repeat.
 4. After success, ask once:
    > "Save `<TR>` as the default for future requests? (y/N)"
    - On `y` → persist to `sap_dev_transport_request`.
@@ -161,6 +162,44 @@ the new policy for the rest of the session.
 
 ---
 
+## Step 1b — Verify Candidate TR (mode-aware)
+
+Called from Step 1a's `DEFAULT` / `ASK` verify loops. Branches on
+`sap_dev_mode` so a pure-GUI environment (no NCo, or hybrid environment with
+the user's explicit GUI preference) never touches RFC just to look up a
+status code. Symmetric to the **Create Path** dispatch above.
+
+### GUI branch (when `sap_dev_mode = GUI`, the default)
+
+Invoke `/sap-se16n` to read the candidate TR's `TRSTATUS` directly from
+table `E070`:
+
+```
+/sap-se16n TABLE=E070 WHERE: TRKORR=<candidate> SELECT: TRKORR TRSTATUS TRFUNCTION AS4USER
+```
+
+Parse the resulting `{WORK_TEMP}\se16n_E070.txt`:
+
+| Observation | Outcome |
+|---|---|
+| `ROWS=0 (NO_DATA)` | TR not found in this system. Loop back to the Step 1a prompt (DEFAULT/ASK) — invite the user to enter a different number or type `new`. |
+| `TRSTATUS = D` or `L` | Modifiable. Output `RESULT_TR: <candidate>` / `RESULT_STATUS: EXISTING_MODIFIABLE`. **STOP** — skip Steps 2-4. Apply persistence per Step 1a policy. |
+| `TRSTATUS = R`, `O`, or `N` | Released / release in progress / released with errors. Tell the user `<candidate>` is not modifiable; loop or offer to create a fresh TR via the Create Path. |
+| Any other code | Unrecognized status — show the row to the user and ask whether to proceed or create a new TR. |
+
+The `E070-TRSTATUS` lookup is a pure read against an SAP standard table and
+does not require any write authorisation; the only prerequisite is the
+active SAP GUI session that `/sap-se16n` itself depends on.
+
+### RFC / BDC branch (when `sap_dev_mode` ∈ {`RFC`, `BDC`})
+
+Fall through to **Steps 2-4** below. The PS1's verify branch routes
+`TR_READ_REQUEST` through `Z_GENERIC_RFC_WRAPPER_TBL` (TR_READ_REQUEST is not
+remote-enabled, so the direct NCo path fails to bind the deep `TRWBO_REQUEST`
+structure). The wrapper must already be deployed via `/sap-dev-init`.
+
+---
+
 ## Step 2 — Read SAP Connection Parameters
 
 Read SAP connection parameters from the merged sap-dev-core settings (per `shared/rules/settings_lookup.md` — `settings.local.json` overrides `settings.json` per-key on the `.value` field):
@@ -183,6 +222,12 @@ they configure settings.json for future use:
 
 ## Step 3 — Generate and Run PowerShell
 
+Reached only when `sap_dev_mode` ∈ {`RFC`, `BDC`} — either to verify a
+candidate (Step 1b RFC/BDC branch) or to create a new TR (Step 1a Create
+Path RFC/BDC branch). GUI mode never reaches this step: Step 1b GUI uses
+`/sap-se16n` for verify and Step 1a Create Path GUI uses `/sap-se01` for
+create.
+
 The PowerShell template is at `<SKILL_DIR>/references/sap_transport_request.ps1`.
 
 Write `{WORK_TEMP}\sap_tr_run.ps1`:
@@ -204,11 +249,17 @@ Replace all `THE_*` placeholders with actual values from Steps 1-2.
 Replace `<SKILL_DIR>` with the absolute path to this skill directory.
 Set `THE_TR` to the TR number from Step 1, or empty string `""` if none.
 Set `THE_MODE` to the resolved `sap_dev_mode` value (`GUI` / `RFC` / `BDC`).
-The PS1 has a guardrail: if `THE_TR` is empty (i.e. create path) AND
-`THE_MODE` is `GUI`, the script refuses and exits with an error directing
-the caller back to `/sap-se01`. This is intentional — it catches the case
-where the dispatch in Step 1a Create Path was missed and the agent
-accidentally runs the RFC creator under GUI mode.
+
+The PS1 has **two symmetric guardrails** that catch SKILL.md dispatch bugs:
+
+| Condition | Refusal message | Intended dispatch |
+|---|---|---|
+| `THE_TR` empty + `THE_MODE` = `GUI` (create misroute) | `TR creation via CTS_API_CREATE_CHANGE_REQUEST refused under sap_dev_mode=GUI` | Step 1a Create Path GUI branch → `/sap-se01` |
+| `THE_TR` non-empty + `THE_MODE` = `GUI` (verify misroute) | `TR verification via TR_READ_REQUEST (wrapper FM) refused under sap_dev_mode=GUI` | Step 1b GUI branch → `/sap-se16n` on `E070` |
+
+Both guardrails are intentional — under `GUI` mode the PS1 must not be
+reached at all. If you see either refusal in production, fix the SKILL.md
+dispatch in the caller, not the guardrail.
 
 Execute via **32-bit PowerShell** (SAP NCo 3.1 is registered in the 32-bit GAC):
 ```bash

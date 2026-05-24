@@ -26,17 +26,18 @@
 #   %%SAP_LANGUAGE%%             Logon language
 #   %%TRANSPORT_REQUEST%%        Existing TR number to check (may be empty)
 #   %%SAP_DEV_MODE%%             GUI / RFC / BDC. The skill must pass the
-#                                resolved sap_dev_mode value here. Acts as a
-#                                guardrail: when an empty TR_INPUT is paired
-#                                with mode=GUI, this script REFUSES to create
-#                                a TR via CTS_API_CREATE_CHANGE_REQUEST and
-#                                exits with a clear "wrong path" error. Under
-#                                GUI mode, TR creation must go through
-#                                /sap-se01 — see SKILL.md Step 1a Create Path
-#                                "GUI branch". Verify-only calls (TR_INPUT
-#                                non-empty) are always allowed regardless of
-#                                mode. Empty value falls back to GUI for
-#                                safety (refuse rather than silently create).
+#                                resolved sap_dev_mode value here. Two
+#                                symmetric guardrails refuse calls under
+#                                mode=GUI:
+#                                  * TR_INPUT non-empty (verify misroute)
+#                                    -> use SKILL.md Step 1b GUI branch ->
+#                                       /sap-se16n TABLE=E070
+#                                  * TR_INPUT empty (create misroute)
+#                                    -> use SKILL.md Step 1a Create Path GUI
+#                                       branch -> /sap-se01
+#                                Empty / unknown mode normalises to GUI
+#                                (safe-by-default: refuse rather than
+#                                silently use RFC).
 # =============================================================================
 
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
@@ -44,6 +45,32 @@ $ErrorActionPreference = 'Stop'
 
 $TR_INPUT      = "%%TRANSPORT_REQUEST%%"
 $SAP_DEV_MODE  = "%%SAP_DEV_MODE%%"
+
+# Normalise sap_dev_mode up-front so both guardrails (verify + create) can
+# consult it. Empty / unknown falls back to GUI (safe-by-default: refuse
+# rather than silently use RFC).
+$normalizedMode = ""
+if ($null -ne $SAP_DEV_MODE) { $normalizedMode = $SAP_DEV_MODE.ToUpper().Trim() }
+if ($normalizedMode -eq "" -or $normalizedMode -notin @("GUI","RFC","BDC")) { $normalizedMode = "GUI" }
+
+$sTrkorr = $TR_INPUT.Trim()
+
+# Guardrail #1 — VERIFY under GUI mode. The /sap-transport-request SKILL.md
+# Step 1b GUI branch should route verification through `/sap-se16n` on
+# table `E070` (a pure GUI read). Reaching this PS1 with a TR candidate AND
+# mode=GUI means the SKILL.md dispatch was skipped — refuse loudly so the
+# operator sees the issue instead of silently falling through to the RFC
+# verifier (which would work for users who happen to have NCo, but breaks
+# for pure-GUI environments — exactly what GUI mode is supposed to support).
+if ($sTrkorr -ne "" -and $normalizedMode -eq "GUI") {
+    Write-Host "ERROR: TR verification via TR_READ_REQUEST (wrapper FM) refused under sap_dev_mode=GUI."
+    Write-Host "       Expected dispatch: /sap-transport-request SKILL.md Step 1b -> GUI branch -> /sap-se16n TABLE=E070."
+    Write-Host "       This script is reachable for verification only when sap_dev_mode is RFC or BDC."
+    Write-Host "       Recovery: re-invoke /sap-transport-request so SKILL.md Step 1b runs (it dispatches"
+    Write-Host "                /sap-se16n on E070), OR temporarily set sap_dev_mode to RFC if the GUI is unavailable."
+    Write-Host "RESULT_STATUS: ERROR"
+    exit 1
+}
 
 . "%%RFC_LIB_PS1%%"
 $g_dest = Connect-SapRfc -Server   "%%SAP_APPLICATION_SERVER%%" `
@@ -169,8 +196,8 @@ function Get-TrStatusViaWrapper {
 }
 
 # --- 2. Check existing TR if provided ---------------------------------------
+# $sTrkorr already trimmed above (the verify-guardrail consumed it).
 $bNeedCreate = $true
-$sTrkorr = $TR_INPUT.Trim()
 
 if ($sTrkorr -ne "") {
     Write-Host "INFO: Checking transport request $sTrkorr via Z_GENERIC_RFC_WRAPPER_TBL..."
@@ -196,15 +223,13 @@ if ($sTrkorr -ne "") {
 }
 
 # --- 3. Create new TR if needed ---------------------------------------------
-# Mode guardrail: under GUI mode, TR creation must go through /sap-se01, not
-# this RFC creator. If the skill driver routes an empty TR_INPUT here while
-# the user's sap_dev_mode is GUI, that's a SKILL.md dispatch bug — refuse
-# loudly so the operator sees the issue instead of silently getting an
-# RFC-created TR with a different description format than /sap-se01 would
-# produce. Empty mode falls back to GUI (safe-by-default).
-$normalizedMode = ""
-if ($null -ne $SAP_DEV_MODE) { $normalizedMode = $SAP_DEV_MODE.ToUpper().Trim() }
-if ($normalizedMode -eq "" -or $normalizedMode -notin @("GUI","RFC","BDC")) { $normalizedMode = "GUI" }
+# Guardrail #2 — CREATE under GUI mode. The /sap-transport-request SKILL.md
+# Step 1a Create Path GUI branch should route TR creation through
+# /sap-se01. If the skill driver routes an empty TR_INPUT here while
+# sap_dev_mode = GUI, that's a SKILL.md dispatch bug — refuse loudly so
+# the operator sees the issue instead of silently getting an RFC-created
+# TR with a different description format than /sap-se01 would produce.
+# $normalizedMode was set up-front next to Guardrail #1.
 if ($bNeedCreate -and $normalizedMode -eq "GUI") {
     Write-Host "ERROR: TR creation via CTS_API_CREATE_CHANGE_REQUEST refused under sap_dev_mode=GUI."
     Write-Host "       Expected dispatch: /sap-transport-request SKILL.md Step 1a Create Path -> GUI branch -> /sap-se01."
