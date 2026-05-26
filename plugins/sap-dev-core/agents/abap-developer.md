@@ -411,6 +411,7 @@ that the agent must not let through:
 | Grep `Z<PROGRAM_ID>.abap` for `AUTHORITY-CHECK OBJECT` and confirm each block matches a row in `_authz_signatures.txt` (same field count, same field names, in the same POSITION order) | **STOP** with a per-line diff. Likely cause: `_authz_signatures.txt` is missing the object (skill ran with no RFC) — re-run `/sap-gen-abap --refresh-cache` after confirming RFC is up. |
 | Confirm `_struct_signatures.txt` exists and is non-empty if the spec defines BAPI calls (grep `_fm_signatures.txt` for `BAPI_`) | **WARN** the user that BAPI structure-parameter assignments were emitted from AI training knowledge, not live SAP. Recommend `/sap-gen-abap --refresh-cache` before deploy. |
 | Confirm `Z<PROGRAM_ID>.messages.txt` exists if the source references any `MESSAGE eNNN(<msgclass>)` | **STOP**. The deploy pipeline needs this file at Step 2c to populate the message class before the program activates. |
+| Confirm `Z<PROGRAM_ID>_TEST.abap` exists if `MODE_UNIT_TESTS = TRUE` AND `_golden.txt` has ≥1 data row. Also scan the `/sap-gen-abap` output for the `TEST_FILE:` marker line — `EMITTED ... methods=N` is the only PASS state; `FAILED:*`, `SKIPPED:NO_GOLDEN_ROWS`, or absent line all count as failure here. | **STOP**. `/sap-gen-abap` silently dropped the test file despite the customer brief requiring it. Re-invoke `/sap-gen-abap` with an explicit reminder that `MODE_UNIT_TESTS = TRUE` is mandatory, citing the SKILL.md §3.4 contract. If it still skips on retry, surface as a generator bug — do NOT proceed to deploy. The 2026-05-27 `ZMMRMAT042R01` build shipped without tests despite the brief saying `yes (mandatory)`; this gate exists to catch that pattern. |
 
 If any check fires STOP, do NOT continue to Step 2f.
 
@@ -438,9 +439,15 @@ same way against `<Z<PROGRAM_ID>.abap>` and feed errors to `/sap-fix-fm`.
 
 ALWAYS prompt before invoking the first deploy skill:
 
-> "Generated `Z<PROGRAM_ID>.abap` (<N> lines, <M> sections). Quality checks
-> pass. Plan: deploy to package `<P>` under TR `<T>`, activate, and run
-> ATC priority ≤ `<ATC_MAX>`. Proceed? (yes / show source first / cancel)"
+> "Generated `Z<PROGRAM_ID>.abap` (<N> lines, <M> sections).
+> Tests: `Z<PROGRAM_ID>_TEST.abap` (<K> test methods) | NOT GENERATED (MODE_UNIT_TESTS=FALSE)
+> Quality checks pass. Plan: deploy to package `<P>` under TR `<T>`, activate,
+> and run ATC priority ≤ `<ATC_MAX>`. Proceed? (yes / show source first / cancel)"
+
+Pick the `Tests:` value from the `TEST_FILE:` marker (`EMITTED methods=K` →
+show K; `SKIPPED:MODE_OFF` → "NOT GENERATED"). If the marker says
+`FAILED:*` or is absent, you should NOT have reached this step — Step 2e
+gates that.
 
 On `show source first`: print the generated `.abap`, then re-ask.
 On `cancel`: write transcript and stop.
@@ -628,6 +635,8 @@ SUMMARY
   Object(s): Z<NAME> [+ tests, exception class, DDIC objects]
   TR: <TRKORR>
   ATC: PASS | <N> findings (priority breakdown)
+  Tests: Z<NAME>_TEST.abap (<K> methods) | NOT GENERATED (MODE_UNIT_TESTS=FALSE) | MISSING (contract violation — see Boundaries)
+                # MANDATORY when MODE_UNIT_TESTS=TRUE AND _golden.txt has rows; never silent-skip.
   TextElements: APPLIED <N>/<M> sym=<A>/<B> | FAILED:<reason> | N/A (non-report) | SKIPPED:<reason>
                 # MANDATORY for type=1 reports; cite Step 2h.1 remediation if FAILED.
 
@@ -707,6 +716,7 @@ enforcement details.
 | Include `DATA` in the SE16N output column list when querying `REPOSRC`, or filter `R3STATE=A`, or use the active row as the "latest source" indicator | (a) The `DATA` column is `LRAW` (binary compressed source). SE16N would try to render it and either truncate, error, or produce unreadable binary noise. (b) The inactive row (`R3STATE='I'`) is often the LATEST source — a developer who just edited but hasn't activated leaves the new bytes there; the active row is the LAST KNOWN GOOD, not the most recent. Filtering `R3STATE=A` silently hides the in-flight edit. | When querying `REPOSRC` via `/sap-se16n`: always pass an explicit `select=PROGNAME,R3STATE,UDAT,UTIME,DATALG,UNAM` (NEVER include `DATA`). Sort by `UDAT` / `UTIME` desc and take the FIRST row — that is the latest, regardless of `R3STATE`. To verify a just-deployed program is non-empty: if `DATALG < 100` on the top row, the program is essentially blank → the most recent upload likely failed silently and you should re-run the deploy. (Real programs have a header banner + signature lines that comfortably exceed 100 bytes.) |
 | Skip a skill's `## Step 0.5 — Start Logging` block or `## Final — Log End` block | `skill_operating_rules.md` Rule 4 (covers the "best-effort means failure-handling, not opt-out" caveat and the 2026-05-11 incident that motivated this rule). | Run BOTH `start` and `end` helper calls on every skill invocation — success and failure paths alike. The helper is idempotent and ~50ms. As a subagent, this rule applies to YOU for every skill YOU invoke (Rule 4 explicitly names `abap-developer`). |
 | Silently treat a `TEXT_ELEMENTS: FAILED:*` line or a missing `TEXT_ELEMENTS:` line in `/sap-se38` output as a "non-fatal" issue and bury it in the final report's footnotes | `sap-se38/SKILL.md` Step 5c.1 + this agent's Step 2h.1 | Surface the failure as a top-level item in the Step 5 final report under `TextElements:`. Show the exact `FAILED:<reason>` token. Cite the remediation order from Step 2h.1 (retry → INITIALIZATION-injection → manual SE38). Do not proceed to Step 2i (ATC) without either confirming `APPLIED` or getting explicit user OK to defer. The 2026-05-27 `ZMMRMAT042R01` build silently dropped this and forced the user to discover it at runtime — that pattern is a contract violation. |
+| Silently treat a missing `Z<PROGRAM_ID>_TEST.abap` as acceptable when `MODE_UNIT_TESTS = TRUE` AND `_golden.txt` has ≥1 data row | `sap-gen-abap/SKILL.md` §3.4 + this agent's Step 2e | STOP at Step 2e Pre-deploy verification. Re-invoke `/sap-gen-abap` with an explicit reminder that `MODE_UNIT_TESTS = TRUE` is mandatory per the brief and SKILL.md §3.4. If the generator still emits `TEST_FILE: SKIPPED:*` or no marker on retry, surface as a generator bug — do NOT proceed to deploy with `Tests: MISSING`. The 2026-05-27 `ZMMRMAT042R01` build shipped without tests despite the brief saying `yes (mandatory)`; that pattern is a contract violation. |
 
 ---
 

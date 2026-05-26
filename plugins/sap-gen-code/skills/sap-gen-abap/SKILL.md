@@ -764,9 +764,33 @@ ENDFUNCTION.
 
      `/sap-se38 update` (and `/sap-se38 create`) reads this after source
      upload and applies entries via SE38 → Goto → Text Elements.
-4. If `MODE_UNIT_TESTS = TRUE`, also emit `Z<PROGRAM_ID>_TEST.abap` containing
-   `ltcl_main` with one `test_*` method per golden I/O row in the spec's
-   `== TEST CASES ==` section. Pre-fill `cl_abap_unit_assert=>assert_*` calls.
+4. **MANDATORY when `MODE_UNIT_TESTS = TRUE`**: emit `Z<PROGRAM_ID>_TEST.abap`
+   containing `ltcl_main` with one `test_*` method per golden I/O row in the
+   spec's `_golden.txt` (or `== TEST CASES ==` section). Pre-fill
+   `cl_abap_unit_assert=>assert_*` calls.
+
+   This is a **mandatory output** (same tier as `<NAME>.text_elements.txt` and
+   `<NAME>.messages.txt`), NOT a soft "also emit". The 2026-05-27
+   `ZMMRMAT042R01` build silently dropped this file even though the customer
+   brief said `yes (mandatory)` — the "also" wording was easy to interpret
+   as optional. Treat as required when the flag is on.
+
+   **Emit a parseable status line as the last line of the generation report**
+   so callers (especially `abap-developer` Step 2e pre-deploy gate) can verify
+   without parsing the filesystem:
+
+   | Line | Meaning |
+   |---|---|
+   | `TEST_FILE: EMITTED Z<PROGRAM_ID>_TEST.abap methods=N` | OK — N test methods written, one per golden row. |
+   | `TEST_FILE: SKIPPED:MODE_OFF` | `MODE_UNIT_TESTS = FALSE`. No file expected. |
+   | `TEST_FILE: SKIPPED:NO_GOLDEN_ROWS` | Flag is on but `_golden.txt` has zero data rows. Emit a skeleton anyway with one TODO test and a clear comment; surface as WARN. |
+   | `TEST_FILE: FAILED:<reason>` | Generator could not produce the file (e.g. `IDENTIFIER_TOO_LONG` when a derived test-method name exceeds 30 chars). Caller MUST surface this — do not silently swallow. |
+
+   **Generator self-check before emitting `TEST_FILE: EMITTED`**: verify the
+   file actually exists on disk AND is non-empty AND contains
+   `CLASS ltcl_main` AND contains at least one `METHOD test_`. If any check
+   fails, emit `TEST_FILE: FAILED:SELF_CHECK_FAIL_<which>` instead. Trust the
+   marker line, not the LLM's claim of "I wrote it".
 5. If `MODE_OOP = TRUE` and the project's `ZCX_<PROJ>_ERROR` exception class
    does not yet exist (check via `/sap-se24 ZCX_<PROJ>_ERROR` or assume
    absent), emit `ZCX_<PROJ>_ERROR.abap` boilerplate alongside the program
