@@ -520,10 +520,41 @@ powershell -ExecutionPolicy Bypass -File "{WORK_TEMP}\sap_se38_textelm_run.ps1"
 cscript //NoLogo {WORK_TEMP}\sap_se38_textelm_run.vbs
 ```
 
-**On success** (output contains `SUCCESS:`): proceed to Step 6. The VBS template now handles
-activation internally — after saving, it re-enters Change mode, navigates to the Selection Texts
-tab, and presses Activate (Ctrl+F3), including SAPLSPO1 worklist handling.
-**On failure** (output contains `ERROR:`): show full output and diagnose.
+**On success** (output contains `SUCCESS:`): proceed to Step 5c.1. The VBS template now handles
+activation internally — after saving, it re-enters Change mode (with SAPLSETX original-language
+and KO008 Workbench-request popup handling), navigates to the Selection Texts tab, and presses
+Activate (Ctrl+F3), including SAPLSPO1 worklist handling.
+**On failure** (output contains `ERROR:`): proceed to Step 5c.1 to parse the failure mode; do not
+silently swallow.
+
+### Step 5c.1 — Parse & record TEXT_ELEMENTS status (MANDATORY)
+
+After cscript exits, scan the output for a line matching `^TEXT_ELEMENTS:`.
+This line is **mandatory** — its presence proves Step 5c VBS reached a
+clean exit point, regardless of success/failure. Silently dropping a
+missing/failed status is a contract violation (see `abap-developer.md`
+Boundaries table entry on this).
+
+| Line pattern | Status | Action |
+|---|---|---|
+| `TEXT_ELEMENTS: APPLIED selection_texts=N/M symbols=A/B` | OK | Continue to Step 6. Record counts in transcript via `sap_log_helper.ps1 -Action step -Step text_elements -Message "APPLIED N/M sym=A/B"`. |
+| `TEXT_ELEMENTS: FAILED:<reason>` | FAIL | Emit a Step 6 WARN line: `Step 5c FAILED:<reason>` and SUGGEST the INITIALIZATION-injection fallback (see "Alternative" block above). Do NOT mark the overall deploy as FAILED — the source code is active. But the failure MUST appear in the Step 6 report (top-level, not in a footnote), so the caller (and `abap-developer` agent) can surface it. |
+| (line absent) | UNKNOWN | Treat as `FAILED:NO_STATUS_EMITTED` — VBS crashed mid-flight before reaching the final emit. Same Step 6 WARN flow as above. |
+
+Logging:
+```bash
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action step -StateFile "{WORK_TEMP}\sap_se38_run.json" -Step "text_elements" -Message "<APPLIED N/M sym=A/B | FAILED:reason | UNKNOWN>"
+```
+
+**Known FAILED reasons (emit-side contract — sap_se38_text_elements.vbs):**
+
+| `FAILED:<reason>` | Cause | Remediation |
+|---|---|---|
+| `CHANGE_DID_NOT_OPEN_EDITOR` | btnCHAP from SE38 initial screen did not transition to text-elements editor. Usually because TR/orig-lang popup was unhandled, or logon language differs from MASTERLANG and SAPLSETX intercepted in an unrecognised form. | Check logon lang vs `TADIR-MASTERLANG`; manually try the operation in SE38; if it works manually, re-record `/sap-gui-record` to capture the new popup variant. Fallback: apply INITIALIZATION-injection. |
+| `REENTRY_DID_NOT_OPEN_EDITOR` | After Save, the re-entry to Change mode (for the Activate step) failed the same screen-state check. | Same as above. The TEXTPOOL was saved but is still inactive — open SE38 manually, navigate to Goto -> Text Elements, and press Activate (Ctrl+F3). |
+| `TABLE_BASE_UNKNOWN` | None of the candidate sub-screen paths (SAPLSETXP:1310 / 1320 / 1300) resolved. The SAP release uses a different sub-screen number for the selection-text table. | Run `/sap-gui-record` on SE38 -> Text Elements -> Selection Texts to capture the actual `ssubSCREEN_HEADER:SAPLSETXP:NNNN/tblSAPLSETXPSELPAR` path, then add it to the `selBaseCands` array in `sap_se38_text_elements.vbs`. |
+| `TR_REQUIRED_BUT_EMPTY` | SAP prompted for a Workbench request (`ctxtKO008-TRKORR`) but `%%TRANSPORT%%` was empty. | Resolve a modifiable TR via `/sap-transport-request` and re-run Step 5c. The text elements need their own TR entry (separate from the source code's entry). |
+| `NO_STATUS_EMITTED` | VBS crashed before reaching the final `TEXT_ELEMENTS:` emit. | Inspect full cscript output for `ERROR:` lines; the trace before the crash names the operation. Common causes: SAP GUI Security dialog blocked the script, session was killed, COM exception in attach lib. |
 
 ### Text Elements Activation (Handled by VBS Template)
 
@@ -890,10 +921,15 @@ SUCCESS line.
 | `Program is still INACTIVE` | Activation silently failed | Check SE38 manually; AbapEditor may have swallowed the error. Common causes: missing dictionary types, missing message class, syntax errors in local classes |
 | `ERROR: activation_uncertain` | Post-activation verification did not reach an active SE38 screen (1000/120/200) | Open SE38 for the program manually, inspect the activation log, then run `/sap-activate-object PROGRAM <NAME>` |
 | `Status bar empty (AbapEditor swallows messages)` | Front-end editor limitation | This is expected behavior; activation is verified by test-executing the program |
+| `TEXT_ELEMENTS: FAILED:CHANGE_DID_NOT_OPEN_EDITOR` | Step 5c: btnCHAP did not transition to text-elements editor (orig-lang or TR popup not handled by current VBS variants). Source is active; only text elements are missing. | See Step 5c.1 table. Fallback: INITIALIZATION-injection. ErrorClass=`SE38_TEXTELM_CHANGE_FAIL` |
+| `TEXT_ELEMENTS: FAILED:REENTRY_DID_NOT_OPEN_EDITOR` | Step 5c: text elements were saved but re-entry to Change for Activate failed; TEXTPOOL is saved-but-inactive. | Open SE38 manually -> Goto -> Text Elements -> Activate (Ctrl+F3). ErrorClass=`SE38_TEXTELM_REENTRY_FAIL` |
+| `TEXT_ELEMENTS: FAILED:TABLE_BASE_UNKNOWN` | Step 5c: sub-screen path SAPLSETXP:NNNN unknown on this SAP release. | Run `/sap-gui-record` to capture the correct path; add to `selBaseCands` in `sap_se38_text_elements.vbs`. ErrorClass=`SE38_TEXTELM_TBL_UNKNOWN` |
+| `TEXT_ELEMENTS: FAILED:TR_REQUIRED_BUT_EMPTY` | Step 5c: SAP prompted for TR but `%%TRANSPORT%%` was empty. | Resolve TR via `/sap-transport-request`; re-run Step 5c. ErrorClass=`SE38_TEXTELM_TR_MISSING` |
+| `TEXT_ELEMENTS: line absent` | Step 5c VBS crashed before final emit. | Inspect cscript output for the last `INFO:` line; that's where it died. ErrorClass=`SE38_TEXTELM_NO_STATUS` |
 
 Log the FAILED end record (pick `ErrorClass` from the matched row, e.g.
 `SE38_SYNTAX`, `SE38_INACTIVE`, `SE38_UPLOAD`, `SE38_LOCKED`, `SE38_AUTH`,
-`SE38_GENERIC`):
+`SE38_GENERIC`, `SE38_TEXTELM_*`):
 ```bash
 powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_se38_run.json" -Status FAILED -ExitCode 1 -ErrorClass <CLASS> -ErrorMsg "<one-line message from script output>"
 ```

@@ -31,6 +31,68 @@ Dim SESSION_PATH : SESSION_PATH = "%%SESSION_PATH%%"   ' empty = default
 ExecuteGlobal CreateObject("Scripting.FileSystemObject") _
     .OpenTextFile("%%ATTACH_LIB_VBS%%", 1).ReadAll()
 
+' =============================================================================
+' Helper Subs — popup handlers shared by initial Change entry AND re-entry
+' (for re-activation pass). Both flows can hit the same SAPLSETX original-
+' language popup and the same KO008-TRKORR Workbench-request popup.
+' =============================================================================
+' VBScript pitfall: a Dim'd-but-unassigned object var is Empty, NOT Nothing.
+' If findById() errors under On Error Resume Next, the Set leaves the var as
+' Empty — and `Empty Is Nothing` raises "Object required". Every helper below
+' explicitly inits its locals to Nothing before any findById call.
+
+Sub HandleOrigLangPopup(oSess)
+    Dim oW1, oMaster
+    Set oW1     = Nothing
+    Set oMaster = Nothing
+    On Error Resume Next
+    Set oW1     = oSess.findById("wnd[1]")
+    Set oMaster = oSess.findById("wnd[1]/usr/ctxtRSETX-MASTERLANG")
+    On Error GoTo 0
+    If Not (oW1 Is Nothing) And Not (oMaster Is Nothing) Then
+        On Error Resume Next
+        oSess.findById("wnd[1]/usr/btnPUSH1").press   ' Maint. in orig. lang.
+        WScript.Sleep 800
+        On Error GoTo 0
+        WScript.Echo "INFO: Handled SAPLSETX original-language popup."
+    End If
+End Sub
+
+Sub HandleTrPopupIfAny(oSess, sTr)
+    Dim oW1, oTrField
+    Set oW1      = Nothing
+    Set oTrField = Nothing
+    On Error Resume Next
+    Set oW1      = oSess.findById("wnd[1]")
+    Set oTrField = oSess.findById("wnd[1]/usr/ctxtKO008-TRKORR")
+    On Error GoTo 0
+    If Not (oW1 Is Nothing) And Not (oTrField Is Nothing) Then
+        If Len(sTr) = 0 Then
+            WScript.Echo "ERROR: SAP prompted for TR but TRANSPORT is empty."
+            WScript.Echo "TEXT_ELEMENTS: FAILED:TR_REQUIRED_BUT_EMPTY"
+            WScript.Quit 1
+        End If
+        On Error Resume Next
+        oSess.findById("wnd[1]/usr/ctxtKO008-TRKORR").Text = sTr
+        oSess.findById("wnd[1]").sendVKey 0
+        WScript.Sleep 800
+        On Error GoTo 0
+        WScript.Echo "INFO: Bound text-elements TEXTPOOL to TR " & sTr
+    End If
+End Sub
+
+' Verify we are on the text-elements editor screen (tabsTX_TABSTR_CONTROL
+' exists in usr area). Returns True / False — caller decides whether to
+' abort. Used after pressing btnCHAP from the SE38 initial screen.
+Function OnTextElementsEditor(oSess)
+    Dim oTabStripCheck
+    Set oTabStripCheck = Nothing
+    On Error Resume Next
+    Set oTabStripCheck = oSess.findById("wnd[0]/usr/tabsTX_TABSTR_CONTROL")
+    On Error GoTo 0
+    OnTextElementsEditor = Not (oTabStripCheck Is Nothing)
+End Function
+
 ' ---- Parse selection texts into arrays ----
 ' Format: PARAM_NAME=Selection Text|PARAM_NAME=Text|...
 Dim aTexts, nTextCount
@@ -87,10 +149,20 @@ WScript.Sleep 2000
 Err.Clear
 On Error GoTo 0
 
-' ---- Check if we reached the text elements screen ----
+' ---- Handle conditional popups (orig-lang, TR) BEFORE asserting screen ----
+Call HandleOrigLangPopup(oSession)
+Call HandleTrPopupIfAny(oSession, TRANSPORT_VAL)
+
+' ---- Verify we reached the text-elements editor ----
 Dim sScreen
 sScreen = CStr(oSession.Info.ScreenNumber)
 WScript.Echo "INFO: Text Elements screen number: " & sScreen
+If Not OnTextElementsEditor(oSession) Then
+    WScript.Echo "ERROR: Did not reach text-elements editor after pressing Change."
+    WScript.Echo "       ScreenNumber=" & sScreen & "  ActiveWindow=" & oSession.ActiveWindow.Name
+    WScript.Echo "TEXT_ELEMENTS: FAILED:CHANGE_DID_NOT_OPEN_EDITOR"
+    WScript.Quit 1
+End If
 
 ' ---- Navigate to Selection Texts tab ----
 On Error Resume Next
@@ -102,23 +174,35 @@ On Error GoTo 0
 WScript.Echo "INFO: Navigated to Selection Texts tab."
 
 ' ---- Read the table to find parameter rows ----
-' The table is at: wnd[0]/usr/tabsTX_TABSTR_CONTROL/tabpSSSS/ssubSCREEN_HEADER:SAPLSETXP:1310/tblSAPLSETXPSELPAR
-' Columns:
+' Table path varies by SAP release (sub-screen number after SAPLSETXP differs):
+'   SAPLSETXP:1310 -> S/4HANA 1909 (verified)
+'   SAPLSETXP:1320 / 1300 -> seen on other releases
+' Columns (stable across releases):
 '   txtRS38M-STEXTI[0,row] = Parameter name (read-only)
 '   txtRS38M-STEXTT[1,row] = Selection text (editable)
 '   chkRS38M-STEXTA[2,row] = Dictionary reference checkbox
-Dim sTblBase
-sTblBase = "wnd[0]/usr/tabsTX_TABSTR_CONTROL/tabpSSSS/ssubSCREEN_HEADER:SAPLSETXP:1310/tblSAPLSETXPSELPAR"
+Dim selBaseCands : selBaseCands = Array( _
+    "wnd[0]/usr/tabsTX_TABSTR_CONTROL/tabpSSSS/ssubSCREEN_HEADER:SAPLSETXP:1310/tblSAPLSETXPSELPAR", _
+    "wnd[0]/usr/tabsTX_TABSTR_CONTROL/tabpSSSS/ssubSCREEN_HEADER:SAPLSETXP:1320/tblSAPLSETXPSELPAR", _
+    "wnd[0]/usr/tabsTX_TABSTR_CONTROL/tabpSSSS/ssubSCREEN_HEADER:SAPLSETXP:1300/tblSAPLSETXPSELPAR")
+Dim sTblBase, oTable, iSelC, bFoundSelBase : bFoundSelBase = False
+For iSelC = 0 To UBound(selBaseCands)
+    sTblBase = selBaseCands(iSelC)
+    Set oTable = Nothing
+    On Error Resume Next
+    Set oTable = oSession.findById(sTblBase)
+    On Error GoTo 0
+    If IsObject(oTable) And Not (oTable Is Nothing) Then
+        bFoundSelBase = True
+        WScript.Echo "INFO: Selection-text table at " & sTblBase
+        Exit For
+    End If
+Next
 
-' First, determine how many rows are visible
-Dim oTable
-On Error Resume Next
-Set oTable = oSession.findById(sTblBase)
-Err.Clear
-On Error GoTo 0
-
-If oTable Is Nothing Then
-    WScript.Echo "ERROR: Cannot find selection text table control."
+If Not bFoundSelBase Then
+    WScript.Echo "ERROR: Cannot find selection-text table on any candidate sub-screen path (tried " & (UBound(selBaseCands)+1) & ")."
+    WScript.Echo "       Re-record via /sap-gui-record on SE38 -> Text Elements -> Selection Texts to capture the SAPLSETXP screen number for this release, then add it to selBaseCands."
+    WScript.Echo "TEXT_ELEMENTS: FAILED:TABLE_BASE_UNKNOWN"
     WScript.Quit 1
 End If
 
@@ -448,6 +532,23 @@ oSession.findById("wnd[0]/usr/ctxtRS38M-PROGRAMM").Text = PROGRAM_NAME
 oSession.findById("wnd[0]/usr/radRS38M-FUNC_TEXT").select
 oSession.findById("wnd[0]/usr/btnCHAP").press
 WScript.Sleep 2000
+Err.Clear
+On Error GoTo 0
+
+' Re-entry can trigger the same popups as first entry — handle them here too.
+Call HandleOrigLangPopup(oSession)
+Call HandleTrPopupIfAny(oSession, TRANSPORT_VAL)
+
+' Verify before selecting the tab — if we're not on the editor, abort cleanly
+' rather than activating the wrong object.
+If Not OnTextElementsEditor(oSession) Then
+    WScript.Echo "ERROR: Re-entry to text-elements editor failed before activation."
+    WScript.Echo "       ScreenNumber=" & oSession.Info.ScreenNumber & "  ActiveWindow=" & oSession.ActiveWindow.Name
+    WScript.Echo "TEXT_ELEMENTS: FAILED:REENTRY_DID_NOT_OPEN_EDITOR"
+    WScript.Quit 1
+End If
+
+On Error Resume Next
 oSession.findById("wnd[0]/usr/tabsTX_TABSTR_CONTROL/tabpSSSS").select
 WScript.Sleep 1000
 Err.Clear
@@ -462,31 +563,42 @@ On Error GoTo 0
 
 ' Handle activation worklist/confirmation popup (wnd[1])
 ' May appear as SAPLSPO1, SAPLSEWORKINGAREA (Inactive Objects), or other dialog
+Dim sActWnd1, oActW1
+Set oActW1 = Nothing
 On Error Resume Next
-Dim sActWnd1
-sActWnd1 = oSession.findById("wnd[1]").Text
-If Err.Number = 0 And Len(sActWnd1) > 0 Then
+Set oActW1 = oSession.findById("wnd[1]")
+On Error GoTo 0
+If Not (oActW1 Is Nothing) Then
+    sActWnd1 = ""
+    On Error Resume Next
+    sActWnd1 = oActW1.Text
+    On Error GoTo 0
     WScript.Echo "INFO: Activation popup: " & sActWnd1
-    Err.Clear
     ' Check if it has a tab strip (SAPLSEWORKINGAREA "Inactive Objects" dialog)
+    ' Note: must reset oTabStrip to Nothing first — findById that fails leaves the
+    ' variable with its previous value and Err.Number cannot be trusted on Set lines.
     Dim oTabStrip
+    Set oTabStrip = Nothing
+    On Error Resume Next
     Set oTabStrip = oSession.findById("wnd[1]/usr/tabsACT_TAB_STRIP")
-    If Err.Number = 0 And Not oTabStrip Is Nothing Then
+    On Error GoTo 0
+    If Not (oTabStrip Is Nothing) Then
         ' "Inactive Objects" dialog — press Enter to activate all
         WScript.Echo "INFO: Inactive Objects worklist — pressing Enter to activate."
+        On Error Resume Next
         oSession.findById("wnd[1]").sendVKey 0
         WScript.Sleep 5000
+        On Error GoTo 0
     Else
-        Err.Clear
         ' May be SAPLSPO1 or simple confirmation — try Select All + Enter, fall back to Enter
+        On Error Resume Next
         oSession.findById("wnd[1]").sendVKey 9   ' F9 Select All
         WScript.Sleep 500
         oSession.findById("wnd[1]").sendVKey 0   ' Enter
         WScript.Sleep 5000
+        On Error GoTo 0
     End If
 End If
-Err.Clear
-On Error GoTo 0
 
 ' Handle any second popup after activation
 On Error Resume Next
@@ -518,5 +630,18 @@ WScript.Sleep 1000
 Err.Clear
 On Error GoTo 0
 
+' Emit parseable status line FIRST (callers parse this, not the SUCCESS line).
+' Counts:
+'   selection_texts = nMatched / nTextCount   (matched in SAP table / supplied)
+'   symbols         = nSymWritten / nSymbolCount   (0/0 when symbols block was empty)
+Dim nSymWrittenOut, nSymCountOut
+If nSymbolCount > 0 Then
+    nSymWrittenOut = nSymWritten
+    nSymCountOut   = nSymbolCount
+Else
+    nSymWrittenOut = 0
+    nSymCountOut   = 0
+End If
+WScript.Echo "TEXT_ELEMENTS: APPLIED selection_texts=" & nMatched & "/" & nTextCount & " symbols=" & nSymWrittenOut & "/" & nSymCountOut
 WScript.Echo "SUCCESS: Text elements for " & UCase(PROGRAM_NAME) & " updated and activated."
 WScript.Quit 0

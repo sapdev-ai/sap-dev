@@ -460,6 +460,41 @@ The deploy skill handles save → syntax check → activate, locks the
 session (per Rule 7) for the critical section, and returns success only
 when the object is active.
 
+### 2h.1 — Verify text elements applied (Report programs only)
+
+If `_PGM_summary.txt` Program Type = `1` AND `/sap-gen-abap` emitted
+`Z<PROGRAM_ID>.text_elements.txt`, the deploy MUST result in one of:
+
+- `TEXT_ELEMENTS: APPLIED selection_texts=N/M symbols=A/B` in `/sap-se38` output, OR
+- An explicit user override ("skip text elements for now").
+
+**Verification logic:**
+
+1. Scan `/sap-se38` raw output for a line matching `^TEXT_ELEMENTS:`.
+2. If line is absent OR matches `TEXT_ELEMENTS: FAILED:*`, this is a
+   deployment defect even though the source code is active — the
+   selection screen will display raw parameter names (`P_BUKRS`, ...)
+   at runtime instead of the localised labels.
+3. **Surface the failure prominently in the Step 5 final report** under
+   `TextElements:` — DO NOT bury it in a "non-fatal issues" footnote.
+   Show the exact `FAILED:<reason>` token returned by the VBS.
+4. **Recommend remediation in priority order**:
+   a. **Re-run** `/sap-se38` Step 5c standalone (often a transient SAP
+      GUI state issue — orig-lang popup, TR popup — resolves on retry).
+   b. **INITIALIZATION-injection fallback**: edit
+      `Z<PROGRAM_ID>.abap` to add an `INITIALIZATION` block setting
+      `%_<param>_%_app_%-text = '<text>'`. for each parameter; re-deploy.
+      This bypasses the TEXTPOOL entirely (parameters get their labels
+      at runtime via dynpro text variables). See `sap-se38/SKILL.md`
+      Step 5c "Alternative" subsection.
+   c. **Manual SE38 entry** (last resort): SE38 → program → select
+      "Text elements" → Change → Selection Texts → enter labels → Save
+      → Activate (Ctrl+F3).
+
+**Do NOT proceed to Step 2i (ATC) until either (1) `APPLIED` is
+confirmed, or (2) the user explicitly OKs the deferral.** Silent skip
+is a contract violation (see Boundaries table).
+
 ### 2i. ATC quality gate
 
 **Pre-flight readiness check.** `/sap-atc` is implemented by a VBS that
@@ -593,6 +628,8 @@ SUMMARY
   Object(s): Z<NAME> [+ tests, exception class, DDIC objects]
   TR: <TRKORR>
   ATC: PASS | <N> findings (priority breakdown)
+  TextElements: APPLIED <N>/<M> sym=<A>/<B> | FAILED:<reason> | N/A (non-report) | SKIPPED:<reason>
+                # MANDATORY for type=1 reports; cite Step 2h.1 remediation if FAILED.
 
 ARTIFACTS
   Source:        {work_folder}\Z<NAME>.abap
@@ -669,6 +706,7 @@ enforcement details.
 | Read `REPOSRC` via `RFC_READ_TABLE` at all | `skill_operating_rules.md` Rule 3 (full alternatives table there). At the library level, `sap_rfc_lib.ps1::New-RfcReadTable` and `Assert-RfcReadTableAllowed` already throw on the forbidden list — but the agent must not work around them either (e.g. by calling `$dest.Repository.CreateFunction("RFC_READ_TABLE")` directly). | Follow Rule 3's alternatives table. For the common "verify a just-deployed program is non-empty" case, chain to `/sap-se16n REPOSRC PROGNAME=<X>` and apply the SE16N rules in the row below (SE16N drives SAP GUI, so the 512-byte cap doesn't apply). |
 | Include `DATA` in the SE16N output column list when querying `REPOSRC`, or filter `R3STATE=A`, or use the active row as the "latest source" indicator | (a) The `DATA` column is `LRAW` (binary compressed source). SE16N would try to render it and either truncate, error, or produce unreadable binary noise. (b) The inactive row (`R3STATE='I'`) is often the LATEST source — a developer who just edited but hasn't activated leaves the new bytes there; the active row is the LAST KNOWN GOOD, not the most recent. Filtering `R3STATE=A` silently hides the in-flight edit. | When querying `REPOSRC` via `/sap-se16n`: always pass an explicit `select=PROGNAME,R3STATE,UDAT,UTIME,DATALG,UNAM` (NEVER include `DATA`). Sort by `UDAT` / `UTIME` desc and take the FIRST row — that is the latest, regardless of `R3STATE`. To verify a just-deployed program is non-empty: if `DATALG < 100` on the top row, the program is essentially blank → the most recent upload likely failed silently and you should re-run the deploy. (Real programs have a header banner + signature lines that comfortably exceed 100 bytes.) |
 | Skip a skill's `## Step 0.5 — Start Logging` block or `## Final — Log End` block | `skill_operating_rules.md` Rule 4 (covers the "best-effort means failure-handling, not opt-out" caveat and the 2026-05-11 incident that motivated this rule). | Run BOTH `start` and `end` helper calls on every skill invocation — success and failure paths alike. The helper is idempotent and ~50ms. As a subagent, this rule applies to YOU for every skill YOU invoke (Rule 4 explicitly names `abap-developer`). |
+| Silently treat a `TEXT_ELEMENTS: FAILED:*` line or a missing `TEXT_ELEMENTS:` line in `/sap-se38` output as a "non-fatal" issue and bury it in the final report's footnotes | `sap-se38/SKILL.md` Step 5c.1 + this agent's Step 2h.1 | Surface the failure as a top-level item in the Step 5 final report under `TextElements:`. Show the exact `FAILED:<reason>` token. Cite the remediation order from Step 2h.1 (retry → INITIALIZATION-injection → manual SE38). Do not proceed to Step 2i (ATC) without either confirming `APPLIED` or getting explicit user OK to defer. The 2026-05-27 `ZMMRMAT042R01` build silently dropped this and forced the user to discover it at runtime — that pattern is a contract violation. |
 
 ---
 
