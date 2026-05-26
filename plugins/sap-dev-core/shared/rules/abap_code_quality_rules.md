@@ -387,15 +387,28 @@ when present and applies the entries via SE38 → Goto → Text Elements
 after the source upload + activation. The fields in the file:
 
 - `[SELECTION_TEXTS]` block: tab-separated `<P_NAME>\t<text>`. Generator
-  fills from `_selection_definition.txt` `LABEL` column or the
-  parameter's data-element short text.
-- `[TEXT_SYMBOLS]` block: tab-separated `<NNN>\t<text>`. Generator fills
-  from the `WITH FRAME TITLE` / `COMMENT` references it emits.
+  fills from `_selection_definition.txt`'s `LABEL` column (one line per
+  row: `<DTEL_NAME>\t<LABEL>`). `LABEL` is already in the spec's natural
+  language — copy verbatim, do NOT translate. If `LABEL` is blank for
+  a row, fall back to that parameter's data-element short text.
+- `[TEXT_SYMBOLS]` block: tab-separated `<NNN>\t<text>`. Source order:
+  (1) `{doc_name}_textElements.txt` if it has data rows
+  (`TEXT_ID\tTEXT_VALUE`; header-only = no entries); (2) for any
+  `TEXT-NNN` reference still uncovered, derive from spec context (e.g.
+  TEXT-001 frame title ← `_PGM_summary.txt`'s "功能規格名 / 機能名 /
+  Functional Spec Name" line or the program title). Emit in the spec's
+  natural language.
 
-If the brief specifies `template_language = JA` (or sap_language = JA),
-generator emits Japanese text in both blocks; otherwise English. For
-multi-language deployments, the deploy skill loops the file once per
-language.
+**Language rule (hard):** the output language of both blocks MUST match
+the spec's natural language as carried in `LABEL` / `_textElements.txt`
+/ `_PGM_summary.txt`. The `template_language` setting controls customer-
+facing template defaults (briefs, blank spec templates) — it does NOT
+override per-spec content that the customer has already authored.
+Substituting English defaults onto a CN/JA spec is a defect (it is what
+silently bit the V41 `ZMMRMAT041R01` build on 2026-05-26 — the generator
+wrote `P_BUKRS\tCompany Code` despite the spec carrying `公司代码` in
+`_selection_definition.LABEL`). For multi-language deployments, the
+deploy skill loops the file once per language.
 
 ## 22. BAPI structure field-list awareness (S/4HANA)
 

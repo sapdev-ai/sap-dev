@@ -133,8 +133,9 @@ a file exists, read it with the Read tool. If absent, continue silently.
 
 | Sibling file | Purpose | Used by |
 |---|---|---|
-| `{doc_name}_selection_definition.txt` | TSV: one row per selection-screen field. Columns: `NO`, `LABEL`, `NAME_JA`, `NAME_EN`, `DTEL_NAME`, `DATATYPE`, `LENGTH`, `DECIMALS`, `IO_TYPE`, `DISPLAY_FORMAT`, `MANDATORY`, `DESCRIPTION`, `DEFAULT_VALUE`. | Step 2b (Reports) — drives `PARAMETERS` / `SELECT-OPTIONS` declarations |
+| `{doc_name}_selection_definition.txt` | TSV: one row per selection-screen field. Columns: `NO`, `LABEL`, `NAME_JA`, `NAME_EN`, `DTEL_NAME`, `DATATYPE`, `LENGTH`, `DECIMALS`, `IO_TYPE`, `DISPLAY_FORMAT`, `MANDATORY`, `DESCRIPTION`, `DEFAULT_VALUE`. | Step 2b (Reports) — drives `PARAMETERS` / `SELECT-OPTIONS` declarations AND `[SELECTION_TEXTS]` entries in the sibling `<NAME>.text_elements.txt` (LABEL → text per row) |
 | `{doc_name}_selection_screen_layout.png` | **Image** of the WHOLE selection screen. Extracted from the spec workbook by `/sap-docs-extract`. Read as multimodal input. | Step 2b — informs `SELECTION-SCREEN BLOCK` / `WITH FRAME TITLE` / `COMMENT` / `POSITION` structure |
+| `{doc_name}_textElements.txt` | TSV: explicit text-symbol overrides from the spec's Text Elements sheet (when present). Columns: `TEXT_ID`, `TEXT_VALUE`. A header-only file means "spec lists no explicit symbols" — that is **not** the same as missing; treat as "no entries, use defaults". | Step 3 — populates `[TEXT_SYMBOLS]` block in the sibling `<NAME>.text_elements.txt` |
 | `{doc_name}_interface.txt` | TSV: Inputs / Outputs / Exceptions (anchored sub-sections). | Step 2c (Function Modules) — drives the `IMPORTING / EXPORTING / TABLES / EXCEPTIONS` block |
 | `{doc_name}_file_mapping_in.txt` | TSV: file field → SAP table.field. Used for inbound interfaces. | Steps 2a/2b — drives the BAPI parameter assembly and the input-file parser |
 | `{doc_name}_file_mapping_out.txt` | TSV: SAP table.field → file field. Outbound interfaces (V2 use). | Reserved — emit as a `" TODO" comment block when present and non-empty |
@@ -601,6 +602,12 @@ CONSTANTS:
    - `DTEL_NAME` non-blank → `TYPE <dtel>`. Else `DATATYPE` + `LENGTH`/
      `DECIMALS` → `TYPE c LENGTH n` / `TYPE p LENGTH n DECIMALS d` / etc.
    - `DEFAULT_VALUE` non-blank → `DEFAULT <value>` clause.
+   - `LABEL` (verbatim, in the spec's natural language) → write to the
+     `[SELECTION_TEXTS]` block of the sibling
+     `Z<PROGRAM_ID>.text_elements.txt` as `<DTEL_NAME>\t<LABEL>` on the
+     same row this PARAMETERS / SELECT-OPTIONS emits. Do **not**
+     translate. See Step 3 sibling-file rules and `abap_code_quality_rules.md`
+     §21 for the canonical contract.
 2. If `_selection_screen_layout.png` is present → read it as a multimodal
    input. Use ONLY for: BLOCK boundaries, frame titles (`TEXT-001`,
    `TEXT-002`, …), `COMMENT` lines, parameter ordering hints, and visual
@@ -718,15 +725,43 @@ ENDFUNCTION.
      `/sap-se38` so the program references resolve.
    - `Z<PROGRAM_ID>.text_elements.txt` — text-pool population for
      `/sap-se38`. Two blocks per rule §21:
+
+     **`[SELECTION_TEXTS]` — source: `{doc_name}_selection_definition.txt`'s
+     `LABEL` column.** For every row in selection_definition, emit one line
+     `<DTEL_NAME><TAB><LABEL>`. The `LABEL` value is **already in the spec's
+     natural language** (Chinese for a CN spec, Japanese for a JA spec,
+     English for an EN spec) — copy it verbatim, do **NOT** translate it
+     to English. If `LABEL` is blank for a row, fall back to that
+     parameter's data-element short text (lookup via `_dataElements.txt`
+     or its DDIC short-text). Last resort only: omit the line and let
+     SE38 use the data-element short text at runtime.
+
+     **`[TEXT_SYMBOLS]` — source order:**
+       1. `{doc_name}_textElements.txt` if it has data rows
+          (`TEXT_ID<TAB>TEXT_VALUE`). A header-only file = no entries.
+       2. For every `TEXT-NNN` symbol your emitted source references but
+          `_textElements.txt` doesn't cover, derive a sensible label
+          from spec context — e.g. TEXT-001 (frame title of the main
+          selection block) ← `_PGM_summary.txt` "功能規格名 / 機能名 /
+          Functional Spec Name" line, or the program title; emit in
+          the spec's natural language.
+
+     **Language rule (hard):** the output language of both blocks MUST
+     match the spec's natural language. Never substitute the English
+     example below verbatim — it is a format illustration, not a content
+     template.
+
+     Format:
      ```
      [SELECTION_TEXTS]
-     P_BUKRS	Company Code
-     P_WERKS	Plant
+     P_BUKRS	<LABEL from selection_definition row for P_BUKRS>
+     P_WERKS	<LABEL from selection_definition row for P_WERKS>
      ...
      [TEXT_SYMBOLS]
-     001	Selection
-     002	Result Output
+     001	<frame title for TEXT-001 in spec language>
+     002	<comment text for TEXT-002 in spec language>
      ```
+
      `/sap-se38 update` (and `/sap-se38 create`) reads this after source
      upload and applies entries via SE38 → Goto → Text Elements.
 4. If `MODE_UNIT_TESTS = TRUE`, also emit `Z<PROGRAM_ID>_TEST.abap` containing
