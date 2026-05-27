@@ -4,6 +4,25 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+## [0.3.0] — 2026-05-27
+
+### Syntax-check classifier — locale-aware shared lib (2026-05-27)
+
+- **Bug fixed.** `sap-se38`, `sap-se37`, and `sap-se24` deploy skills silently passed real syntax errors on non-EN logons. The Ctrl+F2 grid's MSGTYPE column is rendered as `"@<HEX-ID>\Q<localized-label>@"` — the label is in the user's logon language. The inline classifier matched only the literal English `"ERROR"` substring (plus `"1"` / `"E"`), so on a ZH logon `@5C\Q错误@` and on JA `@5C\Qエラー@` were classified as non-errors, `SYNTAX_ERRORS: 0` was emitted, the script proceeded to Activate against syntactically-broken code, the popup walker dismissed the "Activate anyway?" SPOP, the verify heuristic accepted screen 101 + empty sbar as success, and the run reported `SUCCESS` while PROGDIR still held `STATE='I'`. Reproduced on 2026-05-27 against ZMMRMAT049R02 (line 21 `TYPE matkl2` — unknown DDIC type) on an S/4HANA 1909 ZH session.
+- **New shared lib**: [`shared/scripts/sap_syntax_check_lib.vbs`](plugins/sap-dev-core/shared/scripts/sap_syntax_check_lib.vbs). Three functions:
+    - `GetSyntaxErrorWord(sLang)` — returns the SAP-localized "Error" word for the given logon-language code. Accepts both 1-char SAP codes (`E`/`D`/`F`/`S`/`I`/`P`/`1`/`M`/`J`/`3`/`R`) and 2-char ISO codes (`EN`/`DE`/`FR`/`ES`/`IT`/`PT`/`ZH`/`ZF`/`JA`/`KO`/`RU`). Uses `ChrW()` literals so the source stays ASCII.
+    - `ExtractIconId(sCell)` — parses `@<HEX-ID>\Q…@` and returns the uppercased ID, locale-independent.
+    - `IsErrorMsgType(sCell, sLogonLang)` — two-tier classifier: legacy `"1"` / `"E"` / English `"ERROR"` substring (backward compat) → localized-word `InStr` (primary path on non-EN logons) → icon-ID prefix in `{03, 0A, 5C, AT, AY}` (locale-independent fallback). Empty MSGTYPE returns `False` so continuation/child rows don't double-count.
+- **Refactor**: deduplicated five identical 28-line inline `GetSyntaxErrorWord` blocks plus five inline two-tier match sites into a single shared include. Caller VBS files include via `ExecuteGlobal FSO.OpenTextFile("%%SYNTAX_CHECK_LIB_VBS%%",1).ReadAll()` and call `IsErrorMsgType(sCell, sLogonLang)` directly. Net change across 9 files: **−270 lines** (+77 / −347).
+- **Token wiring**: SKILL.md PS1 generators for sap-se38 (create + update), sap-se37 (create + update), and sap-se24 (update) substitute `%%SYNTAX_CHECK_LIB_VBS%%` with the absolute path to the shared lib.
+- **CLAUDE.md Shared Resources table** updated with a row for the new file describing the contract, calling convention, and the pre-refactor bug history.
+- **Affected files**:
+    - Added: `plugins/sap-dev-core/shared/scripts/sap_syntax_check_lib.vbs`
+    - Modified callers: `sap_se38_create.vbs`, `sap_se38_update.vbs`, `sap_se37_create.vbs`, `sap_se37_update.vbs`, `sap_se24_update.vbs`
+    - Modified SKILL.md: `sap-se38/SKILL.md`, `sap-se37/SKILL.md`, `sap-se24/SKILL.md`
+    - Modified `CLAUDE.md` (Shared Resources table)
+- **Verified end-to-end**: regenerated the update VBS from the refactored template + new shared lib and re-ran against the unchanged broken matkl2 source on ZH S/4HANA 1909. Output: `INFO: Logon language = 'ZH'; matching syntax-error word = '错误'`, `SYNTAX_ERRORS: 1`, `ERROR: Syntax errors found. Fix errors and retry.`, exit code 1 — no activation attempt.
+
 ## [0.2.0] — 2026-05-17
 
 ### Phase 4.3 — Per-connection settings + universal RFC credential fallback (2026-05-17)

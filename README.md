@@ -9,7 +9,7 @@ SAP development automation skills for AI coding assistants.
 
 Project home: <https://sapdev.ai>
 
-## Available Plugins (3 plugins · 49 skills · 1 agent · v0.2.0)
+## Available Plugins (3 plugins · 49 skills · 1 agent · v0.3.0)
 
 | Plugin | Skills | Description |
 |--------|--------|-------------|

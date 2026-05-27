@@ -156,7 +156,7 @@ node scripts/check-consistency.mjs
 
 Should print:
 ```
-OK: 3 plugins, 49 skills, all manifests aligned at version 0.2.0, Tier 3 attach contract clean
+OK: 3 plugins, 49 skills, all manifests aligned at version 0.3.0, Tier 3 attach contract clean
 ```
 
 On failure, the script lists each non-conforming file with a specific reason. The check covers:
