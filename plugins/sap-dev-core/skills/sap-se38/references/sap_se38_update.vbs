@@ -24,6 +24,7 @@ Const ABAP_SOURCE_FILE = "%%ABAP_SOURCE_FILE%%"
 Const SAP_PACKAGE      = "%%PACKAGE%%"
 Const SAP_TRANSPORT    = "%%TRANSPORT%%"
 Const SESSION_PATH     = "%%SESSION_PATH%%"   ' empty / unsubstituted = use default
+Const POST_ACTIVATE_VERIFY_PS1 = "%%POST_ACTIVATE_VERIFY_PS1%%"   ' empty = skip verify
 
 Const VKEY_ENTER    = 0
 Const VKEY_F3_BACK  = 3
@@ -75,6 +76,53 @@ ExecuteGlobal CreateObject("Scripting.FileSystemObject") _
     .OpenTextFile("%%ATTACH_LIB_VBS%%", 1).ReadAll()
 ExecuteGlobal CreateObject("Scripting.FileSystemObject") _
     .OpenTextFile("%%SESSION_LOCK_VBS%%", 1).ReadAll()
+' Post-activate RFC verify helper (generic invoker; SE38-specific PS1 routes
+' to PROGDIR). Provides PostActivateVerifyOrFail Sub - see Step 7.5 below.
+ExecuteGlobal CreateObject("Scripting.FileSystemObject") _
+    .OpenTextFile("%%POST_ACTIVATE_VERIFY_VBS%%", 1).ReadAll()
+
+' ----------------------------------------------------------------------------
+' IsActivateAnywayPopup(oSess, sWnd)
+'   Detects the SAP "Errors found, activate anyway?" SPOP popup that may
+'   appear after Ctrl+F3 when SAP's pre-activate consistency check finds
+'   issues the explicit Ctrl+F2 syntax check missed.
+'
+'   Signature: any of usr/btnSPOP-VAROPTION1, usr/btnBUTTON_1 exists at the
+'   popup root. These are the "Activate" buttons; the popup also has an
+'   "Edit" button which is the DEFAULT FOCUS - blind sendVKey VKEY_ENTER
+'   would dismiss the popup via Edit, silently skipping activation and
+'   leaving STATE='I'.
+'
+'   Probe 2026-05-27 (S/4HANA 1909 / Kernel 754 / ZH) attempted to trigger
+'   this popup via missing INCLUDE / DTEL / FORM / FM references and could
+'   not - SAP's pre-Save implicit syntax check catches all of those before
+'   Ctrl+F3 ever runs. The popup is therefore structurally unreachable from
+'   the standard sap-se38 deploy code path on this kernel. Kept as forward-
+'   compatible defence: newer kernels, third-party add-ons, or different
+'   release configurations could re-introduce the popup.
+'
+'   Caller contract: if True, do NOT press any button - cancel via F12 (the
+'   universal SAP "cancel popup" signal). The post-activate RFC verify
+'   downstream will fail-close on the resulting PROGDIR.STATE='I'.
+' ----------------------------------------------------------------------------
+Function IsActivateAnywayPopup(oSess, sWnd)
+    On Error Resume Next
+    Dim o
+    Set o = Nothing
+    Set o = oSess.findById(sWnd & "/usr/btnSPOP-VAROPTION1")
+    If Err.Number = 0 And Not (o Is Nothing) Then
+        IsActivateAnywayPopup = True : Err.Clear : On Error GoTo 0 : Exit Function
+    End If
+    Err.Clear
+    Set o = Nothing
+    Set o = oSess.findById(sWnd & "/usr/btnBUTTON_1")
+    If Err.Number = 0 And Not (o Is Nothing) Then
+        IsActivateAnywayPopup = True : Err.Clear : On Error GoTo 0 : Exit Function
+    End If
+    Err.Clear
+    On Error GoTo 0
+    IsActivateAnywayPopup = False
+End Function
 
 ' ------ 1. Attach to existing SAP GUI session (via shared attach helper) ----
 Dim oSession
@@ -584,10 +632,24 @@ On Error Resume Next
 oSession.findById("wnd[0]/tbar[1]/btn[27]").press
 WScript.Sleep 2500
 
-Dim iActPop
+Dim iActPop, sActWndId, bActAnyway
+bActAnyway = False
 For iActPop = 1 To 5
     If InStr(oSession.ActiveWindow.Id, "wnd[1]") > 0 Then
-        WScript.Echo "INFO: Activation popup " & iActPop & ": " & oSession.findById("wnd[1]").Text
+        sActWndId = oSession.ActiveWindow.Id
+        WScript.Echo "INFO: Activation popup " & iActPop & " at " & sActWndId & ": " & oSession.findById(sActWndId).Text
+        ' Defensive: detect 'Errors found, activate anyway?' SPOP. Default
+        ' focus on that popup is Edit (NOT Activate), so blind ENTER would
+        ' silently dismiss without activating. Cancel via F12 instead and
+        ' let the post-activate RFC verify (Step 7.5) report the resulting
+        ' STATE='I' as a real failure.
+        If IsActivateAnywayPopup(oSession, sActWndId) Then
+            WScript.Echo "WARNING: 'Errors found, activate anyway?' SPOP detected at " & sActWndId & " - cancelling via F12. Post-activate RFC verify will report the failure."
+            oSession.ActiveWindow.sendVKey 12
+            WScript.Sleep 1500
+            bActAnyway = True
+            Exit For
+        End If
         oSession.ActiveWindow.sendVKey VKEY_ENTER
         WScript.Sleep 2000
     Else
@@ -612,9 +674,23 @@ End If
 Err.Clear
 On Error GoTo 0
 
-' --- Release the session UI lock; Step 8 is read-only verification ---
+' --- Release the session UI lock; Steps 7.5 + 8 are read-only verification ---
 ReleaseSession oSession, wasLocked
 If wasLocked Then WScript.Echo "INFO: Session UI lock released."
+
+' ------ 7.5 Post-activate RFC verify (authoritative gate) -----------------
+' Queries PROGDIR.STATE via RFC. ACTIVE = success, INACTIVE/MISSING =
+' fail-closed and Quit 1 with a clear error. Language-independent,
+' screen-independent, popup-independent - this closes the 2026-05-27
+' ZMMRMAT044R01 false-success path where the AbapEditor swallowed
+' post-Ctrl+F3 sbar=E and the existing screen-101 heuristic permissively
+' accepted "screen 101 + clean sbar" as proof of activation while
+' PROGDIR.STATE was still 'I'.
+'
+' If POST_ACTIVATE_VERIFY_PS1 is empty or still the unsubstituted token,
+' the helper exits SKIP silently - safe in offline-test contexts. In
+' normal deploys the SE38 SKILL.md substitutes the path; verify runs.
+PostActivateVerifyOrFail POST_ACTIVATE_VERIFY_PS1, "PROGRAM", PROGRAM_NAME
 
 ' ------ 8. Verify activation from SE38 initial screen ----------------------
 ' Navigate back to SE38 initial and try to run the program (F8). If the
