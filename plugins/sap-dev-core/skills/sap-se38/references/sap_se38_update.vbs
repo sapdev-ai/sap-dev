@@ -29,6 +29,44 @@ Const VKEY_ENTER    = 0
 Const VKEY_F3_BACK  = 3
 Const VKEY_F11_SAVE = 11
 
+' ----------------------------------------------------------------------------
+' GetSyntaxErrorWord(sLang)
+'   Returns the localized word SAP puts in the syntax-check grid's MSGTYPE
+'   icon-string (`@<ID>\Q<word>@`) for *errors*, given a SAP single-char
+'   logon-language code. The caller compares this against MSGTYPE so the
+'   skill respects the user's logon language instead of assuming English.
+'
+'   Inputs:  "E" English, "D" German, "F" French, "S" Spanish, "I" Italian,
+'            "P" Portuguese, "1" Simplified Chinese, "M" Traditional Chinese,
+'            "J" Japanese, "3" Korean, "R" Russian.
+'   Output:  the localized word, or "" when the language is unknown (in
+'            which case the caller falls back to the icon-ID match).
+'
+'   Uses ChrW() so this VBS source itself stays ASCII — no encoding traps
+'   when the file is re-saved or rendered in non-UTF tooling.
+' ----------------------------------------------------------------------------
+Function GetSyntaxErrorWord(sLang)
+    ' Accept BOTH forms SAP can return from oSession.Info.Language:
+    '   - 1-char SAP code (E, D, F, S, I, P, 1, M, J, 3, R)
+    '   - 2-char ISO  code (EN, DE, FR, ES, IT, PT, ZH, ZF, JA, KO, RU)
+    Select Case UCase(sLang)
+        Case "E", "EN" : GetSyntaxErrorWord = "Error"
+        Case "D", "DE" : GetSyntaxErrorWord = "Fehler"
+        Case "F", "FR" : GetSyntaxErrorWord = "Erreur"
+        Case "S", "ES" : GetSyntaxErrorWord = "Error"
+        Case "I", "IT" : GetSyntaxErrorWord = "Errore"
+        Case "P", "PT" : GetSyntaxErrorWord = "Erro"
+        Case "1", "ZH" : GetSyntaxErrorWord = ChrW(&H9519) & ChrW(&H8BEF)               ' 错误 (zh-CN)
+        Case "M", "ZF" : GetSyntaxErrorWord = ChrW(&H932F) & ChrW(&H8AA4)               ' 錯誤 (zh-TW)
+        Case "J", "JA" : GetSyntaxErrorWord = ChrW(&H30A8) & ChrW(&H30E9) & ChrW(&H30FC) ' エラー (ja)
+        Case "3", "KO" : GetSyntaxErrorWord = ChrW(&HC624) & ChrW(&HB958)               ' 오류 (ko)
+        Case "R", "RU" : GetSyntaxErrorWord = ChrW(&H041E) & ChrW(&H0448) & _
+                                                ChrW(&H0438) & ChrW(&H0431) & _
+                                                ChrW(&H043A) & ChrW(&H0430)             ' Ошибка (ru)
+        Case Else      : GetSyntaxErrorWord = ""
+    End Select
+End Function
+
 ' Include shared helpers (attach first; session-lock's pre-unlock sweep
 ' reads from oSession). Per language_independence_rules.md Rule 7: every
 ' multi-step write critical section (paste + save + activate) MUST wrap a
@@ -441,6 +479,20 @@ Dim lErrCount
 bHasErrors = False
 lErrCount  = 0
 
+' --- Resolve logon language so we can match the LOCALIZED "Error" word
+' returned by SAP in the grid's MSGTYPE column. SAP fills MSGTYPE with the
+' icon-string "@<ID>\Q<localized text>@" — the tail text is in the user's
+' logon language. Detecting the language here lets the matcher honour it
+' instead of assuming English. Icon-ID is kept as a locale-independent
+' secondary check for releases / icons we haven't mapped yet.
+Dim sLogonLang, sLocErr
+On Error Resume Next
+sLogonLang = UCase(CStr(oSession.Info.Language))
+On Error GoTo 0
+If Len(sLogonLang) = 0 Then sLogonLang = "E"
+sLocErr = GetSyntaxErrorWord(sLogonLang)
+WScript.Echo "INFO: Logon language = '" & sLogonLang & "'; matching syntax-error word = '" & sLocErr & "'."
+
 On Error Resume Next
 Set oChkGrid = oSession.findById("wnd[0]/shellcont/shell/shellcont[1]/shell")
 If Err.Number = 0 And Not (oChkGrid Is Nothing) Then
@@ -454,10 +506,32 @@ If Err.Number = 0 And Not (oChkGrid Is Nothing) Then
             sChkText = oChkGrid.getCellValue(iChk, "TEXT")
             If Err.Number <> 0 Then Err.Clear: Exit For
             WScript.Echo "  [" & sChkType & "] Line " & sChkLine & ": " & sChkText
-            ' MSGTYPE values: "1" or "E" = Error, "2" or "W" = Warning.
-            ' SAP also returns icon-codes like "@5C\QError@" / "@5D\QWarning@".
+            ' Two-tier match (both respect the logon language):
+            '   1. Localized-word match — read SAP logon language above,
+            '      look up the word SAP uses for "Error" in that language
+            '      (Error / Fehler / 错误 / エラー / Erreur / …), and
+            '      InStr it against MSGTYPE's \Q…@ tail. This is the
+            '      primary, language-aware path.
+            '   2. Icon-ID match — extract `<ID>` from `@<ID>\Q…@` and
+            '      compare against known Error icon IDs across S/4
+            '      releases (03 ICON_FAILURE, 0A legacy, 5C ICON_LED_RED
+            '      observed on S/4HANA 1909, AT/AY ICON_MESSAGE_ERROR).
+            '      Locale-independent fallback for icon sets we have not
+            '      added a localized word for yet.
+            Dim sChkIcon
+            sChkIcon = ""
+            If Left(sChkType, 1) = "@" Then
+                Dim iIconEnd
+                iIconEnd = InStr(sChkType, "\")
+                If iIconEnd = 0 Then iIconEnd = InStr(2, sChkType, "@")
+                If iIconEnd > 2 Then sChkIcon = UCase(Mid(sChkType, 2, iIconEnd - 2))
+            End If
+            Dim bByLocalizedWord
+            bByLocalizedWord = (Len(sLocErr) > 0 And InStr(sChkType, sLocErr) > 0)
             If sChkType = "1" Or UCase(sChkType) = "E" _
-               Or InStr(UCase(sChkType), "ERROR") > 0 Then
+               Or bByLocalizedWord _
+               Or sChkIcon = "03" Or sChkIcon = "0A" Or sChkIcon = "5C" _
+               Or sChkIcon = "AT" Or sChkIcon = "AY" Then
                 bHasErrors = True
                 lErrCount  = lErrCount + 1
             End If
