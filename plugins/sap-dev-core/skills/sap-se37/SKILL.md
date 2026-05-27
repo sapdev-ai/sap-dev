@@ -479,6 +479,8 @@ $content = $content.Replace('%%PACKAGE%%',         $package)
 $content = $content.Replace('%%TRANSPORT%%',       $transport)
 $content = $content.Replace('%%INTERFACE_CODE%%',  $ifaceCode)
 $content = $content.Replace('%%SESSION_LOCK_VBS%%', '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_session_lock.vbs')
+# Locale-aware syntax-check classifier (Ctrl+F2 grid MSGTYPE match for ZH/JA/DE logons).
+$content = $content.Replace('%%SYNTAX_CHECK_LIB_VBS%%', '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_syntax_check_lib.vbs')
 $sessionPath = ''
 $content = $content.Replace('%%SESSION_PATH%%',     $sessionPath)
 $content = $content.Replace('%%ATTACH_LIB_VBS%%',   '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs')
@@ -742,6 +744,8 @@ $content = $content -replace '%%PACKAGE%%',        $package
 $content = $content -replace '%%TRANSPORT%%',      $transport
 $content = $content.Replace('%%INTERFACE_CODE%%',  $ifaceCode)
 $content = $content -replace '%%SESSION_LOCK_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_session_lock.vbs'
+# Locale-aware syntax-check classifier (Ctrl+F2 grid MSGTYPE match for ZH/JA/DE logons).
+$content = $content -replace '%%SYNTAX_CHECK_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_syntax_check_lib.vbs'
 $sessionPath = ''
 $content = $content -replace '%%SESSION_PATH%%',   $sessionPath
 $content = $content -replace '%%ATTACH_LIB_VBS%%', '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
