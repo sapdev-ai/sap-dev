@@ -341,7 +341,7 @@ Special rows:
 ### 1.5d — Inject signatures into Step 2 context
 
 Read `{work_folder}\_fm_signatures.txt` (TSV format). When generating ABAP
-in Step 2, **prefer this file's parameter names and types over AI training
+in Step 2, **prefer this file's parameter names AND types over AI training
 knowledge** for any FM that appears here. The TSV columns are:
 
 ```
@@ -350,6 +350,35 @@ FM_NAME    SECTION    PARAM_NAME    OPTIONAL    TYPE_REF    TYPE_KIND
   OPTIONAL  = " " (mandatory) or "X" (optional)
   TYPE_KIND = TAB | TDEF | TYP | "" (none / exception)
 ```
+
+**Type compatibility is mandatory, not advisory.** Per `abap_code_quality_rules.md`
+§24, every actual parameter you emit MUST be type-compatible with `TYPE_REF`.
+The most common failure mode the historical builds hit is `CX_SY_DYN_CALL_ILLEGAL_TYPE`
+at runtime — formal is `STRING`, actual is `rlgrap-filename` or `c LENGTH n`.
+Activation passes; ATC catches it as a P1 SLIN finding only after deploy. To
+prevent this:
+
+1. For every `<formal> = <actual>` you generate, look up the formal's `TYPE_REF`
+   in `_fm_signatures.txt`.
+2. Check whether the actual's declared type matches. Acceptable: exact match,
+   same underlying DOMNAME via DDIF, or `LIKE` of a DDIC field with that ROLLNAME.
+3. If the types are incompatible, emit a local adapter variable typed exactly
+   like `TYPE_REF` and pass that — DO NOT pass the original actual directly.
+
+Worked example for `GUI_UPLOAD FILENAME` (formal `STRING`, actual taken from a
+selection-screen `PARAMETERS p_file TYPE rlgrap-filename`):
+
+```abap
+" Adapter for GUI_UPLOAD FILENAME: formal is STRING, p_file is rlgrap-filename
+DATA(lv_filename) = CONV string( p_file ).
+CALL FUNCTION 'GUI_UPLOAD'
+  EXPORTING
+    filename = lv_filename
+    ...
+```
+
+See rule §24's "Documented common traps" table for the audit list per FM —
+treat it as a generation pre-flight before you write the `CALL FUNCTION` block.
 
 Special rows to handle:
 - `FM_NAME  NOT_FOUND  ...`   — FM does not exist in target SAP. Either
@@ -796,6 +825,10 @@ ENDFUNCTION.
    absent), emit `ZCX_<PROJ>_ERROR.abap` boilerplate alongside the program
    so deploy can pick it up.
 6. Offer next steps:
+   - "Validate CALL FUNCTION signatures: `/sap-check-fm <file>` (catches
+     type-incompatible actual parameters BEFORE deploy; mandatory when
+     the generated source contains any `CALL FUNCTION 'GUI_UPLOAD'`,
+     `'GUI_DOWNLOAD'`, BAPI calls, or any FM with a `STRING` parameter)."
    - "Validate code quality: `/sap-check-abap <file>`"
    - "Deploy DDIC + ABAP: `/sap-se11`, then `/sap-se38 <program-name> <file>`"
    - "Run ABAP Unit tests after deploy: `/sap-se38 <program-name>` then SE80 → Test"
@@ -1002,6 +1035,8 @@ For **selection screen parameters**, use the SAP data element (e.g., `TYPE bukrs
 
 - **GUI_UPLOAD with TABLE OF char2048** — Use `TABLE OF char2048` for `data_tab` WITHOUT `has_field_separator = 'X'`. Parse tabs manually with `SPLIT ... AT cl_abap_char_utilities=>horizontal_tab`.
 
+- **GUI_UPLOAD FILENAME requires `TYPE string`** — on S/4HANA 1909 (kernel 754, release 7.52) the formal `FILENAME` is typed `STRING`. Passing a `TYPE rlgrap-filename` / `c LENGTH n` actual activates fine but raises ATC P1 (SLIN: `CX_SY_DYN_CALL_ILLEGAL_TYPE` runtime risk). Always introduce a `DATA(lv_filename) = CONV string( p_file ).` adapter line and pass `lv_filename` — never pass the selection-screen `rlgrap-filename` parameter directly. The same trap applies to `GUI_DOWNLOAD FILENAME`. See rule §24's table for the full audit list.
+
 ---
 
 ## Important: ATC pre-emit checklist (final pass before saving the .abap)
@@ -1036,9 +1071,19 @@ P1/P2/P3 if left unchecked.
    thumb: when you write `@`, write commas. `/sap-check-abap` reports
    this as `SQL_STRICT_COMMA` ERROR severity — it will halt deploy if
    left in the generated source.
+8. **Every `CALL FUNCTION` actual parameter is type-compatible with its
+   formal.** Walk `_fm_signatures.txt` for every FM you call. For each
+   `<formal> = <actual>` binding, verify the actual's declared type
+   matches the formal's `TYPE_REF` — exact match, same DOMNAME, or
+   `LIKE` of a DDIC field with that ROLLNAME. If incompatible, declare
+   a local adapter (`DATA lv_x TYPE <formal_type_ref>.`) and pass that
+   instead. (Rule §24, ATC P1 — SLIN raises `CX_SY_DYN_CALL_ILLEGAL_TYPE`
+   for the mismatched call. The most-hit cases: `GUI_UPLOAD FILENAME`,
+   `GUI_DOWNLOAD FILENAME`, anything typed `STRING` receiving a fixed-
+   length char actual.)
 and re-walk. Do not ship the file with any unchecked box — the
 post-deploy ATC gate (`/sap-atc`) will fail at `MAX_PRIORITY=2` for
-findings #1, #2; warn for #3-#6.
+findings #1, #2, #8; warn for #3-#6.
 
 ---
 

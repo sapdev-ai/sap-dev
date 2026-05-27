@@ -493,6 +493,98 @@ The same pattern applies to other BAPIs with documented "wrong place"
 field traps. When in doubt, query Step 1.5's `_fm_signatures.txt` for
 the structure type then `DDIF_FIELDINFO_GET` for the field list.
 
+## 24. `CALL FUNCTION` actual-parameter type compatibility
+
+Every `CALL FUNCTION 'X'` actual parameter MUST be type-compatible with
+the FM's formal parameter. Type mismatch is the single largest source of
+ATC P1 findings produced by `sap-gen-abap` historically (extension-program
+check / SLIN raises `CX_SY_DYN_CALL_ILLEGAL_TYPE` at runtime) — it does not
+fail syntax check or activation, so it slips past `/sap-se38` and is only
+caught by ATC. The 2026-05-27 `ZMMRMAT046R01` build hit this on
+`GUI_UPLOAD FILENAME` (formal `STRING`, actual `IV_FILE TYPE rlgrap-filename`).
+
+### Ground truth
+
+Step 1.5 (`sap_rfc_lookup_fm.ps1`) writes `_fm_signatures.txt` with one
+row per FM parameter:
+
+```
+FM_NAME   SECTION   PARAM_NAME   OPTIONAL   TYPE_REF   TYPE_KIND
+```
+
+`TYPE_REF` is the actual SAP type the formal parameter expects (e.g.
+`STRING`, `RLGRAP-FILENAME`, `BAPI_MARA`, `MATNR`). `TYPE_KIND` is
+`TAB` / `TDEF` / `TYP` / "" (none / exception).
+
+**Generator rule**: before emitting any binding `<formal> = <actual>`,
+walk `_fm_signatures.txt` and the actual's local declaration. Treat the
+following as ACCEPTABLE:
+
+1. Actual is declared `TYPE <same as formal's TYPE_REF>` (exact match).
+2. Actual is declared `TYPE <data-element that resolves to the same
+   underlying DOMNAME>` (compatible via DDIF).
+3. Actual is declared `LIKE <ddic-field>` whose ROLLNAME = formal's
+   TYPE_REF.
+
+Treat as REJECTED — emit an adapter local instead:
+
+1. Formal is `TYPE_REF = STRING` (or `TYPE_KIND = TYP` with TYPE_REF
+   = `STRING`) but actual is a fixed-length char type (`c LENGTH n`,
+   `CHARN`, `RLGRAP-FILENAME`, any DTEL of underlying type CHAR).
+2. Formal is a flat numeric / date / time type and actual is `STRING`
+   (the inverse — would require explicit conversion).
+3. Formal is a structure type (`BAPI_MARA`) and actual is a different
+   structure or a flat field.
+
+### Adapter pattern
+
+When rejected, emit a one-line local cast above the `CALL FUNCTION`:
+
+```abap
+" GUI_UPLOAD FILENAME is typed STRING in S/4HANA 7.52+; selection-screen
+" PARAMETERS p_file TYPE rlgrap-filename gives a CHAR(128), which is
+" type-incompatible. Cast through a local STRING.
+DATA(lv_filename) = CONV string( p_file ).
+
+CALL FUNCTION 'GUI_UPLOAD'
+  EXPORTING filename = lv_filename
+           ...
+```
+
+Equivalent classic-ABAP form when `MODE_MODERN_ABAP = FALSE`:
+
+```abap
+DATA lv_filename TYPE string.
+lv_filename = p_file.
+CALL FUNCTION 'GUI_UPLOAD'
+  EXPORTING filename = lv_filename ...
+```
+
+### Documented common traps
+
+Verified on S/4HANA 1909 (kernel 754, release 7.52). When emitting these
+FMs, audit each actual against the formal:
+
+| FM | Parameter | Formal TYPE_REF | Common wrong-typed actual | Adapter |
+|---|---|---|---|---|
+| `GUI_UPLOAD` | `FILENAME` | `STRING` | `rlgrap-filename` / `c LENGTH 128` | local `TYPE string` |
+| `GUI_DOWNLOAD` | `FILENAME` | `STRING` | `rlgrap-filename` | local `TYPE string` |
+| `WS_FILENAME_GET` | `DEF_PATH` / `FILENAME` | `RLGRAP-FILENAME` | `string` (modern code default) | local `TYPE rlgrap-filename` |
+| `BAPI_MATERIAL_SAVEDATA` | `HEADDATA` | `BAPIMATHEAD` | custom flat structure | use real type |
+| `CONVERT_DATE_TO_EXTERNAL` | `DATE_INTERNAL` | `D` (`sy-datum`) | `string` | local `TYPE d` |
+
+When in doubt, the test that always works: copy the TYPE_REF from
+`_fm_signatures.txt` verbatim into the actual's declaration.
+
+### Checker enforcement
+
+`/sap-check-fm` already emits `TYPE_INCOMPATIBLE` for this class
+(see its README). The generator should never produce a `.abap` that
+the FM checker would reject — the customer brief workflow gates this
+via `MAX_PRIORITY=2` in `/sap-atc`, but P1 SLIN findings have caught
+real mismatches that ATC's parameter resolver flags as type incompatible.
+Generator-side avoidance is preferred over post-hoc fix loops.
+
 ## 23. Cyclomatic complexity & method length
 
 Checker emits a WARNING when:
