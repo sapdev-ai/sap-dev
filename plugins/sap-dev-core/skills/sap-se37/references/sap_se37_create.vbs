@@ -35,6 +35,44 @@ Const VKEY_ENTER    = 0
 Const VKEY_F3_BACK  = 3
 Const VKEY_F11_SAVE = 11
 
+' ----------------------------------------------------------------------------
+' GetSyntaxErrorWord(sLang)
+'   Returns the localized word SAP puts in the syntax-check grid's MSGTYPE
+'   icon-string (`@<ID>\Q<word>@`) for *errors*, given a SAP single-char
+'   logon-language code. The caller compares this against MSGTYPE so the
+'   skill respects the user's logon language instead of assuming English.
+'
+'   Inputs:  "E" English, "D" German, "F" French, "S" Spanish, "I" Italian,
+'            "P" Portuguese, "1" Simplified Chinese, "M" Traditional Chinese,
+'            "J" Japanese, "3" Korean, "R" Russian.
+'   Output:  the localized word, or "" when the language is unknown (in
+'            which case the caller falls back to the icon-ID match).
+'
+'   Uses ChrW() so this VBS source itself stays ASCII — no encoding traps
+'   when the file is re-saved or rendered in non-UTF tooling.
+' ----------------------------------------------------------------------------
+Function GetSyntaxErrorWord(sLang)
+    ' Accept BOTH forms SAP can return from oSession.Info.Language:
+    '   - 1-char SAP code (E, D, F, S, I, P, 1, M, J, 3, R)
+    '   - 2-char ISO  code (EN, DE, FR, ES, IT, PT, ZH, ZF, JA, KO, RU)
+    Select Case UCase(sLang)
+        Case "E", "EN" : GetSyntaxErrorWord = "Error"
+        Case "D", "DE" : GetSyntaxErrorWord = "Fehler"
+        Case "F", "FR" : GetSyntaxErrorWord = "Erreur"
+        Case "S", "ES" : GetSyntaxErrorWord = "Error"
+        Case "I", "IT" : GetSyntaxErrorWord = "Errore"
+        Case "P", "PT" : GetSyntaxErrorWord = "Erro"
+        Case "1", "ZH" : GetSyntaxErrorWord = ChrW(&H9519) & ChrW(&H8BEF)               ' 错误 (zh-CN)
+        Case "M", "ZF" : GetSyntaxErrorWord = ChrW(&H932F) & ChrW(&H8AA4)               ' 錯誤 (zh-TW)
+        Case "J", "JA" : GetSyntaxErrorWord = ChrW(&H30A8) & ChrW(&H30E9) & ChrW(&H30FC) ' エラー (ja)
+        Case "3", "KO" : GetSyntaxErrorWord = ChrW(&HC624) & ChrW(&HB958)               ' 오류 (ko)
+        Case "R", "RU" : GetSyntaxErrorWord = ChrW(&H041E) & ChrW(&H0448) & _
+                                                ChrW(&H0438) & ChrW(&H0431) & _
+                                                ChrW(&H043A) & ChrW(&H0430)             ' Ошибка (ru)
+        Case Else      : GetSyntaxErrorWord = ""
+    End Select
+End Function
+
 ExecuteGlobal CreateObject("Scripting.FileSystemObject") _
     .OpenTextFile("%%ATTACH_LIB_VBS%%", 1).ReadAll()
 ExecuteGlobal CreateObject("Scripting.FileSystemObject") _
@@ -445,8 +483,23 @@ If Err.Number = 0 And Not (oSyntaxGrid Is Nothing) Then
     nSyntaxRows = oSyntaxGrid.RowCount
     Err.Clear
     If nSyntaxRows > 0 Then
-        bSyntaxOK = False
-        WScript.Echo "ERROR: Syntax check found " & (nSyntaxRows \ 2) & " error(s):"
+        ' --- Resolve logon language for the LOCALIZED "Error" match. SAP
+        ' fills MSGTYPE with "@<ID>\Q<localized text>@" — tail is in the
+        ' user's logon language. Detecting it lets us honour ZH/JA/DE
+        ' logons instead of assuming English. Icon-ID is a
+        ' locale-independent fallback. Per-row classification replaces the
+        ' previous over-eager "any finding = error" behaviour: warnings
+        ' should not block activation, only real errors should.
+        Dim sLogonLang, sLocErr
+        On Error Resume Next
+        sLogonLang = UCase(CStr(oSession.Info.Language))
+        On Error GoTo 0
+        If Len(sLogonLang) = 0 Then sLogonLang = "E"
+        sLocErr = GetSyntaxErrorWord(sLogonLang)
+        WScript.Echo "INFO: " & nSyntaxRows & " syntax finding(s); logon language = '" & _
+                     sLogonLang & "'; matching syntax-error word = '" & sLocErr & "'."
+        Dim nErrorCount
+        nErrorCount = 0
         Dim iSynRow
         For iSynRow = 0 To nSyntaxRows - 1
             Dim sSynType, sSynLine, sSynText
@@ -459,14 +512,40 @@ If Err.Number = 0 And Not (oSyntaxGrid Is Nothing) Then
             Err.Clear
             sSynText = oSyntaxGrid.getCellValue(iSynRow, "TEXT")
             Err.Clear
+            ' Per-row Error classification: language-aware word match,
+            ' icon-ID fallback. See GetSyntaxErrorWord() at top of file.
+            Dim sSynIcon
+            sSynIcon = ""
+            If Left(sSynType, 1) = "@" Then
+                Dim iSynIconEnd
+                iSynIconEnd = InStr(sSynType, "\")
+                If iSynIconEnd = 0 Then iSynIconEnd = InStr(2, sSynType, "@")
+                If iSynIconEnd > 2 Then sSynIcon = UCase(Mid(sSynType, 2, iSynIconEnd - 2))
+            End If
+            Dim bByLocalizedWord
+            bByLocalizedWord = (Len(sLocErr) > 0 And InStr(sSynType, sLocErr) > 0)
+            Dim bIsError
+            bIsError = (sSynType = "E" Or sSynType = "1" _
+                        Or bByLocalizedWord _
+                        Or sSynIcon = "03" Or sSynIcon = "0A" Or sSynIcon = "5C" _
+                        Or sSynIcon = "AT" Or sSynIcon = "AY")
+            If bIsError Then nErrorCount = nErrorCount + 1
             If sSynText <> "" Then
+                Dim sTag
+                If bIsError Then sTag = "ERROR" Else sTag = "WARNING"
                 If sSynLine <> "" Then
-                    WScript.Echo "  Line " & sSynLine & ": " & sSynText
+                    WScript.Echo "  [" & sTag & "] Line " & sSynLine & ": " & sSynText
                 Else
-                    WScript.Echo "    -> " & sSynText
+                    WScript.Echo "  [" & sTag & "]     -> " & sSynText
                 End If
             End If
         Next
+        If nErrorCount > 0 Then
+            bSyntaxOK = False
+            WScript.Echo "ERROR: Syntax check found " & nErrorCount & " error(s)."
+        Else
+            WScript.Echo "INFO: Syntax check passed (" & nSyntaxRows & " warning(s) only, no blocking errors)."
+        End If
     Else
         WScript.Echo "INFO: Syntax check passed — no findings."
     End If
