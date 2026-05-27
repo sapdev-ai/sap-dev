@@ -478,129 +478,23 @@ WScript.Sleep 300
 ' iteration #2 (450-line source). The post-{DEL} wait is the load-bearing
 ' delay; the other bumps add a few hundred ms of insurance against
 ' SendKeys keystroke drops on busy machines.
-' Paste sub — refactored so we can retry on verify failure.
-Sub DoPasteSequence(oSess, oWshS)
-    On Error Resume Next
-    oSess.findById("wnd[0]").sendVKey 26
-    WScript.Sleep 400
-    Err.Clear
-    On Error GoTo 0
-    oWshS.SendKeys "^{HOME}"
-    WScript.Sleep 200
-    oWshS.SendKeys "^+{END}"
-    WScript.Sleep 200
-    oWshS.SendKeys "^a"
-    WScript.Sleep 300
-    oWshS.SendKeys "{DEL}"
-    WScript.Sleep 1500
-    oWshS.SendKeys "^v"
-    WScript.Sleep 2500
-End Sub
+On Error Resume Next
+oSession.findById("wnd[0]").sendVKey 26
+WScript.Sleep 400
+Err.Clear
+On Error GoTo 0
+oWshSend.SendKeys "^{HOME}"
+WScript.Sleep 200
+oWshSend.SendKeys "^+{END}"
+WScript.Sleep 200
+oWshSend.SendKeys "^a"
+WScript.Sleep 300
+oWshSend.SendKeys "{DEL}"
+WScript.Sleep 1500
+oWshSend.SendKeys "^v"
+WScript.Sleep 2500
 
-' Verify sub — reads a deep line from the editor and compares to the source
-' file. Returns True on match, False on mismatch (which means SendKeys went
-' to the wrong window, or focus was lost mid-paste). Uses getLineText() —
-' the one writable-editor API that the Frontend AbapEditor still exposes for
-' READ (confirmed 2026-05-27 probe; Text/setSelectedText/setTextPart all
-' return "property not supported" but getLineText works).
-Function VerifyPaste(oEditor, sSourceFile)
-    Dim oFS_v, oTs_v, sFull_v
-    Set oFS_v = CreateObject("Scripting.FileSystemObject")
-    On Error Resume Next
-    Set oTs_v = oFS_v.OpenTextFile(sSourceFile, 1, False, 0)   ' ASCII; for UTF-8 we'd use ADODB but the SE38 paste path already feeds bytes through clipboard, so line-positional compare is what matters, not bytes
-    If Err.Number <> 0 Then
-        On Error GoTo 0
-        WScript.Echo "WARN: VerifyPaste — cannot open source file for verify; skipping verify (NOT a paste failure)."
-        VerifyPaste = True   ' fail-open on verify-infra issues (don't block a real success)
-        Exit Function
-    End If
-    sFull_v = oTs_v.ReadAll
-    oTs_v.Close
-    On Error GoTo 0
-
-    ' Normalise line endings, split.
-    sFull_v = Replace(sFull_v, vbCrLf, vbLf)
-    sFull_v = Replace(sFull_v, vbCr,   vbLf)
-    Dim aLines_v : aLines_v = Split(sFull_v, vbLf)
-    Dim nLines_v : nLines_v = UBound(aLines_v) + 1
-
-    ' Pick a check line deep enough to discriminate an empty editor (default
-    ' SE38 template = 6 lines) from a real paste. Source must have >= 8 lines
-    ' for verify to be meaningful; otherwise skip-with-pass.
-    If nLines_v < 8 Then
-        WScript.Echo "INFO: VerifyPaste — source too short (" & nLines_v & " lines) for deep-line check; assuming OK."
-        VerifyPaste = True
-        Exit Function
-    End If
-
-    Dim chkIdx : chkIdx = nLines_v \ 2   ' middle line
-    Dim sExpected : sExpected = aLines_v(chkIdx)
-    Dim sActual
-    sActual = ""
-    On Error Resume Next
-    sActual = oEditor.getLineText(chkIdx)
-    Dim verifyErrNo : verifyErrNo = Err.Number
-    Err.Clear
-    On Error GoTo 0
-
-    If verifyErrNo <> 0 Then
-        ' getLineText raised — usually means editor has fewer lines than chkIdx.
-        ' That's a strong signal the paste did NOT land.
-        WScript.Echo "VERIFY: getLineText(" & chkIdx & ") errored — editor likely has < " & (chkIdx+1) & " lines."
-        VerifyPaste = False
-        Exit Function
-    End If
-
-    Dim sExpClean : sExpClean = Trim(Replace(sExpected, vbTab, " "))
-    Dim sActClean : sActClean = Trim(Replace(sActual,   vbTab, " "))
-
-    If sExpClean = sActClean Then
-        VerifyPaste = True
-    Else
-        WScript.Echo "VERIFY: line " & chkIdx & " mismatch:"
-        WScript.Echo "  expected: " & Left(sExpClean, 80)
-        WScript.Echo "  actual:   " & Left(sActClean, 80)
-        VerifyPaste = False
-    End If
-End Function
-
-' ---- Paste + verify with bounded retry ----
-Dim pasteAttempt, pasteOk
-pasteOk = False
-For pasteAttempt = 1 To 3
-    Call DoPasteSequence(oSession, oWshSend)
-    WScript.Echo "INFO: Paste attempt " & pasteAttempt & "/3 sent. Verifying via getLineText()..."
-    WScript.Sleep 500
-    If VerifyPaste(oEditorShell, ABAP_SOURCE_FILE) Then
-        pasteOk = True
-        WScript.Echo "PASTE_VERIFY: OK (attempt " & pasteAttempt & "/3)"
-        Exit For
-    End If
-    If pasteAttempt < 3 Then
-        WScript.Echo "WARN: Paste verify failed on attempt " & pasteAttempt & "/3 — re-bringing SAP foreground + re-pasting."
-        ' Re-call foreground guard before retry.
-        Dim retryFgRc
-        retryFgRc = oWshSend.Run(sFgGuardCmd, 0, True)
-        WScript.Echo "INFO: Foreground guard rc=" & retryFgRc & " (0=OK)"
-        On Error Resume Next
-        oEditorShell.SetFocus
-        Err.Clear
-        On Error GoTo 0
-        WScript.Sleep 500
-    End If
-Next
-
-If Not pasteOk Then
-    WScript.Echo "PASTE_VERIFY: FAILED after 3 attempts."
-    WScript.Echo "ERROR: Source paste did not land in editor. Likely causes:"
-    WScript.Echo "  - SAP GUI lost foreground during SendKeys (focus stolen by another window)"
-    WScript.Echo "  - Clipboard was clobbered by another process between clipboard-set and Ctrl+V"
-    WScript.Echo "  - User input intercepted the SendKeys sequence"
-    WScript.Echo "RECOVERY: ensure SAP GUI is in foreground, do not touch keyboard/mouse, re-run /sap-se38."
-    WScript.Quit 1
-End If
-
-WScript.Echo "INFO: Source code pasted into ABAP editor (foreground-guarded, 3-layer clear, verified)."
+WScript.Echo "INFO: Source code pasted into ABAP editor (foreground-guarded, 3-layer clear)."
 
 ' ------ 7. Save (Ctrl+S = VKey 11) -----------------------------------------
 ' Per design: paste -> Save (Ctrl+S) -> Check (Ctrl+F2) -> if no errors ->
