@@ -217,6 +217,43 @@ If the phrasing is ambiguous, ask:
 > "Did you want me to (1) build from a spec, (2) fix existing program
 > `<X>`, or (3) deploy an existing `.abap` file? [build / fix / deploy]"
 
+### 1.0.5 — Resolve "fresh / no-reuse" directive against target system
+
+When the user's invocation contains a "no reuse" / "fresh build" / "create
+new" / "古い成果物を流用しない" / "新規作成" / equivalent directive in any
+language, AND the spec specifies object names (program ID, package, FM,
+message class, DDIC objects), the agent MUST:
+
+1. Resolve the **current target SID** from the AI-session pin (per Step 0
+   pin-check). Existence of same-named objects on *other* systems is NOT
+   a collision and does NOT justify a rename.
+2. RFC-verify each spec-specified name **on the target SID only**:
+   - Program → `RFC_READ_TABLE` on `TADIR` (`PGMID='R3TR'`, `OBJECT='PROG'`, `OBJ_NAME=<spec_id>`)
+   - Package → `TDEVC` (`DEVCLASS=<spec_pkg>`)
+   - Message class → `T100A` (`ARBGB=<spec_msgcl>`)
+   - Domain / data element / table / structure / etc. → `DD01L` / `DD04L` / `DD02L` per type
+3. Branch on the verification result:
+   - **No collisions on target** → Use the spec-specified names **verbatim**.
+     Echo one informational line:
+     > "Spec names verified collision-free on <SID>; using verbatim:
+     > program=<X>, package=<Y>, msgcl=<Z>, DDIC=<...>."
+   - **Collision(s) found** → STOP and ask via `AskUserQuestion`. Never
+     silently suffix-bump. Offer exactly three options:
+     > "<name> already exists on <SID>. How should I proceed?
+     >  (a) update / extend the existing object in place,
+     >  (b) suffix-bump to <proposed_new_name> (entire object family),
+     >  (c) abort and let you adjust the spec / target."
+
+Document the decision in the transcript, and surface it in the agent's
+final report under "Object Naming".
+
+This step exists because in 2026-05 a JA MaterialUpload build against S4H
+silently bumped `ZMMRMAT036R01 / ZCMPKGV05` (spec names) to
+`ZMMRMAT050R01 / ZMMPKGA050` solely because S4D already had `*036/V05`
+from a prior run. S4H had no collision; the rename was an unforced
+namespace error that broke traceability between the deployed objects and
+the spec. See `feedback_spec_name_fidelity.md` (auto-memory).
+
 ### 1.1 — Detect program-ID divergence between user args and spec
 
 If the user's invocation specifies a program ID (e.g. "build
