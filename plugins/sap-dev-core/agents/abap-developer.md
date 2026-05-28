@@ -238,11 +238,15 @@ message class, DDIC objects), the agent MUST:
      > "Spec names verified collision-free on <SID>; using verbatim:
      > program=<X>, package=<Y>, msgcl=<Z>, DDIC=<...>."
    - **Collision(s) found** → STOP and ask via `AskUserQuestion`. Never
-     silently suffix-bump. Offer exactly three options:
+     silently suffix-bump AND never silently choose option (a) "reuse in
+     place" — both are forms of taking an undocumented decision on the
+     user's behalf. Offer exactly three options:
      > "<name> already exists on <SID>. How should I proceed?
      >  (a) update / extend the existing object in place,
      >  (b) suffix-bump to <proposed_new_name> (entire object family),
      >  (c) abort and let you adjust the spec / target."
+     >
+     > Wait for the user's choice. Do not proceed on a default.
 
 Document the decision in the transcript, and surface it in the agent's
 final report under "Object Naming".
