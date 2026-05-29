@@ -144,6 +144,24 @@ If Err.Number = 0 And (sCreateErrType = "E" Or sCreateErrType = "A") Then
     WScript.Quit 1
 End If
 Err.Clear
+
+' ------ 3b. Acknowledge a soft warning that paused the create ---------------
+' Some names raise a WARNING (not an error) that leaves us on the initial
+' screen WITHOUT opening the Attributes dialog -- e.g. creating an exit-
+' function-group include: "Program names ZX... are reserved for includes of
+' exit function groups". Pressing Enter acknowledges the warning and lets the
+' create proceed to the Attributes dialog. No-op for normal creates (where the
+' Attributes dialog opens immediately, so the loop condition is false).
+Dim nAck : nAck = 0
+Do While (InStr(oSession.ActiveWindow.Id, "wnd[1]") = 0) _
+        And (oSession.findById("wnd[0]/sbar").MessageType = "W") _
+        And (nAck < 3)
+    WScript.Echo "INFO: Soft warning after Create -- pressing Enter to continue: " & oSession.findById("wnd[0]/sbar").Text
+    oSession.findById("wnd[0]").sendVKey VKEY_ENTER
+    WScript.Sleep 1000
+    nAck = nAck + 1
+Loop
+
 ' DO NOT close error-resume scope here. Steps 4 + 5 below rely on the
 ' On Error Resume Next opened above the btnNEW press: their findById /
 ' Err.Number checks for tolerant package-field detection only work under
@@ -757,6 +775,22 @@ If wasLocked Then WScript.Echo "INFO: Session UI lock released."
 PostActivateVerifyOrFail POST_ACTIVATE_VERIFY_PS1, "PROGRAM", PROGRAM_NAME
 
 ' ------ 10. Verify activation from SE38 initial screen ---------------------
+' INCLUDE programs (type "I") are NOT executable — running them via SA38/F8
+' raises an error and lands on screen 101, which the run-test below would
+' misread as an activation failure. So for includes we skip the F8 run-test
+' entirely and rely on the RFC PROGDIR verify above (PostActivateVerifyOrFail)
+' plus the activation step. Never try to execute an include.
+If UCase(PROGRAM_TYPE) = "I" Then
+    WScript.Echo "INFO: " & UCase(PROGRAM_NAME) & " is an Include (type I) — not executable; skipping the F8 run-test (activation confirmed by the RFC PROGDIR verify / activation step)."
+    On Error Resume Next
+    oSession.findById("wnd[0]/tbar[0]/okcd").Text = "/nSE38"
+    oSession.findById("wnd[0]").sendVKey VKEY_ENTER
+    WScript.Sleep 800
+    On Error GoTo 0
+    WScript.Echo "SUCCESS: Include " & UCase(PROGRAM_NAME) & " created and activated in SAP."
+    WScript.Quit 0
+End If
+
 WScript.Echo "INFO: Verifying activation..."
 On Error Resume Next
 oSession.findById("wnd[0]/tbar[0]/okcd").Text = "/nSA38"

@@ -287,6 +287,9 @@ Write `{WORK_TEMP}\sap_se38_update_run.ps1`:
 ```powershell
 $content = Get-Content '<SKILL_DIR>\references\sap_se38_update.vbs' -Raw
 $content = $content -replace '%%PROGRAM_NAME%%','THE_PROGRAM_NAME'
+# Program type: 'I' for an Include program (skips the F8 run-test verify, since
+# includes are NOT executable), otherwise empty/'1' for a normal report.
+$content = $content -replace '%%PROGRAM_TYPE%%','THE_PROGRAM_TYPE'
 $content = $content -replace '%%ABAP_SOURCE_FILE%%','THE_SOURCE_PATH'
 $content = $content -replace '%%PACKAGE%%','THE_PACKAGE'
 $content = $content -replace '%%TRANSPORT%%','THE_TRANSPORT'
@@ -306,7 +309,9 @@ $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 Set-Content '{WORK_TEMP}\sap_se38_update_run.vbs' $content -Encoding Unicode
 Write-Host 'Done'
 ```
-Replace `THE_PROGRAM_NAME` (UPPERCASE), `THE_SOURCE_PATH` (absolute path with backslashes), `THE_PACKAGE` (SAP package or empty string), `THE_TRANSPORT` (transport number or empty string), `<SKILL_DIR>`, and `<SAP_DEV_CORE_SHARED_DIR>` (absolute path to `plugins/sap-dev-core/shared/`).
+Replace `THE_PROGRAM_NAME` (UPPERCASE), `THE_PROGRAM_TYPE` (`I` when updating an **Include** program — e.g. a function-exit `ZX…` include — so the verify skips the F8 run-test; otherwise empty or `1`), `THE_SOURCE_PATH` (absolute path with backslashes), `THE_PACKAGE` (SAP package or empty string), `THE_TRANSPORT` (transport number or empty string), `<SKILL_DIR>`, and `<SAP_DEV_CORE_SHARED_DIR>` (absolute path to `plugins/sap-dev-core/shared/`).
+
+> **Include programs are not executable.** When updating (or creating) an Include (`SUBC = I`) — such as customer function-exit includes (`ZX…`) — pass `PROGRAM_TYPE = I`. The skill then verifies activation via the RFC `PROGDIR.STATE` check and does **not** attempt to run it via SA38/F8 (which would error and look like a false activation failure).
 
 **Package/Transport behavior:**
 - If both `%%PACKAGE%%` and `%%TRANSPORT%%` are non-empty: saves to that package with the transport request

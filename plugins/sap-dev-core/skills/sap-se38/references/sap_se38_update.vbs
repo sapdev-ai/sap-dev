@@ -25,6 +25,10 @@ Const SAP_PACKAGE      = "%%PACKAGE%%"
 Const SAP_TRANSPORT    = "%%TRANSPORT%%"
 Const SESSION_PATH     = "%%SESSION_PATH%%"   ' empty / unsubstituted = use default
 Const POST_ACTIVATE_VERIFY_PS1 = "%%POST_ACTIVATE_VERIFY_PS1%%"   ' empty = skip verify
+' Program type ("I" = Include). Optional: when empty / unsubstituted the F8
+' run-test verify proceeds as before. When "I" the F8 run-test is skipped
+' because Include programs are NOT executable (see Step 8).
+Const PROGRAM_TYPE     = "%%PROGRAM_TYPE%%"
 
 Const VKEY_ENTER    = 0
 Const VKEY_F3_BACK  = 3
@@ -632,6 +636,22 @@ If wasLocked Then WScript.Echo "INFO: Session UI lock released."
 PostActivateVerifyOrFail POST_ACTIVATE_VERIFY_PS1, "PROGRAM", PROGRAM_NAME
 
 ' ------ 8. Verify activation from SE38 initial screen ----------------------
+' INCLUDE programs (type "I") are NOT executable — running them via SA38/F8
+' raises an error and lands on screen 101, which the run-test below would
+' misread as an activation failure. So for includes we skip the F8 run-test
+' entirely and rely on the RFC PROGDIR verify above (PostActivateVerifyOrFail)
+' plus the activation step. Never try to execute an include.
+If UCase(PROGRAM_TYPE) = "I" Then
+    WScript.Echo "INFO: " & UCase(PROGRAM_NAME) & " is an Include (type I) — not executable; skipping the F8 run-test (activation confirmed by the RFC PROGDIR verify / activation step)."
+    On Error Resume Next
+    oSession.findById("wnd[0]/tbar[0]/okcd").Text = "/nSE38"
+    oSession.findById("wnd[0]").sendVKey VKEY_ENTER
+    WScript.Sleep 800
+    On Error GoTo 0
+    WScript.Echo "SUCCESS: Include " & UCase(PROGRAM_NAME) & " updated and activated in SAP."
+    WScript.Quit 0
+End If
+
 ' Navigate back to SE38 initial and try to run the program (F8). If the
 ' selection screen (screen 1000) or the program output appears, it is active.
 WScript.Echo "INFO: Verifying activation..."

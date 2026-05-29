@@ -324,9 +324,24 @@ Enhancements are made of components. To edit one, look the components up in
    - `INCLUDE_EXISTS: YES|NO` and `SE38_MODE: create|update`,
    - `FUNCTION_POOL` / `SHORT_TEXT` for context.
 
-   Then call `/sap-se38 <CUSTOMER_INCLUDE>` with the exit body source. If
-   `INCLUDE_EXISTS: NO` this is the first implementation of the exit — SE38
-   creates the include (it will prompt for package/TR per `/sap-transport-request`).
+   Then call `/sap-se38 <CUSTOMER_INCLUDE>` with the exit body source (the
+   include body is just the statements that go between `FUNCTION`/`ENDFUNCTION`
+   — e.g. `WRITE / SAP_PRPS_IMP-POSID.`). Two gotchas, both verified live:
+   - **`INCLUDE_EXISTS: NO` (create):** SE38 creates it as program **type `I`
+     (Include)** and raises a soft **Warning** "Program names ZX... are reserved
+     for includes of exit function groups". This is not an error — `/sap-se38`
+     presses **Enter** to acknowledge and continues (handled by
+     `sap_se38_create.vbs`). It prompts for package/TR per `/sap-transport-request`.
+   - **Source paste needs SAP GUI in the foreground.** `/sap-se38` uploads
+     source via clipboard + SendKeys (the AbapEditor's `.Text` is read-only and
+     the Utilities→Upload menu is a non-scriptable native dialog), so the SAP
+     GUI window must be the OS-foreground window. If it is not, the foreground
+     guard aborts the paste safely — focus the SAP GUI window and re-run. Do
+     **not** hand-manipulate the editor (`insertText`) as a workaround.
+   - **`INCLUDE_EXISTS: YES` (update):** `/sap-se38` update flow uploads the new
+     body. **Pass program type `I`** so SE38 does NOT try to run the include
+     (includes are not executable — the F8 run-test would false-fail on
+     screen 101). Verify activation via RFC `PROGDIR.STATE = 'A'`.
 
 3. **After editing/activating the component**, re-activate the project
    (Step 8) if the user wants the enhancement live.
