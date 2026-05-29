@@ -1,6 +1,6 @@
 {
   "name": "sap-gen-code",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "ABAP code generation pipeline: convert design docs, extract structured data, validate process/DDIC, generate ABAP, check quality, and auto-fix issues",
   "author": {
     "name": "KexiHe",
