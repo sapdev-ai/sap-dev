@@ -21,6 +21,11 @@
 #   status       MODATTR only           (EXISTS / STATUS / STATUS_LABEL)
 #   assignments  MODACT only            (ASSIGNMENT:<enh> per row + COUNT)
 #   components   MODSAP for <Enhancement> (COMPONENT:<TYP>|<MEMBER> per row + COUNT)
+#   exit-include Resolve the customer INCLUDE of a function-exit FM (<Fm>) from
+#                RPY_FUNCTIONMODULE_READ_NEW's SOURCE table. Emits
+#                CUSTOMER_INCLUDE / INCLUDE_EXISTS / SE38_MODE. The include is
+#                named after the function POOL (+seq), NOT the FM, so it cannot
+#                be guessed — it is read from the source.
 #
 # Output is line-oriented and parseable; final line is DONE or ERROR: <msg>.
 # =============================================================================
@@ -28,7 +33,8 @@
 param(
     [string]$Project     = '',
     [string]$Enhancement = '',
-    [ValidateSet('check','status','assignments','components')]
+    [string]$Fm          = '',   # function-exit FM, for -Action exit-include
+    [ValidateSet('check','status','assignments','components','exit-include')]
     [string]$Action      = 'check',
     # Connection params are optional — when blank, Connect-SapRfc resolves the
     # default profile from runtime/connections.json (DPAPI-decrypted password).
@@ -52,9 +58,11 @@ if (-not (Test-Path $RfcLib)) { Write-Output "ERROR: sap_rfc_lib.ps1 not found a
 
 $Project     = $Project.Trim().ToUpper()
 $Enhancement = $Enhancement.Trim().ToUpper()
+$Fm          = $Fm.Trim().ToUpper()
 
-if ($Action -ne 'components' -and -not $Project) { Write-Output "ERROR: -Project is required for action '$Action'"; exit 2 }
-if ($Action -eq 'components' -and -not $Enhancement) { Write-Output "ERROR: -Enhancement is required for action 'components'"; exit 2 }
+if (@('check','status','assignments') -contains $Action -and -not $Project) { Write-Output "ERROR: -Project is required for action '$Action'"; exit 2 }
+if ($Action -eq 'components'   -and -not $Enhancement) { Write-Output "ERROR: -Enhancement is required for action 'components'"; exit 2 }
+if ($Action -eq 'exit-include' -and -not $Fm)          { Write-Output "ERROR: -Fm is required for action 'exit-include'"; exit 2 }
 
 # ---- Connect (profile fallback when params blank) --------------------------
 $dest = Connect-SapRfc -Server $Server -Sysnr $Sysnr -Client $Client -User $User -Password $Password -Language $Language -DestName "CMOD_QUERY"
@@ -93,6 +101,39 @@ try {
             foreach ($r in $rows) { $m = ($r.Split('|')[1]).Trim(); if ($m) { $enh += $m } }
             foreach ($e in $enh) { Write-Output "ASSIGNMENT: $e" }
             Write-Output ("COUNT: " + $enh.Count)
+            Write-Output "DONE"
+        }
+
+        'exit-include' {
+            # Resolve the customer INCLUDE for a function-exit FM (TYP=E) by
+            # reading the FM source. The include name follows the function
+            # POOL (e.g. XCN1 -> ZXCN1U21), NOT the FM name — it cannot be
+            # guessed, it must be read from the source.
+            $fn = $dest.Repository.CreateFunction("RPY_FUNCTIONMODULE_READ_NEW")
+            $fn.SetValue("FUNCTIONNAME", $Fm)
+            try { $fn.Invoke($dest) } catch { Write-Output "EXISTS: NO"; Write-Output "ERROR: FM $Fm not found or read failed: $($_.Exception.Message)"; exit 1 }
+            Write-Output "EXISTS: YES"
+            try { Write-Output ("FUNCTION_POOL: " + ([string]$fn.GetString("FUNCTION_POOL")).Trim()) } catch {}
+            try { Write-Output ("SHORT_TEXT: "    + ([string]$fn.GetString("SHORT_TEXT")).Trim()) } catch {}
+            $src = $fn.GetTable("SOURCE")
+            $includes = @()
+            for ($i = 0; $i -lt $src.RowCount; $i++) {
+                $src.CurrentIndex = $i
+                $line = [string]$src.GetString("LINE")
+                if ($line -match '(?i)^\s*INCLUDE\s+([A-Za-z0-9_/]+)\s*\.') { $includes += $matches[1].ToUpper() }
+            }
+            # Customer include = the Z*/Y* one (function exits carry exactly one).
+            $cust = $includes | Where-Object { $_ -match '^[ZY]' } | Select-Object -First 1
+            foreach ($inc in $includes) { Write-Output "INCLUDE: $inc" }
+            if ($cust) {
+                Write-Output "CUSTOMER_INCLUDE: $cust"
+                $tr = Read-Tbl "TRDIR" "NAME = '$cust'" @("NAME")
+                $exists = ($tr -and $tr.Count -gt 0)
+                Write-Output ("INCLUDE_EXISTS: " + $(if ($exists) { 'YES' } else { 'NO' }))
+                Write-Output ("SE38_MODE: "      + $(if ($exists) { 'update' } else { 'create' }))
+            } else {
+                Write-Output "CUSTOMER_INCLUDE: (none found in source)"
+            }
             Write-Output "DONE"
         }
 

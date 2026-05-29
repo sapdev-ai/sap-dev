@@ -177,7 +177,9 @@ Parse the output lines:
   from a prior delete. Warn the user: a fresh create may re-attach to `<pkg>`.
 
 Other actions: `-Action status` (MODATTR only), `-Action assignments`
-(MODACT), `-Action components -Enhancement <ENH>` (MODSAP — used by Step 12).
+(MODACT), `-Action components -Enhancement <ENH>` (MODSAP — used by Step 12),
+`-Action exit-include -Fm <EXIT_FM>` (resolves a function exit's customer
+include from the FM source — used by Step 12 `E`-type routing).
 
 ---
 
@@ -301,17 +303,37 @@ Enhancements are made of components. To edit one, look the components up in
 
    | TYP | Component | `MEMBER` example | How to edit |
    |---|---|---|---|
-   | `E` | Function exit | `EXIT_SAPLCJWB_004` | Read the exit FM (e.g. via `/sap-rfc-wrapper-fm` calling `RPY_FUNCTIONMODULE_READ_NEW`, or open it in SE37) to find the customer `INCLUDE Z…` (e.g. `ZXCJWBU04` / `ZXV00U01`). Then call `/sap-se38` to create or update that include. |
+   | `E` | Function exit | `EXIT_SAPLCJWB_004` | Resolve the customer include with the helper (below), then `/sap-se38` to create/update it. |
    | `S` | Screen (dynpro) | `SAPLCJWB0215_CUSTSCR1_SAPLXCN10700` | Split `MEMBER` on `_CUSTSCR1_`. In the right token, the **last 4 chars = dynpro number**, the **rest = target program**. Example → program `SAPLXCN1`, dynpro `0700`. Call `/sap-se51 <program> <dynpro>`. |
    | `T` | Table / structure | append/`CI_` enhancement | Call `/sap-se11` on the target table or structure. |
    | `C` | GUI code (CUA) | `SAPLCJGR+CUE` | Split `MEMBER` on `+`; the left token is the target program (e.g. `SAPLCJGR`). Call `/sap-se41` for that program's GUI status/menu. |
 
+   **`E` function exits — resolve the include automatically (do NOT guess it).**
+   The customer include is named after the function **pool** + a sequence
+   number, **not** after the FM. Verified live: `EXIT_SAPLCJWB_004` and
+   `EXIT_SAPLCJWB_005` both live in pool `XCN1` yet use `ZXCN1U21` and
+   `ZXCN1U22`. So the include cannot be derived from the FM name — it must be
+   read from the FM source. The helper does this for you:
+
+   ```bash
+   C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File "<SKILL_DIR>\references\sap_cmod_query.ps1" -Action exit-include -Fm <EXIT_FM>
+   ```
+
+   It reads the `SOURCE` table of `RPY_FUNCTIONMODULE_READ_NEW` and prints:
+   - `CUSTOMER_INCLUDE: <ZXxxxUnn>` — the include to edit,
+   - `INCLUDE_EXISTS: YES|NO` and `SE38_MODE: create|update`,
+   - `FUNCTION_POOL` / `SHORT_TEXT` for context.
+
+   Then call `/sap-se38 <CUSTOMER_INCLUDE>` with the exit body source. If
+   `INCLUDE_EXISTS: NO` this is the first implementation of the exit — SE38
+   creates the include (it will prompt for package/TR per `/sap-transport-request`).
+
 3. **After editing/activating the component**, re-activate the project
    (Step 8) if the user wants the enhancement live.
 
-> Worked example (enhancement `CNEX0007`):
+> Worked example (enhancement `CNEX0007`, verified live 2026-05-29):
 > `C|SAPLCJGR+CUE` → `/sap-se41 SAPLCJGR`;
-> `E|EXIT_SAPLCJWB_004` → find its `INCLUDE Z…` → `/sap-se38`;
+> `E|EXIT_SAPLCJWB_004` → helper resolves `ZXCN1U21` (not yet created → `/sap-se38` create with the exit body);
 > `S|SAPLCJWB0215_CUSTSCR1_SAPLXCN10700` → `/sap-se51 SAPLXCN1 0700`.
 
 ---
@@ -436,3 +458,9 @@ package field `ctxtTADIR-DEVCLASS`; TR popup field `ctxtKO008-TRKORR`.
   scripts cover the visible 17 rows and error out otherwise.
 - **Activate of a project whose exits have no code** still activates the
   *project* (`STATUS=A`); coding the components is a separate Step 12 task.
+- **A function exit's customer include is NOT derivable from the FM name** —
+  it's named after the function pool + a sequence (e.g. `EXIT_SAPLCJWB_004`
+  and `EXIT_SAPLCJWB_005` both in pool `XCN1` → `ZXCN1U21` / `ZXCN1U22`).
+  Always resolve it from the FM source via `-Action exit-include` (Step 12);
+  never guess from the FM name. The include often doesn't exist until the
+  exit is first implemented, so `/sap-se38` runs in **create** mode.
