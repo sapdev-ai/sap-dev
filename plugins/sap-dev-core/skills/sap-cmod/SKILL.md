@@ -294,9 +294,20 @@ verifies via a `TADIR` re-query. Surface its `DONE` / `ERROR:` result.
 Enhancements are made of components. To edit one, look the components up in
 `MODSAP` and route by **component type (`TYP`)** to the right workbench skill.
 
-1. **Find the enhancement(s).** If the user names an enhancement, use it.
-   Otherwise list the project's assignments (Step 3 `-Action assignments`),
-   then read components for the chosen enhancement:
+> This step is also the **delegation target from `/sap-check-fix`**: when that
+> router sees an enhancement-component name (`EXIT_SAP*` FM, `ZX*` include,
+> `CI_*` structure, or a `SAPLX*` screen) it resolves the owning enhancement
+> (via `sap_cmod_query.ps1 -Action find-enhancement`) and hands the specific
+> component here. In that case you edit **just that one component** in
+> **check-and-fix mode** (no new source → the workbench skill runs its own
+> check/fix/activate flow), then do step 3 below (activate the project).
+
+1. **Find the enhancement(s).** If the user names an enhancement, use it. If a
+   specific component object was given (from `/sap-check-fix`), resolve its
+   enhancement with `-Action find-enhancement -Component <obj> [-Dynpro <n>]`
+   and edit only that component. Otherwise list the project's assignments
+   (Step 3 `-Action assignments`), then read components for the chosen
+   enhancement:
    ```bash
    C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File "<SKILL_DIR>\references\sap_cmod_query.ps1" -Enhancement <ENH> -Action components
    ```

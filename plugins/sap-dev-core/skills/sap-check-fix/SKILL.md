@@ -7,6 +7,13 @@ description: |
   given, probes SE38 → SE37 → SE24 → SE11 (table → data type → domain) via the
   Display button to auto-detect the object type, then dispatches.
 
+  If the object name matches an SAP-enhancement-component pattern (function-exit
+  FM EXIT_SAP*, exit include ZX*, table-enhancement structure CI_*, or a SAPLX*
+  screen exit), it is confirmed via MODSAP and routed to /sap-cmod instead —
+  which edits the correct underlying object (for a function exit that is the
+  ZX* customer include, never the standard EXIT_SAP* FM) and re-activates the
+  enclosing CMOD project.
+
   Invoke when the user says any of:
     - "check and fix <kind> <name>"
     - "check <kind> <name>"
@@ -109,9 +116,54 @@ Notes:
 - If keyword and name cannot be separated cleanly, treat the last whitespace
   token as the object name and everything before it as the kind hint.
 
-If a keyword was found, **skip Step 2** and jump to **Step 3**.
+**Before any dispatch**, always apply **Step 1.5 — Enhancement Component
+Detection** first (it runs on both the keyword and no-keyword paths).
 
-If no keyword was found (user said only "check and fix `<NAME>`" / "check `<NAME>`" / "fix `<NAME>`"), continue with **Step 2 — Probe**.
+If Step 1.5 does not divert to `/sap-cmod`:
+- If a keyword was found, **skip Step 2** and jump to **Step 3**.
+- If no keyword was found (user said only "check and fix `<NAME>`" / "check
+  `<NAME>`" / "fix `<NAME>`"), continue with **Step 2 — Probe**.
+
+---
+
+## Step 1.5 — Enhancement Component Detection (route to /sap-cmod)
+
+Some objects are **components of an SAP enhancement** and must be handled by
+`/sap-cmod`, not edited in isolation — because (a) a function-exit module
+`EXIT_SAP*` is SAP-standard and must **never** be edited directly (you edit its
+customer `ZX*` include), and (b) editing any enhancement component requires
+**re-activating the enclosing CMOD project** afterward, or the exit never fires.
+
+Trigger this step when the object name matches an enhancement-component prefix:
+
+| Object (workbench) | Name prefix | Notes |
+|---|---|---|
+| Program (SE38) | `ZX*` | exit-function-group customer include |
+| Function module (SE37) | `EXIT_SAP*` | function exit — edit its `ZX*` include, not the FM |
+| DDIC structure (SE11) | `CI_*` | table / append enhancement |
+| Screen (SE51) | program `SAPLX*` (+ dynpro) | screen exit — pass `<program> <dynpro>` |
+
+Confirm membership and resolve the owning enhancement via the sap-cmod RFC
+helper (**32-bit PowerShell** — NCo is 32-bit):
+
+```bash
+C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File "<SKILL_DIR>\..\sap-cmod\references\sap_cmod_query.ps1" -Action find-enhancement -Component <NAME> [-Dynpro <nnnn>]
+```
+
+Parse the result:
+- `ENHANCEMENT_COMPONENT: YES` (plus `ENHANCEMENT: <ENH>`, `TYP`, `MEMBER`) →
+  **delegate to `/sap-cmod`** and STOP (do not run Step 2/3). Invoke, e.g.:
+  > `/sap-cmod edit component <NAME> of enhancement <ENH>`
+
+  `/sap-cmod` (Step 12) resolves the actual editable object — for `TYP=E` that
+  is the `ZX*` customer include, **not** the `EXIT_SAP*` FM — dispatches to the
+  correct workbench skill in **check-and-fix mode** (no source file), then
+  resolves and activates the enclosing CMOD project (`find-project` → Step 8).
+- `ENHANCEMENT_COMPONENT: NO` → not an enhancement component; fall through to the
+  normal keyword routing (Step 1 table) or probe (Step 2).
+
+If the object name has **no** enhancement-component prefix (and no SAPLX* screen
+was named), skip this step entirely.
 
 ---
 

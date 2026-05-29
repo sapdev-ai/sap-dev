@@ -26,6 +26,12 @@
 #                CUSTOMER_INCLUDE / INCLUDE_EXISTS / SE38_MODE. The include is
 #                named after the function POOL (+seq), NOT the FM, so it cannot
 #                be guessed — it is read from the source.
+#   find-enhancement  Object -> owning SMOD enhancement, by component-name pattern
+#                (EXIT_SAP* FM / CI_* DDIC / ZX* include / SAPLX*+<Dynpro> screen).
+#                Confirms it is an enhancement component and resolves the
+#                enhancement (for delegating to /sap-cmod). Args: -Component
+#                <name> [ -Dynpro <nnnn> for screens ]. Emits
+#                ENHANCEMENT_COMPONENT: YES|NO + ENHANCEMENT/TYP/MEMBER/RESOLVED_VIA.
 #   find-project Reverse lookup: which CMOD project(s) the enhancement (<Enhancement>)
 #                is assigned to (MODACT) + each project's MODATTR status. Emits
 #                PROJECT:<name>|<status>|<label>. Used to activate the enclosing
@@ -39,7 +45,9 @@ param(
     [string]$Project     = '',
     [string]$Enhancement = '',
     [string]$Fm          = '',   # function-exit FM, for -Action exit-include
-    [ValidateSet('check','status','assignments','components','exit-include','find-project')]
+    [string]$Component   = '',   # object name, for -Action find-enhancement
+    [string]$Dynpro      = '',   # screen number, for -Action find-enhancement (screen exits)
+    [ValidateSet('check','status','assignments','components','exit-include','find-project','find-enhancement')]
     [string]$Action      = 'check',
     # Connection params are optional — when blank, Connect-SapRfc resolves the
     # default profile from runtime/connections.json (DPAPI-decrypted password).
@@ -69,6 +77,9 @@ if (@('check','status','assignments') -contains $Action -and -not $Project) { Wr
 if ($Action -eq 'components'   -and -not $Enhancement) { Write-Output "ERROR: -Enhancement is required for action 'components'"; exit 2 }
 if ($Action -eq 'find-project' -and -not $Enhancement) { Write-Output "ERROR: -Enhancement is required for action 'find-project'"; exit 2 }
 if ($Action -eq 'exit-include' -and -not $Fm)          { Write-Output "ERROR: -Fm is required for action 'exit-include'"; exit 2 }
+if ($Action -eq 'find-enhancement' -and -not $Component) { Write-Output "ERROR: -Component is required for action 'find-enhancement'"; exit 2 }
+$Component = $Component.Trim().ToUpper()
+$Dynpro    = $Dynpro.Trim()
 
 # ---- Connect (profile fallback when params blank) --------------------------
 $dest = Connect-SapRfc -Server $Server -Sysnr $Sysnr -Client $Client -User $User -Password $Password -Language $Language -DestName "CMOD_QUERY"
@@ -140,6 +151,80 @@ try {
             } else {
                 Write-Output "CUSTOMER_INCLUDE: (none found in source)"
             }
+            Write-Output "DONE"
+        }
+
+        'find-enhancement' {
+            # Object -> owning SMOD enhancement, by component-name pattern.
+            # Confirms the object is an enhancement component and resolves the
+            # enhancement so the caller (e.g. sap-check-fix) can delegate to
+            # /sap-cmod (route + activate the enclosing project).
+            #   EXIT_SAP* (FM)      -> MODSAP MEMBER = <fm>            (TYP E)
+            #   CI_*      (DDIC)    -> MODSAP MEMBER = <struct>        (TYP T)
+            #   ZX*       (include) -> TFDIR (pool+num) -> exit FM -> MODSAP (TYP E)
+            #   SAPLX*+<Dynpro>     -> MODSAP MEMBER LIKE '%<prog><dynpro>' (TYP S)
+            $hits = @()   # each: @{Enh;Typ;Member;Via;EditObj}
+            $how  = ''
+            if ($Component -like 'EXIT_SAP*') {
+                $how = 'exit-fm'
+                $r = Read-Tbl "MODSAP" "MEMBER = '$Component'" @("NAME","TYP","MEMBER")
+                if ($r) { foreach ($x in $r) { $c=$x.Split('|'); if ($c[2].Trim()) { $hits += @{Enh=$c[0].Trim();Typ=$c[1].Trim();Member=$c[2].Trim();Via=$how} } } }
+            }
+            elseif ($Component -like 'CI_*') {
+                $how = 'table-include'
+                $r = Read-Tbl "MODSAP" "MEMBER = '$Component'" @("NAME","TYP","MEMBER")
+                if ($r) { foreach ($x in $r) { $c=$x.Split('|'); if ($c[2].Trim()) { $hits += @{Enh=$c[0].Trim();Typ=$c[1].Trim();Member=$c[2].Trim();Via=$how} } } }
+            }
+            elseif ($Component -like 'ZX*') {
+                $how = 'zx-include->fm'
+                # ZX<pool>U<nn> : strip leading Z -> "<pool>U<nn>"; pool program = SAPL<pool>.
+                if ($Component.Substring(1) -match '^(.*)U(\d+)$') {
+                    $pool = $matches[1]; $num = [string]([int]$matches[2])
+                    $poolProg = 'SAPL' + $pool
+                    $tf = Read-Tbl "TFDIR" "PNAME = '$poolProg'" @("FUNCNAME","INCLUDE")
+                    if ($tf) {
+                        foreach ($row in $tf) {
+                            $tc = $row.Split('|')
+                            if ($tc[1].Trim() -eq $num) {
+                                $fm = $tc[0].Trim()
+                                $mr = Read-Tbl "MODSAP" "MEMBER = '$fm'" @("NAME","TYP","MEMBER")
+                                if ($mr) { foreach ($x in $mr) { $c=$x.Split('|'); if ($c[2].Trim()) { $hits += @{Enh=$c[0].Trim();Typ=$c[1].Trim();Member=$c[2].Trim();Via="$how ($fm)"} } } }
+                            }
+                        }
+                    }
+                }
+            }
+            elseif ($Component -like 'SAPLX*') {
+                $how = 'screen'
+                if (-not $Dynpro) { Write-Output "ERROR: screen component (SAPLX*) requires -Dynpro <nnnn>"; exit 2 }
+                $key = $Component + $Dynpro
+                $r = Read-Tbl "MODSAP" "MEMBER LIKE '%$key'" @("NAME","TYP","MEMBER")
+                if ($r) { foreach ($x in $r) { $c=$x.Split('|'); if ($c[2].Trim()) { $hits += @{Enh=$c[0].Trim();Typ=$c[1].Trim();Member=$c[2].Trim();Via=$how} } } }
+            }
+            else {
+                Write-Output "ENHANCEMENT_COMPONENT: NO"
+                Write-Output "INFO: '$Component' does not match an enhancement-component prefix (EXIT_SAP*/CI_*/ZX*/SAPLX*)."
+                Write-Output "DONE"; break
+            }
+
+            if ($hits.Count -eq 0) {
+                Write-Output "ENHANCEMENT_COMPONENT: NO"
+                Write-Output "INFO: prefix matched ($how) but no MODSAP entry found for '$Component'$(if($Dynpro){" / $Dynpro"})."
+                Write-Output "DONE"; break
+            }
+            Write-Output "ENHANCEMENT_COMPONENT: YES"
+            # De-dupe by enhancement.
+            $seen = @{}
+            foreach ($h in $hits) {
+                $k = "$($h.Enh)|$($h.Typ)"
+                if ($seen.ContainsKey($k)) { continue }
+                $seen[$k] = $true
+                Write-Output ("ENHANCEMENT: {0}" -f $h.Enh)
+                Write-Output ("TYP: {0}" -f $h.Typ)
+                Write-Output ("MEMBER: {0}" -f $h.Member)
+                Write-Output ("RESOLVED_VIA: {0}" -f $h.Via)
+            }
+            Write-Output ("COUNT: " + $seen.Count)
             Write-Output "DONE"
         }
 
