@@ -179,7 +179,10 @@ Parse the output lines:
 Other actions: `-Action status` (MODATTR only), `-Action assignments`
 (MODACT), `-Action components -Enhancement <ENH>` (MODSAP — used by Step 12),
 `-Action exit-include -Fm <EXIT_FM>` (resolves a function exit's customer
-include from the FM source — used by Step 12 `E`-type routing).
+include from the FM source — used by Step 12 `E`-type routing),
+`-Action find-project -Enhancement <ENH>` (reverse MODACT lookup → the CMOD
+project(s) the enhancement is assigned to + each project's active status — used
+by Step 12 to activate the enclosing project after editing a component).
 
 ---
 
@@ -343,13 +346,27 @@ Enhancements are made of components. To edit one, look the components up in
      (includes are not executable — the F8 run-test would false-fail on
      screen 101). Verify activation via RFC `PROGDIR.STATE = 'A'`.
 
-3. **After editing/activating the component**, re-activate the project
-   (Step 8) if the user wants the enhancement live.
+3. **Activate the enclosing CMOD project — the exit only runs when its project
+   is active.** Activating the include/component is **not** enough: a function
+   exit fires at runtime only while the SMOD enhancement's CMOD project is
+   active, and re-activating the project after a component change makes the
+   enhancement framework pick it up (re-activating an already-active project is
+   safe). Resolve which project(s) the enhancement belongs to:
+
+   ```bash
+   C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File "<SKILL_DIR>\references\sap_cmod_query.ps1" -Action find-project -Enhancement <ENH>
+   ```
+
+   For each `PROJECT: <name>|<status>|<label>` returned, run **Step 8**
+   (`/sap-cmod activate <name>`) and confirm `STATUS_LABEL: ACTIVE` via Step 3.
+   If `COUNT: 0`, the enhancement isn't assigned to any project yet — assign it
+   first (Step 5), then activate.
 
 > Worked example (enhancement `CNEX0007`, verified live 2026-05-29):
 > `C|SAPLCJGR+CUE` → `/sap-se41 SAPLCJGR`;
-> `E|EXIT_SAPLCJWB_004` → helper resolves `ZXCN1U21` (not yet created → `/sap-se38` create with the exit body);
-> `S|SAPLCJWB0215_CUSTSCR1_SAPLXCN10700` → `/sap-se51 SAPLXCN1 0700`.
+> `E|EXIT_SAPLCJWB_004` → helper resolves `ZXCN1U21` → `/sap-se38` (type `I`) create/update with the exit body;
+> `S|SAPLCJWB0215_CUSTSCR1_SAPLXCN10700` → `/sap-se51 SAPLXCN1 0700`;
+> then `find-project CNEX0007` → `ZHKPJ002` → `/sap-cmod activate ZHKPJ002` so the exit actually runs.
 
 ---
 

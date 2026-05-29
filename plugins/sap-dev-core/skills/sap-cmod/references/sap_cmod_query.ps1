@@ -26,6 +26,11 @@
 #                CUSTOMER_INCLUDE / INCLUDE_EXISTS / SE38_MODE. The include is
 #                named after the function POOL (+seq), NOT the FM, so it cannot
 #                be guessed — it is read from the source.
+#   find-project Reverse lookup: which CMOD project(s) the enhancement (<Enhancement>)
+#                is assigned to (MODACT) + each project's MODATTR status. Emits
+#                PROJECT:<name>|<status>|<label>. Used to activate the enclosing
+#                project after editing a component (the exit only runs when its
+#                project is active).
 #
 # Output is line-oriented and parseable; final line is DONE or ERROR: <msg>.
 # =============================================================================
@@ -34,7 +39,7 @@ param(
     [string]$Project     = '',
     [string]$Enhancement = '',
     [string]$Fm          = '',   # function-exit FM, for -Action exit-include
-    [ValidateSet('check','status','assignments','components','exit-include')]
+    [ValidateSet('check','status','assignments','components','exit-include','find-project')]
     [string]$Action      = 'check',
     # Connection params are optional — when blank, Connect-SapRfc resolves the
     # default profile from runtime/connections.json (DPAPI-decrypted password).
@@ -62,6 +67,7 @@ $Fm          = $Fm.Trim().ToUpper()
 
 if (@('check','status','assignments') -contains $Action -and -not $Project) { Write-Output "ERROR: -Project is required for action '$Action'"; exit 2 }
 if ($Action -eq 'components'   -and -not $Enhancement) { Write-Output "ERROR: -Enhancement is required for action 'components'"; exit 2 }
+if ($Action -eq 'find-project' -and -not $Enhancement) { Write-Output "ERROR: -Enhancement is required for action 'find-project'"; exit 2 }
 if ($Action -eq 'exit-include' -and -not $Fm)          { Write-Output "ERROR: -Fm is required for action 'exit-include'"; exit 2 }
 
 # ---- Connect (profile fallback when params blank) --------------------------
@@ -134,6 +140,27 @@ try {
             } else {
                 Write-Output "CUSTOMER_INCLUDE: (none found in source)"
             }
+            Write-Output "DONE"
+        }
+
+        'find-project' {
+            # Reverse lookup: which CMOD project(s) is this enhancement assigned
+            # to (MODACT.MEMBER = enhancement -> NAME = project), and is each
+            # active? Used after editing a component to activate the enclosing
+            # project so the exit actually runs.
+            $rows = Read-Tbl "MODACT" "MEMBER LIKE '$Enhancement%'" @("NAME","MEMBER")
+            if ($null -eq $rows) { Write-Output "ERROR: RFC_READ_TABLE failed on MODACT"; exit 2 }
+            $projs = @()
+            foreach ($r in $rows) { $p = ($r.Split('|')[0]).Trim(); if ($p) { $projs += $p } }
+            $projs = $projs | Select-Object -Unique
+            foreach ($p in $projs) {
+                $a = Read-Tbl "MODATTR" "NAME = '$p'" @("NAME","STATUS")
+                $st = ''
+                if ($a -and $a.Count -gt 0) { $st = ($a[0].Split('|')[1]).Trim() }
+                $lbl = if ($st -eq 'A') { 'ACTIVE' } else { 'INACTIVE' }
+                Write-Output "PROJECT: $p|$st|$lbl"
+            }
+            Write-Output ("COUNT: " + $projs.Count)
             Write-Output "DONE"
         }
 
