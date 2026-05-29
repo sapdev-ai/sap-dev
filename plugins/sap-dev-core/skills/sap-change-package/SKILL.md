@@ -3,7 +3,8 @@ name: sap-change-package
 description: |
   Changes the package (TADIR-DEVCLASS) assignment of an SAP repository object
   via the "Object Directory Entry" dialog (Goto > Object Directory Entry).
-  Routes by object type to SE38 / SE37 / SE24 / SE11 / SE91. Handles three
+  Routes by object type to SE38 / SE37 / SE24 / SE11 / SE91 / CMOD (the last
+  for enhancement projects — used by /sap-cmod). Handles three
   flows automatically based on current vs new package locality:
     (a) $TMP → transportable (Z*/Y*): resolves a modifiable TR via
         /sap-transport-request, then enters the new package + TR.
@@ -79,6 +80,7 @@ If any argument is missing, ask:
 | `CLASS` / `INTERFACE` | SE24 | `CLAS` / `INTF` |
 | `TABLE` / `VIEW` / `DTEL` / `STRUCTURE` / `TABLETYPE` / `TYPEGROUP` / `DOMAIN` / `SEARCHHELP` / `LOCKOBJECT` | SE11 | matching DDIC type |
 | `MSGCLASS` (message class) | SE91 | `MSAG` |
+| `CMOD` / `ENHANCEMENTPROJECT` / `ENHPROJ` (enhancement project) | CMOD | `CMOD` |
 
 ---
 
@@ -212,6 +214,7 @@ Requires an active SAP GUI session. If not logged in, run `/sap-login`.
 | SE24 | `./references/sap_change_package_se24.vbs` |
 | SE11 | `./references/sap_change_package_se11.vbs` |
 | SE91 | `./references/sap_change_package_se91.vbs` |
+| CMOD | `./references/sap_change_package_cmod.vbs` |
 
 Tokens:
 
@@ -320,6 +323,7 @@ Suggested `<CLASS>`: `CHANGE_PACKAGE_FAILED`, `OBJECT_LOCKED_IN_TR`, `TR_RESOLUT
 | SE24 | `mbar/menu[2]/menu[4]` | `wnd[0]/usr/ctxtSEOCLASS-CLSNAME` |
 | SE11 | `mbar/menu[2]/menu[0]` | `ctxtRSRD1-<key>_VAL` (radio-dependent) |
 | SE91 | `mbar/menu[2]/menu[0]` | `wnd[0]/usr/ctxtRSDAG-ARBGB` (then `btnANZTASTE` Display first) |
+| CMOD | `mbar/menu[2]/menu[3]` | `wnd[0]/usr/ctxtMOD0-NAME` (then `sendVKey 0` to select the project first) |
 
 Menu indices are version-specific (SAP GUI 7.60 / S/4HANA 1909). If a future
 release renumbers the Goto menu, update the `MENU_OBJECT_DIR` constant in
@@ -332,7 +336,7 @@ each VBS.
 | Table | Field | Meaning |
 |---|---|---|
 | `TADIR` | `PGMID` | `R3TR` for repository objects |
-| `TADIR` | `OBJECT` | Object type (PROG / CLAS / TABL / DOMA / MSAG / FUNC / FUGR …) |
+| `TADIR` | `OBJECT` | Object type (PROG / CLAS / TABL / DOMA / MSAG / FUNC / FUGR / CMOD …) |
 | `TADIR` | `OBJ_NAME` | Object name |
 | `TADIR` | `DEVCLASS` | **Package** — `$*` = local, otherwise transportable |
 | `TADIR` | `MASTERLANG` | Original language of the object |

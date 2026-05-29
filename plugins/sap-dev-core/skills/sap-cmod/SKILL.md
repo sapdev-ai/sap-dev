@@ -1,21 +1,25 @@
 ---
 name: sap-cmod
 description: |
-  Manages SAP Enhancement Projects via CMOD and edits exit includes via SE38
-  using SAP GUI Scripting. Creates enhancement projects, assigns SAP
-  enhancements (exits), and deploys ABAP source to exit includes.
-  Existence check, project creation with enhancement
-  assignment, and include source upload/activate.
-  Prerequisites: Active SAP GUI session (use /sap-login first).
-argument-hint: "<project-name> <enhancement> <include-name> [path-to-source]"
+  Manages the full lifecycle of SAP Enhancement Projects (classic
+  modifications) via CMOD using SAP GUI Scripting, plus read-only RFC
+  lookups. Operations: check / status, create, change short text,
+  activate, deactivate, delete the project; add and remove SAP enhancement
+  assignments (position-aware — finds the right row by value, never a fixed
+  index); change the project's package (delegates to /sap-change-package);
+  and route "edit an enhancement component" to the correct workbench skill
+  by component type (E function exit -> /sap-se38, S screen -> /sap-se51,
+  T table -> /sap-se11, C GUI code -> /sap-se41).
+  Prerequisites: Active SAP GUI session (use /sap-login first); SAP NCo 3.1
+  (32-bit, .NET 4.0) in GAC for the RFC lookups.
+argument-hint: "<operation> <project> [enhancements | short-text | package]"
 ---
 
 # SAP CMOD Enhancement Project Skill
 
-You manage SAP Enhancement Projects via CMOD and edit exit includes via SE38
-using SAP GUI Scripting. The skill checks if the project exists,
-creates it with enhancement assignments if needed, and deploys ABAP source
-to the exit include.
+You manage SAP Enhancement Projects (transaction CMOD) end to end. Project
+metadata is read read-only via RFC (`MODATTR` / `MODACT` / `MODSAP` /
+`MODTEXT` / `TADIR`); every mutation is driven through SAP GUI Scripting.
 
 Task: $ARGUMENTS
 
@@ -25,25 +29,34 @@ Task: $ARGUMENTS
 
 | File | Purpose |
 |---|---|
-| `<SAP_DEV_CORE_SHARED_DIR>/rules/skill_operating_rules.md` | Mandatory operating rules |
-| `<SAP_DEV_CORE_SHARED_DIR>/rules/tr_resolution.md` | TR resolution flow — this skill delegates to `/sap-transport-request` instead of asking for the TR itself |
-| `<SAP_DEV_CORE_SHARED_DIR>/rules/language_independence_rules.md` | GUI-scripting language independence — identify by component ID + DDIC field name, status-bar checks via `MessageType` codes (S/W/E/I/A), VKey instead of menu-text, no branching on `.Text`/`.Tooltip`/window titles |
-| `<SAP_DEV_CORE_SHARED_DIR>/rules/abap_code_quality_rules.md` | ABAP code-quality rules — uploaded exit-include source must follow modern syntax, no literal MESSAGE strings. Run `/sap-check-abap` before deploy when the source isn't generator-emitted. |
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/skill_operating_rules.md` | Mandatory operating rules (no direct SQL writes on standard tables; no unsolicited deploys) |
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/tr_resolution.md` | TR resolution — this skill delegates to `/sap-transport-request`; never asks for a TR itself |
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/language_independence_rules.md` | GUI scripting works under any logon language — identify by component ID + DDIC field name, status via `MessageType` (S/W/E/I/A), VKey not menu-text, no branching on `.Text`/titles |
+| `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_attach_lib.vbs` | Session-attach primitive — token `%%ATTACH_LIB_VBS%%` |
+| `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_session_lock.vbs` | Session-lock for the write critical section — token `%%SESSION_LOCK_VBS%%` |
+| `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_rfc_lib.ps1` | RFC connect/read helpers — dot-sourced by `references/sap_cmod_query.ps1` |
+| `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_connection_lib.ps1` | `Get-SapCurrentSessionPath` for the session-attach env var |
+
+The reads touch only SAP-standard tables via `RFC_READ_TABLE` (SELECT only) —
+allowed under `skill_operating_rules.md`. All mutations go through CMOD's own
+SAP-supplied dialogs (never raw SQL).
 
 ---
 
 ## Step 0 — Resolve Work Directory
 
-**Settings reads/writes follow `shared/rules/settings_lookup.md`** — merge `settings.local.json` over `settings.json` per-key on the `.value` field; writes always go to `settings.local.json`. Resolve sap-dev-core paths: 2 levels up from `<SKILL_DIR>` to the plugin root, then `settings.json` and (if present) `settings.local.json`. Read `work_dir`, `custom_url`.
+**Settings reads/writes follow `shared/rules/settings_lookup.md`** — merge
+`settings.local.json` over `settings.json` per-key on `.value`; writes go to
+`settings.local.json`. Resolve sap-dev-core paths: 2 levels up from
+`<SKILL_DIR>` to the plugin root, then read `work_dir`, `custom_url`,
+`way_to_get_transport_request`.
 
 | Setting | Default if blank |
 |---|---|
 | `work_dir` | `C:\sap_dev_work` |
 | `custom_url` | `{work_dir}\custom` |
 
-Set `{WORK_TEMP}` = `{work_dir}\temp`
-
-Ensure the temp directory exists:
+Set `{WORK_TEMP}` = `{work_dir}\temp`. Ensure it exists:
 ```bash
 cmd /c if not exist "{WORK_TEMP}" mkdir "{WORK_TEMP}"
 ```
@@ -52,322 +65,374 @@ cmd /c if not exist "{WORK_TEMP}" mkdir "{WORK_TEMP}"
 
 ## Step 0.5 — Start Logging
 
-Start a structured log run. The helper persists `run_id` in a state file
-(`{WORK_TEMP}\sap_cmod_run.json`) so subsequent steps and the final
-log-end call append to the same run. Best-effort: silently no-ops if
-`userConfig.log_enabled=false` or the lib can't load.
-
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{WORK_TEMP}\sap_cmod_run.json" -Skill sap-cmod -ParamsJson "{\"project\":\"<PROJECT>\"}"
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{WORK_TEMP}\sap_cmod_run.json" -Skill sap-cmod -ParamsJson "{\"project\":\"<PROJECT>\",\"op\":\"<OPERATION>\"}"
 ```
 
 ---
 
-## Step 1 — Collect Parameters
+## Step 1 — Determine the Operation
 
-**CMOD Project Details**
+Pick **one** operation from the user's request. CMOD project names are
+**max 8 characters** (Z-namespace). Enhancement names are SMOD enhancements
+(e.g. `CNEX0001`).
 
-| Parameter | Description | Example |
+| Operation | Trigger phrases | Flow |
 |---|---|---|
-| Project name | Z-namespace project name, max 10 chars | `ZHKPJ001` |
-| Short text | Project short description (only for new projects) | `Custom route determination` |
-| Enhancements | Pipe-separated SAP enhancement names to assign | `0VRF0001` or `0VRF0001\|AMPL0001` |
+| **check / status** | "check CMOD project X", "does X exist", "is X active", "what enhancements are on X" | Step 3 (RFC only) |
+| **create** | "create CMOD project X", "create enhancement project X [with CNEX0001\|CNEX0002]" | Step 4 (+ Step 5 if enhancements given) |
+| **add assignments** | "assign CNEX0001 to X", "add enhancements … to X" | Step 5 |
+| **remove assignments** | "remove CNEX0002 from X", "unassign … from X" | Step 6 |
+| **change description** | "change description / short text of X to '…'" | Step 7 |
+| **activate** | "activate CMOD project X" | Step 8 |
+| **deactivate** | "deactivate CMOD project X" | Step 9 |
+| **delete project** | "delete / drop CMOD project X" | Step 10 (**irreversible — confirm first**) |
+| **change package** | "change package of X to ZPKG", "move X to package …" | Step 11 (delegates to `/sap-change-package`) |
+| **edit component** | "edit / change the function exit / screen / table / GUI of enhancement E (on X)" | Step 12 (routes to the right workbench skill) |
 
-**Exit Include Details** (optional — only if editing include source)
-
-| Parameter | Description | Example |
-|---|---|---|
-| Include name | Exit include program name | `ZXV00U01` |
-| Source | Include body: absolute path to `.abap` file, OR paste code directly | |
-
----
-
-## Step 2 — Prepare ABAP Source File (if editing include)
-
-Skip this step if the user only wants to create the project / assign enhancements
-without changing include source.
-
-**If the user pasted source code directly:**
-
-1. Write the source to: `{WORK_TEMP}\<INCLUDE_NAME>.abap`
-   - Use the Write tool with the exact ABAP source as content.
-3. Confirm the file by reading back the first 5 lines.
-
-**If the user provided a file path:**
-
-- Use that path as-is. Verify it exists:
-  ```bash
-  cmd /c if exist "<path>" (echo EXISTS) else (echo NOT FOUND)
-  ```
+Always run **Step 3 (check)** first for any write operation — it tells you
+whether the project exists, its `STATUS`, its `DEVCLASS` (package), and its
+current assignments. This drives TR resolution and position-aware editing.
 
 ---
 
-## Step 3 — Ensure SAP GUI Login
+## Step 2 — Ensure SAP GUI Login
 
-This skill requires an active SAP GUI session. If not already logged in, use the `/sap-login` skill first, then return here.
+Mutations need an active SAP GUI session; the RFC reads need NCo 3.1. If not
+logged in, run `/sap-login` first, then return.
 
 ---
 
-## Step 4 — Check if Project Exists
+## Step T — Resolve a Transport Request (only for transportable projects)
 
-The check VBScript template is at `./references/sap_cmod_check.vbs`.
+A write operation needs a TR **only when the project's package is
+transportable** (`DEVCLASS` does NOT start with `$`). For `$TMP`/local
+projects, leave `%%TRANSPORT%%` empty — no popup appears.
 
-### Generate the filled-in VBScript
+When a TR is needed, **delegate to `/sap-transport-request`** (never ask the
+user directly, never call `/sap-se01`):
 
-Write `{WORK_TEMP}\sap_cmod_check_run.ps1`:
+```
+/sap-transport-request OBJECT_TYPE=CMOD OBJECT_DESCRIPTION=<PROJECT>
+```
+
+Use the returned modifiable TRKORR as the `%%TRANSPORT%%` token. See
+`tr_resolution.md`.
+
+---
+
+## Running a reference VBS (shared wrapper)
+
+Every GUI operation uses the same token-substitution + execute pattern. Write
+`{WORK_TEMP}\<TEMPLATE>_run.ps1`, then run it, then run the generated `.vbs`
+with **32-bit** cscript.
+
 ```powershell
-$content = Get-Content '<SKILL_DIR>\references\sap_cmod_check.vbs' -Raw
-$content = $content -replace '%%PROJECT_NAME%%','THE_PROJECT_NAME'
-# Phase 3.5 session-attach plumbing.
-$sessionPath = ''
-$content = $content -replace '%%SESSION_PATH%%', $sessionPath
+$content = Get-Content '<SKILL_DIR>\references\<TEMPLATE>.vbs' -Raw
+# --- mode-specific tokens (see each step) ---
+$content = $content -replace '%%PROJECT_NAME%%','THE_PROJECT'
+# ... e.g. %%ENHANCEMENTS%% / %%SHORT_TEXT%% / %%PACKAGE%% / %%TRANSPORT%% ...
+# --- session-attach plumbing (always) ---
+$content = $content -replace '%%SESSION_PATH%%', ''
 $content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
+$content = $content -replace '%%SESSION_LOCK_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_session_lock.vbs'
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-Set-Content '{WORK_TEMP}\sap_cmod_check_run.vbs' $content -Encoding Unicode
+Set-Content '{WORK_TEMP}\<TEMPLATE>_run.vbs' $content -Encoding Unicode
 Write-Host 'Done'
 ```
-Replace `THE_PROJECT_NAME` with the actual project name (UPPERCASE) and `<SKILL_DIR>` with the absolute path to this skill directory.
-
-Run:
-```bash
-powershell -ExecutionPolicy Bypass -File "{WORK_TEMP}\sap_cmod_check_run.ps1"
-```
-
-### Execute
 
 ```bash
-cscript //NoLogo {WORK_TEMP}\sap_cmod_check_run.vbs
+powershell -ExecutionPolicy Bypass -File "{WORK_TEMP}\<TEMPLATE>_run.ps1"
+C:/Windows/SysWOW64/cscript.exe //NoLogo {WORK_TEMP}\<TEMPLATE>_run.vbs
 ```
 
-**Parse the last line of output:**
-- `EXIST` → project already exists → skip to Step 5b (Change Include) if editing include, or report that project already exists.
-- `NOT_EXIST` → project does not exist → proceed to Step 5a (Create Project).
-- `ERROR:` → show full output and stop.
+> **Encoding:** always `-Encoding Unicode` (UTF-16 LE) — what `cscript`
+> compiles natively. UTF-8-BOM causes a compile error.
+> **32-bit cscript:** use `C:/Windows/SysWOW64/cscript.exe`; bare `cscript`
+> can pick the 64-bit binary, which cannot bind the SAP GUI Scripting COM.
+
+Each VBS prints `INFO:` progress, then `STATUS_TYPE: <S|W|E|I|A>` +
+`STATUS_TEXT: <text>`, then a final `SUCCESS: …` or `ERROR: …` line. Parse the
+final line.
 
 ---
 
-## Step 5a — Create Project and Assign Enhancements
+## Step 3 — Check / Status (RFC, read-only)
 
-If the project does not exist, create it and assign the specified enhancements.
-You need the Project Name, Short Text, and Enhancements.
-
-The create VBScript template is at `./references/sap_cmod_create.vbs`.
-
-### Generate the filled-in VBScript
-
-Write `{WORK_TEMP}\sap_cmod_create_run.ps1`:
-```powershell
-$content = Get-Content '<SKILL_DIR>\references\sap_cmod_create.vbs' -Raw
-$content = $content -replace '%%PROJECT_NAME%%','THE_PROJECT_NAME'
-$content = $content -replace '%%SHORT_TEXT%%','THE_SHORT_TEXT'
-$content = $content -replace '%%ENHANCEMENTS%%','THE_ENHANCEMENTS'
-# Phase 3.5 session-attach plumbing.
-$sessionPath = ''
-$content = $content -replace '%%SESSION_PATH%%', $sessionPath
-$content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
-. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
-$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-Set-Content '{WORK_TEMP}\sap_cmod_create_run.vbs' $content -Encoding Unicode
-Write-Host 'Done'
-```
-Replace `THE_PROJECT_NAME` (UPPERCASE), `THE_SHORT_TEXT`, and `THE_ENHANCEMENTS` (pipe-separated, e.g. `0VRF0001|AMPL0001`). Replace `<SKILL_DIR>` with the absolute path to this skill directory.
-
-Run:
-```bash
-powershell -ExecutionPolicy Bypass -File "{WORK_TEMP}\sap_cmod_create_run.ps1"
-```
-
-### Execute
+Run the query helper with **32-bit PowerShell** (NCo is 32-bit). Connection
+params resolve from `runtime/connections.json` automatically when omitted:
 
 ```bash
-cscript //NoLogo {WORK_TEMP}\sap_cmod_create_run.vbs
+C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File "<SKILL_DIR>\references\sap_cmod_query.ps1" -Project <PROJECT> -Action check
 ```
 
-**On success** (output contains `SUCCESS:`): proceed to Step 5b if editing an include, or Step 6 to report.
+Parse the output lines:
+- `EXISTS: YES|NO` — project header present in `MODATTR`.
+- `STATUS: A` + `STATUS_LABEL: ACTIVE|INACTIVE` — `A` = activated.
+- `DEVCLASS: <pkg>` — `$TMP` = local; else transportable (drives Step T).
+- `SHORTTEXT[<lang>]: <text>` — short text per language (`MODTEXT`).
+- `ASSIGNMENT: <enh>` (one per line) + `COUNT: <n>` — assigned enhancements (`MODACT`).
+- `TADIR_ORPHAN: <pkg>` (only when `EXISTS: NO`) — a leftover directory entry
+  from a prior delete. Warn the user: a fresh create may re-attach to `<pkg>`.
 
-**On failure** (output contains `ERROR:`): show full output and diagnose:
+Other actions: `-Action status` (MODATTR only), `-Action assignments`
+(MODACT), `-Action components -Enhancement <ENH>` (MODSAP — used by Step 12).
 
-| Error message | Cause | Fix |
+---
+
+## Step 4 — Create Project
+
+Template: `sap_cmod_create.vbs`. Tokens:
+
+| Token | Value |
+|---|---|
+| `%%PROJECT_NAME%%` | project (UPPERCASE, ≤8) |
+| `%%SHORT_TEXT%%` | short description |
+| `%%PACKAGE%%` | target package; blank or `$*` → Local object (`$TMP`) |
+| `%%TRANSPORT%%` | TR from Step T (only when `%%PACKAGE%%` is transportable) |
+
+This creates the project **header + short text** only. If the user also asked
+to assign enhancements, **chain Step 5** (add assignments) afterwards — the
+assign path is shared and position-aware. After create+assign the project is
+inactive; chain **Step 8** if the user wants it active.
+
+Pre-check (Step 3): if `EXISTS: YES`, do not create — report it. If
+`TADIR_ORPHAN` is present, warn before creating.
+
+---
+
+## Step 5 — Add Enhancement Assignments (position-aware)
+
+Template: `sap_cmod_add_assignments.vbs`. Tokens: `%%PROJECT_NAME%%`,
+`%%ENHANCEMENTS%%` (pipe-separated, e.g. `CNEX0001|CNEX0002`), `%%TRANSPORT%%`
+(Step T if transportable).
+
+The VBS scans the `EXITNAME` rows, **skips enhancements already assigned**,
+and writes new ones into the **first empty row** — never a hardcoded index.
+On success the project is left inactive (re-activate via Step 8 if desired).
+Verify with Step 3 `-Action assignments`.
+
+---
+
+## Step 6 — Remove Enhancement Assignments (position-aware)
+
+Template: `sap_cmod_delete_assignments.vbs`. Tokens: `%%PROJECT_NAME%%`,
+`%%ENHANCEMENTS%%`, `%%TRANSPORT%%`.
+
+The VBS **matches each target enhancement by value** across the rows, deletes
+that row (Delete row / Ctrl+F9), and re-scans from the top for the next target
+(rows shift up after each deletion). Enhancements not currently assigned are
+skipped with a `WARN`. Verify with Step 3.
+
+---
+
+## Step 7 — Change Short Text
+
+Template: `sap_cmod_change_description.vbs`. Tokens: `%%PROJECT_NAME%%`,
+`%%SHORT_TEXT%%`, `%%TRANSPORT%%` (Step T if transportable). Verify by
+re-reading `SHORTTEXT[…]` via Step 3.
+
+---
+
+## Step 8 — Activate Project
+
+Template: `sap_cmod_activate.vbs`. Token: `%%PROJECT_NAME%%`. Verify
+`STATUS_LABEL: ACTIVE` via Step 3 `-Action status`.
+
+---
+
+## Step 9 — Deactivate Project
+
+Template: `sap_cmod_deactivate.vbs`. Token: `%%PROJECT_NAME%%`. Verify
+`STATUS_LABEL: INACTIVE` via Step 3.
+
+---
+
+## Step 10 — Delete Project (irreversible)
+
+**Confirm with the user first** — show the project name, package
+(`DEVCLASS`), and assignment list from Step 3. Only proceed on explicit yes.
+
+Template: `sap_cmod_delete.vbs`. Tokens: `%%PROJECT_NAME%%`, `%%TRANSPORT%%`
+(Step T if transportable). The VBS presses Delete, confirms the popup
+(`btnSPOP-OPTION1` = Yes), and handles the post-delete TR popup. Verify with
+Step 3 (`EXISTS: NO`).
+
+> Note: deleting a CMOD project can leave a `TADIR` directory-entry orphan
+> (the `MODATTR`/`MODACT` rows go but the `R3TR CMOD` TADIR row may linger).
+> Step 3 reports it as `TADIR_ORPHAN`. To fully clear it, move the orphan to
+> `$TMP` (Step 11) or remove the TADIR entry via the standard tooling.
+
+---
+
+## Step 11 — Change Package (delegate)
+
+CMOD enhancement projects are `R3TR CMOD <project>` in `TADIR`. Package
+changes are handled by **`/sap-change-package`** (which now has a `CMOD`
+route):
+
+```
+/sap-change-package CMOD <PROJECT> <NEW_PACKAGE>
+```
+
+That skill reads the current `DEVCLASS`, decides the locality flow
+(`$TMP`→transport needs a TR via `/sap-transport-request`; transport→transport
+checks the object isn't locked to a modifiable TR; →`$TMP` confirms and presses
+Local object), drives CMOD's *Goto > Object Directory Entry* dialog, and
+verifies via a `TADIR` re-query. Surface its `DONE` / `ERROR:` result.
+
+---
+
+## Step 12 — Edit an Enhancement Component (routing)
+
+Enhancements are made of components. To edit one, look the components up in
+`MODSAP` and route by **component type (`TYP`)** to the right workbench skill.
+
+1. **Find the enhancement(s).** If the user names an enhancement, use it.
+   Otherwise list the project's assignments (Step 3 `-Action assignments`),
+   then read components for the chosen enhancement:
+   ```bash
+   C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File "<SKILL_DIR>\references\sap_cmod_query.ps1" -Enhancement <ENH> -Action components
+   ```
+   Output is `COMPONENT: <TYP>|<MEMBER>` per row.
+
+2. **Route by `TYP`:**
+
+   | TYP | Component | `MEMBER` example | How to edit |
+   |---|---|---|---|
+   | `E` | Function exit | `EXIT_SAPLCJWB_004` | Read the exit FM (e.g. via `/sap-rfc-wrapper-fm` calling `RPY_FUNCTIONMODULE_READ_NEW`, or open it in SE37) to find the customer `INCLUDE Z…` (e.g. `ZXCJWBU04` / `ZXV00U01`). Then call `/sap-se38` to create or update that include. |
+   | `S` | Screen (dynpro) | `SAPLCJWB0215_CUSTSCR1_SAPLXCN10700` | Split `MEMBER` on `_CUSTSCR1_`. In the right token, the **last 4 chars = dynpro number**, the **rest = target program**. Example → program `SAPLXCN1`, dynpro `0700`. Call `/sap-se51 <program> <dynpro>`. |
+   | `T` | Table / structure | append/`CI_` enhancement | Call `/sap-se11` on the target table or structure. |
+   | `C` | GUI code (CUA) | `SAPLCJGR+CUE` | Split `MEMBER` on `+`; the left token is the target program (e.g. `SAPLCJGR`). Call `/sap-se41` for that program's GUI status/menu. |
+
+3. **After editing/activating the component**, re-activate the project
+   (Step 8) if the user wants the enhancement live.
+
+> Worked example (enhancement `CNEX0007`):
+> `C|SAPLCJGR+CUE` → `/sap-se41 SAPLCJGR`;
+> `E|EXIT_SAPLCJWB_004` → find its `INCLUDE Z…` → `/sap-se38`;
+> `S|SAPLCJWB0215_CUSTSCR1_SAPLXCN10700` → `/sap-se51 SAPLXCN1 0700`.
+
+---
+
+## Step 13 — Report
+
+On success: state exactly what changed (created / assigned / removed / short
+text / activated / deactivated / deleted / package moved), show the VBS
+output (or RFC verification) as a code block, and the post-change Step 3
+verification.
+
+On failure: show the full output and diagnose:
+
+| Symptom | Cause | Fix |
 |---|---|---|
-| `Did not reach Attributes screen` | Project already exists or naming error | Use check step first, verify name |
-| `Save failed` | Authorization or transport issue | Check S_DEVELOP auth, transport config |
-| `Did not reach Enhancement assignments screen` | Button ID mismatch | Re-record with Scripting Recorder |
-| `Enhancement assignment failed` | Invalid enhancement name | Verify enhancement name in SMOD |
+| `Did not reach the Attributes screen` | Project already exists (create) or Create button id differs | Run Step 3 first; re-pin `btn%#AUTOTEXT001` via `/sap-gui-object-details` |
+| `Did not reach the enhancement-assignment screen` | Project does not exist, or `radMODF-CHAK`/`btnPAEND` differs | Verify with Step 3; re-record initial-screen ids |
+| `No empty row … grid full` | >17 enhancements (needs scroll) | Edit assignments manually, or extend the VBS to page down |
+| `SAP prompted for a transport request but TRANSPORT is empty` | Transportable project, no TR resolved | Run Step T (`/sap-transport-request`) and re-run |
+| `Could not send Activate` / `btn[28]` not found | Activate/Deactivate id differs by release | Re-pin via `/sap-gui-object-details` |
+| Enhancement validation `[E]` | Invalid enhancement name | Verify it exists in SMOD |
+
+When a screen flow does not match (unexpected popup, control not found), use
+`/sap-gui-object-details` (structural) and `/sap-gui-diagnose` (visual) on the
+live session to discover the actual ids, then update the template.
 
 ---
 
-## Step 5b — Change Exit Include Source
-
-If the user wants to edit the exit include (e.g. ZXV00U01), deploy the ABAP source
-via SE38 (ABAP Editor). This step uploads source from a local file, saves, runs
-syntax check, and activates.
-
-The change include VBScript template is at `./references/sap_cmod_change_include.vbs`.
-
-### Generate the filled-in VBScript
-
-Write `{WORK_TEMP}\sap_cmod_change_include_run.ps1`:
-```powershell
-$content = Get-Content '<SKILL_DIR>\references\sap_cmod_change_include.vbs' -Raw
-$content = $content -replace '%%INCLUDE_NAME%%','THE_INCLUDE_NAME'
-$content = $content -replace '%%ABAP_SOURCE_FILE%%','THE_SOURCE_PATH'
-# Phase 3.5 session-attach plumbing.
-$sessionPath = ''
-$content = $content -replace '%%SESSION_PATH%%', $sessionPath
-$content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
-. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
-$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-Set-Content '{WORK_TEMP}\sap_cmod_change_include_run.vbs' $content -Encoding Unicode
-Write-Host 'Done'
-```
-Replace `THE_INCLUDE_NAME` (UPPERCASE), `THE_SOURCE_PATH` (absolute path with backslashes), and `<SKILL_DIR>`.
-
-Run:
-```bash
-powershell -ExecutionPolicy Bypass -File "{WORK_TEMP}\sap_cmod_change_include_run.ps1"
-```
-
-### Execute
+## Step 14 — Clean Up
 
 ```bash
-cscript //NoLogo {WORK_TEMP}\sap_cmod_change_include_run.vbs
+cmd /c del {WORK_TEMP}\sap_cmod_*_run.vbs & del {WORK_TEMP}\sap_cmod_*_run.ps1
 ```
-
-Proceed to Step 6 to evaluate the result.
-
----
-
-## Step 6 — Report Result
-
-**On success** (output contains `SUCCESS:`):
-- Tell the user what was accomplished (project created, enhancements assigned, include deployed).
-- Show the full script output as a code block.
-
-**On failure** (output contains `ERROR:`):
-- Show the full output and diagnose using this table:
-
-| Error message | Cause | Fix |
-|---|---|---|
-| `Did not reach ABAP Editor` | Include doesn't exist or wrong name | Verify include name matches the exit function module |
-| `Upload dialog not found` | SAP GUI Security blocking file access | SAP Logon > Options > Security > set "Open file" to Allow |
-| `Syntax check failed` | ABAP syntax errors | Show error message, ask user to fix code |
-| `Activation failed` | Dependency errors or locks | Check error message, resolve dependencies |
-| `Transport dialog` | Object in transportable package | Use transport request or reassign to $TMP |
-| `Project already exists` | Re-creation attempted | Use check step to detect, skip create |
-| `Enhancement does not exist` | Wrong enhancement name | List available enhancements via SMOD |
-
----
-
-## Step 7 — Clean Up
-
-Delete all temporary files:
-```bash
-cmd /c del {WORK_TEMP}\sap_cmod_check_run.vbs & del {WORK_TEMP}\sap_cmod_check_run.ps1 & del {WORK_TEMP}\sap_cmod_create_run.vbs & del {WORK_TEMP}\sap_cmod_create_run.ps1 & del {WORK_TEMP}\sap_cmod_change_include_run.vbs & del {WORK_TEMP}\sap_cmod_change_include_run.ps1
-```
-
-Also delete `{WORK_TEMP}\<INCLUDE_NAME>.abap` if the user pasted code (not a user-supplied file).
 
 ---
 
 ## Final — Log End
 
-Log the run-end record. Best-effort: silently no-ops if logging disabled.
 On success:
-
 ```bash
 powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_cmod_run.json" -Status SUCCESS -ExitCode 0
 ```
-
-On failure (substitute `<CLASS>` and short message):
-
+On failure (substitute `<CLASS>` + short message):
 ```bash
 powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_cmod_run.json" -Status FAILED -ExitCode 1 -ErrorClass <CLASS> -ErrorMsg "<short>"
 ```
-
-Suggested `<CLASS>`: `CMOD_FAILED`, `TR_RESOLUTION_FAILED`, `GUI_TIMEOUT`.
-
----
-
-## Security Note
-
-The generated `.vbs` files may contain sensitive data — delete after use.
+Suggested `<CLASS>`: `CMOD_FAILED`, `TR_RESOLUTION_FAILED`, `GUI_TIMEOUT`, `RFC_FAILED`.
 
 ---
 
-## Important: Encoding
+## CMOD Tables (RFC, confirmed S/4HANA 1909 — 2026-05-29)
 
-When filling VBS templates, always write with **`-Encoding Unicode`** (UTF-16 LE) in PowerShell.
-UTF-16 LE is what `cscript` supports natively and preserves non-ASCII characters.
-UTF-8 with BOM causes a cscript compile error.
+| Table | Key | Fields used |
+|---|---|---|
+| `MODATTR` | `NAME` (project, C8) | `STATUS` (`A`=active, ` `=inactive) |
+| `MODACT` | `NAME` (project) | `MEMBER` (assigned enhancement; a blank-MEMBER header row also exists — ignore it) |
+| `MODSAP` | `NAME` (enhancement) | `TYP` (E/S/T/C), `MEMBER` (component) |
+| `MODTEXT` | `NAME` + `SPRSL` | `MODTEXT` (short text per language) |
+| `TADIR` | `PGMID=R3TR OBJECT=CMOD OBJ_NAME=<project>` | `DEVCLASS` (package) |
 
 ---
 
-## Upload Menu Path Note
+## Component IDs Reference (SAP GUI 7.60 / S/4HANA 1909)
 
-The source upload menu path (`menu[3]/menu[9]/menu[3]/menu[0]`) in the SE38 editor
-was recorded on SAP GUI 7.60 / S/4HANA 1909. Menu indices **may differ** by SAP release
-and logon language. If the upload step fails:
-1. Open SE38 in your SAP system and open the include in Change mode
-2. Use SAP Logon > Help > Scripting Recorder and Playback
-3. Record the "Upload from local file" menu action (Utilities > More Utilities > Upload/Download > Upload)
-4. Note the menu path from the recording and update the VBS template
+**CMOD initial screen** (`SAPMSMOD`)
 
----
+| Element | Component ID |
+|---|---|
+| Project name | `wnd[0]/usr/ctxtMOD0-NAME` |
+| Sub-object radios | `radMODF-HEAD` (Attributes), `radMODF-CHAK` (Enhancement assignments) |
+| Display / Change / Create | `btnPANZ` / `btnPAEND` / `btn%#AUTOTEXT001` |
+| Activate / Deactivate / Delete | `sendVKey 27` / `tbar[1]/btn[28]` / `tbar[1]/btn[14]` |
+| Delete confirm (Yes) | `wnd[1]/usr/btnSPOP-OPTION1` |
 
-## CMOD Component IDs Reference
+**Attributes screen**: short text `wnd[0]/usr/txtMOD0-MODTEXT`.
 
-**CMOD Initial Screen**
+**Enhancement assignment screen** (`SAPLSMOD` / 0100)
 
-| Element | Component ID | Notes |
-|---|---|---|
-| Project name field | `wnd[0]/usr/ctxtMOD0-NAME` | GuiCTextField |
-| Create button | `wnd[0]/usr/btn%#AUTOTEXT001` | |
-| Display button | `wnd[0]/usr/btnPANZ` | |
-| Change button | `wnd[0]/usr/btnPAEND` | |
+| Element | Component ID |
+|---|---|
+| Enhancement name, row *i* | `wnd[0]/usr/sub:SAPLSMOD:0100/ctxtMOD0-EXITNAME[i,0]` |
+| Enhancement text, row *i* | `wnd[0]/usr/sub:SAPLSMOD:0100/txtMOD0-MEMTEXT[i,14]` |
+| Delete row (Ctrl+F9) | `wnd[0]/tbar[1]/btn[33]` |
+| Visible rows | `i = 0 … 16` |
 
-**CMOD Attributes Screen**
-
-| Element | Component ID | Notes |
-|---|---|---|
-| Project name | `wnd[0]/usr/txtMOD0-NAME` | Read-only |
-| Short text | `wnd[0]/usr/txtMOD0-MODTEXT` | Changeable |
-| Package | `wnd[0]/usr/ctxtMOD0-DEVCLASS` | Read-only after save |
-| Enhancement assignments | `wnd[0]/tbar[1]/btn[23]` | App toolbar |
-| Components | `wnd[0]/tbar[1]/btn[27]` | App toolbar |
-
-**CMOD Enhancement Assignment Screen**
-
-| Element | Component ID | Notes |
-|---|---|---|
-| Enhancement name (row N) | `wnd[0]/usr/sub:SAPLSMOD:0100/ctxtMOD0-EXITNAME[N,0]` | Row-indexed |
-| Enhancement text (row N) | `wnd[0]/usr/sub:SAPLSMOD:0100/txtMOD0-MEMTEXT[N,14]` | Auto-fills on Enter |
-
-**SE38 ABAP Editor**
-
-| Element | Component ID | Notes |
-|---|---|---|
-| Program name field | `wnd[0]/usr/ctxtRS38M-PROGRAMM` | |
-| Change button | `wnd[0]/usr/btnCHAP` | |
-| Display button | `wnd[0]/usr/btnSHOP` | |
-| Editor control | `wnd[0]/usr/cntlEDITOR/shellcont/shell` | AbapEditor |
-| Upload menu | `wnd[0]/mbar/menu[3]/menu[9]/menu[3]/menu[0]` | Utilities > More Utilities > Upload/Download > Upload |
-| Upload path | `wnd[1]/usr/ctxtDY_PATH` | Directory path |
-| Upload filename | `wnd[1]/usr/ctxtDY_FILENAME` | File name |
-| Check (Ctrl+F2) | `wnd[0]/tbar[1]/btn[26]` | Syntax check |
-| Activate (Ctrl+F3) | `wnd[0]/tbar[1]/btn[27]` | |
-
-**Transport Popup**
-
-| Element | Component ID | Notes |
-|---|---|---|
-| Local Object button | `wnd[1]/tbar[0]/btn[7]` | Assigns to $TMP |
+**Package / TR popups**: create dialog Local object `wnd[1]/tbar[0]/btn[7]`,
+package field `ctxtTADIR-DEVCLASS`; TR popup field `ctxtKO008-TRKORR`.
+(Package *change* uses `/sap-change-package`'s KO007 dialog — see that skill.)
 
 ---
 
-## Troubleshooting Component IDs
+## Known Issues / Failure Modes
 
-If menu paths or component IDs fail on the user's system:
-1. SAP Logon > Help > Scripting Recorder and Playback
-2. Click Record, perform the failing step manually, stop recording
-3. The recorded script shows the correct component IDs
+> Behaviours below were verified live on S/4HANA 1909 (SAP GUI 7.60), 2026-05-29.
+
+- **CMOD project names are max 8 characters.** `MODATTR-NAME` (and the
+  `MOD0-NAME` field) is `CHAR8` — a longer name is not a valid project.
+  Validate the name length before create; do not pass 9–10 char names.
+- **Some CMOD operations post no status-bar message** — notably the package
+  move (Step 11) and the delete (Step 10) leave the status bar blank. The
+  scripts treat a non-`E`/`A` status as success, so the **RFC re-query in
+  Step 3 is the authoritative success gate** — always confirm the outcome
+  there (`EXISTS`, `STATUS`, `DEVCLASS`, assignment list), never by sbar text.
+- **TADIR orphan after delete** — deleting a project removes its
+  `MODATTR`/`MODACT` rows but the `R3TR CMOD <project>` directory entry in
+  `TADIR` can linger (observed on both `$TMP` and transportable projects).
+  Step 3 reports it as `TADIR_ORPHAN: <pkg>`; warn the user, because a later
+  re-create may silently re-attach to that stale package. To clear it, move
+  the orphan to `$TMP` (Step 11) or remove the directory entry via standard
+  tooling.
+- **Session attach error** "explicit session path not found" / "SAPDEV_SESSION_PATH
+  … doesn't resolve" / "cannot pick one safely" — the AI-session pin in
+  `session_registry.json` is stale (e.g. it points at `ses[0]` while the live
+  session is `ses[1]`). **Run `/sap-login` to re-pin the connection**, then
+  retry. (Shared session infrastructure — affects all GUI skills, not just CMOD.)
+- **Create button id** `btn%#AUTOTEXT001` is auto-generated and can differ by
+  release; the VBS errors clearly if it's not found — re-pin with
+  `/sap-gui-object-details`.
+- **Adding/removing assignments deactivates the project** — re-run Step 8 to
+  re-activate if the enhancement should be live.
+- **>17 assigned enhancements** would need grid scrolling; the position-aware
+  scripts cover the visible 17 rows and error out otherwise.
+- **Activate of a project whose exits have no code** still activates the
+  *project* (`STATUS=A`); coding the components is a separate Step 12 task.

@@ -1,80 +1,83 @@
 # SAP CMOD Enhancement Project Skill
 
-Manage SAP Enhancement Projects via CMOD and edit exit includes via SE38 using SAP GUI Scripting.
+Full-lifecycle management of SAP Enhancement Projects (classic modifications)
+via transaction CMOD, using SAP GUI Scripting for mutations and read-only RFC
+for lookups.
 
 ## Skill Overview
 
-This skill automates the CMOD enhancement project lifecycle:
-
-- **Create Project**: Creates a new CMOD enhancement project with short text
-- **Assign Enhancements**: Assigns one or more SAP enhancements (exits) to the project
-- **Edit Exit Include**: Uploads ABAP source to exit includes (e.g. ZXV00U01) via SE38
-- **Syntax Check & Activate**: Runs syntax check, saves, and activates in one pass
-- **Login Required**: Use `/sap-login` first to establish SAP GUI session
-- **Centralized Login**: Connection parameters stored in sap-dev-core settings.json
-- **Transport Handling**: Dismisses transport request dialog with Local Object or Enter
+- **Check / status** — existence, active flag, package, short text, and
+  assigned enhancements (RFC: `MODATTR` / `MODACT` / `MODTEXT` / `TADIR`).
+- **Create** — new enhancement project + short text (Local `$TMP` or
+  transportable package + TR).
+- **Add / remove assignments** — assign or unassign SAP enhancements
+  **position-aware**: add writes into the first empty row and skips
+  duplicates; remove matches by value and re-scans after each deletion. Never
+  a hardcoded row index.
+- **Change short text**, **activate**, **deactivate**, **delete** the project.
+- **Change package** — delegates to `/sap-change-package` (CMOD route).
+- **Edit a component** — looks up `MODSAP` and routes by component type:
+  E (function exit) → `/sap-se38`, S (screen) → `/sap-se51`,
+  T (table) → `/sap-se11`, C (GUI code) → `/sap-se41`.
+- **Login required** — run `/sap-login` first. RFC lookups need SAP NCo 3.1
+  (32-bit, .NET 4.0) in the GAC.
+- **Transport handling** — delegates TR resolution to `/sap-transport-request`
+  for transportable projects; `$TMP` projects need no TR.
 
 ## Auto-Trigger Keywords
 
-This skill activates when discussing:
-
-### CMOD & Enhancement Projects
-- CMOD, enhancement project, customer enhancement
-- create enhancement project, assign enhancement
-- SAP enhancement, user exit, customer exit
-- enhancement management, SMOD
-
-### Exit Includes & Function Exits
-- exit include, function exit, EXIT_SAPL
-- change include, edit include, deploy include
-- ZX include, user exit code
-- include source code, include activation
-
-### SE38 & ABAP Editor (for includes)
-- SE38, ABAP Editor, edit program
-- upload source, activate include
-- syntax check include
-
-### SAP GUI Scripting
-- SAP GUI Scripting, VBScript, cscript
-- SAP Logon, open connection, login to SAP
-- sendVKey, findById, Scripting Recorder
+- CMOD, enhancement project, customer enhancement, classic modification
+- create / delete / activate / deactivate enhancement project
+- assign / unassign / add / remove enhancement (SMOD enhancement, e.g. CNEX0001)
+- change project short text / description, change project package
+- function exit, screen exit, table/append exit, GUI/CUA exit
+- exit include (ZX…), `EXIT_SAPL…`, `_CUSTSCR1_`, `…+CUE`
+- MODACT, MODATTR, MODSAP, MODTEXT
 
 ## Directory Structure
 
 ```
 sap-cmod/
-├── SKILL.md                              # Main skill file (step-by-step workflow)
-├── README.md                             # This file (keywords for discoverability)
+├── SKILL.md                              # Step-by-step workflow (mode dispatch)
+├── README.md                             # This file
 └── references/
-    ├── sap_cmod_login.vbs                # VBScript: login to SAP GUI
-    ├── sap_cmod_check.vbs                # VBScript: check if CMOD project exists
-    ├── sap_cmod_create.vbs               # VBScript: create project + assign enhancements
-    └── sap_cmod_change_include.vbs       # VBScript: edit exit include via SE38
+    ├── sap_cmod_query.ps1                # RFC reads: check/status/assignments/components
+    ├── sap_cmod_create.vbs               # Create project header + short text
+    ├── sap_cmod_change_description.vbs   # Change short text
+    ├── sap_cmod_add_assignments.vbs      # Assign enhancements (first-empty-row)
+    ├── sap_cmod_delete_assignments.vbs   # Unassign enhancements (match-by-value)
+    ├── sap_cmod_activate.vbs             # Activate project (Ctrl+F3)
+    ├── sap_cmod_deactivate.vbs           # Deactivate project
+    └── sap_cmod_delete.vbs               # Delete project (confirm; btnSPOP-OPTION1)
 ```
+
+Package change is handled by `../sap-change-package/references/sap_change_package_cmod.vbs`.
 
 ## Usage
 
-Invoke with a project name, enhancement, and optionally an include:
-
-- "Create CMOD project ZHKPJ001 with enhancement 0VRF0001" — creates project and assigns enhancement
-- "Deploy ZXV00U01 include source to SAP" — uploads, saves, and activates include
-- "Set up enhancement project ZHKPJ001 with 0VRF0001 and change ZXV00U01"
-- "Check if CMOD project ZHKPJ001 exists"
+- "Check if CMOD project ZHKPJ002 exists and what's assigned"
+- "Create CMOD project ZCMODT01 'Custom logic' with CNEX0001|CNEX0002"
+- "Assign CNEX0002 to ZCMODT01"  /  "Remove CNEX0002 from ZCMODT01"
+- "Change the description of ZCMODT01 to 'Updated text'"
+- "Activate ZCMODT01"  /  "Deactivate ZCMODT01"
+- "Change package of ZCMODT01 to ZMYPKG"
+- "Edit the function exit of enhancement CNEX0007"
+- "Delete CMOD project ZCMODT01" (asks for confirmation)
 
 ## Prerequisites
 
-- SAP GUI for Windows installed
-- SAP GUI Scripting enabled (client + server side)
-- SAP GUI Security: "Open file" action set to Allow (for SE38 Upload)
-- SAP user with authorization for CMOD, SE38, and include activation
-- Enhancement must exist in SMOD before assigning to project
+- SAP GUI for Windows installed; SAP GUI Scripting enabled (client + server).
+- SAP NCo 3.1 (32-bit, .NET 4.0) in the GAC — for the RFC lookups.
+- Active logged-in session (`/sap-login`).
+- Authorization for CMOD plus the workbench transactions reached when editing
+  components (SE38 / SE51 / SE11 / SE41).
+- Enhancements must exist in SMOD before being assigned.
 
 ## Version
 
-- Skill Version: 1.0.0
-- Last Updated: 2026-03-30
+- Skill Version: 2.0.0
+- Last Updated: 2026-05-29
 
 ## License
 
-GPL-3.0 License - See LICENSE file in repository root.
+GPL-3.0 License — See LICENSE file in repository root.
