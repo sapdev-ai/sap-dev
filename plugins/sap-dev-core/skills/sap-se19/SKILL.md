@@ -294,15 +294,28 @@ or re-run the classifier):
 
 | Operation | Authoritative check |
 |---|---|
-| create (New) | `BADI_IMPL` row for the ENHNAME exists; `classify` ⇒ `NEW/IMPLEMENTATION` |
+| create (New) | `BADI_IMPL` row for the ENHNAME exists; `DWINACTIV` OBJ_NAME=`<enh-impl>` == 0 rows (ACTIVE) |
 | create (Classic) | `SXC_CLASS`/`SXC_ATTR` row for the IMP_NAME exists |
 | delete (New) | `BADI_IMPL` ENHNAME == 0 rows |
 | delete (Classic) | `SXC_CLASS` IMP_NAME == 0 rows |
+| **activate/deactivate (New)** | **`DWINACTIV` OBJ_NAME=`<enh-impl>` == 0 rows** — `ROWS>0` means the enhancement implementation is still INACTIVE. **Do NOT trust the VBS `SUCCESS:` line alone** for New BAdIs — it is read from `sbar.MessageType`, which can be blank when activation silently doesn't complete (see Known Issue below). |
 | activate/deactivate (Classic) | `SXC_ATTR.ACTIVE` reflects the new state |
 
 Report to the user: what was done, the resolved BAdI type, the object names, the
 TR (if any), the implementing-class status (and whether class source still needs
 `/sap-se24`), and any TADIR orphan note.
+
+> **Known Issue — New-BAdI re-activation on S/4HANA 2022+ (verified 2026-05-30, S4H).**
+> Re-activating a *new* BAdI enhancement implementation *after an edit* (the
+> `*_new_setactive.vbs` flow) can fail to complete: pressing Activate shows the
+> inactive-objects worklist, but Continue/Select-All leaves the object inactive
+> and the editor switches to the enhancement-framework **conflict/adjustment tool**
+> (`tabpTABS_4` / `SAPLSEEF_ADJ_TOOL` `…CONFLICT_CONTAINER`). The VBS still prints
+> `SUCCESS` (blank `sbar`), so you MUST run the `DWINACTIV` check above — `ROWS>0`
+> ⇒ report FAILED and surface the conflict tool to the user (it needs manual
+> adjustment, or a re-record of the activate flow via `/sap-gui-probe` on 2022).
+> *Create*-time activation is unaffected (it completes cleanly). Classic BAdIs are
+> unaffected (no enhancement worklist).
 
 ---
 
@@ -334,6 +347,7 @@ Suggested `ErrorClass`: `SE19_FAILED`, `BADI_AMBIGUOUS_UNRESOLVED`,
 | `Could not open … in change mode` | object locked (SM12) or no authorization | release the lock / check authorization |
 | `'Implementation is active' checkbox not found` | no BAdI implementation node selected in the tree | ensure a single impl; for multi-impl, select the node first (object-details) |
 | Activation shows unrelated objects in the worklist | SAP groups all inactive objects of the user | the VBS presses Continue (activates the worklist) — acceptable on dev; if undesired, activate the impl alone via SE19 manually |
+| New BAdI stays INACTIVE after activate/deactivate (`DWINACTIV` ROWS>0) despite `SUCCESS:` | S/4HANA 2022+ routes re-activation through the conflict/adjustment tool (`SAPLSEEF_ADJ_TOOL`); worklist Continue doesn't complete it | run the Step 7 `DWINACTIV` check (don't trust sbar); resolve the adjustment manually in SE19 or re-record the activate flow on 2022 (`/sap-gui-probe`) |
 | Delete `refused … safety rule` | target not created this session | intended — only override with explicit user confirmation |
 | `Delete failed` with locked-class message | implementing class is locked / used elsewhere | delete the class separately via `/sap-se24` after releasing locks |
 
