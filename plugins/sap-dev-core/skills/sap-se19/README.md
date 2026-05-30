@@ -1,87 +1,85 @@
-# SAP SE19 BAdI Implementation Skill
+# SAP SE19 BAdI Implementation Lifecycle Skill
 
-Create BAdI implementations via SE19 (New BAdI / Enhancement Framework) and deploy method source to the implementing class via SE24 using SAP GUI Scripting.
+Full lifecycle for SAP **BAdI implementations** via transaction **SE19 (BAdI
+Builder)** using SAP GUI Scripting — for **both Classic and New (Enhancement
+Framework) BAdIs**.
 
-## Skill Overview
+## What it does
 
-This skill automates the SE19 BAdI implementation lifecycle:
+| Operation | New BAdI | Classic BAdI |
+|---|---|---|
+| **Create** | Enhancement Implementation + BAdI Implementation + implementing class (you name the class) | Implementation (class auto-named `ZCL_IM_<impl>`) |
+| **Display** | open read-only | open read-only |
+| **Update** | class source → `/sap-se24`; runtime → activate/deactivate; package → `/sap-change-package` | same |
+| **Activate** | activate the enhancement implementation + runtime flag on | toolbar Activate (Ctrl+F3) |
+| **Deactivate** | runtime "Implementation is active" off + re-activate | toolbar Deactivate (Ctrl+F4) |
+| **Delete** | remove enhancement impl (class survives → optional `/sap-se24` cleanup) | remove impl (+ optional class) |
 
-- **Two-Level Creation**: Creates Enhancement Implementation (container) and BAdI Implementation (element) in one pass
-- **Class Generation**: Creates the implementing class (empty) with Local Object transport
-- **Source Upload**: Uploads full class source to the implementing class via SE24 source-code-based view
-- **Syntax Check & Activate**: Saves and activates both the Enhancement Implementation and the class
-- **Login Required**: Use `/sap-login` first to establish SAP GUI session
-- **Centralized Login**: Connection parameters stored in sap-dev-core settings.json
-- **Transport Handling**: Dismisses transport request dialog with Local Object or Enter
+### Key behaviours
+
+- **Auto type-detection (RFC).** `references/sap_se19_classify.ps1` classifies a
+  name as Classic vs New and Definition vs Implementation by reading `SXS_ATTR`,
+  `SXC_CLASS`/`SXC_ATTR`, `BADI_IMPL`, and `TADIR`.
+- **Ambiguity handling.** *Migrated* BAdIs (e.g. `MB_MIGO_BADI`,
+  `ME_PROCESS_PO_CUST`) exist in both worlds — the skill asks the user which to
+  use.
+- **Definition vs Implementation input.** `create` takes a BAdI **definition /
+  enhancement-spot** name; every other operation takes a BAdI **implementation**
+  name.
+- **Delegation.** Implementing-class work → `/sap-se24` (Rule #4); package moves →
+  `/sap-change-package` (Rule #5); transport request → `/sap-transport-request`.
+- **Safety (Rule #6).** Never deletes a BAdI definition, and never deletes an
+  implementation it did not create this session (session ledger + `TADIR` author
+  check; explicit user override required otherwise).
+- **Language-independent VBS** (component ID + `MessageType`, no title branching)
+  and parallel-safe session attach.
 
 ## Auto-Trigger Keywords
 
-This skill activates when discussing:
-
-### SE19 & BAdI Builder
-- SE19, BAdI Builder, BAdI implementation builder
-- create BAdI implementation, change BAdI implementation
-- BAdI Builder initial screen, Enhancement Framework
-
-### BAdI & Enhancement Framework (New BAdI)
-- BAdI, Business Add-In, BAdI implementation
-- Enhancement Implementation, Enhancement Spot
-- New BAdI, Enhancement Framework
-- implementing class, BAdI definition
-- create enhancement implementation, assign BAdI
-
-### SE24 & Class Builder (for source upload)
-- SE24, Class Builder, class editor
-- source-code-based view, upload class source
-- implementing class source, method source
-
-### Enhancement Spots & Common BAdIs
-- ME_PROCESS_PO_CUST, purchase order BAdI
-- MB_DOCUMENT_BADI, goods movement BAdI
-- BADI_FDCB_SUBBAS01, accounting BAdI
-- enhancement spot, BAdI definition list
-
-### SAP GUI Scripting
-- SAP GUI Scripting, VBScript, cscript
-- SAP Logon, open connection, login to SAP
-- sendVKey, findById, Scripting Recorder
+SE19, BAdI Builder, BAdI implementation, Business Add-In, Classic BAdI, New BAdI,
+Enhancement Framework, Enhancement Implementation, Enhancement Spot, BAdI
+definition, implementing class, activate/deactivate BAdI, delete BAdI
+implementation, `ME_PROCESS_PO_CUST`, `MB_MIGO_BADI`, `WORKBREAKDOWN_UPDATE`.
 
 ## Directory Structure
 
 ```
 sap-se19/
-├── SKILL.md                              # Main skill file (step-by-step workflow)
-├── README.md                             # This file (keywords for discoverability)
+├── SKILL.md
+├── README.md
 └── references/
-    ├── sap_se19_login.vbs                # VBScript: login to SAP GUI
-    ├── sap_se19_check.vbs                # VBScript: check if Enhancement Implementation exists
-    ├── sap_se19_create.vbs               # VBScript: create Enhancement Impl + BAdI Impl + class
-    └── sap_se19_update_method.vbs        # VBScript: upload class source via SE24
+    ├── sap_se19_classify.ps1          # RFC: Classic-vs-New, Definition-vs-Implementation
+    ├── sap_se19_new_create.vbs        # New BAdI: create enh-impl + BAdI-impl + class
+    ├── sap_se19_new_display.vbs       # New BAdI: display
+    ├── sap_se19_new_setactive.vbs     # New BAdI: activate / deactivate (runtime flag)
+    ├── sap_se19_new_delete.vbs        # New BAdI: delete (class survives)
+    ├── sap_se19_classic_create.vbs    # Classic BAdI: create (class auto-named)
+    ├── sap_se19_classic_display.vbs   # Classic BAdI: display
+    ├── sap_se19_classic_setactive.vbs # Classic BAdI: activate / deactivate
+    └── sap_se19_classic_delete.vbs    # Classic BAdI: delete (+ optional class)
 ```
 
 ## Usage
 
-Invoke with an Enhancement Spot, implementation name, and optionally source:
-
-- "Create BAdI implementation ZHK_BADI_PO_001 for ME_PROCESS_PO_CUST" — creates Enhancement Impl + BAdI Impl + implementing class
-- "Deploy method source to ZCL_IM_ZHK_PO_001" — uploads class source via SE24
-- "Set up BAdI implementation for ME_PROCESS_PO_CUST and deploy the handler code"
-- "Check if Enhancement Implementation ZHK_BADI_PO_001 exists"
+- "create BAdI implementation for `ME_PROCESS_PO_CUST`" → asks Classic/New (migrated), then creates
+- "create classic BAdI implementation `Z_HK_WBS_01` for `WORKBREAKDOWN_UPDATE`"
+- "display `ZHK_BADI_PO_007`"
+- "deactivate `ZHK_BADI_PO_007`" / "activate `ZHK_BADI_PO_007`"
+- "update the implementing class of `ZHK_BADI_PO_007`" → delegates to `/sap-se24`
+- "delete `Z_HK_IM_PO_01`" → safety-checked (must be created by this session)
 
 ## Prerequisites
 
-- SAP GUI for Windows installed
-- SAP GUI Scripting enabled (client + server side)
-- SAP GUI Security: "Open file" action set to Allow (for SE24 Upload)
-- SE24 configured for source-code-based view (not form-based)
-- SAP user with authorization for SE19, SE24, and class activation
-- Enhancement Spot must already exist (standard SAP or custom)
+- SAP GUI for Windows installed, SAP GUI Scripting enabled (client + server)
+- Active SAP GUI session (`/sap-login` first)
+- SAP NCo 3.1 (32-bit) for the RFC classifier
+- Authorization for SE19, SE24, and object activation
 
-## Version
+## Probed against
 
-- Skill Version: 1.0.0
-- Last Updated: 2026-03-30
+S/4HANA 1909 (S4D), SAP GUI 7.60, EN logon — 2026-05-30. Re-record screen IDs with
+`/sap-gui-record` if a different release renumbers a tree/menu node.
 
 ## License
 
-GPL-3.0 License - See LICENSE file in repository root.
+GPL-3.0 — see LICENSE in the repository root.

@@ -1,21 +1,35 @@
 ---
 name: sap-se19
 description: |
-  Creates BAdI implementations via SE19 (New BAdI / Enhancement Framework) and
-  deploys method source to the implementing class via SE24 using SAP GUI
-  Scripting. Two-level creation: Enhancement Implementation (container) then
-  BAdI Implementation (element) with implementing class. Uploads full class
-  source via SE24 source-code-based view Upload menu.
-  Prerequisites: Active SAP GUI session (use /sap-login first).
-argument-hint: "<enhancement-spot> <enhancement-impl-name> [path-to-source]"
+  Full lifecycle for SAP BAdI implementations via SE19 (BAdI Builder) using SAP
+  GUI Scripting: Create, Update, Display, Delete, Activate, and Deactivate — for
+  BOTH Classic BAdIs (SXS_ATTR / SXC_*) and New BAdIs (Enhancement Framework /
+  BADI_IMPL). Auto-detects the BAdI type via RFC (SXS_ATTR-EXIT_NAME for Classic,
+  BADI_IMPL-BADI_NAME for New); asks the user when a migrated BAdI is genuinely
+  ambiguous (e.g. MB_MIGO_BADI, ME_PROCESS_PO_CUST). For Create the user supplies
+  a BAdI DEFINITION / enhancement-spot name; for all other operations the user
+  supplies a BAdI IMPLEMENTATION name. Implementing-class work (method source,
+  class create/activate) is delegated to /sap-se24; package reassignment is
+  delegated to /sap-change-package. NEVER deletes a BAdI definition or any
+  implementation it did not create.
+  Prerequisites: Active SAP GUI session (use /sap-login first). SAP NCo 3.1
+  (32-bit) for the RFC type-detection step.
+argument-hint: "<operation> <name>  e.g. 'create ME_PROCESS_PO_CUST', 'display ZHK_BADI_PO_007', 'deactivate ZHK_BADI_PO_007', 'delete <impl>'"
 ---
 
-# SAP SE19 BAdI Implementation Skill
+# SAP SE19 BAdI Implementation Lifecycle Skill
 
-You create BAdI implementations via SE19 (New BAdI / Enhancement Framework) and
-deploy method source to the implementing class via SE24 using SAP GUI Scripting.
-The skill checks if the Enhancement Implementation exists, creates it
-with a BAdI Implementation if needed, and optionally uploads class source.
+You drive transaction **SE19 (BAdI Builder)** to manage the full lifecycle of a
+BAdI **implementation** — Create / Update / Display / Delete / Activate /
+Deactivate — for both **Classic** and **New** (Enhancement Framework) BAdIs.
+
+Two facts decide everything:
+
+1. **Operation** — `create` takes a BAdI **definition / enhancement-spot** name;
+   every other operation takes a BAdI **implementation** name.
+2. **BAdI type** — Classic vs New, decided automatically by an RFC classifier
+   (`references/sap_se19_classify.ps1`). If a name is genuinely ambiguous
+   (a *migrated* BAdI that lives in both worlds), you ASK the user.
 
 Task: $ARGUMENTS
 
@@ -25,420 +39,350 @@ Task: $ARGUMENTS
 
 | File | Purpose |
 |---|---|
-| `<SAP_DEV_CORE_SHARED_DIR>/rules/skill_operating_rules.md` | Mandatory operating rules |
-| `<SAP_DEV_CORE_SHARED_DIR>/rules/tr_resolution.md` | TR resolution flow — this skill delegates to `/sap-transport-request` instead of asking for the TR itself |
-| `<SAP_DEV_CORE_SHARED_DIR>/rules/language_independence_rules.md` | GUI-scripting language independence — identify by component ID + DDIC field name, status-bar checks via `MessageType` codes (S/W/E/I/A), VKey instead of menu-text, no branching on `.Text`/`.Tooltip`/window titles |
-| `<SAP_DEV_CORE_SHARED_DIR>/rules/abap_code_quality_rules.md` | ABAP code-quality rules — uploaded BAdI implementation class source must follow modern syntax, exception-class conventions, no literal MESSAGE strings. Run `/sap-check-abap` before deploy when the source isn't generator-emitted. |
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/skill_operating_rules.md` | Mandatory operating rules (no unsolicited deploy; no raw SQL writes on SAP tables) |
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/tr_resolution.md` | TR resolution — this skill delegates to `/sap-transport-request`; never prompt for a TR directly |
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/language_independence_rules.md` | GUI scripting must identify by component ID + DDIC field; status via `MessageType`; VKey not menu-text; no branching on `.Text`/titles |
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/abap_code_quality_rules.md` | Applies to any implementing-class source deployed via `/sap-se24` |
+| `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_rfc_lib.ps1` | RFC connect helper used by the classifier |
+| `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_attach_lib.vbs` | Parallel-safe session attach (token `%%ATTACH_LIB_VBS%%`) |
+
+**Delegation (do not reimplement these in SE19):**
+
+| Concern | Delegate to | Call |
+|---|---|---|
+| Implementing-class method source / create / activate (Rule #4) | `/sap-se24` | `/sap-se24 <IMPL_CLASS> <abs-source.abap>` |
+| Change an object's package (Goto ▸ Object Directory Entry) (Rule #5) | `/sap-change-package` | `/sap-change-package CLASS <class> <pkg>` |
+| Resolve a transport request | `/sap-transport-request` | (TR returned; passed into the VBS) |
 
 ---
 
-## Step 0 — Resolve Work Directory
+## Step 0 — Resolve work directory
 
-**Settings reads/writes follow `shared/rules/settings_lookup.md`** — merge `settings.local.json` over `settings.json` per-key on the `.value` field; writes always go to `settings.local.json`. Resolve sap-dev-core paths: 2 levels up from `<SKILL_DIR>` to the plugin root, then `settings.json` and (if present) `settings.local.json`. Read `work_dir`, `custom_url`.
+Read sap-dev-core `settings.json` (+ `settings.local.json`, merged per
+`shared/rules/settings_lookup.md`) 2 levels up from `<SKILL_DIR>`. Read `work_dir`
+(default `C:\sap_dev_work`). Set `{WORK_TEMP}` = `{work_dir}\temp`.
 
-| Setting | Default if blank |
-|---|---|
-| `work_dir` | `C:\sap_dev_work` |
-| `custom_url` | `{work_dir}\custom` |
-
-Set `{WORK_TEMP}` = `{work_dir}\temp`
-
-Ensure the temp directory exists:
 ```bash
 cmd /c if not exist "{WORK_TEMP}" mkdir "{WORK_TEMP}"
 ```
 
+`{LEDGER}` = `{WORK_TEMP}\se19_created_ledger.jsonl` (safety ledger — see Step 6).
+
 ---
 
-## Step 0.5 — Start Logging
-
-Start a structured log run. State file: `{WORK_TEMP}\sap_se19_run.json`. Best-effort.
+## Step 0.5 — Start logging (best-effort)
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{WORK_TEMP}\sap_se19_run.json" -Skill sap-se19 -ParamsJson "{\"impl\":\"<IMPL>\",\"badi\":\"<BADI>\"}"
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{WORK_TEMP}\sap_se19_run.json" -Skill sap-se19 -ParamsJson "{\"op\":\"<OP>\",\"name\":\"<NAME>\"}"
 ```
 
 ---
 
-## Step 1 — Collect Parameters
+## Step 1 — Parse operation + collect parameters
 
-**SE19 BAdI Details**
+Parse `$ARGUMENTS` into an **operation** (`create` | `update` | `display` |
+`delete` | `activate` | `deactivate`) and a **name**.
 
-| Parameter | Description | Example |
+| Operation | The name is a… | Then collect… |
 |---|---|---|
-| Enhancement Spot | SAP Enhancement Spot containing the BAdI definition | `ME_PROCESS_PO_CUST` |
-| Enhancement Implementation | Z-namespace implementation name, max 30 chars | `ZHK_BADI_PO_001` |
-| Enh Impl short text | Short description for the Enhancement Implementation | `PO processing enhancement` |
-| BAdI Definition | BAdI definition name within the Enhancement Spot | `ME_PROCESS_PO_CUST` |
-| BAdI Implementation | Z-namespace BAdI implementation name | `ZHK_IM_PO_001` |
-| Implementing Class | Z-namespace class name for the BAdI implementation | `ZCL_IM_ZHK_PO_001` |
-| BAdI Impl short text | Short description for the BAdI Implementation | `PO processing BAdI impl` |
+| `create` | **BAdI definition / enhancement spot** | implementation name(s), implementing class (New only — Classic auto-names), short text(s) |
+| `display` | BAdI **implementation** | — |
+| `update` | BAdI **implementation** | *what* to update (see Step 5 — usually class source → `/sap-se24`) |
+| `activate` / `deactivate` | BAdI **implementation** | — |
+| `delete` | BAdI **implementation** | whether to also delete the implementing class |
 
-**Method Source** (optional — only if deploying method code)
+Parameter cheat-sheet:
 
-| Parameter | Description | Example |
+| Parameter | New BAdI | Classic BAdI |
 |---|---|---|
-| Source | Full class source: absolute path to `.abap` file, OR paste code directly. Must include complete CLASS DEFINITION and CLASS IMPLEMENTATION sections. | |
+| Definition input (create) | Enhancement Spot (e.g. `ME_PROCESS_PO_CUST`) | BAdI Name (e.g. `WORKBREAKDOWN_UPDATE`) |
+| Container name (create) | Enhancement Implementation (e.g. `Z_HK_BADI_PO_01`) | *(none — impl is the unit)* |
+| Implementation name (create) | BAdI Implementation (e.g. `Z_HK_IM_PO_01`) | Implementation (e.g. `Z_HK_WBS_01`) |
+| Implementing class | **you supply** (e.g. `ZCL_IM_HK_PO_01`) | **auto-named** `ZCL_IM_<impl minus leading Z/Y>` |
+| Implementation input (other ops) | Enhancement Implementation name | Implementation name |
+
+Do NOT ask for a transport request — Step 4 resolves it via
+`/sap-transport-request`.
 
 ---
 
-## Step 2 — Prepare ABAP Source File (if deploying method source)
+## Step 2 — Ensure SAP GUI login
 
-Skip this step if the user only wants to create the Enhancement/BAdI Implementation
-without changing method source.
-
-**Important:** The source file must contain the **complete class source** including
-`CLASS ... DEFINITION` and `CLASS ... IMPLEMENTATION` sections. SE24 source-code-based
-view upload replaces the entire class source.
-
-**If the user pasted source code directly:**
-
-1. Write the source to: `{WORK_TEMP}\<IMPL_CLASS>.abap`
-   - Use the Write tool with the exact ABAP source as content.
-2. Confirm the file by reading back the first 5 lines.
-
-**If the user provided a file path:**
-
-- Use that path as-is. Verify it exists:
-  ```bash
-  cmd /c if exist "<path>" (echo EXISTS) else (echo NOT FOUND)
-  ```
+Requires an active session. If `/sap-login` hasn't been run, do that first.
+The classifier additionally needs SAP NCo 3.1 (32-bit) for RFC.
 
 ---
 
-## Step 3 — Ensure SAP GUI Login
+## Step 3 — Classify the BAdI (Classic vs New)
 
-This skill requires an active SAP GUI session. If not already logged in, use the `/sap-login` skill first, then return here.
+Run the classifier with the name and the expected kind
+(`DEFINITION` for `create`, `IMPLEMENTATION` for everything else):
+
+```bash
+C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File "<SKILL_DIR>\references\sap_se19_classify.ps1" -Name "<NAME>" -Expect <DEFINITION|IMPLEMENTATION>
+```
+
+Read the final `RESULT:` line plus the resolved fields. Mapping:
+
+| `RESULT: TYPE=` | Meaning | Action |
+|---|---|---|
+| `CLASSIC` | Classic BAdI (SXS_ATTR, not migrated, or classic impl) | use the **classic** VBS family |
+| `NEW` | New BAdI (enhancement spot / BADI_IMPL / migrated-only-new) | use the **new** VBS family |
+| `AMBIGUOUS` | Migrated BAdI — implementable as BOTH (e.g. `MB_MIGO_BADI`, `ME_PROCESS_PO_CUST`) | **ASK the user** (below) |
+| `UNKNOWN` | Name not found | Report "not found"; for `create` confirm the definition name with the user |
+
+The classifier also returns, when known: `NEW_IMPL_BADI_NAME`,
+`NEW_IMPL_ENHNAME`, `NEW_IMPL_CLASS`, `MIG_ENHSPOTNAME`, `CLASSIC_IMPL_IFACE`,
+`CLASSIC_IMPL_CLASS`, `CLASSIC_IMPL_ACTIVE`, `TADIR_AUTHOR`, `TADIR_DEVCLASS`,
+`TADIR_OBJECT`. Use these to pre-fill class names, route delete-class cleanup,
+and run the safety guard (Step 6).
+
+### Step 3a — Ambiguity prompt (only when `TYPE=AMBIGUOUS`)
+
+Use **AskUserQuestion**: *"`<NAME>` is a migrated BAdI — it can be implemented as
+a Classic BAdI or as a New (Enhancement Framework) BAdI. Which do you want?"*
+Options: `New BAdI (recommended)`, `Classic BAdI`. SAP recommends the New
+framework for migrated BAdIs; default the recommendation accordingly but honour
+the user's choice. The choice fixes the VBS family for the rest of the run.
 
 ---
 
-## Step 4 — Check if Enhancement Implementation Exists
+## Step 4 — Resolve transport request (deploy operations only)
 
-The check VBScript template is at `./references/sap_se19_check.vbs`.
+For `create`, `delete`, and `update` of a transportable object, resolve a TR via
+`/sap-transport-request` (honours `way_to_get_transport_request`). The result is
+`{TRKORR}`, passed into the VBS `%%TRKORR%%`. For Local (`$TMP`) objects, leave
+`{DEVCLASS}` empty and the create VBS presses **Local Object** instead.
+`display`, `activate`, `deactivate` need no TR (activate may still hit a TR popup
+for transported objects — the VBS handles it).
 
-### Generate the filled-in VBScript
+---
 
-Write `{WORK_TEMP}\sap_se19_check_run.ps1`:
+## Step 5 — Execute the operation
+
+All VBS share one **fill-and-run** wrapper. Write `{WORK_TEMP}\se19_run.ps1`,
+substituting the per-mode tokens plus the two shared tokens, then run via 32-bit
+cscript:
+
 ```powershell
-$content = Get-Content '<SKILL_DIR>\references\sap_se19_check.vbs' -Raw
-$content = $content -replace '%%ENH_IMPL_NAME%%','THE_ENH_IMPL_NAME'
-# Phase 3.5 session-attach plumbing.
-$sessionPath = ''
-$content = $content -replace '%%SESSION_PATH%%', $sessionPath
-$content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
+$tpl = '<SKILL_DIR>\references\<MODE_VBS>'
+$c = Get-Content $tpl -Raw
+# --- per-mode tokens (only those present in the chosen VBS) ---
+$c = $c -replace '%%ENH_SPOT%%','<ENH_SPOT>'
+$c = $c -replace '%%ENH_IMPL_NAME%%','<ENH_IMPL>'
+$c = $c -replace '%%ENH_IMPL_TEXT%%','<ENH_TEXT>'
+$c = $c -replace '%%BADI_DEFINITION%%','<BADI_DEF>'
+$c = $c -replace '%%BADI_IMPL_NAME%%','<BADI_IMPL>'
+$c = $c -replace '%%IMPL_CLASS%%','<IMPL_CLASS>'
+$c = $c -replace '%%BADI_IMPL_TEXT%%','<BADI_TEXT>'
+$c = $c -replace '%%BADI_NAME%%','<BADI_DEF>'
+$c = $c -replace '%%IMP_NAME%%','<IMP_NAME>'
+$c = $c -replace '%%IMP_TEXT%%','<IMP_TEXT>'
+$c = $c -replace '%%SET_ACTIVE%%','<X-or-empty>'
+$c = $c -replace '%%DEVCLASS%%','<DEVCLASS-or-empty>'
+$c = $c -replace '%%TRKORR%%','<TRKORR-or-empty>'
+# --- shared attach plumbing (Phase 3.5 / 4.2) ---
+$c = $c -replace '%%SESSION_PATH%%',''
+$c = $c -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-Set-Content '{WORK_TEMP}\sap_se19_check_run.vbs' $content -Encoding Unicode
+Set-Content '{WORK_TEMP}\se19_run.vbs' $c -Encoding Unicode
 Write-Host 'Done'
 ```
-Replace `THE_ENH_IMPL_NAME` with the actual Enhancement Implementation name (UPPERCASE) and `<SKILL_DIR>` with the absolute path to this skill directory.
-
-Run:
-```bash
-powershell -ExecutionPolicy Bypass -File "{WORK_TEMP}\sap_se19_check_run.ps1"
-```
-
-### Execute
 
 ```bash
-cscript //NoLogo {WORK_TEMP}\sap_se19_check_run.vbs
+powershell -ExecutionPolicy Bypass -File "{WORK_TEMP}\se19_run.ps1"
+C:/Windows/SysWOW64/cscript.exe //NoLogo {WORK_TEMP}\se19_run.vbs
 ```
 
-**Parse the last line of output:**
-- `EXIST` → Enhancement Implementation already exists → skip to Step 5b (Update Method Source) if deploying source, or report that it already exists.
-- `NOT_EXIST` → Enhancement Implementation does not exist → proceed to Step 5a (Create).
-- `ERROR:` → show full output and stop.
+Always write the VBS with **`-Encoding Unicode`** (UTF-16 LE) — cscript needs it.
 
----
+### Mode → VBS routing
 
-## Step 5a — Create Enhancement Implementation + BAdI Implementation
-
-If the Enhancement Implementation does not exist, create it along with a BAdI
-Implementation and its implementing class. You need all SE19 parameters from Step 1.
-
-The create VBScript template is at `./references/sap_se19_create.vbs`.
-
-### Generate the filled-in VBScript
-
-Write `{WORK_TEMP}\sap_se19_create_run.ps1`:
-```powershell
-$content = Get-Content '<SKILL_DIR>\references\sap_se19_create.vbs' -Raw
-$content = $content -replace '%%ENH_SPOT%%','THE_ENH_SPOT'
-$content = $content -replace '%%ENH_IMPL_NAME%%','THE_ENH_IMPL_NAME'
-$content = $content -replace '%%ENH_IMPL_TEXT%%','THE_ENH_IMPL_TEXT'
-$content = $content -replace '%%BADI_DEFINITION%%','THE_BADI_DEFINITION'
-$content = $content -replace '%%BADI_IMPL_NAME%%','THE_BADI_IMPL_NAME'
-$content = $content -replace '%%IMPL_CLASS%%','THE_IMPL_CLASS'
-$content = $content -replace '%%BADI_IMPL_TEXT%%','THE_BADI_IMPL_TEXT'
-# Phase 3.5 session-attach plumbing.
-$sessionPath = ''
-$content = $content -replace '%%SESSION_PATH%%', $sessionPath
-$content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
-. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
-$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-Set-Content '{WORK_TEMP}\sap_se19_create_run.vbs' $content -Encoding Unicode
-Write-Host 'Done'
-```
-Replace all `THE_*` placeholders (UPPERCASE for names) and `<SKILL_DIR>`.
-
-Run:
-```bash
-powershell -ExecutionPolicy Bypass -File "{WORK_TEMP}\sap_se19_create_run.ps1"
-```
-
-### Execute
-
-```bash
-cscript //NoLogo {WORK_TEMP}\sap_se19_create_run.vbs
-```
-
-**On success** (output contains `SUCCESS:`): proceed to Step 5b if deploying source, or Step 6 to report.
-
-**On failure** (output contains `ERROR:`): show full output and diagnose:
-
-| Error message | Cause | Fix |
+| Operation | New BAdI VBS | Classic BAdI VBS |
 |---|---|---|
-| `Create Enhancement Implementation popup did not appear` | Enhancement Spot not found or already implemented | Verify Enhancement Spot exists; check if implementation already exists |
-| `Could not create Enhancement Implementation` | Name conflict or authorization | Check naming convention (Z-namespace), SAP authorization |
-| `Could not press Create BAdI Implementation button` | Tree toolbar ID mismatch | Use SAP Scripting Recorder to find correct toolbar button |
-| `Create BAdI Implementation popup did not appear` | Tab not selected or tree issue | Verify TABS_5 tab is active |
-| `Class creation failed` | Class name conflict or authorization | Verify class name doesn't already exist (SE24) |
-| `Transport dialog` | Object in transportable package | Use transport request or reassign to $TMP |
+| create | `sap_se19_new_create.vbs` | `sap_se19_classic_create.vbs` |
+| display | `sap_se19_new_display.vbs` | `sap_se19_classic_display.vbs` |
+| activate | `sap_se19_new_setactive.vbs` (`%%SET_ACTIVE%%`=`X`) | `sap_se19_classic_setactive.vbs` (`%%SET_ACTIVE%%`=`X`) |
+| deactivate | `sap_se19_new_setactive.vbs` (`%%SET_ACTIVE%%`=``) | `sap_se19_classic_setactive.vbs` (`%%SET_ACTIVE%%`=``) |
+| delete | `sap_se19_new_delete.vbs` | `sap_se19_classic_delete.vbs` |
+| update | *(no SE19 VBS — see below)* | *(no SE19 VBS — see below)* |
+
+Parse the script output: success contains `SUCCESS:`; failure contains `ERROR:`
+(show full output and use the Failure Modes table). On `create` success, append a
+ledger record (Step 6) and — if deploying method source — delegate to
+`/sap-se24`.
+
+### Update routing
+
+"Update a BAdI implementation" is decomposed; pick by what the user wants:
+
+| Update target | Route |
+|---|---|
+| Implementing class / method logic (most common) | **`/sap-se24 <IMPL_CLASS> <source.abap>`** (Rule #4). Resolve the class from the classifier (`NEW_IMPL_CLASS` / `CLASSIC_IMPL_CLASS`). |
+| Runtime active state | the **activate** / **deactivate** flow above |
+| Package | **`/sap-change-package CLASS <class> <pkg>`** (Rule #5) |
+| SE19-level attributes (short text, filter values, default-impl flag) | Open in change mode (the activate VBS opens change mode; reuse it) and set the field, or re-create. Not a common path; confirm intent with the user first. |
+
+> **Known delegation gap:** `/sap-change-package` routes enhancement projects via
+> `CMOD` but does **not** yet handle the new-BAdI enhancement-implementation
+> object type `ENHO` or the classic `SXCI`. The package of the implementation
+> container is normally set during `create` (its Object-Directory popup). If a
+> *later* package move of the container is needed, flag it as a follow-up for
+> `/sap-change-package`.
+
+### After create — deploy class source via /sap-se24
+
+SE19 creates only the empty implementing-class shell. To deploy the method
+implementation, write the full class source to `{WORK_TEMP}\<IMPL_CLASS>.abap`
+(complete `CLASS … DEFINITION` + `CLASS … IMPLEMENTATION`, modern syntax, no
+literal MESSAGE strings) and call `/sap-se24 <IMPL_CLASS> <that-path>`. The TR is
+resolved inside `/sap-se24`.
 
 ---
 
-## Step 5b — Update Implementing Class Source (via SE24)
+## Step 6 — Safety guard for Delete + the created-by-us ledger (Rule #6)
 
-If deploying method source, upload the full class source to the implementing class
-via SE24 (Class Builder) in source-code-based view.
+**You are FORBIDDEN to delete any BAdI definition, and any BAdI implementation
+this session did not create.**
 
-**Important:** SE24 must be configured for source-code-based view (not form-based).
-If the class opens in form-based view, the user must change SE24 settings first:
-Utilities > Settings > Display tab > select "Source Code-Based".
+- **Definitions are never deleted here.** If `classify` returns `KIND=DEFINITION`
+  for a `delete` request, refuse: SE19 deletes implementations only (definitions
+  live in SE18 / the enhancement spot).
+- **Implementations: the ledger is the gate.** "Created by you" means created by
+  *this skill* — recorded in `{LEDGER}`. A matching TADIR author is **not**
+  sufficient (the logon user authors plenty of objects by hand). Before running
+  any delete VBS:
+  1. Read `{LEDGER}` and look for a record whose `name` == the target
+     (case-insensitive). **Ledger hit ⇒ we created it ⇒ proceed.**
+  2. **No ledger hit ⇒ REFUSE by default**, regardless of TADIR author:
+     *"`<NAME>` was not created by this skill (not in the sap-se19 ledger);
+     refusing to delete per the safety rule. Confirm explicitly to override."*
+     Proceed only on an **explicit** user override. Escalate the warning when
+     `TADIR_AUTHOR` is a *different* user than the logon user — that object
+     clearly belongs to someone else.
 
-The update method VBScript template is at `./references/sap_se19_update_method.vbs`.
-
-### Generate the filled-in VBScript
-
-Write `{WORK_TEMP}\sap_se19_update_method_run.ps1`:
-```powershell
-$content = Get-Content '<SKILL_DIR>\references\sap_se19_update_method.vbs' -Raw
-$content = $content -replace '%%IMPL_CLASS%%','THE_IMPL_CLASS'
-$content = $content -replace '%%ABAP_SOURCE_FILE%%','THE_SOURCE_PATH'
-# Phase 3.5 session-attach plumbing.
-$sessionPath = ''
-$content = $content -replace '%%SESSION_PATH%%', $sessionPath
-$content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
-. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
-$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-Set-Content '{WORK_TEMP}\sap_se19_update_method_run.vbs' $content -Encoding Unicode
-Write-Host 'Done'
-```
-Replace `THE_IMPL_CLASS` (UPPERCASE), `THE_SOURCE_PATH` (absolute path with backslashes), and `<SKILL_DIR>`.
-
-Run:
-```bash
-powershell -ExecutionPolicy Bypass -File "{WORK_TEMP}\sap_se19_update_method_run.ps1"
-```
-
-### Execute
+**Ledger record (append on every successful create):**
 
 ```bash
-cscript //NoLogo {WORK_TEMP}\sap_se19_update_method_run.vbs
+cmd /c echo {"ts":"<UTC>","op":"create","type":"<CLASSIC|NEW>","name":"<container-or-impl>","impl":"<badi-impl>","class":"<impl-class>","author":"<user>","system":"<SID>","client":"<client>","trkorr":"<TR>"} >> "{LEDGER}"
 ```
 
-Proceed to Step 6 to evaluate the result.
+(Use the Write/Bash tools to append a clean one-line JSON record. `name` = the
+value the user would pass to a later `delete`: the Enhancement Implementation for
+New, the Implementation for Classic.)
+
+**Delete leaves residue — surface it:**
+
+- The **implementing class is NOT removed** by SE19 delete — for **either** type
+  the class survives in `SEOCLASS` (verified: even classic SE19's second "delete
+  class?" confirmation leaves it). After a delete, offer to remove the class via
+  **`/sap-se24 delete <class>`** — but only if the class is in our ledger /
+  authored by us (apply the same safety gate). Resolve the class name from the
+  classifier (`NEW_IMPL_CLASS` / `CLASSIC_IMPL_CLASS`).
+- A **`TADIR` orphan** (`ENHO`/`SXCI`/`CLAS` row) persists after a *transported*
+  delete — this is expected; the deletion travels in the TR. Verify removal via
+  the **authoritative config tables**, not TADIR: `BADI_IMPL` (New) or
+  `SXC_CLASS`/`SXC_ATTR` (Classic) empty == deleted.
 
 ---
 
-## Step 6 — Report Result
+## Step 7 — Verify (RFC) + report
 
-**On success** (output contains `SUCCESS:`):
-- Tell the user what was accomplished (Enhancement Implementation created, BAdI Implementation added, class source deployed).
-- Show the full script output as a code block.
+After write operations, RFC-verify the resulting state (reuse `sap_rfc_lib.ps1`
+or re-run the classifier):
 
-**On failure** (output contains `ERROR:`):
-- Show the full output and diagnose using this table:
+| Operation | Authoritative check |
+|---|---|
+| create (New) | `BADI_IMPL` row for the ENHNAME exists; `classify` ⇒ `NEW/IMPLEMENTATION` |
+| create (Classic) | `SXC_CLASS`/`SXC_ATTR` row for the IMP_NAME exists |
+| delete (New) | `BADI_IMPL` ENHNAME == 0 rows |
+| delete (Classic) | `SXC_CLASS` IMP_NAME == 0 rows |
+| activate/deactivate (Classic) | `SXC_ATTR.ACTIVE` reflects the new state |
 
-| Error message | Cause | Fix |
-|---|---|---|
-| `SE24 class name field not found` | Component ID mismatch | Use SAP Scripting Recorder to find correct ID |
-| `Could not open class in change mode` | Class locked or no authorization | Check locks (SM12) or authorization |
-| `Class is in form-based view` | SE24 not configured for source-code view | SE24 > Utilities > Settings > Display > Source Code-Based |
-| `Could not open Upload menu` | Menu path differs by SAP version | Use Scripting Recorder to record correct menu path |
-| `Upload dialog interaction failed` | Upload dialog IDs differ | Re-record the upload step |
-| `Upload may have failed` | File encoding or path issue | Check file path, ensure ABAP source is valid |
-| `Source file not found` | Wrong path or file not written | Verify path, re-run Step 2 |
-| `Activation errors` | ABAP syntax or dependency errors | Show error message, ask user to fix code |
-| `Transport dialog` | Object in transportable package | Use transport request or reassign to $TMP |
+Report to the user: what was done, the resolved BAdI type, the object names, the
+TR (if any), the implementing-class status (and whether class source still needs
+`/sap-se24`), and any TADIR orphan note.
 
 ---
 
-## Step 7 — Clean Up
+## Step 8 — Clean up + log end
 
-Delete all temporary files:
+Delete temp VBS/PS:
 ```bash
-cmd /c del {WORK_TEMP}\sap_se19_check_run.vbs & del {WORK_TEMP}\sap_se19_check_run.ps1 & del {WORK_TEMP}\sap_se19_create_run.vbs & del {WORK_TEMP}\sap_se19_create_run.ps1 & del {WORK_TEMP}\sap_se19_update_method_run.vbs & del {WORK_TEMP}\sap_se19_update_method_run.ps1
+cmd /c del {WORK_TEMP}\se19_run.vbs & del {WORK_TEMP}\se19_run.ps1
 ```
-
-Also delete `{WORK_TEMP}\<IMPL_CLASS>.abap` if the user pasted code (not a user-supplied file).
-
----
-
-## Final — Log End
-
-Log the run-end record. Best-effort.
-
-On success:
-
-```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_se19_run.json" -Status SUCCESS -ExitCode 0
-```
-
-On failure:
+Also delete `{WORK_TEMP}\<IMPL_CLASS>.abap` if you wrote pasted source.
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_se19_run.json" -Status FAILED -ExitCode 1 -ErrorClass <CLASS> -ErrorMsg "<short>"
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_se19_run.json" -Status <SUCCESS|FAILED> -ExitCode <0|1>
 ```
 
-Suggested `<CLASS>`: `SE19_FAILED`, `BADI_NOT_FOUND`, `TR_RESOLUTION_FAILED`, `GUI_TIMEOUT`.
+Suggested `ErrorClass`: `SE19_FAILED`, `BADI_AMBIGUOUS_UNRESOLVED`,
+`DELETE_REFUSED_SAFETY`, `BADI_NOT_FOUND`, `TR_RESOLUTION_FAILED`, `GUI_TIMEOUT`.
 
 ---
 
-## Security Note
+## Failure Modes / Recovery
 
-The generated `.vbs` files may contain sensitive data — delete after use (Step 7).
+| Symptom (script `ERROR:` …) | Cause | Recovery |
+|---|---|---|
+| `Create Enhancement Implementation popup did not appear` | Enhancement spot not found / not implementable | Verify the spot name; re-run `classify`; the create input must be a definition/spot |
+| `Create BAdI Implementations popup did not appear` | Enh-impl created but element popup differs by release | `/sap-gui-object-details` on the live screen; update `tblSAPLENH_BADI_POPUPSG_BADI_TABLE` ids |
+| combo BAdI definition stays empty | wrong `.Key` (spot has multiple defs) | enumerate combo `.Entries` (object-details) and pass the exact key |
+| `Did not reach the enhancement implementation editor` | class-creation chain diverged (e.g. existing class) | `/sap-gui-diagnose` for a screenshot; the implementing class may already exist — pick a new name |
+| `Could not open … in change mode` | object locked (SM12) or no authorization | release the lock / check authorization |
+| `'Implementation is active' checkbox not found` | no BAdI implementation node selected in the tree | ensure a single impl; for multi-impl, select the node first (object-details) |
+| Activation shows unrelated objects in the worklist | SAP groups all inactive objects of the user | the VBS presses Continue (activates the worklist) — acceptable on dev; if undesired, activate the impl alone via SE19 manually |
+| Delete `refused … safety rule` | target not created this session | intended — only override with explicit user confirmation |
+| `Delete failed` with locked-class message | implementing class is locked / used elsewhere | delete the class separately via `/sap-se24` after releasing locks |
 
 ---
 
-## Important: Encoding
+## SE19 Component-ID Reference (probed S/4HANA 1909, SAP GUI 7.60, EN)
 
-When filling VBS templates, always write with **`-Encoding Unicode`** (UTF-16 LE) in PowerShell.
-UTF-16 LE is what `cscript` supports natively and preserves non-ASCII characters.
-UTF-8 with BOM causes a cscript compile error.
+**Initial screen `SAPLSEXO` (120):** New-edit `radG_IS_NEW_1` + `ctxtG_ENHNAME`;
+New-create `radG_IS_NEW_2` + `ctxtG_ENHSPOTNAME`; Classic-edit `radG_IS_CLASSIC_1`
++ `ctxtRSEXSCRN-IMP_NAME`; Classic-create `radG_IS_CLASSIC_2` +
+`ctxtRSEXSCRN-EXIT_NAME`. Buttons `btnPUSHBUTTON_DISPLAY_TEXT`,
+`btnPUSHBUTTON_CHANGE_TEXT`, `btnPUSHBUTTON_IMPLEMENT_TEXT`; app-bar
+`tbar[1]/btn[14]` Delete implementation.
 
----
+**New create chain:** Enh-impl popup `SAPLSEEF_BASE` →
+`wnd[1]/usr/txtG_ENHSTRU-ENHNAME` + `-SHORTTEXT`, Continue `wnd[1]/tbar[0]/btn[0]`.
+Object Directory `SAPLSTRD(100)` `ctxtKO007-L_DEVCLASS` (Save `btn[0]`, Local
+`btn[7]`); TR `SAPLSTRD(300)` `ctxtKO008-TRKORR` (Continue `btn[0]`). Create-BAdI
+popup `SAPLENH_BADI_POPUPS(1000)` table
+`tblSAPLENH_BADI_POPUPSG_BADI_TABLE/{txtG_BADI-IMPL_NAME[0,0], txtG_BADI-CLASS_NAME[1,0], cmbG_BADI-BADI_NAME[2,0](.Key), txtG_BADI-BADI_SHORTTEXT[3,0]}`.
+Create-class popup `SAPLENH_EDT_BADI(1000)` Empty-Class `wnd[1]/tbar[0]/btn[2]`.
 
-## Upload Menu Path Note
+**New detail `SAPLENHANCEMENT_EDITOR(6000)`:** name `txtENH_EDT_LAYOUT-OBJECT1`,
+status `txtENH_EDT_LAYOUT-VERSION_TX`; toolbar `tbar[1]/btn[27]` Activate,
+`btn[25]` Display↔Change. Tab `tabsTS_ENHANCEMENTS/tabpTABS_5` ("Enh.
+Implementation Elements") → runtime flag
+`…/ssubENH_BADI_IMPL:SAPLENH_EDT_BADI:0102/chkENH_BADI_IMPL_ADMIN_DATA-ACTIVE`.
+Inactive-objects worklist Continue `wnd[1]/tbar[0]/btn[0]`. Delete confirm
+`SAPLSPO4(300)` `wnd[1]/tbar[0]/btn[0]`.
 
-The source upload menu path in the SE24 Class Builder (`menu[3]/menu[9]/menu[2]/menu[0]`)
-was recorded on SAP GUI 7.60 / S/4HANA 1909. Menu indices **may differ** by SAP release
-and logon language. If the upload step fails:
-1. Open SE24 in your SAP system and open the class in Change mode
-2. Use SAP Logon > Help > Scripting Recorder and Playback
-3. Record the "Upload from local file" menu action (Utilities > More Utilities > Upload/Download > Upload)
-4. Note the menu path from the recording and update the VBS template
+**Classic detail `SAPLSEXO(150)`:** impl `ctxtRSEXSCRN-IMP_NAME`, status
+`txtRSEXSCRN-ACTIVE`, short text `txtRSEXSCRN-IMP_TEXT`, definition
+`ctxtRSEXSCRN-EXIT_NAME`; toolbar `tbar[1]/btn[27]` Activate, **`btn[28]`
+Deactivate (Ctrl+F4)**. Create-impl popup `ctxtRSEXSCRN-IMP_NAME` +
+`wnd[1]/tbar[0]/btn[0]`. Save Yes/No `SAPLSPO1(500)`
+`wnd[1]/usr/btnBUTTON_1` (Yes). Delete confirm chain `SAPLSPO1(500)`:
+`btnBUTTON_1` Yes (impl), then `btnBUTTON_1`/`btnBUTTON_2` (delete class? Yes/No).
 
----
-
-## SE19 Component IDs Reference
-
-**SE19 Initial Screen** — `BAdI Builder: Initial Screen for Implementations`
-
-| Element | Component ID | Notes |
-|---|---|---|
-| New BAdI radio (Edit) | `wnd[0]/usr/radG_IS_NEW_1` | Edit section |
-| Enhancement Implementation | `wnd[0]/usr/ctxtG_ENHNAME` | Edit section |
-| Display button | `wnd[0]/usr/btnPUSHBUTTON_DISPLAY_TEXT` | |
-| Change button | `wnd[0]/usr/btnPUSHBUTTON_CHANGE_TEXT` | |
-| New BAdI radio (Create) | `wnd[0]/usr/radG_IS_NEW_2` | Create section |
-| Enhancement Spot | `wnd[0]/usr/ctxtG_ENHSPOTNAME` | Create section |
-| Create button | `wnd[0]/usr/btnPUSHBUTTON_IMPLEMENT_TEXT` | |
-
-**Create Enhancement Implementation Popup** (wnd[1])
-
-| Element | Component ID | Notes |
-|---|---|---|
-| Enhancement Impl name | `wnd[1]/usr/txtG_ENHSTRU-ENHNAME` | |
-| Short Text | `wnd[1]/usr/txtG_ENHSTRU-SHORTTEXT` | |
-| Composite | `wnd[1]/usr/ctxtG_ENHSTRU-COMPOSITE` | Optional |
-| Continue | `wnd[1]/tbar[0]/btn[0]` | Enter/Continue |
-
-**Enhancement Implementation Detail Screen**
-
-| Element | Component ID | Notes |
-|---|---|---|
-| Impl name | `txtENH_EDT_LAYOUT-OBJECT1` | Read-only |
-| Status | `txtENH_EDT_LAYOUT-VERSION_TX` | e.g. "Inactive" |
-| Tab strip | `tabsTS_ENHANCEMENTS` | |
-| Properties tab | `tabpTABS_1` | |
-| Enh Impl Elements tab | `tabpTABS_5` | |
-| Check button | `tbar[1]/btn[26]` | Ctrl+F2 |
-| Activate button | `tbar[1]/btn[27]` | Ctrl+F3 |
-
-**TABS_5 Tree (Enh. Implementation Elements)**
-
-| Element | Path | Notes |
-|---|---|---|
-| Tree base | `tabpTABS_5/ssubSUBS_5:SAPLENH_EDT_BADI:2100/splcSPLITTER:SAPLENH_EDT_BADI:2100/ssubBADI_TREE_LEFT:SAPLENH_EDT_BADI:0099/cntlBADI_IMPL_TREE/shellcont/shell/shellcont[1]` | |
-| Toolbar | `...shellcont[1]/shell[0]` | GuiToolbarControl |
-| Tree control | `...shellcont[1]/shell[1]` | GuiTree |
-| Create BAdI Impl | `FC_CREATE_BADI_IMPL` | Toolbar button |
-| Delete BAdI Impl | `FC_DELETE_BADI_IMPL` | Toolbar button |
-
-**Create BAdI Implementation Popup** (wnd[1])
-
-| Element | Component ID | Notes |
-|---|---|---|
-| Enhancement Spot | `wnd[1]/usr/ctxtENH_BADI_IMPL_CREATE-SPOT` | Read-only |
-| BAdI Definition | `wnd[1]/usr/ctxtENH_BADI_IMPL_CREATE-BADI_DEFINITION` | |
-| BAdI Implementation | `wnd[1]/usr/txtENH_BADI_IMPL_CREATE-BADI_IMPLEMENTATION` | |
-| Implementing Class | `wnd[1]/usr/ctxtENH_BADI_IMPL_CREATE-IMPL_CLASS` | Must provide explicitly |
-| Short Text | `wnd[1]/usr/txtENH_BADI_IMPL_CREATE-IMPL_SHORTTEXT` | |
-| Continue | `wnd[1]/tbar[0]/btn[0]` | Needs TWO presses |
-
-**Class Creation Chain** (wnd[2])
-
-| Element | Component ID | Notes |
-|---|---|---|
-| "Class ..." Yes | `wnd[2]/usr/btnBUTTON_1` | Confirm class creation |
-| Create Empty Class | `wnd[2]/tbar[0]/btn[2]` | F2 |
-| Copy Sample | `wnd[2]/tbar[0]/btn[5]` | F5 |
-| Inherit | `wnd[2]/tbar[0]/btn[6]` | F6 |
-| Local Object | `wnd[2]/tbar[0]/btn[7]` | F7 (transport popup) |
-
-**SE24 Class Builder** (for source upload)
-
-| Element | Component ID | Notes |
-|---|---|---|
-| Class name | `wnd[0]/usr/ctxtSEOCLASS-CLSNAME` | |
-| Change button | `wnd[0]/usr/btnPUSH_CHANGE` | |
-| Source-code view indicator | `wnd[0]/usr/txtDY0400_STATUS` | Present in source view |
-| Form-based tab strip | `wnd[0]/usr/tabsCTS` | Present in form view |
-| Upload menu | `wnd[0]/mbar/menu[3]/menu[9]/menu[2]/menu[0]` | Utilities > More Utilities > Upload/Download > Upload |
-| Upload path | `wnd[1]/usr/ctxtDY_PATH` | Directory path |
-| Upload filename | `wnd[1]/usr/ctxtDY_FILENAME` | File name |
-
-**Transport Popup**
-
-| Element | Component ID | Notes |
-|---|---|---|
-| Local Object button | Various `/tbar[0]/btn[7]` | Assigns to $TMP |
+> IDs were captured by `/sap-gui-probe` + `/sap-gui-object-details`. Re-record
+> with `/sap-gui-record` if a different release renumbers a tree/menu node.
 
 ---
 
-## Troubleshooting Component IDs
+## Classification tables (RFC, read-only)
 
-If menu paths or component IDs fail on the user's system:
-1. SAP Logon > Help > Scripting Recorder and Playback
-2. Click Record, perform the failing step manually, stop recording
-3. The recorded script shows the correct component IDs
-
----
-
-## Two-Level Creation Note
-
-SE19 New BAdI has a **two-level** structure:
-
-1. **Enhancement Implementation** (outer container) — created via the "Create" section
-   on the SE19 initial screen. This is the top-level object registered in the system.
-
-2. **BAdI Implementation** (inner element) — added within the Enhancement Implementation
-   via the tree toolbar button `FC_CREATE_BADI_IMPL` on the "Enh. Implementation Elements"
-   tab (TABS_5).
-
-The Create BAdI Implementation popup requires **two Enter presses**: the first submits the
-fields, the popup re-displays with read-only fields for confirmation, and the second Enter
-triggers the class creation chain (Yes/No → Create Empty Class → Local Object).
-
-After class creation, wnd[1] may auto-close. If it remains, dismiss with F12 (Cancel).
+| Table | Key / fields | Tells you |
+|---|---|---|
+| `SXS_ATTR` | `EXIT_NAME`, `MIG_BADI_NAME`, `MIG_ENHSPOTNAME` | Classic definition exists; non-empty `MIG_*` ⇒ migrated (also a New spot) ⇒ AMBIGUOUS |
+| `SXC_CLASS` | `IMP_NAME`, `INTER_NAME`, `IMP_CLASS` | Classic implementation + its interface + class |
+| `SXC_ATTR` | `IMP_NAME`, `ACTIVE`, `UNAME` | Classic impl runtime-active flag + creator |
+| `BADI_IMPL` | `BADI_NAME`, `ENHNAME`, `BADI_IMPL`, `CLASS_NAME` | New impl ↔ definition ↔ enhancement-impl container ↔ class |
+| `TADIR` | `OBJECT` ∈ {`ENHS` spot, `ENHO` enh-impl, `SXSD` classic def, `SXCI` classic impl, `CLAS`}, `AUTHOR`, `DEVCLASS` | object directory + creator (safety guard) |
