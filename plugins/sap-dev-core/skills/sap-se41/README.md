@@ -1,16 +1,20 @@
-# SAP SE41 Menu Painter Deploy Skill
+# SAP SE41 Menu Painter Skill
 
-Deploy PF-STATUS (GUI status) definitions to SAP via SE41 using SAP GUI Scripting.
+Manage PF-STATUS (GUI status) subobjects on SAP via SE41 using SAP GUI Scripting.
 
 ## Skill Overview
 
-This skill automates the GUI status deployment lifecycle via SE41:
+This skill manages the full GUI status lifecycle via SE41, one operation per run:
 
-- **Create or Update**: Automatically detects whether the status exists and runs the appropriate flow
-- **Field-by-Field Entry**: SE41 has no Upload/Download — function codes are entered directly into the editor grid from a pipe-delimited definition file
+- **Operations**: `CREATE`, `UPDATE`, `DISPLAY`, `DELETE`, `ACTIVATE`, `DEACTIVATE`, `COPY`, plus an existence `CHECK`
+- **Single inline VBScript**: All operations are driven by one self-contained VBScript embedded directly in `SKILL.md` (Step 4), selected by the `OPERATION` token
+- **Field-by-Field Entry**: SE41 has no Upload/Download — function codes are entered directly into the editor grid from a pipe-delimited definition file (CREATE/UPDATE)
 - **Standard Toolbar**: Assigns function codes to the 13 standard toolbar button slots
 - **Function Keys**: Assigns function codes and text to recommended and freely assigned function keys
 - **Save & Activate**: Saves (handling "Enter Function Text" popups) and activates in one pass
+- **Delete commits**: DELETE removes the inactive version then activates to drop the active version
+- **DEACTIVATE**: Not supported by SE41 — returns `NOT_SUPPORTED` (status is a static repository object)
+- **Package changes**: Delegated to `/sap-change-package`
 - **Login Required**: Use `/sap-login` first to establish SAP GUI session
 - **Centralized Login**: Connection parameters stored in sap-dev-core settings.json
 
@@ -44,23 +48,27 @@ This skill activates when discussing:
 
 ```
 sap-se41/
-├── SKILL.md                        # Main skill file (step-by-step workflow)
+├── SKILL.md                        # Main skill file (workflow + inline VBScript)
 ├── README.md                       # This file (keywords for discoverability)
 └── references/
-    ├── sap_se41_login.vbs          # VBScript: login to SAP GUI
-    ├── sap_se41_check.vbs          # VBScript: check if status exists
-    ├── sap_se41_create.vbs         # VBScript: create new PF-STATUS
-    └── sap_se41_update.vbs         # VBScript: update existing PF-STATUS
+    └── sap_se41_ops.vbs            # Canonical copy of the inline operations VBScript
 ```
+
+The operations VBScript is embedded inline in `SKILL.md` (the single source of
+truth used at run time); `references/sap_se41_ops.vbs` is an identical
+standalone copy for review.
 
 ## Usage
 
-Invoke with a program name, status name, and function code definitions:
+Invoke with an operation, program name, status name, and (for CREATE/UPDATE)
+function code definitions:
 
 - "Create PF-STATUS ZSTATUS01 for program SAPLZHKT05" — prompts for status type and function codes
-- "Deploy GUI status ZDIALOG to SAPLZMYAPP with Back, Exit, Cancel on toolbar"
+- "Display status ZTEST01 of SAPLZHKT05"
 - "Update status ZTEST01 of SAPLZHKT05 — add F5=Execute, F6=Refresh"
-- "Create a normal screen status with standard navigation buttons"
+- "Copy status ZTEST01 of SAPLZHKT05 to ZTEST02"
+- "Delete status ZTEST01 of SAPLZHKT05"
+- "Activate interface SAPLZHKT05"
 
 ## Definition File Format
 
