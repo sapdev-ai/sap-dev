@@ -291,5 +291,6 @@ secret store + env var.
 | Verify gitignore | `git check-ignore -v plugins/sap-dev-core/settings.local.json` |
 | Where is my config? | `{work_dir}\runtime\userconfig.json` + `…\connections.json` |
 
-> Note: the VBS settings helper (`GetSapSettingValue` / `SetSapUserSetting`) is
-> not currently usable — see settings_lookup.md. Use the PowerShell helper.
+> Note: settings are PowerShell-only. There is no VBS settings helper — a VBS
+> that needs a userConfig value gets it pre-resolved from its PowerShell wrapper
+> (token / env var). See settings_lookup.md.

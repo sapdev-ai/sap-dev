@@ -25,7 +25,7 @@ The plugin that owns `userConfig` is almost always `sap-dev-core`:
 
 > **work_dir is the bootstrap pointer.** It locates `userconfig.json`, so it is resolved WITHOUT reading `userconfig.json` (env var → settings.local.json → settings.json → default `C:\sap_dev_work`). Never set `work_dir` in `userconfig.json` — it is ignored there.
 
-> **Implementation status — PowerShell only (verified).** Tiers 0 and 2 and the new write target are implemented in `sap_settings_lib.ps1` + `Get-SapWorkDir` (`sap_connection_lib.ps1`). The VBS counterpart `sap_settings_lib.vbs` does NOT yet support tiers 0/2 — and separately has a **pre-existing VBScript compile bug** (its `_`-prefixed helper names are illegal VBScript identifiers, so an `ExecuteGlobal` include fails to compile). Every load-bearing settings read is PowerShell, so this is latent; fixing the VBS lib + porting tiers 0/2 is a tracked follow-up.
+> **Implementation status — PowerShell only.** Tiers 0 and 2 and the new write target are implemented in `sap_settings_lib.ps1` + `Get-SapWorkDir` (`sap_connection_lib.ps1`). There is no VBScript implementation: settings are resolved in PowerShell, and the resolved values are passed into VBS via `%%TOKEN%%` substitution + environment variables (e.g. `%%SESSION_PATH%%` / `SAPDEV_SESSION_PATH`). Every load-bearing settings read is therefore PowerShell.
 
 Path resolution from a skill at `plugins/<plugin>/skills/<skill>/`:
 - For skills inside **`sap-dev-core`**: go 2 levels up from `<SKILL_DIR>` to
@@ -94,14 +94,10 @@ Implementation choices, in preference order:
    `Get-SapSettingValue '<key>' '<default>'`. The helper handles
    per-connection routing automatically — for keys in the per-connection
    list it consults `Get-SapCurrentDevDefault` first.
-2. **VBScript scripts:**
-   `ExecuteGlobal FSO.OpenTextFile("%%SETTINGS_LIB_VBS%%",1).ReadAll()`
-   then call `GetSapSettingValue("<key>", "<default>")`. **Note:** the VBS
-   helper does NOT yet implement per-connection routing — it always reads
-   from the two-file merge. None of the per-connection keys are currently
-   read from VBS context, so this is fine in practice. If a future VBS
-   needs one of those keys, port the routing logic from
-   `sap_settings_lib.ps1` first.
+2. **VBScript scripts:** there is no VBS settings library. A VBS that needs a
+   userConfig value receives it pre-resolved from its PowerShell wrapper via
+   `%%TOKEN%%` substitution or an environment variable — the wrapper calls
+   `Get-SapSettingValue` and injects the result.
 3. **Claude-driven Read-tool flows** (i.e., the AI executes the SKILL.md
    directly): for **non-per-connection keys**, read `settings.json`,
    `{work_dir}\runtime\userconfig.json`, and `settings.local.json` with the
@@ -142,9 +138,9 @@ Implementation choices, in preference order:
    routes per-connection keys** to `Set-SapCurrentDevDefault` (which
    targets `connections.json[pinned-profile].dev_defaults`). Callers
    don't need to know which keys are per-connection.
-2. **VBScript scripts:** `Call SetSapUserSetting("<key>", "<value>")`.
-   No per-connection routing on the VBS side — only call this for the
-   global keys.
+2. **VBScript scripts:** there is no VBS settings library — VBS skills do not
+   write userConfig values. Any persistence is done by the PowerShell wrapper
+   via `Set-SapUserSetting`.
 3. **Claude-driven Edit-tool flows:** for **non-per-connection keys**,
    target `{work_dir}\runtime\userconfig.json`. If the file (or its `runtime\`
    directory) doesn't exist, create it with shape

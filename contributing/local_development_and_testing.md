@@ -248,15 +248,12 @@ Run it from a terminal even if you normally use the desktop app — see above.
    overrides it only under `--plugin-dir`. `work_dir` is bootstrap-only and is
    never read from `userconfig.json`.
 
-> **VBS gap discovered while implementing this.** The VBS twin
-> `sap_settings_lib.vbs` does NOT yet support the env var / `userconfig.json`,
-> and — found via a live `ExecuteGlobal` compile test — it has **never
-> compiled**: its `_`-prefixed helper subs (`_SapSettings_Init`, …) are illegal
-> VBScript identifiers (VBScript names must begin with a letter). So VBS-side
-> `GetSapSettingValue` has effectively never run. This is latent because every
-> load-bearing settings read is PowerShell and the VBS logger uses its own
-> inline resolver. The fix = rename the `_`-prefixed helpers + port tiers 0/2;
-> tracked as a follow-up (do NOT bundle into a feature change).
+> **No VBS settings library.** A `sap_settings_lib.vbs` twin once existed but
+> never compiled (its `_`-prefixed helper subs were illegal VBScript
+> identifiers) and was never wired into any skill, so it was removed
+> (2026-06-01). Settings are PowerShell-only: a VBS that needs a userConfig
+> value receives it pre-resolved from its PowerShell wrapper via `%%TOKEN%%`
+> substitution or an environment variable.
 
 ## Still proposed (not implemented)
 
