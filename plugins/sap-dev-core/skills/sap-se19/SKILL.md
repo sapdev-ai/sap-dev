@@ -66,9 +66,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_
 
 The note below still applies to any OTHER keys.
 
-Read sap-dev-core `settings.json` (+ `settings.local.json`, merged per
-`shared/rules/settings_lookup.md`) 2 levels up from `<SKILL_DIR>`. Read `work_dir`
-(default `C:\sap_dev_work`). Set `{WORK_TEMP}` = `{work_dir}\temp`.
+Settings reads/writes follow `shared/rules/settings_lookup.md` — merge per-key on
+`.value` (env var → `settings.local.json` → `userconfig.json` → `settings.json`);
+non-per-connection writes go to `userconfig.json`. Set `{WORK_TEMP}` =
+`{work_dir}\temp`.
 
 ```bash
 cmd /c if not exist "{WORK_TEMP}" mkdir "{WORK_TEMP}"

@@ -62,9 +62,17 @@ because agents live one level shallower than skills.
 
 ### 0.1 Resolve work paths
 
-Read sap-dev-core's `settings.json` (resolve from any sap-dev-core skill's
-`<SKILL_DIR>` going up 2 levels). Read `work_dir` (default
-`C:\sap_dev_work`), `custom_url` (default `{work_dir}\custom`),
+Resolve `work_dir` via the env-aware helper — do NOT read `work_dir` directly
+from `settings.json` (that ignores the `SAPDEV_AI_WORK_DIR` env var and
+`userconfig.json`). Use the `WORK_DIR=` value printed by:
+
+```bash
+powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('WORK_DIR=' + (Get-SapWorkDir))"
+```
+
+Then read the other keys per `shared/rules/settings_lookup.md` (merge env var →
+`settings.local.json` → `userconfig.json` → `settings.json`; non-per-connection
+writes go to `userconfig.json`): `custom_url` (default `{work_dir}\custom`),
 `design_docs_url`, `source_code_url`. Set `{WORK_TEMP}` = `{work_dir}\temp`.
 
 ### 0.2 Read the customer brief and set MODE flags

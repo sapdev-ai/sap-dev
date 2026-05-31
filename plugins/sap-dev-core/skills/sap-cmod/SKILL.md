@@ -54,10 +54,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_
 The settings note below still applies to the OTHER keys.
 
 **Settings reads/writes follow `shared/rules/settings_lookup.md`** — merge
-`settings.local.json` over `settings.json` per-key on `.value`; writes go to
-`settings.local.json`. Resolve sap-dev-core paths: 2 levels up from
-`<SKILL_DIR>` to the plugin root, then read `work_dir`, `custom_url`,
-`way_to_get_transport_request`.
+per-key on `.value` (env var → `settings.local.json` → `userconfig.json` →
+`settings.json`); non-per-connection writes go to `userconfig.json`. Resolve
+sap-dev-core paths: 2 levels up from `<SKILL_DIR>` to the plugin root, then
+read `custom_url`, `way_to_get_transport_request`.
 
 | Setting | Default if blank |
 |---|---|

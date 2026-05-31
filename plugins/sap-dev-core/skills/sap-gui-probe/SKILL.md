@@ -41,7 +41,7 @@ Task: $ARGUMENTS
 | File | Purpose |
 |---|---|
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/skill_operating_rules.md` | Mandatory operating rules |
-| `<SAP_DEV_CORE_SHARED_DIR>/rules/settings_lookup.md` | Two-file settings model — merge `settings.local.json` over `settings.json` per-key on `.value`; writes always go to `settings.local.json` |
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/settings_lookup.md` | Settings model — merge per-key on `.value` (env var → `settings.local.json` → `userconfig.json` → `settings.json`); non-per-connection writes go to `userconfig.json` |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/language_independence_rules.md` | GUI-scripting language independence — identify by component ID + DDIC field name, status-bar checks via `MessageType` codes (S/W/E/I/A), VKey instead of menu-text, no branching on `.Text`/`.Tooltip`/window titles |
 
 ---
@@ -56,9 +56,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_
 
 The settings note below still applies to the OTHER keys.
 
-**Settings reads/writes follow `shared/rules/settings_lookup.md`** — merge `settings.local.json` over `settings.json` per-key on the `.value` field; writes always go to `settings.local.json`. Read sap-dev-core's `settings.json` (go 2 levels up from `<SKILL_DIR>` to the
-plugin root, then `settings.json`). Read `work_dir`.
-
+**Settings reads/writes follow `shared/rules/settings_lookup.md`** — merge per-key on the `.value` field (env var → `settings.local.json` → `userconfig.json` → `settings.json`); non-per-connection writes go to `userconfig.json`. Read sap-dev-core's `settings.json` (go 2 levels up from `<SKILL_DIR>` to the
+plugin root, then `settings.json`).
 | Setting | Default if blank |
 |---|---|
 | `work_dir` | `C:\sap_dev_work` |

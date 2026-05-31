@@ -47,8 +47,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_
 
 The settings note below still applies to the OTHER keys (`log_dir`, …).
 
-**Settings reads/writes follow `shared/rules/settings_lookup.md`** — merge `plugins/sap-dev-core/settings.local.json` over `plugins/sap-dev-core/settings.json` per-key on the `.value` field; writes always go to the local file. Read:
-- `work_dir` — defaults to `C:\sap_dev_work`
+**Settings reads/writes follow `shared/rules/settings_lookup.md`** — merge per-key on the `.value` field (env var → `settings.local.json` → `userconfig.json` → `settings.json`); non-per-connection writes go to `userconfig.json`. Read:
 - `log_dir`  — defaults to `{work_dir}\logs`
 
 If `log_dir` does not exist, report "no logs found" and stop.

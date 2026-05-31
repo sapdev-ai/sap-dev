@@ -62,7 +62,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_
 
 The settings note below still applies to the OTHER keys.
 
-**Settings reads/writes follow `shared/rules/settings_lookup.md`** — merge `settings.local.json` over `settings.json` per-key on the `.value` field; writes always go to `settings.local.json`. Resolve sap-dev-core paths: 2 levels up from `<SKILL_DIR>` to the plugin root, then `settings.json` and (if present) `settings.local.json`.
+**Settings reads/writes follow `shared/rules/settings_lookup.md`** — merge per-key on the `.value` field (env var → `settings.local.json` → `userconfig.json` → `settings.json`); non-per-connection writes go to `userconfig.json`. Resolve sap-dev-core paths: 2 levels up from `<SKILL_DIR>` to the plugin root, then `settings.json` and (if present) `settings.local.json`.
 
 **Per-connection keys (Phase 4.4)**: `rule_of_tr_description` and `tr_description_template` are SAP-system-specific (customer naming conventions vary). Per `settings_lookup.md` § Per-connection exception, read them from `connections.json[pinned-profile].dev_defaults` FIRST (resolve the pin via `{work_dir}\runtime\session_registry.json` `ai_sessions[<id>]`); only fall back to the two-file merge when `dev_defaults` is empty.
 
@@ -296,7 +296,7 @@ released, the TR cannot be modified again.
 
 ## R0 — Resolve work directory
 
-Same as Step 0 above: read `work_dir`, set `{WORK_TEMP}`, ensure it exists.
+Same as Step 0 above: resolve `work_dir`, set `{WORK_TEMP}`, ensure it exists.
 
 ## R1 — Parse the TR
 

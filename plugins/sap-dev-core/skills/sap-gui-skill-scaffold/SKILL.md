@@ -29,7 +29,7 @@ Task: $ARGUMENTS
 | File | Purpose |
 |---|---|
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/skill_operating_rules.md` | Mandatory operating rules |
-| `<SAP_DEV_CORE_SHARED_DIR>/rules/settings_lookup.md` | Two-file settings model — merge `settings.local.json` over `settings.json` per-key on `.value`; writes always go to `settings.local.json` |
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/settings_lookup.md` | Settings model — merge per-key on `.value` (env var → `settings.local.json` → `userconfig.json` → `settings.json`); non-per-connection writes go to `userconfig.json` |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/language_independence_rules.md` | GUI-scripting language independence — generated VBS templates MUST follow these rules (identify by component ID + DDIC field name, status-bar checks via `MessageType` codes, VKey instead of menu-text, no branching on `.Text`/`.Tooltip`/window titles) |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/abap_code_quality_rules.md` | ABAP code-quality rules — when scaffolding skills that emit or paste ABAP source (deploy / codegen / fix templates), the generated SKILL.md must reference this file and the templated VBS must not embed literal MESSAGE strings or other quality anti-patterns |
 | `<SKILL_DIR>/references/scenario_catalog.tsv` | Known-stuck-point catalog consulted by **Step 0.9** (`--goal` mode). Tab-separated; keyed by `txn` + `object_type`; each row maps a trap to a `scenario_type` + `applies` gate + `probe_hint`. Read by Claude (Read tool), not VBS. |
@@ -48,7 +48,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_
 
 The settings note below still applies to the OTHER keys.
 
-**Settings reads/writes follow `shared/rules/settings_lookup.md`** — merge `settings.local.json` over `settings.json` per-key on the `.value` field; writes always go to `settings.local.json`. Read sap-dev-core's `settings.json` (2 levels up from `<SKILL_DIR>`). Read
+**Settings reads/writes follow `shared/rules/settings_lookup.md`** — merge per-key on the `.value` field (env var → `settings.local.json` → `userconfig.json` → `settings.json`); non-per-connection writes go to `userconfig.json`. Read sap-dev-core's `settings.json` (2 levels up from `<SKILL_DIR>`). Read
 `work_dir`. Default: `C:\sap_dev_work`.
 
 Derive:
