@@ -1,23 +1,31 @@
-# Settings Lookup Rule (settings.json + settings.local.json)
+# Settings Lookup Rule (env var → settings.local.json → userconfig.json → settings.json)
 
 Companion to CLAUDE.md § Rule 7. Every skill that reads or writes a
 `userConfig` value MUST follow this rule. The contract has two parts —
 read and write — both of which apply at every reach into settings.
 
-## The two files
+## The files (resolution tiers)
 
-| File | Tracked? | Role |
-|---|---|---|
-| `plugins/<plugin>/settings.json` | YES | **Schema.** Key names, descriptions, `sensitive` flags, default values. In the tracked copy every `value` field is blank or holds a safe default. |
-| `plugins/<plugin>/settings.local.json` | NO (gitignored) | **Per-developer overrides.** Holds the credentials, server, packages, and any other key the developer wants to override. May be absent on a fresh clone. |
+Effective values are a per-key merge across these tiers, **highest precedence first**:
 
-The plugin that owns the `userConfig` is almost always `sap-dev-core`, so
-in practice both files live at:
+| Tier | Source | Tracked? | Survives plugin update? | Role |
+|---|---|---|---|---|
+| 0 | env var `SAPDEV_AI_WORK_DIR` | n/a | **yes** | Bootstrap for `work_dir` ONLY — the durable, update-proof root. |
+| 1 | `plugins/<plugin>/settings.local.json` | NO (gitignored) | no (in cache) | **Dev checkout override.** Live only when the plugin runs from a repo checkout (e.g. `--plugin-dir`). Hand-edited; never written by a skill. |
+| 2 | `{work_dir}\runtime\userconfig.json` | NO | **yes** (outside the plugin tree) | **Machine-global user overrides** + the single skill WRITE target. What end users configure. |
+| 3 | `plugins/<plugin>/settings.json` | YES | no (in cache) | **Schema.** Key names, descriptions, `sensitive` flags, defaults. Read-only at runtime. |
 
-```
-<repo-root>/plugins/sap-dev-core/settings.json
-<repo-root>/plugins/sap-dev-core/settings.local.json
-```
+Per-key precedence: **env (work_dir only) > settings.local.json > userconfig.json > settings.json**. Only `.value` is overridden; `description`/`sensitive` always come from the schema (tier 3).
+
+The plugin that owns `userConfig` is almost always `sap-dev-core`:
+
+    <plugin-root>/settings.json          # schema (tier 3; in repo or cache)
+    <plugin-root>/settings.local.json    # dev checkout override (tier 1)
+    {work_dir}\runtime\userconfig.json   # machine-global overrides + write target (tier 2)
+
+> **work_dir is the bootstrap pointer.** It locates `userconfig.json`, so it is resolved WITHOUT reading `userconfig.json` (env var → settings.local.json → settings.json → default `C:\sap_dev_work`). Never set `work_dir` in `userconfig.json` — it is ignored there.
+
+> **Implementation status — PowerShell only (verified).** Tiers 0 and 2 and the new write target are implemented in `sap_settings_lib.ps1` + `Get-SapWorkDir` (`sap_connection_lib.ps1`). The VBS counterpart `sap_settings_lib.vbs` does NOT yet support tiers 0/2 — and separately has a **pre-existing VBScript compile bug** (its `_`-prefixed helper names are illegal VBScript identifiers, so an `ExecuteGlobal` include fails to compile). Every load-bearing settings read is PowerShell, so this is latent; fixing the VBS lib + porting tiers 0/2 is a tracked follow-up.
 
 Path resolution from a skill at `plugins/<plugin>/skills/<skill>/`:
 - For skills inside **`sap-dev-core`**: go 2 levels up from `<SKILL_DIR>` to
@@ -62,9 +70,10 @@ never need to worry about commit hygiene.
 
 ## Read rule
 
-The effective `value` for a key is the **per-key merge** of
-`settings.local.json` over `settings.json`. Only the `value` field is
-overridden; `description` and `sensitive` always come from the schema.
+The effective `value` for a key is the **per-key merge** across the tiers above,
+highest first: env var (`work_dir` only) > `settings.local.json` >
+`userconfig.json` > `settings.json`. Only the `value` field is overridden;
+`description` and `sensitive` always come from the schema.
 
 **Per-connection keys (the table above) override this:** read the pinned
 profile's `dev_defaults[<key>]` first; only fall through to the two-file
@@ -94,11 +103,13 @@ Implementation choices, in preference order:
    needs one of those keys, port the routing logic from
    `sap_settings_lib.ps1` first.
 3. **Claude-driven Read-tool flows** (i.e., the AI executes the SKILL.md
-   directly): for **non-per-connection keys**, read both `settings.json`
-   and `settings.local.json` with the Read tool. If `settings.local.json`
-   doesn't exist, treat it as `{"userConfig": {}}`. For each key, prefer
-   `settings.local.json.userConfig.<key>.value` when non-empty;
-   otherwise use `settings.json.userConfig.<key>.value`.
+   directly): for **non-per-connection keys**, read `settings.json`,
+   `{work_dir}\runtime\userconfig.json`, and `settings.local.json` with the
+   Read tool (treat any missing file as `{"userConfig": {}}`). For each key,
+   prefer `settings.local.json` → then `userconfig.json` → then `settings.json`
+   on the `.value` field (first non-empty wins). Resolve `work_dir` itself from
+   `$env:SAPDEV_AI_WORK_DIR` → settings.local.json → settings.json → default,
+   NOT from userconfig.json.
    For **per-connection keys**, additionally read
    `{work_dir}\runtime\connections.json`, find the profile whose `id`
    matches the AI session's pinned `connection_id` (look it up via
@@ -112,9 +123,12 @@ user if no default exists.
 
 ## Write rule
 
-ALL writes go to `settings.local.json` — never to `settings.json`. The
-schema file changes only when a developer (the human) deliberately adds
-a new `userConfig` key or edits a description.
+Non-per-connection writes go to **`userconfig.json`** (`{work_dir}\runtime\`,
+outside the versioned plugin cache, so they survive plugin updates) — never to
+`settings.json`, and no longer to `settings.local.json`. `settings.local.json`
+stays a hand-edited dev checkout override (higher read precedence) and is never
+written by a skill. The schema file changes only when a developer deliberately
+adds a new `userConfig` key or edits a description.
 
 **Per-connection keys override this:** writes to the keys listed in the
 per-connection table target the pinned profile's `dev_defaults` block in
@@ -132,9 +146,11 @@ Implementation choices, in preference order:
    No per-connection routing on the VBS side — only call this for the
    global keys.
 3. **Claude-driven Edit-tool flows:** for **non-per-connection keys**,
-   target `settings.local.json`. If the file doesn't exist, create it
-   with shape `{"userConfig":{"<key>":{"value":"<v>"}}}`. **Never** use
-   the Edit tool to change a `value` field in `settings.json`.
+   target `{work_dir}\runtime\userconfig.json`. If the file (or its `runtime\`
+   directory) doesn't exist, create it with shape
+   `{"userConfig":{"<key>":{"value":"<v>"}}}`. Do NOT write
+   `settings.local.json` (a hand-edited dev override), and **never** use the
+   Edit tool to change a `value` field in `settings.json`.
    For **per-connection keys**, target the matching profile's
    `dev_defaults` block in `connections.json`. Preferred: shell out to
    `Set-SapCurrentDevDefault` via PowerShell rather than hand-editing

@@ -70,11 +70,26 @@ $script:SapConnStore_MutexTimeoutMs = 10000
 # --- Path resolution --------------------------------------------------------
 
 function Get-SapWorkDir {
-    # Resolve via the shared settings helper; default to C:\sap_dev_work
-    if (-not (Get-Command Get-SapSettingValue -ErrorAction SilentlyContinue)) {
+    # Resolution order: env var SAPDEV_AI_WORK_DIR -> settings.local.json ->
+    # settings.json -> default C:\sap_dev_work. The env var is the durable,
+    # update-proof root (the plugin cache is versioned per release; the env var
+    # is not), so it wins. Everything stable (connections.json, dev defaults,
+    # logs) lives under work_dir, so making this one value update-proof makes
+    # them all update-proof.
+    if (-not [string]::IsNullOrWhiteSpace($env:SAPDEV_AI_WORK_DIR)) {
+        return ($env:SAPDEV_AI_WORK_DIR.Trim()).TrimEnd('\')
+    }
+    if (-not (Get-Command Get-SapWorkDirBootstrap -ErrorAction SilentlyContinue)) {
         $libPath = Join-Path $PSScriptRoot 'sap_settings_lib.ps1'
         if (Test-Path $libPath) { . $libPath }
     }
+    # Delegate to the settings-lib bootstrap resolver (env -> settings.local ->
+    # settings -> default). It NEVER reads userconfig.json, so there is no
+    # circular dependency (userconfig.json lives under work_dir).
+    if (Get-Command Get-SapWorkDirBootstrap -ErrorAction SilentlyContinue) {
+        return Get-SapWorkDirBootstrap
+    }
+    # Fallback if the settings lib is unavailable.
     $wd = ''
     if (Get-Command Get-SapSettingValue -ErrorAction SilentlyContinue) {
         $wd = Get-SapSettingValue 'work_dir' ''

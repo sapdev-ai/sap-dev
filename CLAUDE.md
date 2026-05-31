@@ -148,22 +148,31 @@ reaching for `Bash` and `Read`.
 
 ### 7. ALWAYS Use the Settings Merge Helper
 
-User-configurable values for the sap-dev plugins live in two files —
-tracked schema `plugins/<plugin>/settings.json` (all values blank) and
-gitignored per-developer overrides `plugins/<plugin>/settings.local.json`.
-The full contract is in
+User-configurable values for the sap-dev plugins resolve across four tiers,
+**highest precedence first**: (0) env var `SAPDEV_AI_WORK_DIR` — bootstrap for
+`work_dir` only, durable across plugin updates; (1) `settings.local.json` —
+gitignored dev *checkout* override, live only when running from a repo checkout
+(`--plugin-dir`); (2) `{work_dir}\runtime\userconfig.json` — machine-global user
+overrides + the single skill WRITE target, outside the versioned cache so it
+survives updates; (3) `plugins/<plugin>/settings.json` — tracked schema
+(blank/default values). The full contract is in
 `plugins/sap-dev-core/shared/rules/settings_lookup.md`. Summary:
 
-- **Reads** merge `settings.local.json` over `settings.json` per-key on
-  the `.value` field. Never read `settings.json` directly when the value
-  matters. PowerShell: `Get-SapSettingValue` from `sap_settings_lib.ps1`.
-  VBScript: `GetSapSettingValue` from `sap_settings_lib.vbs`. Claude
-  Read-tool flow: read both files, prefer the local `.value` when non-empty.
-- **Writes** ALL go to `settings.local.json` — never `settings.json`.
-  PowerShell: `Set-SapUserSetting`. VBScript: `SetSapUserSetting`.
-  Claude Edit-tool flow: target the local file; create if missing.
-- **Onboarding**: `pwsh ./scripts/dev-setup.ps1`, or run `/sap-login`,
-  or hand-copy and edit. See `docs/settings-local-faq.md`.
+- **Reads** merge per-key on `.value`: env (work_dir only) > settings.local.json
+  > userconfig.json > settings.json. Never read `settings.json` directly when
+  the value matters. PowerShell: `Get-SapSettingValue` from `sap_settings_lib.ps1`.
+  Claude Read-tool flow: read the files in that order, first non-empty `.value`
+  wins.
+- **Writes** (non-per-connection) go to `userconfig.json` — never `settings.json`,
+  and not `settings.local.json` (hand-edited dev override). PowerShell:
+  `Set-SapUserSetting`. Claude Edit-tool flow: target `{work_dir}\runtime\userconfig.json`.
+- **PowerShell only** today: tiers 0/2 + the new write target are implemented in
+  `sap_settings_lib.ps1`. The VBS lib `sap_settings_lib.vbs` does not yet support
+  them and has a pre-existing leading-underscore compile bug (it has never
+  compiled under `ExecuteGlobal`); load-bearing reads are all PowerShell.
+- **Onboarding**: set `SAPDEV_AI_WORK_DIR` (durable root) then run `/sap-login`;
+  or `pwsh ./scripts/dev-setup.ps1`. See `docs/settings-local-faq.md` and
+  `contributing/local_development_and_testing.md`.
 
 ### 8. ALWAYS Write Test Reports to `sap-dev/temp/testReport/`
 
@@ -370,7 +379,8 @@ The `sap-dev-init` skill orchestrates:
 
 ### Work Directory Configuration
 
-All skills resolve a centralized work directory from sap-dev-core's `settings.json` `userConfig`:
+All skills resolve a centralized work directory via `Get-SapWorkDir`
+(`sap_connection_lib.ps1`):
 
 | Setting | Default | Purpose |
 |---|---|---|
@@ -379,6 +389,16 @@ All skills resolve a centralized work directory from sap-dev-core's `settings.js
 | `design_docs_url` | `{work_dir}\design_docs` | Design documentation directory |
 | `source_code_url` | `{work_dir}\source_code` | Source code repository directory |
 | `fm_cache_dir` | `{work_dir}\cache\fm_signatures` | FM signature cache (per-system; see "FM Signature Cache" below) |
+
+**`work_dir` resolution order:** env var `SAPDEV_AI_WORK_DIR` →
+`settings.local.json` → `settings.json` → default `C:\sap_dev_work`. The env
+var is the durable, update-proof root: the plugin cache is versioned per release
+(so a custom `work_dir` set only in `settings.local.json` is lost on update),
+but the env var is not. Set it once at the OS user level (then restart the
+terminal / host so child processes inherit it) and everything stable under
+`work_dir` — `connections.json`, dev defaults, logs, `userconfig.json` — keeps
+resolving across updates. `work_dir` is the bootstrap pointer and is therefore
+NOT read from `userconfig.json` (which lives under it).
 
 Temp files go to `{work_dir}\temp` (referenced as `{WORK_TEMP}` in SKILL.md files).
 

@@ -9,9 +9,11 @@ users and has no runtime callers — it lives in `contributing/` for the same
 reason as `parallel_safe_session_attach.md`.
 
 **Status**: the **Current behaviour** sections describe how the shipped code
-(v0.3.x) actually works and were verified on a live install. The **Proposed
-improvements** section at the end is design-only — none of it is implemented
-yet. Don't cite it as fact.
+works and were verified on a live install. The env var + `userconfig.json` tiers
+(see **Implemented**, near the end) landed in `sap_settings_lib.ps1` /
+`sap_connection_lib.ps1` and are verified — **PowerShell only**; the VBS twin has
+a separate pre-existing gap noted there. The **Still proposed** items are
+design-only — don't cite them as fact.
 
 ---
 
@@ -64,14 +66,18 @@ repo in-place with `--plugin-dir` (below).
 
 ## Current behaviour: where configuration actually lives
 
-Three distinct locations. Knowing which is which removes 90% of "why didn't my
-change take effect" confusion.
+Knowing which is which removes 90% of "why didn't my change take effect"
+confusion. Listed highest read-precedence first:
 
-| File | Location | Tracked? | Version-dependent? | Role |
+| Source | Location | Tracked? | Survives update? | Role |
 |---|---|---|---|---|
-| `settings.json` | `<plugin-root>/settings.json` (cache **or** repo) | yes | yes (in cache) | **Schema** — key names, descriptions, `sensitive` flags, default values. Read-only at runtime. |
-| `settings.local.json` | `<plugin-root>/settings.local.json` | **no** (gitignored) | **yes (in cache)** | Per-developer overrides. Resolved *relative to the running plugin root* by `sap_settings_lib.ps1` (`Resolve-SapSettingsPaths`). |
-| `connections.json` | `{work_dir}\runtime\connections.json` | no | **no** — outside the plugin tree | SAP connection profiles (DPAPI-encrypted passwords) + per-connection `dev_defaults` (TR / package / FG). Survives plugin updates. |
+| env var `SAPDEV_AI_WORK_DIR` | OS user environment | n/a | **yes** | Bootstrap for `work_dir` ONLY (highest precedence). |
+| `settings.local.json` | `<plugin-root>/settings.local.json` | **no** (gitignored) | **no (in cache)** | Dev *checkout* override; live only when running from a repo checkout (`--plugin-dir`). Hand-edited, never written by a skill. |
+| `userconfig.json` | `{work_dir}\runtime\userconfig.json` | no | **yes** — outside the plugin tree | Machine-global user overrides + the single skill WRITE target. The end-user config home. |
+| `connections.json` | `{work_dir}\runtime\connections.json` | no | **yes** — outside the plugin tree | SAP connection profiles (DPAPI passwords) + per-connection `dev_defaults` (TR / package / FG). |
+| `settings.json` | `<plugin-root>/settings.json` (cache **or** repo) | yes | no (in cache) | **Schema** — names, descriptions, `sensitive` flags, defaults. Read-only at runtime. |
+
+Per-key read precedence: **env (work_dir only) > settings.local.json > userconfig.json > settings.json**. (`connections.json` is a separate per-connection store for TR/package/FG/mode, not part of this merge.)
 
 Key consequences:
 
@@ -88,10 +94,12 @@ Key consequences:
   SAP testing works even though the cache has no `settings.local.json`, and why
   it survives plugin updates (as long as `work_dir` resolves to the same place).
 - **`work_dir` is the load-bearing value.** Everything stable lives under it.
-  Today `work_dir` is resolved by `Get-SapWorkDir` from settings (default
-  `C:\sap_dev_work`). If you set a custom `work_dir` *only* in a cache
-  `settings.local.json`, a plugin update silently reverts it to the default and
-  the new version looks for `connections.json` in the wrong place.
+  `work_dir` resolves env var `SAPDEV_AI_WORK_DIR` → settings.local.json →
+  settings.json → default `C:\sap_dev_work`. Set the **env var** once at the OS
+  user level (then restart the host so it's inherited) to make the root
+  update-proof; otherwise a custom `work_dir` set only in a cache
+  `settings.local.json` is silently lost on update and the new version looks for
+  `connections.json` / `userconfig.json` in the wrong place.
 
 Full read/write contract: `plugins/sap-dev-core/shared/rules/settings_lookup.md`
 and `docs/settings-local-faq.md`.
@@ -109,9 +117,9 @@ are:
 | **`--plugin-dir`** (your repo, see below) | your repo plugin root | the **repo's** `settings.local.json` (the checkout-local override) |
 
 So the repo's `settings.local.json` is **inert for installed runs** and only
-becomes live under `--plugin-dir`. Layer them like git config: env (future) >
-checkout-local (`settings.local.json`) > machine-global (`connections.json` /
-proposed `userconfig.json`) > schema defaults.
+becomes live under `--plugin-dir`. Layer them like git config (most-specific
+wins): env var (`work_dir` only) > checkout-local `settings.local.json` >
+machine-global `userconfig.json` > schema defaults (`settings.json`).
 
 > Tip: if the repo's `settings.local.json` overrides `work_dir` to a different
 > path than your installed runs use, your `--plugin-dir` session will look for
@@ -204,11 +212,11 @@ Consequences for a desktop-primary developer:
 
 ## Recommended launcher
 
-Add `scripts/dev.ps1` so the dev session is one command:
+Add `scripts/run-local.ps1` so the dev session is one command:
 
 ```powershell
-# scripts/dev.ps1 — run Claude with the local plugins live (in-place)
-# Usage:  pwsh ./scripts/dev.ps1
+# scripts/run-local.ps1 — run Claude with the local plugins live (in-place)
+# Usage:  pwsh ./scripts/run-local.ps1
 # Then, in-session: edit .ps1/.vbs -> just re-invoke; edit SKILL.md frontmatter -> /reload-plugins
 claude --plugin-dir "$PSScriptRoot\..\plugins\sap-dev-core" `
        --plugin-dir "$PSScriptRoot\..\plugins\sap-gen-code" @args
@@ -218,38 +226,50 @@ Run it from a terminal even if you normally use the desktop app — see above.
 
 ---
 
-## Proposed improvements (NOT yet implemented — design only)
+## Implemented (PowerShell, verified)
 
-These came out of the dev-experience discussion and are recorded here so they're
-not re-derived. **None are in the code yet.** Do not treat as current behaviour.
+1. **`SAPDEV_AI_WORK_DIR` env var** is the highest-priority source for `work_dir`
+   in `Get-SapWorkDir` (`sap_connection_lib.ps1`) and `Get-SapWorkDirBootstrap`
+   (`sap_settings_lib.ps1`). Set it once at the OS user level (then restart the
+   host so child processes inherit it) and the one load-bearing bootstrap value —
+   and therefore all stable state under `work_dir` — is immune to plugin updates.
+   (Naming note: other env vars use a bare `SAPDEV_` prefix —
+   `SAPDEV_SESSION_PATH`, `SAPDEV_RUN_ID`; this one adds an `_AI_` infix by choice
+   to match the product name.)
 
-1. **`SAPDEV_AI_WORK_DIR` env var** as the highest-priority source for
-   `work_dir` in `Get-SapWorkDir`. Set once at the OS user level (then restart
-   the host so child processes inherit it). Makes the one load-bearing bootstrap
-   value immune to plugin updates; all stable state under `work_dir` then
-   follows reliably. (Note: existing env vars use a bare `SAPDEV_` prefix —
-   `SAPDEV_SESSION_PATH`, `SAPDEV_RUN_ID`; `SAPDEV_AI_WORK_DIR` adds an `_AI_`
-   infix to match the product name. Document the chosen name once.)
+2. **`{work_dir}\runtime\userconfig.json`** — stable, outside-the-cache home for
+   all machine-global user overrides (`custom_url`, `log_*`, `fm_cache_*`,
+   `template_language`, …), sibling to `connections.json`, and the **single skill
+   write target** (`Set-SapUserSetting`). Read-merge precedence (git-style,
+   most-specific wins): env var (`work_dir` only) > `settings.local.json` (dev
+   checkout, on top) > `userconfig.json` (machine-global base) > `settings.json`
+   (schema). End users have no `settings.local.json`, so `userconfig.json` is
+   authoritative for them; a developer's checkout-local `settings.local.json`
+   overrides it only under `--plugin-dir`. `work_dir` is bootstrap-only and is
+   never read from `userconfig.json`.
 
-2. **`{work_dir}\runtime\userconfig.json`** — a stable, outside-the-cache home
-   for *all* end-user overrides (`custom_url`, `log_*`, `fm_cache_*`,
-   `template_language`, …), sibling to `connections.json`. Read order would
-   become: env var → `userconfig.json` → `settings.local.json` (dev/checkout
-   only) → `settings.json` defaults. With this, nothing an end user customises
-   lives in the versioned cache.
+> **VBS gap discovered while implementing this.** The VBS twin
+> `sap_settings_lib.vbs` does NOT yet support the env var / `userconfig.json`,
+> and — found via a live `ExecuteGlobal` compile test — it has **never
+> compiled**: its `_`-prefixed helper subs (`_SapSettings_Init`, …) are illegal
+> VBScript identifiers (VBScript names must begin with a letter). So VBS-side
+> `GetSapSettingValue` has effectively never run. This is latent because every
+> load-bearing settings read is PowerShell and the VBS logger uses its own
+> inline resolver. The fix = rename the `_`-prefixed helpers + port tiers 0/2;
+> tracked as a follow-up (do NOT bundle into a feature change).
 
-3. **Cross-version migration** — on first read where the current
-   `settings.local.json` is absent, copy forward the newest sibling-version
-   `settings.local.json` (one-shot, sentinel-guarded so a deliberate reset
-   isn't clobbered). A cheap bridge; becomes unnecessary once (2) lands.
+## Still proposed (not implemented)
 
-4. **Retire `settings.local.json` for end users.** Its only real job is
-   *developer git hygiene* (gitignored override in a checkout). End users have
-   no git, and writing mutable user state into a tool-managed versioned cache is
-   an anti-pattern. Keep it as a checkout-only dev override; move the end-user
-   override layer to (1) + (2).
+3. **Cross-version migration of `settings.local.json`** — largely obsolete now
+   that user config lives in `userconfig.json` (outside the cache, survives
+   updates). Only still relevant for carrying a developer's *checkout* override
+   between version folders, which `--plugin-dir` sidesteps anyway.
 
-Blast radius for all of the above is small: reads/writes funnel through
-`sap_settings_lib.ps1` / `.vbs` (the helper is the sole chokepoint), plus one
-hardcoded path in `sap_log_lib.vbs` and the `Get-SapWorkDir` resolver in
-`sap_connection_lib.ps1`.
+4. **Retire `settings.local.json` for end users** — effectively achieved by (2):
+   end-user writes go to `userconfig.json`; `settings.local.json` is now only the
+   dev checkout override (its original git-hygiene job).
+
+Blast radius was small as predicted: reads/writes funnel through
+`sap_settings_lib.ps1` (the sole chokepoint) plus `Get-SapWorkDir` in
+`sap_connection_lib.ps1`. The VBS helper and the inline resolver in
+`sap_log_lib.vbs` remain on the old two-file model pending the VBS fix above.
