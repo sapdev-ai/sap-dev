@@ -24,9 +24,15 @@ Task: $ARGUMENTS
 
 ## Step 0 — Resolve work directory
 
-Read sap-dev-core's `settings.json` (go 2 levels up from `<SKILL_DIR>` to the
-plugin root, then `settings.json`). Read `work_dir`. Default if blank:
-`C:\sap_dev_work`. Set `{WORK_TEMP}` = `{work_dir}\temp`.
+Resolve `work_dir` via the shared helper — **do NOT read `settings.json`
+directly** (that ignores the `SAPDEV_AI_WORK_DIR` env var and `userconfig.json`).
+The helper applies env var > `settings.local.json` > `userconfig.json` > default
+`C:\sap_dev_work`. Take `{work_dir}` from the `WORK_DIR=` stdout line, then set
+`{WORK_TEMP}` = `{work_dir}\temp`.
+
+```bash
+powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('WORK_DIR=' + (Get-SapWorkDir))"
+```
 
 ```powershell
 New-Item -Path '{WORK_TEMP}' -ItemType Directory -Force | Out-Null

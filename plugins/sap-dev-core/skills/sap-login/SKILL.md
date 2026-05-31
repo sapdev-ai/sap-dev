@@ -47,16 +47,20 @@ Task: $ARGUMENTS
 
 ## Step 0 — Resolve Work Directory
 
-Read sap-dev-core's settings.json (go 2 levels up from `<SKILL_DIR>` to the plugin root, then `settings.json`). Read `work_dir`, `custom_url`.
+Resolve `work_dir` and `custom_url` via the shared helper. **Do NOT read
+`settings.json` directly for `work_dir`** — that silently ignores the
+`SAPDEV_AI_WORK_DIR` env var and `userconfig.json`. The helper applies the full
+precedence (env var > `settings.local.json` > `userconfig.json` > schema default
+`C:\sap_dev_work`):
 
-| Setting | Default if blank |
-|---|---|
-| `work_dir` | `C:\sap_dev_work` |
-| `custom_url` | `{work_dir}\custom` |
+```bash
+powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('WORK_DIR=' + (Get-SapWorkDir)); Write-Output ('CUSTOM_URL=' + (Get-SapSettingValue 'custom_url' ((Get-SapWorkDir) + '\custom')))"
+```
 
-Set `{WORK_TEMP}` = `{work_dir}\temp`
+Take `{work_dir}` from the `WORK_DIR=` line and `{custom_url}` from the
+`CUSTOM_URL=` line of stdout. Then set `{WORK_TEMP}` = `{work_dir}\temp` and
+ensure it exists:
 
-Ensure the temp directory exists:
 ```bash
 cmd /c if not exist "{WORK_TEMP}" mkdir "{WORK_TEMP}"
 ```

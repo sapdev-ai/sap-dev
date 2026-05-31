@@ -58,6 +58,14 @@ Task: $ARGUMENTS
 
 ## Step 0 — Resolve work directory
 
+**Resolve `work_dir` via the env-aware helper** — do NOT take `work_dir` from a direct `settings.json` read (that ignores the `SAPDEV_AI_WORK_DIR` env var and `userconfig.json`). Use the `WORK_DIR=` value printed by:
+
+```bash
+powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('WORK_DIR=' + (Get-SapWorkDir))"
+```
+
+The note below still applies to any OTHER keys.
+
 Read sap-dev-core `settings.json` (+ `settings.local.json`, merged per
 `shared/rules/settings_lookup.md`) 2 levels up from `<SKILL_DIR>`. Read `work_dir`
 (default `C:\sap_dev_work`). Set `{WORK_TEMP}` = `{work_dir}\temp`.

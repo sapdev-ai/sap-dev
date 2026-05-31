@@ -402,7 +402,17 @@ NOT read from `userconfig.json` (which lives under it).
 
 Temp files go to `{work_dir}\temp` (referenced as `{WORK_TEMP}` in SKILL.md files).
 
-Every skill includes a **Step 0 — Resolve Work Directory** that reads these settings and creates `{WORK_TEMP}` if needed.
+Every skill includes a **Step 0 — Resolve Work Directory**. It MUST resolve
+`work_dir` via `Get-SapWorkDir` (which applies the env-var → settings.local →
+settings → default precedence) — **NOT** by reading `settings.json` directly,
+which silently ignores `SAPDEV_AI_WORK_DIR` and `userconfig.json`. Canonical
+one-liner (parse the `WORK_DIR=` line from stdout):
+
+```bash
+powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('WORK_DIR=' + (Get-SapWorkDir)); Write-Output ('CUSTOM_URL=' + (Get-SapSettingValue 'custom_url' ((Get-SapWorkDir) + '\custom')))"
+```
+
+Then create `{WORK_TEMP}` = `{work_dir}\temp` if needed.
 
 **Custom naming rules override:** Skills that use `abap_naming_rules.tsv` check `{custom_url}\abap_naming_rules.tsv` first. If found, the custom file is used instead of the default in `sap-dev-core/shared/tables/`.
 

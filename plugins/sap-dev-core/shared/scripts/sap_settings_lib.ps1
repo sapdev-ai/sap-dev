@@ -66,7 +66,10 @@ function Get-SapWorkDirBootstrap {
 function Get-SapUserConfigPath {
     # Machine-global override file, OUTSIDE the versioned plugin cache so it
     # survives plugin updates: {work_dir}\runtime\userconfig.json.
-    return (Join-Path (Join-Path (Get-SapWorkDirBootstrap) 'runtime') 'userconfig.json')
+    # Use [IO.Path]::Combine, NOT Join-Path: Join-Path throws DriveNotFound when
+    # work_dir points at a drive that doesn't exist yet, which (since this is on
+    # the read path via Get-SapSettings) would break every settings read.
+    return [System.IO.Path]::Combine((Get-SapWorkDirBootstrap), 'runtime', 'userconfig.json')
 }
 
 function Reset-SapSettingsCache {
