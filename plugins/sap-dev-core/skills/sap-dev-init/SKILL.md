@@ -174,6 +174,8 @@ settings (may be blank — Steps 2-5 will create them as needed):
 
 This step makes SAP GUI itself remember "Allow" for `{work_dir}\**` and `{WORK_TEMP}\**` so the dialog never appears again. It works by triggering the dialog once via a benign `Hardcopy` write under `{work_dir}`, then auto-clicking Allow with the **Remember My Decision** checkbox ticked. SAP GUI persists the decision in its own (version-specific) config — no fragile registry editing on our side.
 
+**Writes vs. reads — the Hardcopy warmup is not enough on its own.** `Hardcopy` exercises only a *write*, so SAP persists a `w` rule. Reads (`GUI_UPLOAD`, file-open dialog) are governed by separate `r` rules — and SAP keys every "Remember" rule on the **current dynpro**, which for a report run is the *program name* (e.g. `ZMMRMAT040R01` / screen `1000`). So each newly generated program is a brand-new context that trips a fresh read dialog a per-program rule can never pre-cover; the same is true for programs that call `GUI_DOWNLOAD` directly (outside the stable ALV `SAPLKKBL` dynpro). Driving the dialog cannot fix this — "Remember" only ever produces narrow per-context rules. So this step *also* writes one **broad** Allow rule (read+write, any system/client/transaction/program) for `{work_dir}` directly into `saprules.xml` via `sap_gui_security_grant.ps1`, in SAP's own native serialization. `{work_dir}` is the operator's own dev sandbox, so it is deliberately trusted workstation-wide; SAP GUI still prompts for any path *outside* `{work_dir}`. (Callers that need least privilege can pin `-System`/`-Client` — see the grant sub-step.)
+
 ### Skip when
 
 - `sap_dev_mode = RFC` (no GUI session, no dialog).
@@ -214,7 +216,8 @@ Two shared files are involved:
 | File | Role |
 |---|---|
 | `<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_gui_security_sidecar.ps1` | OS-level UIA + SendKeys auto-dismiss. Runs in background. |
-| `<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_gui_security_warmup.vbs` | Foreground warmup — triggers the dialog via Hardcopy. |
+| `<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_gui_security_warmup.vbs` | Foreground warmup — triggers the **write** dialog via Hardcopy. |
+| `<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_gui_security_grant.ps1` | Idempotently writes the broad **read+write** Allow rule (covers `GUI_UPLOAD` / `GUI_DOWNLOAD` from arbitrary programs). See the "Cover read access" sub-section below. |
 
 Generate the filled-in warmup VBS:
 
@@ -265,6 +268,25 @@ $sidecarResult = (Get-Content $sidecarOut -Tail 1)
 Write-Output "WARMUP=$warmupResult"
 Write-Output "SIDECAR=$sidecarResult"
 ```
+
+### Cover read access (broad grant)
+
+The Hardcopy warmup above only persists a **write** rule. To also cover **reads** (`GUI_UPLOAD` / file-open) — and writes from programs that bypass the stable ALV `SAPLKKBL` dynpro — write one broad read+write Allow rule for `{work_dir}`, leaving **system / client / transaction / program all "any"** (required for transaction/program, since each generated program is a new context; any-system because `{work_dir}` is the operator's own dev sandbox, trusted workstation-wide). This edits `saprules.xml` directly because the dialog's "Remember" can only ever make narrow per-program rules.
+
+```powershell
+$rules = Join-Path $env:APPDATA 'SAP\Common\saprules.xml'
+if (Test-Path $rules) { Copy-Item $rules "$rules.bak" -Force }   # backup before edit
+# Idempotent: ALREADY on re-run. All context fields empty = any system/client/txn/program.
+$grant = & '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_gui_security_grant.ps1' `
+    -Path "{work_dir}\" -Access rw -AsDirectory
+Write-Output "GRANT=$grant"
+```
+
+Expected: `GRANT=GRANTED: id=<n> directories=… perms=rw …` (first run) or `GRANT=ALREADY: …` (subsequent). On `GRANT=ERROR:`, do **not** fail the step — reads fall back to the runtime sidecar; surface the line and continue.
+
+> **First-run authorization.** This writes a deliberate any-system trust for the operator's own work dir, which the Claude auto-mode security classifier guards. If it's blocked on the first `/sap-dev-init`, that's expected — approve it (or run the one-liner above manually). It is idempotent (`ALREADY`) thereafter, so the classifier only matters once per workstation. Scope it down to a specific `-System`/`-Client` (least privilege) only if your operator policy requires it.
+
+> **Reload caveat.** A SAP Logon already running when this rule is written may have cached the rule store at startup; the new rule is guaranteed for SAP Logon processes started *after* the edit. If reads still prompt in the current session, close and reopen SAP Logon. (This is the same cache behaviour the pre-flight warns about for the Hardcopy trust.)
 
 ### Verify trust persisted
 
