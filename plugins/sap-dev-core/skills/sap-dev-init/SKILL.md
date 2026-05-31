@@ -33,13 +33,19 @@ Task: $ARGUMENTS
 
 ## Step 0 — Resolve Work Directory and Mode
 
-**Resolve `work_dir` via the env-aware helper** — do NOT take `work_dir` from a direct `settings.json` read (that ignores the `SAPDEV_AI_WORK_DIR` env var and `userconfig.json`). Use the `WORK_DIR=` value printed by:
+**Resolve `{work_dir}` per `<SAP_DEV_CORE_SHARED_DIR>\rules\work_dir_onboarding.md`**
+— `/sap-dev-init` is an onboarding entry point (probe → use the env value / soft
+tip / first-run prompt + set / migrate-on-change). **Never read `settings.json`
+directly for `work_dir`** (that ignores `SAPDEV_AI_WORK_DIR` + `userconfig.json`).
+Probe:
 
 ```bash
-powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('WORK_DIR=' + (Get-SapWorkDir))"
+powershell -NoProfile -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_workdir_setup.ps1" -Action probe
 ```
 
-The settings note below still applies to the OTHER keys.
+Once `{work_dir}` is known, apply the current-session env bridge (doc Step E):
+prefix subsequent PowerShell commands with `$env:SAPDEV_AI_WORK_DIR='{work_dir}';`.
+The settings note below covers the OTHER keys.
 
 **Settings reads/writes follow `shared/rules/settings_lookup.md`** — merge per-key on the `.value` field (env var → `settings.local.json` → `userconfig.json` → `settings.json`); non-per-connection writes go to `userconfig.json`. Resolve sap-dev-core paths: 2 levels up from `<SKILL_DIR>` to the plugin root, then `settings.json` and (if present) `settings.local.json`. Read `custom_url`, `sap_dev_mode`.
 

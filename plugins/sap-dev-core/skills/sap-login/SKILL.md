@@ -45,21 +45,28 @@ Task: $ARGUMENTS
 
 ---
 
-## Step 0 — Resolve Work Directory
+## Step 0 — Resolve Work Directory (with first-run onboarding)
 
-Resolve `work_dir` and `custom_url` via the shared helper. **Do NOT read
-`settings.json` directly for `work_dir`** — that silently ignores the
-`SAPDEV_AI_WORK_DIR` env var and `userconfig.json`. The helper applies the full
-precedence (env var > `settings.local.json` > `userconfig.json` > schema default
-`C:\sap_dev_work`):
+`/sap-login` is an onboarding entry point — resolve `{work_dir}` per
+**`<SAP_DEV_CORE_SHARED_DIR>\rules\work_dir_onboarding.md`** (probe → use the env
+value / soft tip / first-run prompt + set / migrate-on-change). **Never read
+`settings.json` directly for `work_dir`** — that ignores `SAPDEV_AI_WORK_DIR` +
+`userconfig.json`. Probe:
 
 ```bash
-powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('WORK_DIR=' + (Get-SapWorkDir)); Write-Output ('CUSTOM_URL=' + (Get-SapSettingValue 'custom_url' ((Get-SapWorkDir) + '\custom')))"
+powershell -NoProfile -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_workdir_setup.ps1" -Action probe
 ```
 
-Take `{work_dir}` from the `WORK_DIR=` line and `{custom_url}` from the
-`CUSTOM_URL=` line of stdout. Then set `{WORK_TEMP}` = `{work_dir}\temp` and
-ensure it exists:
+Follow that doc to fix `{work_dir}` (set the env var / migrate when needed). Once
+`{work_dir}` is known, apply the **current-session env bridge** (doc Step E):
+prefix this run's PowerShell commands with `$env:SAPDEV_AI_WORK_DIR='{work_dir}';`.
+Resolve `{custom_url}` (bridge applied):
+
+```bash
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$env:SAPDEV_AI_WORK_DIR='{work_dir}'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1'; Write-Output ('CUSTOM_URL=' + (Get-SapSettingValue 'custom_url' ((Get-SapWorkDir) + '\custom')))"
+```
+
+Then set `{WORK_TEMP}` = `{work_dir}\temp` and ensure it exists:
 
 ```bash
 cmd /c if not exist "{WORK_TEMP}" mkdir "{WORK_TEMP}"

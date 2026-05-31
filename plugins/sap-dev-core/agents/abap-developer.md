@@ -64,11 +64,18 @@ because agents live one level shallower than skills.
 
 Resolve `work_dir` via the env-aware helper — do NOT read `work_dir` directly
 from `settings.json` (that ignores the `SAPDEV_AI_WORK_DIR` env var and
-`userconfig.json`). Use the `WORK_DIR=` value printed by:
+`userconfig.json`). Probe:
 
 ```bash
-powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('WORK_DIR=' + (Get-SapWorkDir))"
+powershell -NoProfile -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_workdir_setup.ps1" -Action probe
 ```
+
+Take `{work_dir}` from the `WORK_DIR=` line. **This agent does not prompt for or
+set `work_dir`** — onboarding lives in `/sap-login` and `/sap-dev-init` (see
+`<SAP_DEV_CORE_SHARED_DIR>\rules\work_dir_onboarding.md`). But if the probe shows
+`ENV_SET=False` **and** `STORE_EXISTS=False` (the SAP dev environment was never
+initialized), tell the user to run `/sap-dev-init` (or `/sap-login`) first to
+choose and persist `work_dir`, then continue with the default for this run.
 
 Then read the other keys per `shared/rules/settings_lookup.md` (merge env var →
 `settings.local.json` → `userconfig.json` → `settings.json`; non-per-connection
