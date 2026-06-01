@@ -44,7 +44,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\s
 ```
 
 Once `{work_dir}` is known, apply the current-session env bridge (doc Step E):
-prefix subsequent PowerShell commands with `$env:SAPDEV_AI_WORK_DIR='{work_dir}';`.
+prefix subsequent PowerShell commands with `$env:SAPDEV_AI_WORK_DIR='{work_dir}';`
+(escape the `$` as `\$` when the command runs through bash; see `work_dir_onboarding.md` Step E).
 The settings note below covers the OTHER keys.
 
 **Settings reads/writes follow `shared/rules/settings_lookup.md`** — merge per-key on the `.value` field (env var → `settings.local.json` → `userconfig.json` → `settings.json`); non-per-connection writes go to `userconfig.json`. Resolve sap-dev-core paths: 2 levels up from `<SKILL_DIR>` to the plugin root, then `settings.json` and (if present) `settings.local.json`. Read `custom_url`, `sap_dev_mode`.

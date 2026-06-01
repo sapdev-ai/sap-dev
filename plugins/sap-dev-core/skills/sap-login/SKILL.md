@@ -59,11 +59,12 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\s
 
 Follow that doc to fix `{work_dir}` (set the env var / migrate when needed). Once
 `{work_dir}` is known, apply the **current-session env bridge** (doc Step E):
-prefix this run's PowerShell commands with `$env:SAPDEV_AI_WORK_DIR='{work_dir}';`.
+prefix this run's PowerShell commands with `$env:SAPDEV_AI_WORK_DIR='{work_dir}';`
+(escape the `$` as `\$` when the command runs through bash — see the example below).
 Resolve `{custom_url}` (bridge applied):
 
 ```bash
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$env:SAPDEV_AI_WORK_DIR='{work_dir}'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1'; Write-Output ('CUSTOM_URL=' + (Get-SapSettingValue 'custom_url' ((Get-SapWorkDir) + '\custom')))"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "\$env:SAPDEV_AI_WORK_DIR='{work_dir}'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('CUSTOM_URL=' + (Get-SapSettingValue 'custom_url' ((Get-SapWorkDir) + '\custom')))"
 ```
 
 Then set `{WORK_TEMP}` = `{work_dir}\temp` and ensure it exists:

@@ -77,8 +77,11 @@ dot-sourcing, so internal `Get-SapWorkDir` calls (e.g. the connection-store
 path) agree with `{work_dir}`:
 
 ```bash
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$env:SAPDEV_AI_WORK_DIR='{work_dir}'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; <your command>"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "\$env:SAPDEV_AI_WORK_DIR='{work_dir}'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; <your command>"
 ```
 
-This is harmless when `ENV_SET=True` already (it re-asserts the same value) and
-load-bearing on a fresh first-run set.
+The leading `\$` escapes the dollar so **bash** passes a literal `$env:` to
+PowerShell (these fences run through the Bash tool, which would otherwise expand
+`$env` to nothing and leave a stray `:`); drop the backslash only if you run the
+line via the PowerShell tool directly. This bridge is harmless when `ENV_SET=True`
+already (it re-asserts the same value) and load-bearing on a fresh first-run set.
