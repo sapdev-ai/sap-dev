@@ -61,8 +61,8 @@ function CW($rows,[scriptblock]$pred){ return @(@($rows) | Where-Object $pred).C
 
 function Get-Ledger([string]$dir){
     $p = Join-Path $dir 'state.tsv'
-    if(-not (Test-Path -LiteralPath $p)){ return @() }
-    try { return @(Import-Csv -LiteralPath $p -Delimiter "`t") } catch { return @() }
+    if(-not (Test-Path -LiteralPath $p)){ return ,@() }
+    try { $r = @(Import-Csv -LiteralPath $p -Delimiter "`t"); return ,$r } catch { return ,@() }
 }
 
 # Campaign-level phase = the phase of the least-advanced REMEDIATE-track object.
