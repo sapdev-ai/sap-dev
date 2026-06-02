@@ -11,13 +11,17 @@ description: |
   No SAP GUI, no writes, no transport request: pure read-only analysis. This is
   the first SAP-touching step of the sap-migrate pipeline; run it after
   `/sap-cc-campaign init` and before `/sap-cc-usage`.
+  When RFC to the source is blocked, a GUI fallback (`--source-mode GUI`)
+  ingests `/sap-se16n` exports of TADIR (+ optional TRDIR) instead -- identical
+  output, no NCo.
   Scope defaults to the campaign brief's `in_scope_packages` (object-name
   prefixes such as `Z*`, `Y*`, `/MYCO/`); override with `--namespace`,
   `--packages` (DEVCLASS patterns), `--types`, and `--exclude`.
-  Prerequisites: SAP NCo 3.1 (32-bit, .NET 4.0) in GAC; a saved source
-  connection profile (the campaign's `source_profile`) or a pinned `/sap-login`
-  connection.
-argument-hint: "--campaign <id> [--source <profile>] [--namespace Z,Y] [--packages <pat,...>] [--types PROG,CLAS,...] [--exclude <pat,...>]"
+  Prerequisites (RFC mode): SAP NCo 3.1 (32-bit, .NET 4.0) in GAC; a saved
+  source connection profile (the campaign's `source_profile`) or a pinned
+  `/sap-login` connection. GUI mode needs no NCo -- only a SAP GUI session for
+  the `/sap-se16n` export step.
+argument-hint: "--campaign <id> [--source <profile>] [--source-mode RFC|GUI] [--tadir-file <path>] [--trdir-file <path>] [--namespace Z,Y] [--packages <pat,...>] [--types PROG,CLAS,...] [--exclude <pat,...>]"
 ---
 
 # SAP Custom-Code Migration — Inventory
@@ -42,7 +46,8 @@ Task: $ARGUMENTS
 | `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_rfc_lib.ps1` | *(dot-source)* | NCo 3.1 connect + `New-RfcReadTable` / `Add-RfcField` / `Add-RfcOption`. |
 | `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_dpapi.ps1` | *(invoke)* | Decrypt the source profile's stored password. Invoked as a subprocess — never dot-sourced (it has a `$Action` param that would clobber the caller's). |
 | `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_log_helper.ps1` | *(invoke)* | Start/step/end JSONL logging. |
-| `<SKILL_DIR>/references/sap_cc_inventory.ps1` | *(invoke)* | The RFC enumerator. Resolves the source profile, reads TADIR/TRDIR, writes `inventory.tsv`, upserts `state.tsv`. Emits parseable `INVENTORY:` / `TYPE:` / `STATUS:` lines. |
+| `<SKILL_DIR>/references/sap_cc_inventory.ps1` | *(invoke)* | The enumerator. **RFC mode** resolves the source profile and reads TADIR/TRDIR; **GUI mode** (`-SourceMode GUI`) ingests `/sap-se16n` TADIR (+ TRDIR) exports instead. Both write `inventory.tsv`, upsert `state.tsv`, and emit `INVENTORY:` / `TYPE:` / `STATUS:` lines. |
+| `/sap-se16n` | *(skill, GUI fallback)* | Drives SE16N to export TADIR/TRDIR as TSV when RFC is unavailable; the GUI-mode helper ingests those exports. |
 
 The campaign workspace contract (`inventory.tsv` + `state.tsv` columns, the
 INVENTORIED state, the upsert rule) is defined by `/sap-cc-campaign`.
@@ -120,6 +125,41 @@ releases. `REPOSRC` is never touched (cluster table — `sap_rfc_lib` forbids it
 
 ---
 
+## Step 2 (GUI fallback) — `--source-mode GUI` (no RFC)
+
+When RFC to the source is blocked but you can reach it via **SAP GUI**, export
+TADIR (and optionally TRDIR) with `/sap-se16n`, then ingest. No NCo; the ingest
+runs in any PowerShell.
+
+1. **Export TADIR** — the in-scope custom objects. Filter `PGMID = R3TR` plus
+   your scope (`DEVCLASS` for a package, or `OBJ_NAME` CP `Z*` for a namespace),
+   selecting at least `OBJECT`, `OBJ_NAME`, `DEVCLASS`, `AUTHOR` (+ `PGMID`):
+
+   ```
+   /sap-se16n TADIR PGMID=R3TR DEVCLASS=ZHK* select=PGMID,OBJECT,OBJ_NAME,DEVCLASS,AUTHOR
+   ```
+
+2. **(Optional) Export TRDIR** for program `sub_type` enrichment:
+
+   ```
+   /sap-se16n TRDIR NAME=Z* select=NAME,SUBC
+   ```
+
+3. **Ingest the exports** (plain `powershell` — no 32-bit / NCo needed):
+
+   ```bash
+   powershell -ExecutionPolicy Bypass -File "<SKILL_DIR>\references\sap_cc_inventory.ps1" -CampaignDir "{CAMPAIGN_DIR}" -SourceMode GUI -TadirFile "{WORK_TEMP}\se16n_TADIR.txt" -TrdirFile "{WORK_TEMP}\se16n_TRDIR.txt" -Packages "ZHK*"
+   ```
+
+   Pass the same `-Packages` / `-Namespace` / `-Types` / `-Exclude` flags as RFC
+   mode — GUI mode re-applies them (and drops any non-`R3TR` rows), so a slightly
+   broad export still yields the correct in-scope inventory. The parser maps
+   columns by **technical field name** (`OBJ_NAME`, `OBJECT`, `DEVCLASS`,
+   `AUTHOR`, `PGMID`), so the export's column order does not matter. Output
+   grammar, files, and exit codes are identical to RFC mode (Step 3 / Step 4).
+
+---
+
 ## Step 3 — Interpret the Output
 
 The helper prints:
@@ -172,6 +212,12 @@ powershell -ExecutionPolicy Bypass -File "<SKILL_DIR>\..\sap-cc-campaign\referen
   of thousands). Very large estates may want package-batched runs.
 - **Package-scope sub_type.** When scoping by `--packages` (DEVCLASS) rather than
   name prefix, `sub_type` is left blank (no cheap TRDIR prefix to join on).
+- **GUI fallback (`--source-mode GUI`).** For RFC-blocked sites, ingests
+  `/sap-se16n` TADIR (+ TRDIR) exports instead of reading over RFC. Re-applies
+  the scope / type / exclude filters and the `PGMID=R3TR` guard in-helper, and
+  maps columns by technical field name (export column order irrelevant). Needs
+  the export to carry SE16N's technical-name header (the default). `sub_type`
+  is enriched only when a TRDIR export is supplied via `-TrdirFile`.
 
 ---
 
