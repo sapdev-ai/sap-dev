@@ -1,0 +1,27 @@
+{
+  "name": "sap-migrate",
+  "version": "0.3.4",
+  "description": "S/4HANA custom-code migration engine: run a brownfield conversion as a tracked campaign — inventory custom (Z/Y) objects, flag unused code for decommission, run the S/4HANA-readiness ATC, triage findings, and remediate mechanical changes at scale on a sandbox. Companion to sap-dev-core (install that first).",
+  "author": {
+    "name": "KexiHe",
+    "email": "hello@sapdev.ai",
+    "url": "https://sapdev.ai"
+  },
+  "license": "GPL-3.0",
+  "keywords": [
+    "sap",
+    "abap",
+    "s4hana",
+    "migration",
+    "custom-code",
+    "brownfield",
+    "conversion",
+    "atc",
+    "decommission",
+    "remediation",
+    "ccm"
+  ],
+  "agents": [
+    "./agents/cc-migration-engineer.md"
+  ]
+}

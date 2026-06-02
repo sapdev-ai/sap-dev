@@ -1,0 +1,6 @@
+map_id	pattern_id	old_field	new_source	new_kind	derivation	notes
+fm001	MATDOC_STOCK	MARD-LABST	NSDM_V_MARD-LABST	COMPAT_VIEW		Unrestricted-use stock
+fm002	MATDOC_STOCK	MARD-INSME	NSDM_V_MARD-INSME	COMPAT_VIEW		Stock in quality inspection
+fm003	MATDOC_STOCK	MARD-SPEME	NSDM_V_MARD-SPEME	COMPAT_VIEW		Blocked stock
+fm004	MATDOC_STOCK	MARD-RETME	NSDM_V_MARD-RETME	COMPAT_VIEW		Blocked stock returns
+fm005	MATDOC_STOCK	MARD-UMLME	NSDM_V_MARD-UMLME	COMPAT_VIEW		Stock in transfer (stor loc to stor loc)

@@ -11,8 +11,8 @@
   "metadata": {
     "version": "0.3.4",
     "last_updated": "2026-06-01",
-    "total_plugins": 3,
-    "total_skills": 49,
+    "total_plugins": 4,
+    "total_skills": 56,
     "categories": [
       "tooling"
     ]
@@ -166,6 +166,40 @@
         "transaction",
         "va01",
         "vbscript"
+      ],
+      "license": "GPL-3.0"
+    },
+    {
+      "name": "sap-migrate",
+      "description": "S/4HANA custom-code migration engine. Runs a brownfield custom-code conversion as a tracked campaign: /sap-cc-campaign owns the campaign workspace, state ledger, dashboard, and next-step orchestration; downstream skills inventory custom (Z/Y) objects, flag unused code for decommission from usage data, run the S/4HANA-readiness ATC, triage findings into remediation tiers, and auto-remediate mechanical changes on a sandbox. Companion to sap-dev-core (install that first). Keywords: S/4HANA migration, custom code migration, brownfield conversion, ATC S4HANA_READINESS, simplification database, decommission, SPDD, SPAU, remediation campaign",
+      "source": "./plugins/sap-migrate/",
+      "skills": [
+        "./skills/sap-cc-campaign",
+        "./skills/sap-cc-inventory",
+        "./skills/sap-cc-usage",
+        "./skills/sap-cc-analyze",
+        "./skills/sap-cc-triage",
+        "./skills/sap-cc-remediate",
+        "./skills/sap-cc-learn"
+      ],
+      "agents": [
+        "./agents/cc-migration-engineer.md"
+      ],
+      "version": "0.3.4",
+      "category": "tooling",
+      "keywords": [
+        "abap",
+        "atc",
+        "brownfield",
+        "ccm",
+        "conversion",
+        "custom-code",
+        "decommission",
+        "migration",
+        "remediation",
+        "s4hana",
+        "sap",
+        "scope"
       ],
       "license": "GPL-3.0"
     }

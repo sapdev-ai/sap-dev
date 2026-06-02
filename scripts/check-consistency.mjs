@@ -300,13 +300,88 @@ for (const plugin of mp.plugins) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Non-ASCII source guard (added 2026-06-02).
+//
+// Windows PowerShell 5.1 — the runtime these skills invoke via
+// C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe — and 32-bit
+// cscript both read a BOM-less .ps1 / .vbs as the host ANSI codepage, NOT as
+// UTF-8. A non-ASCII character in a string literal then mojibakes at runtime:
+// this was hit for real when an em-dash (U+2014) in a literal in
+// sap-migrate/.../sap_cc_usage.ps1 rendered as `窶・` in a generated scope.tsv.
+// The project's discipline is ASCII source (e.g. sap_syntax_check_lib.vbs uses
+// ChrW() to keep the runtime strings ASCII); a leading UTF-8 BOM (EF BB BF) is
+// the explicit opt-in for the few files that genuinely need non-ASCII bytes.
+//
+// Scope: every shipped .ps1 / .vbs under each plugin's
+// skills/<skill>/references/ plus sap-dev-core's shared/scripts/.
+//
+// Reported as an INFORMATIONAL warning, NOT a hard failure: the current tree
+// carries pre-existing non-ASCII (em-dashes in comment headers and in
+// WScript.Echo / Write-Host diagnostic strings, plus a handful of localized
+// CJK comparison literals) that predate this guard. Surfacing offenders as
+// warnings flags new regressions to contributors without breaking the build
+// or forcing a tree-wide rewrite. Bytes are read raw (Buffer) so the BOM
+// detection and the > 0x7F scan are not perturbed by any decoding assumption.
+// ---------------------------------------------------------------------------
+
+function listShippedScripts(sourceAbs) {
+  const out = [];
+  const pushDir = (dir, relPrefix) => {
+    if (!existsSync(dir) || !statSync(dir).isDirectory()) return;
+    for (const fname of readdirSync(dir)) {
+      if (!/\.(ps1|vbs)$/i.test(fname)) continue;
+      out.push({ rel: `${relPrefix}/${fname}`, abs: join(dir, fname) });
+    }
+  };
+  // skills/<skill>/references/*.{ps1,vbs}
+  const skillsDir = join(sourceAbs, 'skills');
+  if (existsSync(skillsDir) && statSync(skillsDir).isDirectory()) {
+    for (const skillEntry of readdirSync(skillsDir)) {
+      if (!statSync(join(skillsDir, skillEntry)).isDirectory()) continue;
+      pushDir(join(skillsDir, skillEntry, 'references'), `skills/${skillEntry}/references`);
+    }
+  }
+  // shared/scripts/*.{ps1,vbs} (present for sap-dev-core; guarded for the rest)
+  pushDir(join(sourceAbs, 'shared', 'scripts'), 'shared/scripts');
+  return out;
+}
+
+const encodingWarnings = [];
+
+for (const plugin of mp.plugins) {
+  const sourceRel = plugin.source.replace(/^\.\//, '').replace(/\/$/, '');
+  const sourceAbs = join(repoRoot, sourceRel);
+  for (const { rel, abs } of listShippedScripts(sourceAbs)) {
+    const buf = readFileSync(abs); // raw bytes — no text decoding
+    // A leading UTF-8 BOM (EF BB BF) is the explicit opt-in for non-ASCII bytes.
+    if (buf.length >= 3 && buf[0] === 0xEF && buf[1] === 0xBB && buf[2] === 0xBF) continue;
+    // Flag the first byte > 0x7F, with its 1-based line and decoded code point.
+    let line = 1;
+    for (let i = 0; i < buf.length; i++) {
+      const b = buf[i];
+      if (b === 0x0A) { line++; continue; }
+      if (b > 0x7F) {
+        const cp = buf.toString('utf8', i).codePointAt(0);
+        const cpHex = 'U+' + cp.toString(16).toUpperCase().padStart(4, '0');
+        encodingWarnings.push(`${plugin.name}: ${rel} has a non-ASCII byte at line ${line} (${cpHex}) without a UTF-8 BOM; Windows PowerShell 5.1 / cscript read BOM-less .ps1/.vbs as the ANSI codepage and will mojibake it at runtime — re-save as ASCII (e.g. '--' for an em-dash, ChrW() for runtime non-ASCII strings) or prepend a UTF-8 BOM if the non-ASCII is intentional`);
+        break;
+      }
+    }
+  }
+}
+
 if (errors.length === 0) {
   let summary = `OK: ${mp.plugins.length} plugins, ${totalSkills} skills, all manifests aligned at version ${mp.version}, Tier 3 attach contract clean`;
   if (phase4Warnings.length > 0) {
     summary += `, ${phase4Warnings.length} Phase-4 warning(s)`;
   }
+  if (encodingWarnings.length > 0) {
+    summary += `, ${encodingWarnings.length} non-ASCII warning(s)`;
+  }
   console.log(summary);
   for (const w of phase4Warnings) console.warn('  WARN: ' + w);
+  for (const w of encodingWarnings) console.warn('  WARN: ' + w);
   process.exit(0);
 } else {
   console.error(`FAIL: ${errors.length} consistency issue(s):`);
@@ -314,6 +389,10 @@ if (errors.length === 0) {
   if (phase4Warnings.length > 0) {
     console.error(`\nPhase-4 warnings (informational):`);
     for (const w of phase4Warnings) console.error('  WARN: ' + w);
+  }
+  if (encodingWarnings.length > 0) {
+    console.error(`\nNon-ASCII source warnings (informational):`);
+    for (const w of encodingWarnings) console.error('  WARN: ' + w);
   }
   process.exit(1);
 }

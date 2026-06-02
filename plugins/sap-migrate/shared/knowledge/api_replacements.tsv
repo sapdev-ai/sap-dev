@@ -1,0 +1,5 @@
+api_id	pattern_id	old_api	old_api_kind	new_api	new_api_kind	released	call_pattern_ref	notes
+ar001	BP_CVI	SD_CUSTOMER_MAINTAIN_ALL	FM	CVI_EI_INBOUND_MAIN	FM	Y	recipes/BP_CVI.md	Mass BP create/update via CVI Enterprise Integration; verify availability and role config
+ar002	BP_CVI	BAPI_CUSTOMER_CREATEFROMDATA1	BAPI	BAPI_BUPA_CREATE_FROM_DATA	BAPI	Y	recipes/BP_CVI.md	Single BP create; assign customer role afterwards
+ar003	ACDOCA_FIN	DIRECT_UPDATE_GLT0_BSEG	PATTERN	BAPI_ACC_DOCUMENT_POST	BAPI	Y	recipes/ACDOCA_FIN.md	Never post FI by direct table update; use the accounting document BAPI
+ar004	MATDOC_STOCK	DIRECT_UPDATE_MARD_STOCK	PATTERN	BAPI_GOODSMVT_CREATE	BAPI	Y	recipes/MATDOC_STOCK.md	Stock changes only via goods movements

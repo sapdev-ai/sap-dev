@@ -1,0 +1,12 @@
+{
+  "pack_version": "2026.06",
+  "schema_version": 1,
+  "target_releases": ["S/4HANA 2022", "S/4HANA 2023"],
+  "source_release_baseline": "ECC 6.0 EhP6+",
+  "consumed_by": ["sap-cc-triage", "sap-cc-remediate"],
+  "pattern_count": 5,
+  "status_counts": { "ACTIVE": 3, "DRAFT": 2 },
+  "last_updated": "2026-06-02",
+  "provenance": "Derived from the PUBLIC SAP Simplification Item Catalog and SAP Notes. This pack is NOT a copy or redistribution of SAP's Simplification Database. Each recipe cites its source item for reference only. Object/field/API names below are representative — verify them against your exact target release and SP before relying on a mapping.",
+  "notes": "A pack is pinned to its target_releases because old->new mappings differ by release. Ship patterns incrementally via the catalog 'status' column (DRAFT patterns are excluded from auto-remediation by /sap-cc-remediate)."
+}

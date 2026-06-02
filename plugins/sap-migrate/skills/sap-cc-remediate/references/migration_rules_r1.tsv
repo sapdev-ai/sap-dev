@@ -1,0 +1,4 @@
+rule_id	pattern_id	mode	ignore_case	match_regex	replace	title	notes
+R1-MATNR-TYPE	MATNR_EXTENSION	AUTO	Y	((?:DATA|TYPES)\s+\w*MATNR\w*\s+TYPE\s+)c\s+LENGTH\s+18	${1}matnr	matnr-named CHAR18 to TYPE matnr	name-signalled; high confidence; verify receiving width
+R1-MATNR-OFFLEN	MATNR_EXTENSION	FLAG	Y	\w*MATNR\w*(\+\d+)?\(18\)		MATNR offset or length 18 - review for 40-char	report only; offset/length slicing
+R1-MATNR-CHAR18	MATNR_EXTENSION	FLAG	Y	TYPE\s+c\s+LENGTH\s+18		generic CHAR18 - may be a material number	report only; broad signal

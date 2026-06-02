@@ -275,6 +275,9 @@ Cross-plugin shared files live at `plugins/sap-dev-core/shared/`. All other plug
 | `shared/templates/customer_brief_JA.md` | sap-gen-abap, sap-check-abap | Japanese variant of `customer_brief.md`. Picked up automatically when `userConfig.template_language=JA` (or `userConfig.sap_language=JA` if `template_language` is unset). |
 | `shared/templates/customer_brief_sample_JA.md` | reference | Japanese variant of the worked customer-brief example. |
 | `shared/templates/spec_template_JA.xlsx` | starting point | **Japanese variant** of `spec_template.xlsx` — Japanese sheet names (`表紙`, `インターフェース契約`, etc.) and field labels. Same `(Meta) Layout` schema; localized `sheet_name`, `source_column_header`, and `anchor_keyword` columns; stable English `key`, `output_file`, and `output_column` columns. Built by `tools/build_spec_template.py --lang JA`. |
+| `shared/templates/migration_brief.md` | sap-cc-campaign (`/sap-cc-campaign init`) | One-page **Migration Campaign Brief** — distinct from `customer_brief.md`. Profiles one S/4HANA custom-code migration campaign: source / sandbox / remote-ATC connection profiles, source→target release, in-scope packages, decommission policy, quality gates. Override at `{custom_url}\migration_brief.md`. |
+| `shared/templates/migration_brief_sample.md` | reference | Filled-in example of `migration_brief.md` (brownfield `ECC6 EhP8 → S/4HANA 2023`). |
+| `plugins/sap-migrate/shared/knowledge/` — `catalog.tsv`, `object_map.tsv`, `field_map.tsv`, `api_replacements.tsv`, `recipes/*.md`, `README.md` | sap-cc-triage, sap-cc-remediate, sap-cc-learn | **Simplification Knowledge Pack** — ships with the **sap-migrate** plugin (NOT sap-dev-core/shared). `catalog.tsv` is the pattern index `/sap-cc-triage` joins findings to (`pattern` / `tier` / `detect_*` / `confidence`); the maps + `recipes/<pattern>.md` drive R2/R3 remediation; `/sap-cc-learn` feeds real `detect_message_ids` back. Customer override at `{custom_url}\knowledge\`; join contract in its `README.md`. |
 
 ### Template Language Resolution
 
@@ -300,6 +303,7 @@ Currently shipped variants (all defaults are clean English):
 - `customer_brief_sample.md`      — default (EN) + `_JA`
 - `customer_brief_sample.xlsx`    — default (EN) only — `_JA` xlsx variant pending
 - `spec_template.xlsx`            — default (EN, English sheet names) + `_JA` (Japanese sheet names)
+- `migration_brief.md` (+ `_sample`)  — default (EN) only (sap-migrate); `_JA` / `_ZH` pending
 
 `_ZH` variants are roadmap. After pilot-customer demand confirms Chinese
 need, `tools/build_spec_template.py` (already language-parameterised via

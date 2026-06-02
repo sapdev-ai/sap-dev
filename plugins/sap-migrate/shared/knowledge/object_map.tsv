@@ -1,0 +1,8 @@
+map_id	pattern_id	old_object	old_object_type	new_object	new_object_type	access_mode	relationship	caveat
+om001	MATDOC_STOCK	MARD	TABLE	NSDM_V_MARD	COMPAT_VIEW	READ_ONLY	COMPAT_VIEW_FOR	Storage-location stock; aggregates MATDOC at read time - avoid inside tight loops
+om002	MATDOC_STOCK	MARC	TABLE	NSDM_V_MARC	COMPAT_VIEW	READ_ONLY	COMPAT_VIEW_FOR	Plant stock via compatibility view
+om003	MATDOC_STOCK	MCHB	TABLE	NSDM_V_MCHB	COMPAT_VIEW	READ_ONLY	COMPAT_VIEW_FOR	Batch stock via compatibility view
+om004	ACDOCA_FIN	GLT0	TABLE	ACDOCA	TABLE	READ_ONLY	AGGREGATED_INTO	Classic GL totals now derived from the Universal Journal; a compatibility view exists - verify its name for your release
+om005	ACDOCA_FIN	FAGLFLEXA	TABLE	ACDOCA	TABLE	READ_ONLY	AGGREGATED_INTO	New GL line items merged into ACDOCA
+om006	BP_CVI	XD01	TXN	BP	TXN	READ_WRITE	REPLACED_BY	Create/maintain customer via BP role FLCU00/FLCU01
+om007	BP_CVI	XK01	TXN	BP	TXN	READ_WRITE	REPLACED_BY	Create/maintain vendor via BP role FLVN00/FLVN01
