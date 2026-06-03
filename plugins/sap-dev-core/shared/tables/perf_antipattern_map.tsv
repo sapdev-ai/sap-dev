@@ -1,0 +1,13 @@
+# perf_antipattern_map.tsv -- maps a trace-detected signal to an ABAP code-quality
+# rule and a fix template. Read by /sap-trace (references/sap_trace.ps1).
+# Columns (TAB-separated): signal_id  rule_ref  pattern  fix_template
+# Customer override: {custom_url}\perf_antipattern_map.tsv
+signal_id	rule_ref	pattern	fix_template
+SELECT_IN_LOOP	abap_code_quality_rules.md section 12 (SELECT in loop)	Identical SELECTs repeated -- likely a SELECT inside a LOOP or missing buffering	Pre-select all needed rows into an internal table before the loop; inside the loop use READ TABLE ... BINARY SEARCH or a hashed table.
+SELECT_STAR	abap_code_quality_rules.md section 12 (SELECT *)	SELECT * reads every column	Replace SELECT * with an explicit field list of only the columns consumed downstream.
+FAE_UNGUARDED	abap_code_quality_rules.md section 12 (FOR ALL ENTRIES)	FOR ALL ENTRIES without empty-check / SORT+dedupe	Guard with IF lt_keys IS NOT INITIAL; SORT lt_keys and DELETE ADJACENT DUPLICATES before SELECT ... FOR ALL ENTRIES.
+FULL_SCAN	abap_code_quality_rules.md section 12 (indexing)	Very high records-per-execution -- likely full table scan / poor index use	Add a selective WHERE on key/indexed fields; verify with ST05 Explain; consider a secondary index.
+NO_WHERE	abap_code_quality_rules.md section 12 (indexing)	SELECT with no restrictive WHERE	Add selective WHERE conditions on key/indexed fields; avoid reading the whole table.
+MANY_CALLS	abap_code_quality_rules.md section 12 (SELECT in loop)	Statement executed very many times	Hoist the call out of the loop / buffer the result; aggregate into one set-based read.
+ABAP_HOTSPOT	abap_code_quality_rules.md section 12 (internal tables)	ABAP-side net-time hotspot	Profile the unit; check nested LOOPs, linear READ TABLE (use BINARY SEARCH / hashed table), and avoidable recomputation.
+NESTED_LOOP	abap_code_quality_rules.md section 12 (internal tables)	Nested internal-table loop	Replace the inner LOOP with READ TABLE ... BINARY SEARCH or a hashed/sorted secondary key.

@@ -12,7 +12,7 @@
     "version": "0.3.4",
     "last_updated": "2026-06-01",
     "total_plugins": 4,
-    "total_skills": 62,
+    "total_skills": 64,
     "categories": [
       "tooling"
     ]
@@ -43,6 +43,7 @@
         "./skills/sap-login",
         "./skills/sap-rfc-wrapper-class",
         "./skills/sap-rfc-wrapper-fm",
+        "./skills/sap-run-abap-unit",
         "./skills/sap-se01",
         "./skills/sap-se11",
         "./skills/sap-se16n",
@@ -62,6 +63,7 @@
         "./skills/sap-snro",
         "./skills/sap-sp02",
         "./skills/sap-st22",
+        "./skills/sap-trace",
         "./skills/sap-transport-request",
         "./skills/sap-update-addon",
         "./skills/sap-where-used-list"

@@ -130,6 +130,12 @@
                                                "sensitive":  false,
                                                "value":  ""
                                            },
+                       "trace_threshold_ms":  { "description":  "Used by /sap-trace: surface trace statements whose total time (ms) is >= this value. Default: '100'.", "sensitive":  false, "value":  "" },
+                       "trace_top_n":  { "description":  "Used by /sap-trace: maximum number of hotspots reported. Default: '20'.", "sensitive":  false, "value":  "" },
+                       "aunit_default_mode":  { "description":  "Used by /sap-run-abap-unit: preferred backend. Allowed values: 'auto' (RFC if the Z_AUNIT_RUN helper is present, else GUI, else ADT) / 'RFC' / 'GUI' / 'ADT'. Default: 'auto'. Phase 1 implements GUI only.", "sensitive":  false, "value":  "" },
+                       "aunit_min_coverage":  { "description":  "Used by /sap-run-abap-unit: minimum code-coverage percent required. RFC backend only -- the GUI backend cannot measure coverage. Blank = no coverage requirement.", "sensitive":  false, "value":  "" },
+                       "aunit_coverage_gate":  { "description":  "Used by /sap-run-abap-unit: action when measured coverage is below aunit_min_coverage. Allowed values: 'warn' (default; report but do not fail) / 'block' (fail the run). Test failures always fail regardless.", "sensitive":  false, "value":  "" },
+                       "aunit_risk_level":  { "description":  "Used by /sap-run-abap-unit: maximum ABAP Unit risk level executed (that level and below). Allowed values: 'harmless' / 'dangerous' (default) / 'critical'. The client's SAUNIT_CLIENT_SETUP additionally gates dangerous/critical.", "sensitive":  false, "value":  "" },
                        "sap_gui_security_warmup_done":  {
                                                             "description":  "Set to true after sap-dev-init Step 1b successfully persists SAP GUI Security trust for {work_dir}. Subsequent runs skip the warmup when true.",
                                                             "sensitive":  false,

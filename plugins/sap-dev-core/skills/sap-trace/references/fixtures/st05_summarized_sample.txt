@@ -1,0 +1,6 @@
+SAP SQL Trace — Summarized SQL Statements (sample export for /sap-trace offline self-test)
+Executions	Identical	Duration	Records	Object name	Operation	Statement	Program
+1500	1499	4200000	1500	MARA	OpenSelect	SELECT WHERE MANDT = ? AND MATNR = ?	ZREPORT_BAD
+1	0	2500000	850000	VBAP	OpenSelect	SELECT * FROM VBAP	ZREPORT_BAD
+10	0	30000	10	T001	OpenSelect	SELECT WHERE MANDT = ? AND BUKRS = ?	ZREPORT_BAD
+1	0	1800000	400000	KNA1	OpenSelect	SELECT WHERE MANDT = ? AND LAND1 = ?	ZREPORT_BAD

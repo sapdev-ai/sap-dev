@@ -583,11 +583,44 @@ If ATC reports any finding at priority ≤ `ATC_MAX`, STOP. Surface findings
 to the user; do NOT mark the build complete. The user decides whether to
 fix-and-redeploy or accept-and-document.
 
-### 2j. Optional: deploy + run ABAP Unit tests
+### 2j. Deploy the test class
 
-If `MODE_UNIT_TESTS = TRUE` and `Z<PROGRAM_ID>_TEST.abap` was generated,
-deploy it the same way as the main program (after main is active). Then
-report — do not auto-execute SE80 tests; that's the user's call.
+If `MODE_UNIT_TESTS != OFF` and `Z<PROGRAM_ID>_TEST.abap` was generated, deploy
+it the same way as the main program (after the main object is active):
+
+```
+/sap-se38 Z<PROGRAM_ID>_TEST {work_folder}\Z<PROGRAM_ID>_TEST.abap --transport <TR>
+```
+
+### 2j.1. Run ABAP Unit (auto-run gate)
+
+`MODE_UNIT_TESTS` is tri-state, read from the Customer Brief "ABAP Unit tests
+required?" line: `MANDATORY` ("yes (mandatory)"), `OPTIONAL` ("nice to have"),
+or `OFF` ("no"). (`/sap-gen-abap`'s emit logic stays boolean — it emits the test
+file whenever `!= OFF`; only this gate reads the distinction.)
+
+- **`MANDATORY` → auto-run:**
+  ```
+  /sap-run-abap-unit Z<PROGRAM_ID>_TEST [--min-coverage <MODE_MIN_COVERAGE>]
+  ```
+  - `AUNIT_VERDICT: FAIL` (test failures) → **STOP**; surface the failing
+    `class::method` + messages; do not mark the build complete.
+  - coverage below `--min-coverage` → WARN (unless `aunit_coverage_gate=block`).
+    `--min-coverage` implies `--with-coverage`, so the GUI backend measures it
+    (a second "Unit Tests With Coverage" run); the headless RFC backend (Phase 2)
+    will do it in one.
+  - `UNIT_TEST_RUN: NEEDS_RECORDING` → the result grid is not yet recorded for
+    this SAP release; surface the "First-time setup" note from
+    `sap-run-abap-unit/SKILL.md` and treat the tests as not-yet-run (do NOT claim
+    pass). Same model as the `/sap-atc` placeholder pre-flight.
+  - **Cross-check**: the executed `methods=N` should equal the
+    `TEST_FILE: EMITTED … methods=N` that `/sap-gen-abap` reported; a mismatch
+    means tests were silently dropped — surface it.
+- **`OPTIONAL`** → offer to run `/sap-run-abap-unit`; report results but do not gate.
+- **`OFF`** → skip.
+
+Surface `UNIT_TEST_RUN` + `AUNIT_VERDICT` in the Step 5 final summary, next to
+the ATC result.
 
 ---
 
@@ -705,7 +738,7 @@ ARTIFACTS
 
 NEXT STEPS
   - Hand <NAME>.deps.txt to basis for authorization design.
-  - Run ABAP Unit tests via SE80 → Test (SHIFT+CTRL+F10) on Z<NAME>_TEST.
+  - Run ABAP Unit tests: `/sap-run-abap-unit Z<NAME>_TEST` (or SE80 > Test, Ctrl+Shift+F10).
   - <Any user actions surfaced by skills, in order.>
 ```
 
