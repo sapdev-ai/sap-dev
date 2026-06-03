@@ -63,9 +63,9 @@ cmd /c if not exist "{OUT}" mkdir "{OUT}"
 ## Step 0.5 — Start Logging (best-effort)
 
 ```bash
-powershell -NoProfile -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Event start -Skill sap-explain-object -Args "{RAW_ARGS}"
+powershell -NoProfile -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{WORK_TEMP}\sap_explain_object_run.json" -Skill sap-explain-object -ParamsJson "{\"args\":\"{RAW_ARGS}\"}"
 ```
-Capture the printed `RUN_ID=` and reuse it on the end event.
+The `-StateFile` carries the `run_id` between this start and the Final end event — pass the same path to both; no `RUN_ID=` capture is needed.
 
 ## Step 1 — Parse Arguments
 
@@ -183,8 +183,9 @@ Print the `{OUT}` path and a 5-line summary. Leave `{OUT}` artifacts in place
 
 ## Final — Log End
 ```bash
-powershell -NoProfile -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Event end -RunId "{RUN_ID}" -Status "{success|error}"
+powershell -NoProfile -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_explain_object_run.json" -Status SUCCESS -ExitCode 0
 ```
+(On failure use `-Status FAILED -ExitCode 1`; for the not-found path add `-ErrorClass OBJECT_NOT_FOUND`. `-Status` must be one of `SUCCESS|FAILED|SKIPPED|EXISTED|ABANDONED`.)
 
 ## Troubleshooting
 | Symptom | Cause | Fix |

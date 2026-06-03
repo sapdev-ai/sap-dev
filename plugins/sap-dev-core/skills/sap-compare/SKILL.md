@@ -53,7 +53,7 @@ cmd /c if not exist "{OUT}" mkdir "{OUT}"
 
 ## Step 0.5 — Start Logging (best-effort)
 ```bash
-powershell -NoProfile -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Event start -Skill sap-compare -Args "{RAW_ARGS}"
+powershell -NoProfile -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{WORK_TEMP}\sap_compare_run.json" -Skill sap-compare -ParamsJson "{\"args\":\"{RAW_ARGS}\"}"
 ```
 
 ## Step 1 — Parse Arguments
@@ -156,8 +156,9 @@ in `{WORK_TEMP}` (leave `{OUT}` deliverables).
 
 ## Final — Log End
 ```bash
-powershell -NoProfile -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Event end -RunId "{RUN_ID}" -Status "{success|error}"
+powershell -NoProfile -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_compare_run.json" -Status SUCCESS -ExitCode 0
 ```
+(On failure use `-Status FAILED -ExitCode 1`. `-Status` must be one of `SUCCESS|FAILED|SKIPPED|EXISTED|ABANDONED`.)
 
 ## Composition
 - After a diff, run `/sap-explain-object {OBJECT}` to understand one side's logic,
