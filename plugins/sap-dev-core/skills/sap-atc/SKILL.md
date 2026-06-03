@@ -14,7 +14,7 @@ description: |
   /sap-gui-record if your release uses different tree node IDs / grid
   column IDs.
   Prerequisites: Active SAP GUI session (use /sap-login first).
-argument-hint: "<OBJECT_TYPE> <OBJECT_NAME> [--max-priority=<n>] [--object-set=<NAME>] [--run-series=<NAME>] [--poll-interval=<sec>] [--max-wait=<sec>] [--save-to=<PATH>] [--drill] [--no-drill]"
+argument-hint: "<OBJECT_TYPE> <OBJECT_NAME> [--variant=<NAME>] [--max-priority=<n>] [--object-set=<NAME>] [--run-series=<NAME>] [--poll-interval=<sec>] [--max-wait=<sec>] [--save-to=<PATH>] [--drill] [--no-drill]"
 ---
 
 # SAP ATC Quality Gate Skill
@@ -119,6 +119,7 @@ If neither brief nor argument supplies a value, default to `2`.
 |---|---|---|---|
 | `OBJECT_TYPE` | yes | — | One of `PROGRAM` / `CLASS` / `INTERFACE` / `FUGR` / `DDIC` / `TYPEGROUP` / `WDYN`. SCI groups Class and Interface under one category, so both map to `XSO_CLAS` + `SO_CLAS-LOW`. **`FM` is intentionally rejected** — SCI Object Sets have no per-function-module category; pass `FUGR <function-group-name>` instead to scope at FG level. |
 | `OBJECT_NAME` | yes | — | UPPERCASE repository name. |
+| `--variant=<NAME>` | no | *(empty = system default)* | Global ATC check variant to run, e.g. `S4HANA_READINESS` for an S/4HANA-conversion readiness check. When omitted, the run series leaves the check-variant field untouched and ATC runs the system's configured default variant (the prior behaviour). **Passing a named variant is mandatory for migration readiness** — see `/sap-cc-analyze`, which calls this skill with `--variant=S4HANA_READINESS`. The named variant must EXIST and be GLOBAL on the connected system (readiness needs the Simplification Database loaded). Accepts `--check-variant=<NAME>` as an alias. |
 | `--max-priority=<n>` | no | `2` (or brief) | Gate threshold — fail if any priority ≤ this value has count > 0. |
 | `--object-set=<NAME>` | no | auto | Reuse a named SCI Object Set. If omitted, generate `ZGATE_<8-char-hash-of-objname>` so re-runs on the same target reuse the same set. |
 | `--run-series=<NAME>` | no | auto | Run Series name. If omitted, generate `RUN_<YYYYMMDD>_<HHMMSS>` to avoid collisions. |
@@ -201,7 +202,19 @@ re-record via `/sap-gui-record`.
 ## Step 4 — Stage 2: Create + Execute Run Series (ATC)
 
 Fill `sap_atc_create_run_series.vbs`. Tokens: `%%RUN_SERIES_NAME%%`,
-`%%OBJECT_SET_NAME%%`, `%%SESSION_LOCK_VBS%%`.
+`%%OBJECT_SET_NAME%%`, `%%CHECK_VARIANT%%`, `%%SESSION_LOCK_VBS%%`.
+
+Substitute `%%CHECK_VARIANT%%` with the parsed `--variant=` value, or the
+**empty string** when no variant was supplied (the empty value is what tells
+the VBS to leave the check-variant field untouched and run the system default —
+the prior behaviour). When a variant IS requested but the VBS cannot locate the
+check-variant input field on the connected release, **Stage 2 fails loud**
+(`ERROR: --variant=… requested but the run-series check-variant input field
+could not be located`) rather than silently running the default variant — a
+silent fallback would misreport non-readiness findings as readiness. If you hit
+that error, re-record the ATC run-series config screen via `/sap-gui-probe` (or
+`/sap-gui-record`) and add the real field id to the `chkvCands` list in
+`sap_atc_create_run_series.vbs`.
 
 ```powershell
 $skillDir = '<SKILL_DIR>'
@@ -209,6 +222,8 @@ $shared   = '<SAP_DEV_CORE_SHARED_DIR>'
 $content  = [System.IO.File]::ReadAllText("$skillDir\references\sap_atc_create_run_series.vbs", [System.Text.Encoding]::UTF8)
 $content  = $content.Replace('%%RUN_SERIES_NAME%%', 'THE_RUN_SERIES')
 $content  = $content.Replace('%%OBJECT_SET_NAME%%', 'THE_OBJECT_SET')
+# Empty string = run the system default variant (prior behaviour).
+$content  = $content.Replace('%%CHECK_VARIANT%%',   'THE_CHECK_VARIANT')
 $content  = $content.Replace('%%SESSION_LOCK_VBS%%', "$shared\scripts\sap_session_lock.vbs")
 # Phase 3.5 session-attach plumbing.
 $sessionPath = ''
@@ -219,8 +234,13 @@ $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 [System.IO.File]::WriteAllText('{WORK_TEMP}\sap_atc_stage2_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 ```
 
-Run via cscript. Expected last line:
-`SUCCESS: Run series <NAME> scheduled (object set <SET>).`
+Run via cscript. Expected lines:
+`VARIANT: <S4HANA_READINESS | SYSTEM_DEFAULT>` (which variant the run will use)
+`SUCCESS: Run series <NAME> scheduled (object set <SET>, variant <ID>).`
+
+Confirm the `VARIANT:` line reports the variant you intended — if you passed
+`--variant=S4HANA_READINESS` but it reads `SYSTEM_DEFAULT`, the token was not
+substituted (treat as a bug, not a clean run).
 
 After this point the ATC run is **async** — SAP queues the work and
 executes it in the background. Stage 3 polls.
@@ -509,6 +529,32 @@ The Stage 3 / Stage 4 VBS files put these IDs first in their column-
 candidate lists, with older release names (`RUN_SERIES_NAME`, `PRIO_<n>`,
 `STATUS_ICON`, etc.) as portability fallbacks.
 
+Run-series config screen (Stage 2, `SAPLSATC_CI_CFG_SERIE_DIALOG` screen
+3000) — the check-variant field id is **VERIFIED live on S/4HANA 1909**
+(2026-06-03 probe). It sits directly under `wnd[0]/usr` next to the TITLE
+field, NOT inside the object-selection tabstrip. `sap_atc_create_run_series.vbs`
+tries the verified id first, then a candidate list (`chkvCands`) for other
+releases, and **aborts loud** if none match when `--variant=` is supplied:
+
+| Field id | Status |
+|---|---|
+| `wnd[0]/usr/ctxtSATC_CI_S_CFG_SERIE_UI_01-CHECK_VARIANT` | **Verified, S/4HANA 1909** — `GuiCTextField`, `changeable=True`. Set via `.Text`. |
+| `wnd[0]/usr/cmbSATC_CI_S_CFG_SERIE_UI_01-CHECK_VARIANT` | Fallback if a release renders it as a dropdown (set via `.key`) |
+| `wnd[0]/usr/ctxtG_DYNP_3000-CHECK_VARIANT` / `…-CI_CHK_VARIANT` / `…-CHKV` / `…-VARIANT` | Cross-release structure-name fallbacks |
+| `wnd[0]/usr/ctxtP3B_CHKV`, `…3010/ctxtG_DYNP_3000-CHECK_VARIANT` | Last-resort fallbacks |
+
+The same grid probe also confirmed the Stage-2 run-series **management grid**
+exposes its name column as `NAME` (there is no `APP_CONFIG_NAME` there — that id
+belongs to the Stage-3 *Run Monitor* grid). The row-matching candidate list in
+`sap_atc_create_run_series.vbs` already falls through to `NAME`, so this is
+handled; the lead comment naming `APP_CONFIG_NAME` as "verified" for that grid
+is slightly misleading and could be reordered in a future pass.
+
+**On a different release:** if Stage 2 errors with "check-variant input field
+could not be located", record the config screen via `/sap-gui-probe` or
+`/sap-gui-record`, read the real field id, and prepend it to `chkvCands`. Then
+update this table.
+
 ---
 
 ## Recording references
@@ -579,9 +625,15 @@ async runs, Object Set reuse, and downloadable result files.
 Operator-visible API changes:
 
 - The first positional argument is still `<OBJECT_TYPE> <OBJECT_NAME>`.
-- The old `[CHECK_VARIANT]` argument is gone — the run series uses
-  ATC's default behaviour flags (`GENERATED_CODE-ANALYZE`,
-  `QUICKFIXES-GENERATE_QUICKFIXES`); customisation will arrive when
-  the skill grows a `--variant=<NAME>` flag.
+- The old positional `[CHECK_VARIANT]` argument is replaced by the
+  named flag **`--variant=<NAME>`** (alias `--check-variant=`). When
+  omitted, the run series leaves the check-variant field untouched and
+  ATC runs the system's configured default variant (plus the default
+  behaviour flags `GENERATED_CODE-ANALYZE`,
+  `QUICKFIXES-GENERATE_QUICKFIXES`) — same as before. When supplied
+  (e.g. `--variant=S4HANA_READINESS`), Stage 2 sets that variant on the
+  run-series config, and **fails loud rather than silently falling back
+  to the default** if it cannot locate the field on the connected
+  release (see Step 4).
 - `MAX_PRIORITY` is still honoured but now applies to ATC's actual
   priority columns instead of a heuristic mapping.

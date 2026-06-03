@@ -30,7 +30,8 @@ writes, no unsolicited deployment).
 |---|---|---|
 | `sap_settings_lib.ps1` | `<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1` | `Get-SapSettingValue`, settings merge |
 | `sap_connection_lib.ps1` | `<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1` | `Get-SapWorkDir`, `Get-SapCurrentSessionPath` |
-| `sap_rfc_lib.ps1` | `<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_rfc_lib.ps1` | `Connect-SapRfc`, `New-RfcReadTable` |
+| `sap_rfc_lib.ps1` | `<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_rfc_lib.ps1` | `Connect-SapRfc` (+ the `New-RfcReadTable` / `Add-RfcOption` / `Add-RfcField` primitives) |
+| `sap_object_resolver.ps1` | `<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_object_resolver.ps1` | `Read-SapTableRows` (validated RFC_READ_TABLE reader for the type probe; CLI body self-guarded on dot-source) |
 | `sap_rfc_read_source.ps1` | `<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_rfc_read_source.ps1` | `Read-SapAbapSource` (RPY source + include tree) |
 | `sap_explain_parse.ps1` | `<SKILL_DIR>\references\sap_explain_parse.ps1` | offline source -> `map.json` |
 | `sap_attach_lib.vbs` (`%%ATTACH_LIB_VBS%%`) | `<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs` | `AttachSapSession` (GUI download / where-used) |
@@ -84,8 +85,9 @@ Capture the printed `RUN_ID=` and reuse it on the end event.
 
 ## Step 3 — Detect Object Type (RFC, no GUI)
 
-If `{TYPE}` is `auto`, probe these tables in order via `New-RfcReadTable` and
-stop at the first hit (the helper auto-applies `Assert-RfcReadTableAllowed`):
+If `{TYPE}` is `auto`, probe these tables in order via `Read-SapTableRows` and
+stop at the first hit (the underlying `New-RfcReadTable` auto-applies
+`Assert-RfcReadTableAllowed`):
 
 | Table | Filter | -> Type |
 |---|---|---|
@@ -97,10 +99,15 @@ stop at the first hit (the helper auto-applies `Assert-RfcReadTableAllowed`):
 
 ```powershell
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_rfc_lib.ps1'
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_object_resolver.ps1'   # Read-SapTableRows (CLI body self-guarded on dot-source)
 $dest = Connect-SapRfc -DestName "EXPLAIN"
 if (-not $dest) { Write-Output "ERROR: no RFC connection (run /sap-login)"; exit 2 }
-# Param names per sap_rfc_lib.ps1 (New-RfcReadTable applies Assert-RfcReadTableAllowed).
-$rows = New-RfcReadTable -Dest $dest -QueryTable "TRDIR" -Where "NAME = '{OBJECT}'" -Fields @("NAME","SUBC")
+# Use the validated reader Read-SapTableRows -Destination/-Table/-Where/-Fields. Do NOT
+# hand-roll New-RfcReadTable -QueryTable/-Where/-Fields — that is not its signature
+# (New-RfcReadTable takes only -Destination/-Table; WHERE/fields are added via
+# Add-RfcOption/Add-RfcField). The underlying reader auto-applies Assert-RfcReadTableAllowed.
+$rows = Read-SapTableRows -Destination $dest -Table "TRDIR" -Where "NAME = '{OBJECT}'" -Fields @("NAME","SUBC")
+# $null -eq $rows -> RFC could-not-check ; $rows.Count -eq 0 -> not this type
 # ...branch per the table above; emit TYPE={resolved}
 ```
 If nothing matches -> `ERROR: {OBJECT} not found as program/include/FM/class.` and stop.

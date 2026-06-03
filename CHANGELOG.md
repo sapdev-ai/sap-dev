@@ -4,6 +4,67 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Environment preflight: `/sap-doctor` (read-only)
+
+- **`/sap-doctor`** (sap-dev-core) — a `brew doctor` / `flutter doctor` for the
+  sap-dev toolchain. Diagnoses *why a skill would fail before it runs*, across
+  five groups: **gui** (SAP GUI + scripting reachable — reuses the static
+  `sap_check_gui_login_status.vbs`; a `LOGGED_IN` result is the authoritative
+  proof that client + server scripting are both on), **cfg** (32-bit PowerShell,
+  SAP NCo 3.1 in `GAC_32`, `SAPDEV_AI_WORK_DIR` set + work_dir writable,
+  `connections.json` present + valid), **rfc** (RFC connectivity to the
+  AI-session's pinned profile via the `Connect-SapRfc` pinned-profile fallback),
+  **srv** (client Repository modifiability — `T000.CCNOCLIIND`, so a non-modifiable
+  client is caught before a deploy fails at activation), and **devenv** (TR /
+  package / function group / wrapper artefacts, delegated to `/sap-dev-status`).
+  Emits one parseable `CHECK:` line per probe and an overall
+  `READY / DEGRADED / BLOCKED` verdict; every failure carries a copy-pasteable
+  **FIX**. Honours the honesty contract — a probe that cannot run reports `SKIP`,
+  never a false `PASS`. Read-only (only writes/deletes a tiny temp probe file to
+  test work_dir writability). New checker `references/sap_doctor_checks.ps1`.
+  First strike of the GUI-robustness initiative; the golden-screen regression
+  harness is the planned follow-up. **Live-verified on S4D 1909 (2026-06-03):**
+  empty-credential substitution correctly drove the `Connect-SapRfc`
+  pinned-profile fallback (`RFC_PING` PASS), the `T000.CCNOCLIIND` read returned
+  the client modifiability correctly (`CLIENT_MODIFIABLE` PASS), and the GUI
+  `LOGGED_IN` mapping held — no code changes from the run. Report:
+  `temp/testReport/sap_doctor_e2e_S4D_20260603.md`.
+
+### Three new AI-leverage quality skills (GUI+RFC only)
+
+- **`/sap-review-abap`** (sap-gen-code) — AI semantic + security code review of an
+  existing object or a `.abap` file. Distinct from the deterministic
+  `/sap-check-abap` and the in-system `/sap-atc`: it reasons over logic, security
+  (dynamic-SQL injection, missing/incorrect `AUTHORITY-CHECK`), performance, and
+  robustness; every finding cites a line + code excerpt and survives an
+  adversarial self-verification pass before it is emitted (false positives
+  dropped, not shipped). Findings flow through the shared finding model
+  (`sap_finding_lib` → `sap_gate_policy` → `Export-SapFindings*`), are gated
+  against the customer brief's Quality bar, and register for `/sap-evidence-pack`.
+  Read-only. Source acquired via the existing RFC reader (program/include/FM) +
+  SE24 GUI download (class).
+- **`/sap-gen-abap-unit`** (sap-gen-code) — generates ABAP Unit tests for an
+  existing class / FM / report, then closes the loop: pre-check (`/sap-check-abap`)
+  → deploy (`/sap-se24 --test-source` CCAU local test classes, or `/sap-se38`) →
+  `/sap-activate-object` → `/sap-run-abap-unit --with-coverage` → fix → repeat
+  (bounded by `--max-rounds`). A seam analysis classifies each DB read / external
+  call into a doubling strategy (`CL_OSQL_TEST_ENVIRONMENT` / `CL_ABAP_TESTDOUBLE`)
+  and is honest about untestable-without-refactor code. Deploy is gated behind
+  `--deploy` (default `ask`) per `skill_operating_rules` Rule 2. Pairs with
+  `/sap-run-abap-unit` (same `abap-unit` vocabulary).
+- **`/sap-document-object`** (sap-dev-core) — reverse of the spec→code pipeline:
+  turns an existing object into a formal specification document (Markdown by
+  default, Word via `--format docx`, or a filled `spec_template.xlsx` that
+  round-trips back through `/sap-docs-extract`). Builds on `/sap-explain-object`'s
+  comprehension map, enriches it with DDIC (DD02T/DD03L) and message (T100) detail
+  over RFC, and marks every section CONFIRMED (system-read) vs INFERRED (reasoned).
+  Read-only.
+
+Totals: **4 plugins · 74 skills · 2 agents** (sap-dev-core 52, sap-gen-code 12).
+Names were vetted against the skill naming convention (the `<verb>-abap` family;
+`abap-unit` token reused to pair with `/sap-run-abap-unit`; `-object` suffix to
+avoid the `sap-docs-*` near-collision). All three are GUI+RFC only — no ADT.
+
 ## [0.5.0] — 2026-06-03
 
 Rolls up the interim 0.3.1–0.3.4 patch bumps and adds a fourth plugin plus

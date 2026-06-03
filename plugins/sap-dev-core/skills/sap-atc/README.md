@@ -28,17 +28,23 @@ customer brief's `MAX_PRIORITY` controls which findings block deployment
 
 ```text
 /sap-atc PROGRAM ZHKR001
-/sap-atc PROGRAM ZHKR001 STANDARD
-/sap-atc PROGRAM ZHKR001 STANDARD 2
+/sap-atc PROGRAM ZHKR001 --variant=S4HANA_READINESS
+/sap-atc PROGRAM ZHKR001 --variant=S4HANA_READINESS --max-priority=2
 /sap-atc CLASS   ZCL_HK_UTIL
-/sap-atc PACKAGE ZHK_MM
+/sap-atc FUGR    ZHK_MM_FG
 ```
+
+The check variant is now the named flag **`--variant=<NAME>`** (the old
+positional `[CHECK_VARIANT]` is gone). Omit it to run the system default
+variant; pass `--variant=S4HANA_READINESS` for an S/4HANA-conversion readiness
+check (the connected system must offer that GLOBAL variant with the
+Simplification Database loaded). See `SKILL.md` for the full flag list.
 
 Conversational forms:
 
 - "Run ATC on program ZHKR001"
+- "Run the S/4HANA readiness check on ZHKR001"
 - "Quality-gate ZCL_HK_UTIL — block on priority 2 or worse"
-- "Check the whole package ZHK_MM"
 
 ## Prerequisites
 
@@ -49,16 +55,25 @@ Conversational forms:
 
 ## One-time setup
 
-This skill ships with **default** SCI screen IDs observed on S/4HANA 1909.
-Run a one-off Scripting Recorder pass against transaction SCI in your target
-system and update any constants in
-`references/sap_atc_run.vbs` whose IDs differ. SKILL.md documents the
-recording steps.
+This skill drives a four-stage flow — SCI Object Set → ATC Run Series → Run
+Monitor → Manage Results — across four VBS references
+(`sap_sci_create_object_set.vbs`, `sap_atc_create_run_series.vbs`,
+`sap_atc_check_run_status.vbs`, `sap_atc_get_results.vbs`), with default tree
+node + grid IDs observed on S/4HANA 1909. On a different release, re-record the
+affected stage via `/sap-gui-record` and patch that VBS — see SKILL.md
+"Recording references".
+
+**Check-variant field:** when you first use `--variant=` on a live system, the
+run-series config screen's check-variant field id may differ from the built-in
+candidate list. Stage 2 fails loud if it cannot locate the field; record the
+config screen and add the real id to `chkvCands` in
+`sap_atc_create_run_series.vbs` (SKILL.md "Component IDs" documents the
+candidates).
 
 ## Version
 
-- Skill Version: 1.0.0
-- Last Updated: 2026-05-03
+- Skill Version: 1.1.0
+- Last Updated: 2026-06-03
 
 ## License
 

@@ -157,8 +157,8 @@ For each approved `<obj>.after.abap`:
 1. Deploy via `/sap-se38` / `/sap-se37` / `/sap-se24` (to the **sandbox**).
 2. Activate via `/sap-activate-object`; use `/sap-fix-abap` if a syntax issue
    surfaces.
-3. Re-run readiness ATC via `/sap-atc <type> <name> S4HANA_READINESS` and confirm
-   the original finding(s) cleared.
+3. Re-run readiness ATC via `/sap-atc <type> <name> --variant=S4HANA_READINESS`
+   and confirm the original finding(s) cleared.
 
 Build an outcomes TSV — `obj_name`, `obj_type`, `outcome`
 (`VERIFIED` = deployed + ATC clean / `DEPLOYED` = deployed, recheck pending /

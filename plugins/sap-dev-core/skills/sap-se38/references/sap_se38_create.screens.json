@@ -1,0 +1,24 @@
+{
+  "schema": "sapdev.screenbaseline/1",
+  "vbs": "sap_se38_create.vbs",
+  "captured_on": {
+    "release": "",
+    "kernel": "",
+    "date": "",
+    "method": "static"
+  },
+  "checkpoints": [
+    {
+      "id": "initial",
+      "reach": { "okcode": "/nSE38" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/tbar[0]/okcd",
+        "wnd[0]/usr/ctxtRS38M-PROGRAMM",
+        "wnd[0]/usr/radRS38M-FUNC_EDIT",
+        "wnd[0]/usr/btnNEW"
+      ],
+      "status": "pending_live"
+    }
+  ]
+}

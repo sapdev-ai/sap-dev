@@ -18,6 +18,7 @@
 '        chkG_DYNP_3000-BEHAVIOR-QUICKFIXES-GENERATE_QUICKFIXES = true
 '        radG_DYNP_3000-CHOICE_OF_SELECTION-BY_SET (select)
 '        ctxtP3B_OBVT = %%OBJECT_SET_NAME%%
+'        (optional) check-variant field = %%CHECK_VARIANT%% when supplied
 '        Enter, Save (btn[11])
 '   6. Find the new row in the result grid by APP_CONFIG_NAME column (NAME
 '      on older releases — multi-candidate lookup), select it,
@@ -28,6 +29,13 @@
 '                          Max ~30 chars; should not collide with existing
 '                          series in the system.
 '   %%OBJECT_SET_NAME%%   Name of the SCI Object Set created in Stage 1.
+'   %%CHECK_VARIANT%%     Optional global ATC check variant to run (e.g.
+'                          S4HANA_READINESS). Empty / unsubstituted = leave the
+'                          field untouched and run the system default variant.
+'                          When supplied but the field id cannot be located on
+'                          this release, the script FAILS LOUD rather than
+'                          silently running the default (which would misreport
+'                          non-readiness findings as readiness).
 '   %%SESSION_LOCK_VBS%%  Path to sap_session_lock.vbs.
 '
 ' Output (last line):
@@ -42,7 +50,15 @@ Option Explicit
 
 Const RUN_SERIES_NAME = "%%RUN_SERIES_NAME%%"
 Const OBJECT_SET_NAME = "%%OBJECT_SET_NAME%%"
+Const CHECK_VARIANT   = "%%CHECK_VARIANT%%"  ' empty / unsubstituted = use system default variant
 Const SESSION_PATH    = "%%SESSION_PATH%%"   ' empty / unsubstituted = use default
+
+' Runtime-built sentinel for the CHECK_VARIANT token (Chr(37)=%). Built at
+' runtime so the wrapper's blanket .Replace('%%CHECK_VARIANT%%', ...) cannot
+' corrupt this comparison literal. If the token was never substituted (left as
+' "%%CHECK_VARIANT%%"), we treat it as "no variant" = system default.
+Dim CHKV_TOKEN : CHKV_TOKEN = Chr(37) & Chr(37) & "CHECK_VARIANT" & Chr(37) & Chr(37)
+Dim WANT_VARIANT : WANT_VARIANT = (Len(CHECK_VARIANT) > 0) And (CHECK_VARIANT <> CHKV_TOKEN)
 
 Const VKEY_ENTER    = 0
 Const VKEY_F8       = 8
@@ -146,8 +162,90 @@ End If
 Err.Clear
 On Error GoTo 0
 
+' --- 5a. Check Variant (optional) ----------------------------------------
+' When CHECK_VARIANT is supplied, override the run-series check variant so the
+' run executes a SPECIFIC variant (e.g. S4HANA_READINESS) instead of the
+' system default. When empty, the field is left untouched and SAP runs its
+' configured default variant -- preserving the prior behaviour exactly.
+'
+' The check-variant field id is VERIFIED on S/4HANA 1909 (live probe
+' 2026-06-03): wnd[0]/usr/ctxtSATC_CI_S_CFG_SERIE_UI_01-CHECK_VARIANT
+' (a GuiCTextField sitting directly under wnd[0]/usr, next to the TITLE field).
+' It was never captured in the original recording (that run used the default),
+' so other releases may rename it -- we still try a candidate list and FAIL
+' LOUD if none resolve. Silently running the default variant while the caller
+' explicitly asked for a named one is the exact "looks-like-readiness-but-isn't"
+' misreport this flag exists to prevent.
+Dim variantApplied : variantApplied = False
+If WANT_VARIANT Then
+    WScript.Echo "INFO: Setting check variant = " & UCase(CHECK_VARIANT) & " ..."
+    Dim chkvCands, vi, sVarFld, oVarFld, sVarType
+    chkvCands = Array( _
+        "wnd[0]/usr/ctxtSATC_CI_S_CFG_SERIE_UI_01-CHECK_VARIANT", _
+        "wnd[0]/usr/cmbSATC_CI_S_CFG_SERIE_UI_01-CHECK_VARIANT", _
+        "wnd[0]/usr/ctxtG_DYNP_3000-CHECK_VARIANT", _
+        "wnd[0]/usr/ctxtG_DYNP_3000-CI_CHK_VARIANT", _
+        "wnd[0]/usr/ctxtG_DYNP_3000-CHKV", _
+        "wnd[0]/usr/ctxtG_DYNP_3000-VARIANT", _
+        "wnd[0]/usr/cmbG_DYNP_3000-CHECK_VARIANT", _
+        "wnd[0]/usr/ctxtP3B_CHKV", _
+        sCfgBase & "/ctxtG_DYNP_3000-CHECK_VARIANT")
+    For vi = 0 To UBound(chkvCands)
+        sVarFld = chkvCands(vi)
+        On Error Resume Next
+        Set oVarFld = Nothing
+        Set oVarFld = oSess.findById(sVarFld)
+        If Err.Number = 0 And Not (oVarFld Is Nothing) Then
+            sVarType = oVarFld.Type
+            If sVarType = "GuiComboBox" Then
+                oVarFld.key = UCase(CHECK_VARIANT)         ' dropdown variant
+            Else
+                oVarFld.Text = UCase(CHECK_VARIANT)        ' input field
+                oVarFld.setFocus
+                oVarFld.caretPosition = Len(CHECK_VARIANT)
+            End If
+            If Err.Number = 0 Then
+                variantApplied = True
+                WScript.Echo "INFO: Check variant field matched: " & sVarFld & " (" & sVarType & ")"
+            End If
+        End If
+        Err.Clear
+        On Error GoTo 0
+        If variantApplied Then Exit For
+    Next
+    If Not variantApplied Then
+        WScript.Echo "ERROR: --variant=" & UCase(CHECK_VARIANT) & " was requested but the run-series check-variant input field could not be located on this release."
+        WScript.Echo "       Candidates tried: " & Join(chkvCands, ", ")
+        WScript.Echo "       Re-record the ATC run-series config screen via /sap-gui-probe (or /sap-gui-record), then add the real field id to chkvCands in sap_atc_create_run_series.vbs."
+        WScript.Echo "       Refusing to fall back to the system DEFAULT variant under a named-variant request (that would misreport non-readiness findings as readiness)."
+        ReleaseSession oSess, wasLocked
+        WScript.Quit 1
+    End If
+End If
+
 oSess.findById("wnd[0]").sendVKey VKEY_ENTER
 WScript.Sleep 800
+
+' --- 5a.1 Surface (do NOT abort on) any post-ENTER status-bar message --------
+' Live finding (S/4HANA 1909, 2026-06-03): ENTER validates the WHOLE config
+' screen, so a status-bar Error here can come from an unrelated field (e.g.
+' "Package criteria must not be initial" when object selection isn't filled),
+' NOT necessarily from the variant. We therefore only WARN here and let the
+' existing Save / EXECUTE_SERIE E/A checks below be the hard gate -- aborting
+' here would risk a false failure on the happy path. The variant itself is
+' already proven applied: 5a set it on the verified field and would have
+' failed loud if the field were missing.
+If variantApplied Then
+    On Error Resume Next
+    Dim sVarSbarType, sVarSbar
+    sVarSbarType = oSess.findById("wnd[0]/sbar").MessageType
+    sVarSbar     = oSess.findById("wnd[0]/sbar").Text
+    On Error GoTo 0
+    If sVarSbarType = "E" Or sVarSbarType = "A" Then
+        WScript.Echo "WARN: status bar after ENTER: [" & sVarSbarType & "] " & sVarSbar
+        WScript.Echo "      If this names the check variant, verify '" & UCase(CHECK_VARIANT) & "' EXISTS and is GLOBAL on this system (e.g. S4HANA_READINESS needs the readiness / Simplification Database content). Otherwise it is likely an object-selection message resolved by the object-set step. The Save / EXECUTE_SERIE checks below are the hard gate."
+    End If
+End If
 
 ' Save (Ctrl+S = btn[11] = F11)
 WScript.Echo "INFO: Saving run series config..."
@@ -295,5 +393,12 @@ If sFinalType = "E" Or sFinalType = "A" Then
 End If
 
 WScript.Echo "INFO: SAP status: [" & sFinalType & "] " & sFinalMsg
-WScript.Echo "SUCCESS: Run series " & UCase(RUN_SERIES_NAME) & " scheduled (object set " & UCase(OBJECT_SET_NAME) & ")."
+Dim sVariantId
+If variantApplied Then
+    sVariantId = UCase(CHECK_VARIANT)
+Else
+    sVariantId = "SYSTEM_DEFAULT"
+End If
+WScript.Echo "VARIANT: " & sVariantId
+WScript.Echo "SUCCESS: Run series " & UCase(RUN_SERIES_NAME) & " scheduled (object set " & UCase(OBJECT_SET_NAME) & ", variant " & sVariantId & ")."
 WScript.Quit 0

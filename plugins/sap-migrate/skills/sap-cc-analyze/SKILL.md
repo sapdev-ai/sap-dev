@@ -5,9 +5,11 @@ description: |
   and captures per-finding results into `findings/findings_raw.tsv`, advancing
   each analyzed object to ANALYZED.
   The actual ATC run is delegated to the existing `/sap-atc` skill (so this
-  skill ships no new GUI scripting). NOTE: `/sap-atc` runs the system DEFAULT
-  ATC check variant -- it does not yet accept S4HANA_READINESS as a variant
-  argument (see Step 2 "Design note: readiness variant");
+  skill ships no new GUI scripting). It invokes `/sap-atc --variant=S4HANA_READINESS`
+  so the run executes the S/4HANA readiness check variant (NOT the system
+  default) -- see Step 2. `/sap-atc` fails loud if that variant's config field
+  cannot be located on the connected release, so a non-readiness run can never
+  be silently passed off as readiness;
   this skill owns the deterministic spine: `prepare` builds the worklist from
   `scope.tsv`, and `ingest` parses ATC result exports into the campaign's
   findings ledger and advances state. The `ingest` parser is header-tolerant —
@@ -40,7 +42,7 @@ Task: $ARGUMENTS
 | `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_settings_lib.ps1` + `sap_connection_lib.ps1` | *(dot-source)* | `Get-SapWorkDir`. |
 | `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_log_helper.ps1` | *(invoke)* | Start/step/end JSONL logging. |
 | `<SKILL_DIR>/references/sap_cc_analyze.ps1` | *(invoke)* | Offline spine: `prepare` (scope→worklist) and `ingest` (ATC results→`findings_raw.tsv`, state→ANALYZED). |
-| `/sap-atc` | *(skill)* | The ATC engine. Run per worklist object with `CHECK_VARIANT=S4HANA_READINESS`. Needs a one-time recorded session per release (see that skill). |
+| `/sap-atc` | *(skill)* | The ATC engine. Run per worklist object with `--variant=S4HANA_READINESS`. Needs a one-time recorded session per release (see that skill). |
 
 Workspace contract (`findings/findings_raw.tsv` columns, the ANALYZED state)
 is defined by `/sap-cc-campaign`. This skill **owns** `findings/findings_raw.tsv`
@@ -97,20 +99,25 @@ on `atc_type` and pass **`--drill`** so `/sap-atc` exports the per-finding TSV
 that `ingest` consumes:
 
 ```
-/sap-atc <atc_type> <obj_name> --drill --save-to={CAMPAIGN_DIR}\findings\atc_raw\<obj_name>.txt
+/sap-atc <atc_type> <obj_name> --variant=S4HANA_READINESS --drill --save-to={CAMPAIGN_DIR}\findings\atc_raw\<obj_name>.txt
 ```
 
 This writes `<obj_name>.txt.findings.tsv` (PRIO/CHECK_ID/CHECK_TITLE/OBJECT/
 LINE/MSG_TEXT). Collect every drill export under one folder, e.g.
 `{CAMPAIGN_DIR}\findings\atc_raw\`. Notes:
 
-- **Design note: readiness variant (known gap).** `/sap-atc` runs the system's
-  DEFAULT ATC check variant; it does NOT yet accept `S4HANA_READINESS` as an
-  argument (the old positional was removed). Until a `--variant=` flag lands on
-  `/sap-atc` (needs the run-series variant field re-recorded), either (a) set
-  the connected system's default ATC variant to `S4HANA_READINESS` (with the
-  Simplification Database loaded), or (b) run the readiness ATC manually and
-  drop its per-finding export into `atc_raw\` for `ingest`.
+- **Readiness variant.** Always pass **`--variant=S4HANA_READINESS`** — this is
+  the whole point of the analysis step. `/sap-atc` sets that variant on the ATC
+  run series; the connected system must offer it as a GLOBAL variant with the
+  Simplification Database loaded. Watch the `/sap-atc` `VARIANT:` line: it must
+  read `S4HANA_READINESS`, not `SYSTEM_DEFAULT`. `/sap-atc` **fails loud** if it
+  cannot locate the variant config field on this release (rather than running
+  the default and mislabelling generic findings as readiness) — see that
+  skill's Step 4 / "Component IDs". If you hit that error and cannot record the
+  field id immediately, the fallbacks are: (a) set the connected system's
+  default ATC variant to `S4HANA_READINESS` and run `/sap-atc` WITHOUT
+  `--variant=`, or (b) run the readiness ATC manually and drop its per-finding
+  export into `atc_raw\` for `ingest`.
 - Use the per-finding **drill** export, NOT the run **summary** TXT -- the
   summary has no per-object column, so `ingest` skips it.
 

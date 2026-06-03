@@ -16,7 +16,11 @@
 #   TIER:     <R1|R2|R3|R4> | COUNT: <n>
 #   DECISION: <REMEDIATE|DECOMMISSION|REVIEW> | COUNT: <n>
 #   PATTERN:  <pattern> | COUNT: <n>                       (report only)
+#   UNRESOLVED: <message_id> | COUNT: <n>                  (report only; UNMATCHED findings)
 #   METRIC:   <name> | VALUE: <int>          (-1 = not applicable yet)
+#             names: decommission_savings_pct, atc_clean_pct, auto_fix_rate_pct,
+#                    unmatched_findings_pct
+#   SIGNOFF:  gate=<g> status=<APPROVED|PENDING|REJECTED> owner=<o> date=<d>   (report/signoff)
 #   NEXT:     skill=<name|MANUAL|DONE> reason=<text> [gate=<scope_signoff|dryrun_review>]
 #   INIT: <text> | EXISTED: <text> | REPORT: <text>
 #   STATUS:   PHASE=<phase> TOTAL=<n> REMEDIATE=<n> DECOMMISSION=<n> REVIEW=<n>
@@ -24,11 +28,16 @@
 
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory)][ValidateSet('init','status','report','next')][string]$Action,
+    [Parameter(Mandatory)][ValidateSet('init','status','report','next','signoff')][string]$Action,
     [Parameter(Mandatory)][string]$CampaignDir,
     [string]$CampaignId,
     [string]$ProfileJson,
-    [string]$BriefPath   # reserved (the brief is parsed by Claude in the skill, not here)
+    [string]$BriefPath,   # reserved (the brief is parsed by Claude in the skill, not here)
+    # signoff action: record/update one business-owner sign-off in campaign.json
+    [string]$Gate,                       # e.g. scope_signoff | dryrun_review | go_live
+    [string]$Owner,                      # business owner / approver name
+    [ValidateSet('APPROVED','PENDING','REJECTED')][string]$SignoffStatus = 'APPROVED',
+    [string]$Note
 )
 
 $ErrorActionPreference = 'Stop'
@@ -105,7 +114,86 @@ function Emit-Counts($rows){
     foreach($d in $DecisionOrder){ Write-Output "DECISION: $d | COUNT: $(HGet $dH $d)" }
 }
 
-function Emit-Metrics($rows){
+# Render an int metric for the dashboard: -1 => "n/a" (could-not-compute), else "<v>%".
+function Pct([int]$v){ if($v -lt 0){ return 'n/a' } else { return "$v%" } }
+
+# Auto-fix rate from remediation\fixlog.tsv: share of attempted objects that the
+# R1 mechanical rules actually rewrote (auto_changes > 0). Distinguishes "0%
+# auto-fixable" from "no remediation attempted yet" (-1 => n/a, empty/no file).
+function Get-AutoFix([string]$dir){
+    $res = [ordered]@{ rate = -1; auto = 0; total = 0 }
+    $p = Join-Path $dir 'remediation\fixlog.tsv'
+    if(-not (Test-Path -LiteralPath $p)){ return $res }
+    try {
+        $rows = @(Import-Csv -LiteralPath $p -Delimiter "`t")
+        $tot = $rows.Count
+        if($tot -gt 0){
+            $auto = @($rows | Where-Object {
+                $n = 0; [void][int]::TryParse([string]$_.auto_changes, [ref]$n); $n -gt 0
+            }).Count
+            $res.total = $tot; $res.auto = $auto
+            $res.rate  = [int][math]::Round(100.0 * $auto / $tot)
+        }
+    } catch {}
+    return $res
+}
+
+# Unresolved findings from findings\findings_triaged.tsv: rows the triage could
+# not classify (pattern = UNMATCHED) -> the human-triage backlog and the feed for
+# /sap-cc-learn. -1 => n/a (no triaged findings yet).
+function Get-Unmatched([string]$dir){
+    $res = [ordered]@{ pct = -1; unmatched = 0; total = 0; topIds = @() }
+    $p = Join-Path $dir 'findings\findings_triaged.tsv'
+    if(-not (Test-Path -LiteralPath $p)){ return $res }
+    try {
+        $rows = @(Import-Csv -LiteralPath $p -Delimiter "`t")
+        $tot = $rows.Count
+        if($tot -gt 0){
+            $um = @($rows | Where-Object { ([string]$_.pattern) -eq 'UNMATCHED' })
+            $res.total = $tot; $res.unmatched = $um.Count
+            $res.pct = [int][math]::Round(100.0 * $um.Count / $tot)
+            $res.topIds = @($um | Where-Object { $_.message_id } |
+                Group-Object message_id | Sort-Object Count -Descending | Select-Object -First 10)
+        }
+    } catch {}
+    return $res
+}
+
+# Business-owner sign-offs: cross-reference the configured human_gates against the
+# optional campaign.json `signoffs` array. Returns one row per gate (PENDING when
+# not recorded) plus any extra recorded sign-offs for non-gate milestones.
+function Get-Signoffs([string]$dir){
+    $out = New-Object System.Collections.Generic.List[object]
+    $p = Join-Path $dir 'campaign.json'
+    if(-not (Test-Path -LiteralPath $p)){ return ,$out }
+    $c = $null
+    try { $c = Get-Content -LiteralPath $p -Raw -Encoding UTF8 | ConvertFrom-Json } catch { return ,$out }
+    $gateNames = New-Object System.Collections.Generic.List[string]
+    if($c.human_gates){
+        foreach($pp in $c.human_gates.PSObject.Properties){ if([bool]$pp.Value){ $gateNames.Add($pp.Name) } }
+    }
+    $sign = @{}
+    if($c.signoffs){ foreach($s in @($c.signoffs)){ if($s.gate){ $sign[[string]$s.gate] = $s } } }
+    foreach($g in $gateNames){
+        if($sign.ContainsKey($g)){
+            $s = $sign[$g]
+            $st = if($s.status){ [string]$s.status } else { 'APPROVED' }
+            $out.Add([pscustomobject]@{ gate=$g; status=$st; owner=([string]$s.owner); date=([string]$s.date); note=([string]$s.note) })
+        } else {
+            $out.Add([pscustomobject]@{ gate=$g; status='PENDING'; owner=''; date=''; note='' })
+        }
+    }
+    foreach($k in $sign.Keys){
+        if(-not ($gateNames -contains $k)){
+            $s = $sign[$k]
+            $st = if($s.status){ [string]$s.status } else { 'APPROVED' }
+            $out.Add([pscustomobject]@{ gate=$k; status=$st; owner=([string]$s.owner); date=([string]$s.date); note=([string]$s.note) })
+        }
+    }
+    return $out
+}
+
+function Emit-Metrics($rows,[string]$dir){
     $dH = Tally $rows 'decision'; $sH = Tally $rows 'state'
     $dec    = HGet $dH 'DECOMMISSION'
     $scoped = (HGet $dH 'REMEDIATE') + $dec + (HGet $dH 'REVIEW')
@@ -113,8 +201,12 @@ function Emit-Metrics($rows){
     $remTot = (HGet $sH 'REMEDIATED') + (HGet $sH 'VERIFIED') + (HGet $sH 'TRANSPORTED')
     $clean  = (HGet $sH 'VERIFIED') + (HGet $sH 'TRANSPORTED')
     $atc    = if($remTot -gt 0){ [int][math]::Round(100.0 * $clean / $remTot) } else { -1 }
+    $af = Get-AutoFix $dir
+    $um = Get-Unmatched $dir
     Write-Output "METRIC: decommission_savings_pct | VALUE: $save"
     Write-Output "METRIC: atc_clean_pct | VALUE: $atc"
+    Write-Output "METRIC: auto_fix_rate_pct | VALUE: $($af.rate)"
+    Write-Output "METRIC: unmatched_findings_pct | VALUE: $($um.pct)"
 }
 
 function Emit-Status($rows,[string]$phase){
@@ -196,7 +288,10 @@ function Build-Dashboard([string]$dir,$rows,[string]$phase,$patCounts){
     $scoped = $dec + $remD + $rev
     $save = if($scoped -gt 0){ [int][math]::Round(100.0 * $dec / $scoped) } else { 0 }
     $remTot = (HGet $sH 'REMEDIATED') + (HGet $sH 'VERIFIED') + (HGet $sH 'TRANSPORTED')
-    $atc = if($remTot -gt 0){ [int][math]::Round(100.0 * ((HGet $sH 'VERIFIED') + (HGet $sH 'TRANSPORTED')) / $remTot) } else { 0 }
+    $atc = if($remTot -gt 0){ [int][math]::Round(100.0 * ((HGet $sH 'VERIFIED') + (HGet $sH 'TRANSPORTED')) / $remTot) } else { -1 }
+    $af = Get-AutoFix $dir
+    $um = Get-Unmatched $dir
+    $signoffs = @(Get-Signoffs $dir)
 
     $L = New-Object System.Collections.Generic.List[string]
     $L.Add("# Migration Campaign $cid - Dashboard ($today)")
@@ -230,7 +325,41 @@ function Build-Dashboard([string]$dir,$rows,[string]$phase,$patCounts){
         $L.Add("_No triaged findings yet._")
     }
     $L.Add("")
-    $L.Add("ATC-clean after remediation: $atc%")
+    $L.Add("## Key metrics")
+    $L.Add("| Metric | Value |")
+    $L.Add("|--------|-------|")
+    $L.Add("| Decommission savings | $save% (objects retired without remediation) |")
+    $L.Add("| ATC-clean after remediation | $(Pct $atc) |")
+    $L.Add("| Auto-fix rate (R1 mechanical) | $(Pct $af.rate) ($($af.auto)/$($af.total) objects rewritten by rule) |")
+    $L.Add("| Unresolved findings (need human triage) | $(Pct $um.pct) ($($um.unmatched)/$($um.total) findings UNMATCHED) |")
+    $L.Add("")
+    $L.Add("## Unresolved findings (feed for /sap-cc-learn)")
+    if(@($um.topIds).Count -gt 0){
+        $L.Add("Top UNMATCHED message ids -- classify via ``/sap-cc-learn`` to lift the match rate:")
+        $L.Add("")
+        $L.Add("| Message id | Findings |")
+        $L.Add("|------------|----------|")
+        foreach($mi in $um.topIds){ $L.Add("| $($mi.Name) | $($mi.Count) |") }
+    } elseif($um.total -gt 0){
+        $L.Add("_All triaged findings matched a pattern -- no human-triage backlog._")
+    } else {
+        $L.Add("_No triaged findings yet._")
+    }
+    $L.Add("")
+    $L.Add("## Business-owner sign-offs")
+    if(@($signoffs).Count -gt 0){
+        $L.Add("| Gate | Status | Owner | Date |")
+        $L.Add("|------|--------|-------|------|")
+        foreach($so in $signoffs){
+            $own = if($so.owner){ $so.owner } else { '-' }
+            $dt  = if($so.date){ $so.date } else { '-' }
+            $L.Add("| $($so.gate) | $($so.status) | $own | $dt |")
+        }
+        $L.Add("")
+        $L.Add("_Record with_ ``/sap-cc-campaign signoff --campaign <id> --gate <gate> --owner <name>``.")
+    } else {
+        $L.Add("_No human gates configured for this campaign._")
+    }
     return ($L -join "`r`n") + "`r`n"
 }
 
@@ -276,7 +405,7 @@ try {
     switch($Action){
         'status' {
             Emit-Counts  $rows
-            Emit-Metrics $rows
+            Emit-Metrics $rows $CampaignDir
             Update-Phase $CampaignDir $phase
             Emit-Status  $rows $phase
             if(@($rows).Count -eq 0){ exit 1 }   # gap: nothing inventoried yet
@@ -284,7 +413,7 @@ try {
         }
         'report' {
             Emit-Counts  $rows
-            Emit-Metrics $rows
+            Emit-Metrics $rows $CampaignDir
             $patCounts = @()
             $patFile = Join-Path $CampaignDir 'findings\findings_triaged.tsv'
             if(Test-Path -LiteralPath $patFile){
@@ -294,6 +423,9 @@ try {
                     foreach($pc in $patCounts){ Write-Output "PATTERN: $($pc.Name) | COUNT: $($pc.Count)" }
                 } catch {}
             }
+            $umR = Get-Unmatched $CampaignDir
+            foreach($mi in @($umR.topIds)){ Write-Output "UNRESOLVED: $($mi.Name) | COUNT: $($mi.Count)" }
+            foreach($so in @(Get-Signoffs $CampaignDir)){ Write-Output "SIGNOFF: gate=$($so.gate) status=$($so.status) owner=$($so.owner) date=$($so.date)" }
             Update-Phase $CampaignDir $phase
             $dashPath = Join-Path $CampaignDir 'reports\dashboard.md'
             Write-Utf8NoBom $dashPath (Build-Dashboard $CampaignDir $rows $phase $patCounts)
@@ -307,6 +439,26 @@ try {
             $line = "NEXT: skill=$($n.skill) reason=$($n.reason)"
             if($n.gate){ $line += " gate=$($n.gate)" }
             Write-Output $line
+            exit 0
+        }
+        'signoff' {
+            if([string]::IsNullOrWhiteSpace($Gate)){ Write-Output 'ERROR: -Gate is required for -Action signoff'; exit 2 }
+            $cj = Get-Content -LiteralPath $cjson -Raw -Encoding UTF8 | ConvertFrom-Json
+            $today = (Get-Date).ToString('yyyy-MM-dd')
+            $entry = [pscustomobject]@{ gate=$Gate; status=$SignoffStatus; owner=$Owner; date=$today; note=$Note }
+            # upsert into signoffs[] by gate (replace any existing entry for this gate)
+            $list = New-Object System.Collections.Generic.List[object]
+            if($cj.signoffs){ foreach($s in @($cj.signoffs)){ if(([string]$s.gate) -ne $Gate){ $list.Add($s) } } }
+            $list.Add($entry)
+            $arr = @($list)
+            if($cj.PSObject.Properties.Name -contains 'signoffs'){ $cj.signoffs = $arr }
+            else { $cj | Add-Member -NotePropertyName signoffs -NotePropertyValue $arr }
+            if($cj.PSObject.Properties.Name -contains 'updated'){ $cj.updated = $today }
+            else { $cj | Add-Member -NotePropertyName updated -NotePropertyValue $today }
+            Write-Utf8NoBom $cjson ($cj | ConvertTo-Json -Depth 8)
+            try { Get-Content -LiteralPath $cjson -Raw -Encoding UTF8 | ConvertFrom-Json | Out-Null }
+            catch { Write-Output 'ERROR: campaign.json failed to validate after signoff write'; exit 2 }
+            Write-Output "SIGNOFF: gate=$Gate status=$SignoffStatus owner=$Owner date=$today"
             exit 0
         }
     }

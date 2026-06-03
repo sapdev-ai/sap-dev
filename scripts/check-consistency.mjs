@@ -9,7 +9,7 @@
 //   - metadata.total_plugins != number of plugin entries
 
 import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
-import { join, dirname, resolve } from 'node:path';
+import { join, dirname, resolve, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -371,6 +371,95 @@ for (const plugin of mp.plugins) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Golden-screen baseline coverage gate (added 2026-06-03).
+//
+// GUI-robustness initiative, half 1 (the static half). Every operational
+// SAP-driving .vbs under skills/<skill>/references/ SHOULD ship a screen
+// fingerprint baseline `<stem>.screens.json` recording the control IDs + screen
+// identity (program/dynpro) it depends on at each checkpoint. /sap-gui-screen-
+// check (the live half, not yet built) replays those baselines against a target
+// release and fails loudly at the exact missing control — turning the repo's
+// dominant "silent false-success after a screen/control moved" bug class into a
+// pre-flight drift report. Contract: contributing/golden_screen_baselines.md.
+//
+// Two tiers, mirroring the non-ASCII guard's "don't break the build on
+// pre-existing debt" stance:
+//   * MISSING baseline   -> informational WARN (a ratcheting coverage metric).
+//                           Promote to a hard error once coverage hits 100%.
+//   * MALFORMED baseline -> HARD error. Safe: only fires on a baseline that was
+//                           actually authored, so it cannot break today's tree.
+// ---------------------------------------------------------------------------
+
+const BASELINE_SCHEMA = 'sapdev.screenbaseline/1';
+const baselineWarnings = [];
+let baselineOperational = 0;
+let baselinePresent = 0;
+
+function validateScreenBaseline(pluginName, skill, vbsFile, jsonAbs) {
+  const tag = `${pluginName}: ${skill}/${basename(jsonAbs)}`;
+  let b;
+  try { b = JSON.parse(readFileSync(jsonAbs, 'utf8')); }
+  catch (e) { errors.push(`${tag} is not valid JSON: ${e.message}`); return; }
+
+  if (b.schema !== BASELINE_SCHEMA) {
+    errors.push(`${tag} has schema "${b.schema}"; expected "${BASELINE_SCHEMA}"`);
+  }
+  if (b.vbs !== vbsFile) {
+    errors.push(`${tag} field vbs="${b.vbs}" does not match its paired template "${vbsFile}"`);
+  }
+  if (!b.captured_on || typeof b.captured_on !== 'object') {
+    errors.push(`${tag} missing captured_on object {release, kernel, date, method}`);
+  }
+  if (!Array.isArray(b.checkpoints) || b.checkpoints.length === 0) {
+    errors.push(`${tag} must have a non-empty checkpoints array`);
+    return;
+  }
+  b.checkpoints.forEach((cp, i) => {
+    const where = `${tag} checkpoint[${i}]`;
+    if (!cp || typeof cp !== 'object') { errors.push(`${where} is not an object`); return; }
+    if (!cp.id || typeof cp.id !== 'string') errors.push(`${where} missing string id`);
+    const pending = cp.status === 'pending_live';
+    if (cp.status !== 'captured' && cp.status !== 'pending_live') {
+      errors.push(`${where} status must be "captured" or "pending_live"`);
+    }
+    if (!Array.isArray(cp.required_ids)) {
+      errors.push(`${where} required_ids must be an array of findById paths`);
+    } else if (!pending && cp.required_ids.length === 0) {
+      errors.push(`${where} required_ids is empty but status is "captured"`);
+    }
+    if (!cp.identity || typeof cp.identity !== 'object') {
+      errors.push(`${where} missing identity object {program, dynpro}`);
+    } else if (!pending && (!cp.identity.program || !cp.identity.dynpro)) {
+      errors.push(`${where} identity.program and identity.dynpro are required when status is "captured"`);
+    }
+  });
+}
+
+for (const plugin of mp.plugins) {
+  const sourceRel = plugin.source.replace(/^\.\//, '').replace(/\/$/, '');
+  const sourceAbs = join(repoRoot, sourceRel);
+  const skillsDir = join(sourceAbs, 'skills');
+  for (const { skill, file, abs } of listVbsTemplates(skillsDir)) {
+    if (TIER3_EXEMPT_VBS.has(file)) continue;
+    const body = readFileSync(abs, 'utf8');
+    const looksOperational = /GetObject\("SAPGUI"\)/i.test(body) || /GetScriptingEngine/i.test(body);
+    if (!looksOperational) continue;
+    baselineOperational++;
+    const jsonAbs = join(dirname(abs), file.replace(/\.vbs$/i, '.screens.json'));
+    if (existsSync(jsonAbs)) {
+      baselinePresent++;
+      validateScreenBaseline(plugin.name, skill, file, jsonAbs);
+    } else {
+      const want = file.replace(/\.vbs$/i, '.screens.json');
+      baselineWarnings.push(`${plugin.name}: ${skill}/${file} has no screen baseline (${want}); /sap-gui-screen-check cannot detect release/locale drift for it — capture one per contributing/golden_screen_baselines.md`);
+    }
+  }
+}
+
+const baselineCoverage = `screen-baseline coverage ${baselinePresent}/${baselineOperational}` +
+  (baselineWarnings.length > 0 ? ` (${baselineWarnings.length} unbaselined)` : '');
+
 if (errors.length === 0) {
   let summary = `OK: ${mp.plugins.length} plugins, ${totalSkills} skills, all manifests aligned at version ${mp.version}, Tier 3 attach contract clean`;
   if (phase4Warnings.length > 0) {
@@ -379,9 +468,11 @@ if (errors.length === 0) {
   if (encodingWarnings.length > 0) {
     summary += `, ${encodingWarnings.length} non-ASCII warning(s)`;
   }
+  summary += `, ${baselineCoverage}`;
   console.log(summary);
   for (const w of phase4Warnings) console.warn('  WARN: ' + w);
   for (const w of encodingWarnings) console.warn('  WARN: ' + w);
+  for (const w of baselineWarnings) console.warn('  WARN: ' + w);
   process.exit(0);
 } else {
   console.error(`FAIL: ${errors.length} consistency issue(s):`);
@@ -393,6 +484,11 @@ if (errors.length === 0) {
   if (encodingWarnings.length > 0) {
     console.error(`\nNon-ASCII source warnings (informational):`);
     for (const w of encodingWarnings) console.error('  WARN: ' + w);
+  }
+  console.error(`\n${baselineCoverage}`);
+  if (baselineWarnings.length > 0) {
+    console.error(`Golden-screen baseline warnings (informational):`);
+    for (const w of baselineWarnings) console.error('  WARN: ' + w);
   }
   process.exit(1);
 }
