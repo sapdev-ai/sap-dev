@@ -1,0 +1,60 @@
+{
+  "$comment": "Shared evidence contract for the /sap-diagnose suite. Every reader (/sap-st22, /sap-sm13, /sap-sm12, /sap-slg1, /sap-sm37, /sap-queues, /sap-sm21) writes ONE file of this shape to {RUN_DIR}\\evidence_<source>.json. The correlate helper (sap_diagnose_correlate.ps1) consumes every evidence_*.json in the run dir. All timestamps are SERVER-LOCAL in yyyyMMddHHmmss. All business text passes through log_redact_keys before being written.",
+  "type": "evidence_file",
+  "version": 1,
+  "properties": {
+    "source":      "Reader id — ST22 | SM13 | SM12 | SLG1 | SM37 | QUEUES | SM21 | GW_LOG",
+    "status":      "ok | skipped — 'skipped' means the reader did not run (no auth / not installed / timeout); correlate records it and continues",
+    "reason":      "Free text — populated when status=skipped or when truncated",
+    "truncated":   "true when the reader hit its top-N cap (correlate surfaces this LOUDLY; never silent)",
+    "total_count": "Total matches found before the cap (>= events.length when truncated)",
+    "events":      "Array of normalized event records (see event shape)"
+  },
+  "event_shape": {
+    "id":             "Stable unique id within the run, e.g. 'SM13-1'. Other events reference it in explicit_links.",
+    "source":         "Same enum as file.source",
+    "ts":             "Server-local timestamp, yyyyMMddHHmmss (14 digits). Empty allowed but disables temporal correlation for this event.",
+    "severity":       "A | E | W | I | S  (Abort/Error/Warning/Info/Success — SAP MessageType codes; language-independent)",
+    "client":         "MANDT, e.g. '100'",
+    "user":           "BNAME of the affected/owning user",
+    "tcode":          "Transaction code, e.g. 'VA01'",
+    "program":        "ABAP program / report, e.g. 'SAPMV45A'",
+    "include":        "Include + (optional) routine, e.g. 'MV45AF0B_BELEG_SICHERN'",
+    "line":           "Source line number as string",
+    "object_keys":    "Object {KEY:VALUE} of business keys, e.g. { \"VBELN\": \"0000012345\" }. Drives business-key correlation across sources.",
+    "msg_id":         "Message class id",
+    "msg_no":         "Message number",
+    "msg_text":       "Human-readable message (redacted)",
+    "tech":           "Object of source-specific extras, e.g. { \"exception\": \"MESSAGE_TYPE_X\", \"dump_key\": \"...\", \"update_fm\": \"RV_SALES_DOCUMENT_ADD\" }",
+    "drilldown":      "How the operator views this in the GUI, e.g. 'ST22 → 20260603/143207'",
+    "explicit_links": "Array of strings. Each may be another event's id, a business key value, a 'KEY:VALUE' token, or any value present in another event's tech{}. Produces a HIGH-confidence correlation edge."
+  },
+  "sample": {
+    "source": "SM13",
+    "status": "ok",
+    "reason": "",
+    "truncated": false,
+    "total_count": 1,
+    "events": [
+      {
+        "id": "SM13-1",
+        "source": "SM13",
+        "ts": "20260603143208",
+        "severity": "E",
+        "client": "100",
+        "user": "JSMITH",
+        "tcode": "VA01",
+        "program": "SAPMV45A",
+        "include": "",
+        "line": "",
+        "object_keys": { "VBELN": "0000012345" },
+        "msg_id": "V1",
+        "msg_no": "849",
+        "msg_text": "Update terminated in RV_SALES_DOCUMENT_ADD",
+        "tech": { "update_fm": "RV_SALES_DOCUMENT_ADD", "vbkey": "4A2F...", "dump_key": "20260603143207SAPMV45A" },
+        "drilldown": "SM13 → 20260603/143208 → JSMITH",
+        "explicit_links": ["20260603143207SAPMV45A"]
+      }
+    ]
+  }
+}

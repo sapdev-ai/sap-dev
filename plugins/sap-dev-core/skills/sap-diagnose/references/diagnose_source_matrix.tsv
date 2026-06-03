@@ -1,0 +1,9 @@
+signal	primary	secondary	notes
+dump	st22	sm13,sm21	"crash", "short dump", a dump key, MESSAGE_TYPE_X
+dialog_tcode	sm13,slg1,st22	sm12,sm21	dialog tcodes that post via update task (VA01, ME21N, FB01, MIGO, MIRO, ...)
+job	sm37	st22,slg1	"batch", "job", "cancelled job", a job name
+lock	sm12	sm13	"locked", "can't edit", "object is being processed by"
+interface	queues,slg1	sm21,st22	IDoc / ALE / qRFC / tRFC / "stuck", WE* tcodes, a DOCNUM
+odata	gw_log	st22,slg1	OData / Fiori / "app error" / Gateway
+performance	trace	sm37	"slow" / "timeout" — routed to /sap-trace (separate skill)
+generic	st22,sm21	sm13,slg1	error with no tcode/job/object given

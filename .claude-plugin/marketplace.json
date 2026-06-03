@@ -12,7 +12,7 @@
     "version": "0.3.4",
     "last_updated": "2026-06-01",
     "total_plugins": 4,
-    "total_skills": 56,
+    "total_skills": 62,
     "categories": [
       "tooling"
     ]
@@ -32,6 +32,7 @@
         "./skills/sap-dev-clean",
         "./skills/sap-dev-init",
         "./skills/sap-dev-status",
+        "./skills/sap-diagnose",
         "./skills/sap-function-group",
         "./skills/sap-gui-diagnose",
         "./skills/sap-gui-object-details",
@@ -54,8 +55,13 @@
         "./skills/sap-se51",
         "./skills/sap-se54",
         "./skills/sap-se91",
+        "./skills/sap-slg1",
+        "./skills/sap-sm12",
+        "./skills/sap-sm13",
+        "./skills/sap-sm37",
         "./skills/sap-snro",
         "./skills/sap-sp02",
+        "./skills/sap-st22",
         "./skills/sap-transport-request",
         "./skills/sap-update-addon",
         "./skills/sap-where-used-list"
