@@ -33,10 +33,10 @@ $session = $null
 $progIds = @("SAPGUI", "SAPGUI.ScriptingCtrl.1", "SapGui.ScriptingCtrl.1")
 $sapGui  = $null
 $lastErr = ""
-foreach ($pid in $progIds) {
+foreach ($progId in $progIds) {
     try {
-        $sapGui = [System.Runtime.InteropServices.Marshal]::GetActiveObject($pid)
-        Write-Host "INFO: Attached to SAP GUI via ProgID '$pid'."
+        $sapGui = [System.Runtime.InteropServices.Marshal]::GetActiveObject($progId)
+        Write-Host "INFO: Attached to SAP GUI via ProgID '$progId'."
         break
     } catch {
         $lastErr = $_.Exception.Message
