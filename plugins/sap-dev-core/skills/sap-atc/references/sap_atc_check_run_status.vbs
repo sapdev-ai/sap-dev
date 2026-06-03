@@ -182,25 +182,54 @@ WScript.Echo "INFO: State raw value (col=" & sStateColUsed & "): '" & sStateRaw 
 Dim sStateLow : sStateLow = LCase(sStateRaw)
 Dim sDecoded : sDecoded = "UNKNOWN:" & sStateRaw
 
+' Localized SAP run-state words, assembled via ChrW() so the RUNTIME strings
+' stay ASCII bytes on disk -- 32-bit cscript reads a BOM-less .vbs as the host
+' ANSI codepage and would otherwise mojibake a non-ASCII literal (see
+' contributing/source_encoding_policy.md). Same idiom as sap_syntax_check_lib.vbs.
+' These SUPPLEMENT the locale-independent icon-ID + English checks below; they
+' are never the sole match path. The glyph in each trailing comment documents
+' what the ChrW() builds -- the runtime literal stays ASCII, only the comment
+' carries the character. JA wording is live-observed; ZH wording is best-effort
+' standard terms, NOT yet verified on a live Chinese ATC run -- the icon-ID
+' prefixes stay authoritative for every logon language, Chinese included.
+Dim JA_FINISHED : JA_FINISHED = ChrW(&H7D42) & ChrW(&H4E86)                ' 終了   shuuryou      = finished
+Dim JA_COMPLETE : JA_COMPLETE = ChrW(&H5B8C) & ChrW(&H4E86)                ' 完了   kanryou       = complete
+Dim JA_INPROC   : JA_INPROC   = ChrW(&H51E6) & ChrW(&H7406) & ChrW(&H4E2D) ' 処理中 shori-chuu    = in process
+Dim JA_RUNNING  : JA_RUNNING  = ChrW(&H5B9F) & ChrW(&H884C) & ChrW(&H4E2D) ' 実行中 jikkou-chuu   = running
+Dim JA_ERROR    : JA_ERROR    = ChrW(&H30A8) & ChrW(&H30E9) & ChrW(&H30FC) ' エラー eraa          = error
+Dim JA_FAILED   : JA_FAILED   = ChrW(&H5931) & ChrW(&H6557)                ' 失敗   shippai       = failed
+Dim JA_ABORTED  : JA_ABORTED  = ChrW(&H4E2D) & ChrW(&H6B62)                ' 中止   chuushi       = aborted
+Dim ZH_FINISHED : ZH_FINISHED = ChrW(&H7ED3) & ChrW(&H675F)                ' 结束   jieshu        = finished   (best-effort)
+Dim ZH_COMPLETE : ZH_COMPLETE = ChrW(&H5B8C) & ChrW(&H6210)                ' 完成   wancheng      = completed  (best-effort)
+Dim ZH_INPROC   : ZH_INPROC   = ChrW(&H5904) & ChrW(&H7406) & ChrW(&H4E2D) ' 处理中 chuli-zhong   = in process (best-effort)
+Dim ZH_RUNNING  : ZH_RUNNING  = ChrW(&H8FD0) & ChrW(&H884C) & ChrW(&H4E2D) ' 运行中 yunxing-zhong = running    (best-effort)
+Dim ZH_ERROR    : ZH_ERROR    = ChrW(&H9519) & ChrW(&H8BEF)                ' 错误   cuowu         = error      (best-effort)
+Dim ZH_FAILED   : ZH_FAILED   = ChrW(&H5931) & ChrW(&H8D25)                ' 失败   shibai        = failed     (best-effort)
+Dim ZH_ABORTED  : ZH_ABORTED  = ChrW(&H5DF2) & ChrW(&H53D6) & ChrW(&H6D88) ' 已取消 yiquxiao      = cancelled  (best-effort)
+
 ' Match against:
 '   * SAP icon prefixes (locale-independent; @03/@DF/@AC = success-ish,
 '     @2F/@BZ = in-process, @5B/@5C = error). S/4HANA 1909 returns @DF
 '     for the green-flag "Finished" state — verified live.
-'   * Tooltip stems in EN / JA. The literal text after \Q is the
-'     translatable tooltip.
+'   * Tooltip stems in EN / JA / ZH (ZH best-effort). The literal text after
+'     \Q is the translatable tooltip.
 If InStr(sStateLow, "finish") > 0 Or InStr(sStateLow, "compl") > 0 Or _
    InStr(sStateLow, "@03") > 0 Or InStr(sStateLow, "@df") > 0 Or _
-   InStr(sStateLow, "@ac") > 0 Or InStr(sStateRaw, "終了") > 0 Or _
-   InStr(sStateRaw, "完了") > 0 Then
+   InStr(sStateLow, "@ac") > 0 Or InStr(sStateRaw, JA_FINISHED) > 0 Or _
+   InStr(sStateRaw, JA_COMPLETE) > 0 Or InStr(sStateRaw, ZH_FINISHED) > 0 Or _
+   InStr(sStateRaw, ZH_COMPLETE) > 0 Then
     sDecoded = "COMPLETED"
 ElseIf InStr(sStateLow, "process") > 0 Or InStr(sStateLow, "running") > 0 Or _
        InStr(sStateLow, "@2f") > 0 Or InStr(sStateLow, "@bz") > 0 Or _
-       InStr(sStateRaw, "処理中") > 0 Or InStr(sStateRaw, "実行中") > 0 Then
+       InStr(sStateRaw, JA_INPROC) > 0 Or InStr(sStateRaw, JA_RUNNING) > 0 Or _
+       InStr(sStateRaw, ZH_INPROC) > 0 Or InStr(sStateRaw, ZH_RUNNING) > 0 Then
     sDecoded = "RUNNING"
 ElseIf InStr(sStateLow, "error") > 0 Or InStr(sStateLow, "fail") > 0 Or _
        InStr(sStateLow, "abort") > 0 Or InStr(sStateLow, "@5c") > 0 Or _
-       InStr(sStateLow, "@5b") > 0 Or InStr(sStateRaw, "エラー") > 0 Or _
-       InStr(sStateRaw, "失敗") > 0 Or InStr(sStateRaw, "中止") > 0 Then
+       InStr(sStateLow, "@5b") > 0 Or InStr(sStateRaw, JA_ERROR) > 0 Or _
+       InStr(sStateRaw, JA_FAILED) > 0 Or InStr(sStateRaw, JA_ABORTED) > 0 Or _
+       InStr(sStateRaw, ZH_ERROR) > 0 Or InStr(sStateRaw, ZH_FAILED) > 0 Or _
+       InStr(sStateRaw, ZH_ABORTED) > 0 Then
     sDecoded = "FAILED"
 ElseIf sStateRaw = "" Then
     sDecoded = "UNKNOWN:(empty)"

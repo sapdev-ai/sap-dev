@@ -743,7 +743,7 @@ Function NormalizeMenuLabel(s)
     t = Replace(t, vbTab, "")
     Do While Len(t) > 0
         Dim lastCh : lastCh = Right(t, 1)
-        If lastCh = "." Or lastCh = "-" Or lastCh = "…" Then
+        If lastCh = "." Or lastCh = "-" Or lastCh = ChrW(&H2026) Then  ' ChrW(&H2026) = ellipsis, kept ASCII (see source_encoding_policy.md)
             t = Left(t, Len(t) - 1)
         Else
             Exit Do

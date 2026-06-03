@@ -305,7 +305,7 @@ $shared = '<SAP_DEV_CORE_SHARED_DIR>\scripts'
 # `@(... | ConvertFrom-Json)` wraps (not unrolls) it — the loop would then bind
 # $c to the whole array and $c.severity would be an array. Assign first, then
 # normalize to an array. (Live-test bug, S4D 2026-06-03.)
-$cands = Get-Content '{OUT}\candidate_findings.json' -Raw | ConvertFrom-Json
+$cands = Get-Content '{OUT}\candidate_findings.json' -Raw -Encoding UTF8 | ConvertFrom-Json
 if ($null -eq $cands) { $cands = @() } elseif ($cands -isnot [System.Array]) { $cands = @($cands) }
 $obj   = [pscustomobject]@{ pgmid = '{PGMID}'; object = '{TADIR_OBJ}'; obj_name = '{OBJECT}' }
 

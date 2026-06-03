@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Fixed
+
+- **CJK/JA mojibake in PowerShell JSON ingest under Windows PowerShell 5.1.**
+  `Get-Content -Raw | ConvertFrom-Json` reads with the system ANSI codepage by
+  default on PS 5.1, so the Write-tool's BOM-less UTF-8 JSON was decoded as ANSI —
+  any finding text quoting Chinese / Japanese spec field labels then garbled into
+  the exported deliverable. Added `-Encoding UTF8` to the affected ingest blocks:
+  `sap-review-abap` Step 6 emit (`candidate_findings.json` → `.review.tsv` /
+  `.review.json`; confirmed live on S4D 2026-06-04 reviewing ZMMRMAT053R01, where
+  the Chinese file-mapping labels 工厂视图 / 旧物料编号 / MRP 管理者 came out
+  garbled until the fix) and `sap-st22` Step 1 anchor ingest (`anchor.json`,
+  defensively — fields read today are ASCII). Other JSON ingests across the
+  shared `.ps1` scripts already specify `-Encoding UTF8`; `.vbs` reads use
+  ADODB.Stream and are unaffected.
+
 ## [0.6.0] — 2026-06-03
 
 Completes the SAP delivery loop on top of 0.5.0's lifecycle platform: a

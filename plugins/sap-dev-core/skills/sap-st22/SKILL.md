@@ -61,7 +61,7 @@ Parse the deep flags from `$ARGUMENTS`: `--deep` → `$deep=$true`; `--dump-key
 params file from the anchor:
 
 ```powershell
-$a = Get-Content '{RUN_DIR}\anchor.json' -Raw | ConvertFrom-Json
+$a = Get-Content '{RUN_DIR}\anchor.json' -Raw -Encoding UTF8 | ConvertFrom-Json
 $from = "$($a.window.from_ts)"; $to = "$($a.window.to_ts)"
 $lines = @(
   "FROMDATE=" + $from.Substring(0,8),
