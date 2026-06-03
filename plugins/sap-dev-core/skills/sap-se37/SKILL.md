@@ -47,7 +47,7 @@ Task: $ARGUMENTS
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/tr_resolution.md` | TR resolution flow — this skill delegates to `/sap-transport-request` (Step 1b) |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/language_independence_rules.md` | GUI-scripting language independence — identify by component ID + DDIC field name, status-bar checks via `MessageType` codes (S/W/E/I/A), VKey instead of menu-text, no branching on `.Text`/`.Tooltip`/window titles |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/abap_code_quality_rules.md` | ABAP code-quality rules — deployed FM source must follow modern syntax, OOP scaffolds, no literal MESSAGE strings, perf-band-appropriate SQL. Run `/sap-check-abap` and `/sap-check-fm` before deploy when the source isn't generator-emitted. |
-| `<SAP_DEV_CORE_SHARED_DIR>/rules/sap_gui_security_handling.md` | SAP GUI Security dialog handling — the check-and-fix **FM source download** (Step A) is SAP-GUI-side file IO, so it can raise the modal "SAP GUI Security" dialog (which suspends the Scripting API and hangs cscript). Pre-check + OS-level watcher wrap that download. |
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/sap_gui_security_handling.md` | SAP GUI Security dialog handling — the **source upload** (Step 5a, via Utilities > Upload — reads the file from disk, no clipboard) and the check-and-fix **FM source download** (Step A) are both SAP-GUI-side file IO, so either can raise the modal "SAP GUI Security" dialog (which suspends the Scripting API and hangs cscript). Pre-check + OS-level watcher wrap each of those file-IO steps. |
 | `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_gui_security_precheck.ps1` | Read-only allow-list pre-check (`saprules.xml`) — `ALLOWED` (exit 0) / `NOT_COVERED` (exit 1). Used by Step A before the source download. |
 | `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_gui_security_sidecar.ps1` | OS-level (Win32) watcher that auto-dismisses the SAP GUI Security dialog (ticks Remember + clicks Allow). Launched as a background process before the Step A download. |
 
@@ -517,10 +517,39 @@ Run:
 powershell -ExecutionPolicy Bypass -File "{WORK_TEMP}\sap_se37_update_run.ps1"
 ```
 
-### Execute
+### Execute (with SAP GUI Security guard)
 
-```bash
-cscript //NoLogo {WORK_TEMP}\sap_se37_update_run.vbs
+The SE37 source upload uses **Utilities > Upload**, which reads the source from a
+local file via SAP GUI (SAP-GUI-side file IO) — no clipboard, no SendKeys. So,
+exactly like the Step A download path, it can raise the modal **SAP GUI
+Security** dialog when the source path isn't allow-listed, and that modal
+suspends the Scripting API, hanging the cscript indefinitely. Per
+`shared/rules/sap_gui_security_handling.md`, pre-check the rules and run the
+OS-level watcher around the upload. Run as one PowerShell block (the 32-bit
+cscript is inside it). Substitute `THE_SOURCE_PATH` (the absolute source path SAP
+GUI will read — the same value used for `%%ABAP_SOURCE_FILE%%`) and `THE_SID` /
+`THE_CLIENT` with the pinned system / client:
+
+```powershell
+$shared = '<SAP_DEV_CORE_SHARED_DIR>\scripts'
+$src    = 'THE_SOURCE_PATH'   # the local file SAP GUI's Upload menu will read
+# 1. Pre-check the allow-list (read-only; informational + lets us skip the watcher).
+& "$shared\sap_gui_security_precheck.ps1" -Path $src -Access r -System 'THE_SID' -Client 'THE_CLIENT' -Transaction 'SE37' | Out-Host
+$allowed = ($LASTEXITCODE -eq 0)
+# 2. If not already allow-listed, launch the OS-level watcher BEFORE the (blocking)
+#    upload. It detects the #32770 dialog and clicks Remember+Allow, which also
+#    persists a rule so subsequent runs pre-check ALLOWED.
+$watcher = $null
+if (-not $allowed) {
+    $watcher = Start-Process powershell -PassThru -WindowStyle Hidden -ArgumentList @(
+        '-NoProfile','-ExecutionPolicy','Bypass','-File',"$shared\sap_gui_security_sidecar.ps1",'-TimeoutSeconds','45')
+    Start-Sleep -Milliseconds 800
+}
+# 3. Run the upload + save + activate + syntax check (32-bit cscript). If the dialog
+#    appears it blocks here until the watcher dismisses it; then the upload completes.
+& 'C:/Windows/SysWOW64/cscript.exe' //NoLogo '{WORK_TEMP}\sap_se37_update_run.vbs'
+# 4. Reap the watcher.
+if ($watcher) { $watcher | Wait-Process -Timeout 50 -ErrorAction SilentlyContinue }
 ```
 
 Proceed to Step 6 to evaluate the result.
