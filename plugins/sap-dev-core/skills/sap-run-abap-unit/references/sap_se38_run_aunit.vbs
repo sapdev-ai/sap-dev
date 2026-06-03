@@ -40,9 +40,9 @@ Const WITH_COVERAGE = "%%WITH_COVERAGE%%"   ' "1" = also measure coverage
 Const SESSION_PATH  = "%%SESSION_PATH%%"    ' empty / unsubstituted = use default
 Const VKEY_ENTER    = 0
 
-' Globals set by ParseCounts.
-Dim gMethods, gFailed
-gMethods = 0 : gFailed = 0
+' Globals set by ParseCounts / FindCovPct.
+Dim gMethods, gFailed, gCovStr
+gMethods = 0 : gFailed = 0 : gCovStr = ""
 
 ExecuteGlobal CreateObject("Scripting.FileSystemObject") _
     .OpenTextFile("%%ATTACH_LIB_VBS%%", 1).ReadAll()
@@ -171,41 +171,84 @@ End Sub
 
 ' Fires the coverage menu, opens the Coverage Metrics tab, returns the root
 ' node's coverage percentage as digits (e.g. "33.33"), or "NA" on any failure.
+' Fires the coverage menu, opens the Coverage Metrics tab, and returns the root
+' node's coverage percentage as digits (e.g. "33.33"), or "NA". The AUCV coverage
+' tree's SAPLSAUCV_DISPLAY_COVERAGE:NNNN subscreen number is launch-variant, so we
+' SEARCH the tab for a GuiShell subtype=Tree with a PERCENTAGE column rather than
+' hardcoding the path (verified live on S/4HANA 1909 SE38).
 Function ReadCoverage(oSess, covMenuPath)
     ReadCoverage = "NA"
     On Error Resume Next
     oSess.findById(covMenuPath).select
     On Error GoTo 0
-    WScript.Sleep 7000
+    WScript.Sleep 9000
     If InStr(oSess.Info.Program, "SAUCV") = 0 Then Exit Function
     On Error Resume Next
-    oSess.findById("wnd[0]/usr/tabsTAB_COMBI/tabpFSCOV").select
+    oSess.findById("wnd[0]/usr/tabsTAB_COMBI/tabpFSCOV", False).select
     On Error GoTo 0
-    WScript.Sleep 3000
-    Dim tp
-    tp = "wnd[0]/usr/tabsTAB_COMBI/tabpFSCOV/ssubSUBSCR:SAPLSAUCV_DISPLAY_COVERAGE:0120/cntlCONTAINER_COVERAGE/shellcont/shell/shellcont[1]/shell"
-    Dim oT : Set oT = Nothing
-    On Error Resume Next
-    Set oT = oSess.findById(tp)
-    On Error GoTo 0
-    If oT Is Nothing Then Exit Function
-    Dim nk : Set nk = Nothing
-    On Error Resume Next
-    Set nk = oT.GetAllNodeKeys
-    On Error GoTo 0
-    If nk Is Nothing Then Exit Function
-    If nk.Count < 1 Then Exit Function
-    Dim pct : pct = ""
-    On Error Resume Next
-    pct = oT.GetItemText(nk.ElementAt(0), "PERCENTAGE")
-    On Error GoTo 0
-    Dim i, ch, num : num = ""
-    For i = 1 To Len(pct)
-        ch = Mid(pct, i, 1)
-        If (ch >= "0" And ch <= "9") Or ch = "." Then num = num & ch
-    Next
-    If num <> "" Then ReadCoverage = num
+    WScript.Sleep 4000
+    gCovStr = ""
+    FindCovPct oSess.findById("wnd[0]/usr", False)
+    If gCovStr <> "" Then ReadCoverage = gCovStr
 End Function
+
+' Recursively find the coverage tree (GuiShell subtype=Tree with a PERCENTAGE
+' column) and set gCovStr to its root node's percentage digits.
+Sub FindCovPct(oParent)
+    If gCovStr <> "" Then Exit Sub
+    If oParent Is Nothing Then Exit Sub
+    Dim oColl : Set oColl = Nothing
+    On Error Resume Next
+    Set oColl = oParent.Children
+    On Error GoTo 0
+    If oColl Is Nothing Then Exit Sub
+    Dim i, oC, t, subt, cn, k, hasPct, nk, raw, j, ch, num
+    For i = 0 To oColl.Count - 1
+        Set oC = Nothing
+        On Error Resume Next
+        Set oC = oColl.ElementAt(i)
+        On Error GoTo 0
+        If Not (oC Is Nothing) Then
+            t = "" : subt = ""
+            On Error Resume Next
+            t = oC.Type : subt = oC.SubType
+            On Error GoTo 0
+            If t = "GuiShell" And subt = "Tree" Then
+                Set cn = Nothing
+                On Error Resume Next
+                Set cn = oC.GetColumnNames
+                On Error GoTo 0
+                hasPct = False
+                If Not (cn Is Nothing) Then
+                    For k = 0 To cn.Count - 1
+                        If cn.ElementAt(k) = "PERCENTAGE" Then hasPct = True
+                    Next
+                End If
+                If hasPct Then
+                    Set nk = Nothing
+                    On Error Resume Next
+                    Set nk = oC.GetAllNodeKeys
+                    On Error GoTo 0
+                    If Not (nk Is Nothing) Then
+                        If nk.Count > 0 Then
+                            raw = ""
+                            On Error Resume Next
+                            raw = oC.GetItemText(nk.ElementAt(0), "PERCENTAGE")
+                            On Error GoTo 0
+                            num = ""
+                            For j = 1 To Len(raw)
+                                ch = Mid(raw, j, 1)
+                                If (ch >= "0" And ch <= "9") Or ch = "." Then num = num & ch
+                            Next
+                            If num <> "" Then gCovStr = num : Exit Sub
+                        End If
+                    End If
+                End If
+            End If
+            FindCovPct oC
+        End If
+    Next
+End Sub
 
 ' Count failed/errored test methods in the ABAP Unit alert ALV via the ICON_LEVEL
 ' column: Tolerable alerts (@8R, e.g. "global test class has no test relation") are

@@ -49,8 +49,13 @@ The trigger and result parse were verified end-to-end on S4D (2026-06-03):
   (`mbar/menu[0]/menu[9]/menu[2]`); SE24 `Class Source > Run > Unit Tests`
   (`mbar/menu[0]/menu[7]/menu[0]`). Ctrl+Shift+F10 is SE80-only and raises
   *"The virtual key is not enabled"* on the SE38/SE24 editor screens.
-- **Failures** open the ABAP Unit Result Display (`Program=SAPLSAUNIT_RSLT_DSPLY*`),
-  whose alert ALV `RowCount` is the number of failed/errored methods.
+- **Failures** open the ABAP Unit Result Display (`Program=SAPLSAUNIT_RSLT_DSPLY*`).
+  Failures = alert-ALV rows whose `ICON_LEVEL` is **not** tolerable: `@8R`
+  (Tolerable — e.g. a class's "no test relation" warning) is a warning, NOT a
+  failure; `@8O` (Critical) / Fatal are. (A self-testing class with a tolerable
+  "no test relation" warning opens this display even on all-pass ⇒ tolerable-only
+  ⇒ `failed=0`; a class with a normal test relation, and a report, stay on the
+  editor when all-pass. All verified live.)
 - **All pass** stays on the editor with status-bar `MessageType=S`.
 - **No tests** stays on the editor with status-bar `MessageType=W`.
 - The status bar carries the summary (`"... K test methods"`) on every branch;
@@ -58,7 +63,12 @@ The trigger and result parse were verified end-to-end on S4D (2026-06-03):
 - **Coverage** (`--with-coverage`): a second run via `… > Unit Tests With > Coverage`
   opens the AUCV display (`Program=SAPLSAUCV_DISPLAY_MULTI_TAB`); the "Coverage
   Metrics" tab (`tabpFSCOV`) holds a tree whose root-node `PERCENTAGE` is the overall
-  coverage. That display has no status-bar summary — hence the two-phase run.
+  coverage. That display has no status-bar summary — hence the two-phase run. The
+  coverage subscreen number is launch-variant, so the VBS **searches** `tabpFSCOV`
+  for the `PERCENTAGE`-column tree instead of hardcoding the path. Verified live:
+  SE38 `33.33%` (report) and SE24 `50.00%` (class with a `CCAU` test relation). A
+  self-testing class with no production code under test ("no test relation") has no
+  coverage tree ⇒ `coverage=NA`.
 
 These are program-name / message-type / row-count signals — all language-neutral.
 On a **different release**, if the alert-grid path shifts, the VBS prints
@@ -238,9 +248,10 @@ alert ALV at `wnd[0]/usr/shell/shellcont/shell/shellcont[1]/shell/shellcont[0]/s
 methods are parsed from the status-bar summary.
 
 **Coverage display** (verified 1909): `Program=SAPLSAUCV_DISPLAY_MULTI_TAB`; tab
-`tabsTAB_COMBI/tabpFSCOV` ("Coverage Metrics"); tree at
-`…/tabpFSCOV/ssubSUBSCR:SAPLSAUCV_DISPLAY_COVERAGE:0120/cntlCONTAINER_COVERAGE/shellcont/shell/shellcont[1]/shell`
-(columns `MAIN/TOTAL/EXECUTED/NOT_EXECUTED/PERCENTAGE`); root node `PERCENTAGE` = overall %.
+`tabsTAB_COMBI/tabpFSCOV` ("Coverage Metrics"); a tree with columns
+`MAIN/TOTAL/EXECUTED/NOT_EXECUTED/PERCENTAGE` (root node `PERCENTAGE` = overall %).
+The `SAPLSAUCV_DISPLAY_COVERAGE:NNNN` subscreen number is launch-variant, so the VBS
+searches `tabpFSCOV` for the `PERCENTAGE`-column tree (`FindCovPct`).
 
 ---
 

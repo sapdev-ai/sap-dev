@@ -1,5 +1,10 @@
 {
     "userConfig":  {
+                       "artifact_dir":  {
+                                            "description":  "Output root for the delivery-assurance skills (sap-impact-analysis, sap-transport-readiness, sap-evidence-pack, sap-enhancement-advisor). Holds index.jsonl (the artifact manifest, read by sap-evidence-pack) plus per-run report folders {artifact_dir}\\<scope>\\<skill>\\<run_id>\\. If blank, uses {work_dir}\\artifacts. Runtime override: env var SAPDEV_ARTIFACT_DIR.",
+                                            "sensitive":  false,
+                                            "value":  ""
+                                        },
                        "sap_dev_mode":  {
                                             "description":  "Preferred SAP login/automation mode. Controls which skill variant is selected first when multiple implementations exist for the same task. Allowed values: 'GUI' (SAP GUI Scripting), 'RFC' (SAP.Functions COM via RFC), 'BDC' (BDC recordings replayed via SHDB). Default: 'GUI'. Fallback chains: GUI -> RFC -> BDC, RFC -> BDC -> GUI, BDC -> RFC -> GUI.",
                                             "sensitive":  false,

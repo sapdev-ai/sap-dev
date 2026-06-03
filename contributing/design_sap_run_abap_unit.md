@@ -23,6 +23,28 @@ counts + coverage) because the AUCV display has no status-bar summary — opt in
 `--with-coverage` / `--min-coverage`. So the GUI backend now delivers a large part
 of the Phase-2 coverage goal; the RFC helper remains for headless / single-run /
 per-metric (statement/branch/procedure) coverage.
+**Rev 5 (2026-06-03)**: SE24 (global class) results path **live-verified on S4D** —
+and it caught a real parser bug. The alert ALV lists alerts of varying *severity*,
+and a **class always opens the result display even on all-pass** (with a Tolerable
+"no test relation" warning), so counting all alert rows as failures was wrong.
+Fixed: `CountFailures` reads the `ICON_LEVEL` column and counts only non-tolerable
+rows (`@8R` Tolerable excluded; `@8O` Critical / Fatal counted) — verified
+pass⇒`failed=0`, fail⇒`failed=1`. SE24 coverage trigger + AUCV display verified;
+`ReadCoverage` made **search-based** (`FindCovPct`) because the
+`SAPLSAUCV_DISPLAY_COVERAGE:NNNN` subscreen number is launch-variant. The
+self-testing global `FOR TESTING` fixture has no production code under test
+("no test relation") so it yields `coverage=NA`; a real SE24 coverage number needs
+a class that tests a *separate* production class (the read path is shared with the
+verified SE38 `33.33%`).
+**Rev 6 (2026-06-03)**: SE24 coverage **closed end-to-end** — deployed a production
+class (`ZCL_AUNIT_COV`, methods `add`/`sub`) plus a test class in its `CCAU` "Local
+Test Classes" include (tests `add`, not `sub`) and read `coverage=50.00` live (1 of
+2 methods covered). The `CCAU` fixture is built by navigating to the test-class pane
+(SE24 toolbar `btn[35]` → `SAPLSEO_CLEDITOR`) **before** the upload (the upload
+targets the current editor). Refined finding: with a *normal* test relation, an
+all-pass class stays on the editor (sbar `S`) like a report — only the self-test
+"no test relation" case opens the result display on all-pass; the parser handles
+both. So SE38 (`33.33%`) and SE24 (`50.00%`) coverage are both live-verified.
 
 **Roadmap ref**: P2 — "Close the test loop: run ABAP Unit + coverage."
 

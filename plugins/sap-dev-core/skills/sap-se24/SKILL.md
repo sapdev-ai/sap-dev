@@ -97,12 +97,13 @@ powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_
 | Source | Complete class source: either absolute path to `.abap` file, OR paste the code directly. This is the FULL class including `CLASS ... DEFINITION` and `CLASS ... IMPLEMENTATION` sections. | |
 | Package | SAP package (optional, blank = local $TMP) | `ZHKA001` |
 | Transport | Transport request (optional; resolved by `/sap-transport-request` per `way_to_get_transport_request` if not supplied) | `S4DK940992` |
+| Test source (`--test-source=<path>`) | Optional. Local test classes for the class's CCAU "Local Test Classes" include (local `CLASS ltcl_… DEFINITION FOR TESTING … ENDCLASS.` + IMPLEMENTATION only — **not** the global class). Deployed after the main source via Step 5f. | `{work}\ZCL_X_TEST.abap` |
 
 **Mode selection:**
 
 | Task | Source provided? | Flow |
 |---|---|---|
-| Deploy new or updated code | Yes (file path or pasted) | Steps 2 → 3 → 4 → 5a/5b → 6 → 7 |
+| Deploy new or updated code | Yes (file path or pasted) | Steps 2 → 3 → 4 → 5a/5b → [5f if `--test-source`] → 6 → 7 |
 | Fix / check existing class | No | Steps 3 → A → B → C → 6 → 7 |
 | Change class **properties** (Description / Program Status / Category) | No | Steps 1b → 3 → 5d → 6 → 7 |
 | **Delete** class or interface | No | Steps 1b → 3 → 5e → 6 → 7 |
@@ -384,6 +385,80 @@ in source-code-based view.
 
 **Note:** For newly created classes, you must manually switch the view before
 the update script can upload source. The create script leaves you in form-based view.
+
+---
+
+## Step 5f — Upload Local Test Classes (CCAU) — when `--test-source` is given
+
+**When to run:** Deploy mode, **after** the main class source is deployed and
+active (Step 5a/5b succeeded), and the user supplied `--test-source=<path>`. The
+test source contains ONLY the local test classes
+(`CLASS ltcl_… DEFINITION FOR TESTING … ENDCLASS.` + IMPLEMENTATION) — not the
+global class.
+
+The main-source upload (Step 5a) does **not** touch a class's "Local Test
+Classes" (`CCAU`) include. This step uploads the test classes there by navigating
+to that pane (toolbar `btn[35]`, Ctrl+F11 → `Program=SAPLSEO_CLEDITOR`) **before**
+the Upload (the Upload loads into the *current* editor), then saving + activating.
+Verified live on S/4HANA 1909.
+
+The reference VBS is at `./references/sap_se24_test_classes.vbs`.
+
+### Generate the filled-in VBScript
+
+Write `{WORK_TEMP}\sap_se24_test_classes_run.ps1`:
+```powershell
+$content = Get-Content '<SKILL_DIR>\references\sap_se24_test_classes.vbs' -Raw
+$content = $content -replace '%%CLASS_NAME%%','THE_CLASS_NAME'
+$content = $content -replace '%%TEST_SOURCE_FILE%%','THE_TEST_SOURCE_PATH'
+$content = $content -replace '%%TRANSPORT%%','THE_TRANSPORT'
+$content = $content -replace '%%SESSION_LOCK_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_session_lock.vbs'
+$content = $content -replace '%%SYNTAX_CHECK_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_syntax_check_lib.vbs'
+$sessionPath = ''
+$content = $content -replace '%%SESSION_PATH%%', $sessionPath
+$content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
+Set-Content '{WORK_TEMP}\sap_se24_test_classes_run.vbs' $content -Encoding Unicode
+Write-Host 'Done'
+```
+Replace `THE_CLASS_NAME` (UPPERCASE), `THE_TEST_SOURCE_PATH` (absolute path with
+backslashes), `THE_TRANSPORT` (blank if `$TMP`), and `<SKILL_DIR>`. The test
+source must be **UTF-8 without BOM** (same rule as the main source, Step 2).
+
+### Execute (with SAP GUI Security guard)
+
+The Upload reads a local file via SAP GUI (SAP-GUI-side file IO), so it can raise
+the modal SAP GUI Security dialog when the path isn't allow-listed. Wrap the run
+with the OS-level watcher — same pattern as Step A. Substitute `THE_SID` /
+`THE_CLIENT` with the pinned system / client:
+
+```powershell
+$shared = '<SAP_DEV_CORE_SHARED_DIR>\scripts'
+$src    = 'THE_TEST_SOURCE_PATH'   # the path SAP GUI will read
+& "$shared\sap_gui_security_precheck.ps1" -Path $src -Access r -System 'THE_SID' -Client 'THE_CLIENT' -Transaction 'SE24' | Out-Host
+$allowed = ($LASTEXITCODE -eq 0)
+$watcher = $null
+if (-not $allowed) {
+    $watcher = Start-Process powershell -PassThru -WindowStyle Hidden -ArgumentList @(
+        '-NoProfile','-ExecutionPolicy','Bypass','-File',"$shared\sap_gui_security_sidecar.ps1",'-TimeoutSeconds','45')
+    Start-Sleep -Milliseconds 800
+}
+& 'C:/Windows/SysWOW64/cscript.exe' //NoLogo '{WORK_TEMP}\sap_se24_test_classes_run.vbs'
+if ($watcher) { $watcher | Wait-Process -Timeout 50 -ErrorAction SilentlyContinue }
+```
+
+**Parse the last line:**
+
+| Last line | Meaning |
+|---|---|
+| `SUCCESS: Local test classes uploaded and activated for <CLASS>.` | Done — tests live in the `CCAU` include; run them via `/sap-run-abap-unit --type=CLASS <CLASS>`. |
+| `ERROR: Class is in form-based view …` | Switch to source-code-based view (see Source-Code-Based View Setup) and retry. |
+| `ERROR: Could not find the Upload menu …` | Menu indices differ on this release; re-record via `/sap-gui-record`. |
+| `ERROR: Upload file dialog did not appear …` | SAP GUI Security blocked it — ensure the watcher above ran. |
+| `ERROR: Syntax errors in the uploaded test classes …` | Fix the test source and retry. |
+
+After success, proceed to Step 6 / Step 7.
 
 ---
 
@@ -923,6 +998,7 @@ source-code-based view. In that case, the upload may need to be done differently
 | Check (Ctrl+F2) | `wnd[0]/tbar[1]/btn[26]` | sendVKey 26 |
 | Activate (Ctrl+F3) | `wnd[0]/tbar[1]/btn[27]` | sendVKey 27 |
 | Toggle Form/Source view | `wnd[0]/tbar[1]/btn[22]` | Shift+Ctrl+0 |
+| Local Test Classes (CCAU) | `wnd[0]/tbar[1]/btn[35]` | Ctrl+F11 — navigate to the test-class include before Upload (Step 5f) |
 | Pretty Printer | `wnd[0]/tbar[1]/btn[13]` | Shift+F1 |
 
 ---
