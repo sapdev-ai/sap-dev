@@ -189,9 +189,10 @@ Dim sDecoded : sDecoded = "UNKNOWN:" & sStateRaw
 ' These SUPPLEMENT the locale-independent icon-ID + English checks below; they
 ' are never the sole match path. The glyph in each trailing comment documents
 ' what the ChrW() builds -- the runtime literal stays ASCII, only the comment
-' carries the character. JA wording is live-observed; ZH wording is best-effort
-' standard terms, NOT yet verified on a live Chinese ATC run -- the icon-ID
-' prefixes stay authoritative for every logon language, Chinese included.
+' carries the character. JA wording is live-observed. ZH: the COMPLETED word is
+' live-verified on S4D 1909 -- STATE_ICON shows "状态：已完成" (icon @DF); the
+' RUNNING / ERROR words are best-effort (those states were absent at capture
+' time). The icon-ID prefixes stay authoritative for every logon language.
 Dim JA_FINISHED : JA_FINISHED = ChrW(&H7D42) & ChrW(&H4E86)                ' 終了   shuuryou      = finished
 Dim JA_COMPLETE : JA_COMPLETE = ChrW(&H5B8C) & ChrW(&H4E86)                ' 完了   kanryou       = complete
 Dim JA_INPROC   : JA_INPROC   = ChrW(&H51E6) & ChrW(&H7406) & ChrW(&H4E2D) ' 処理中 shori-chuu    = in process
@@ -199,13 +200,13 @@ Dim JA_RUNNING  : JA_RUNNING  = ChrW(&H5B9F) & ChrW(&H884C) & ChrW(&H4E2D) ' 実
 Dim JA_ERROR    : JA_ERROR    = ChrW(&H30A8) & ChrW(&H30E9) & ChrW(&H30FC) ' エラー eraa          = error
 Dim JA_FAILED   : JA_FAILED   = ChrW(&H5931) & ChrW(&H6557)                ' 失敗   shippai       = failed
 Dim JA_ABORTED  : JA_ABORTED  = ChrW(&H4E2D) & ChrW(&H6B62)                ' 中止   chuushi       = aborted
-Dim ZH_FINISHED : ZH_FINISHED = ChrW(&H7ED3) & ChrW(&H675F)                ' 结束   jieshu        = finished   (best-effort)
-Dim ZH_COMPLETE : ZH_COMPLETE = ChrW(&H5B8C) & ChrW(&H6210)                ' 完成   wancheng      = completed  (best-effort)
-Dim ZH_INPROC   : ZH_INPROC   = ChrW(&H5904) & ChrW(&H7406) & ChrW(&H4E2D) ' 处理中 chuli-zhong   = in process (best-effort)
-Dim ZH_RUNNING  : ZH_RUNNING  = ChrW(&H8FD0) & ChrW(&H884C) & ChrW(&H4E2D) ' 运行中 yunxing-zhong = running    (best-effort)
-Dim ZH_ERROR    : ZH_ERROR    = ChrW(&H9519) & ChrW(&H8BEF)                ' 错误   cuowu         = error      (best-effort)
-Dim ZH_FAILED   : ZH_FAILED   = ChrW(&H5931) & ChrW(&H8D25)                ' 失败   shibai        = failed     (best-effort)
-Dim ZH_ABORTED  : ZH_ABORTED  = ChrW(&H5DF2) & ChrW(&H53D6) & ChrW(&H6D88) ' 已取消 yiquxiao      = cancelled  (best-effort)
+Dim ZH_FINISHED : ZH_FINISHED = ChrW(&H5DF2) & ChrW(&H5B8C) & ChrW(&H6210) ' 已完成 yi-wancheng   = completed  (LIVE-VERIFIED S4D 1909: "状态：已完成")
+Dim ZH_COMPLETE : ZH_COMPLETE = ChrW(&H5B8C) & ChrW(&H6210)                ' 完成   wancheng      = complete   (LIVE-VERIFIED: substring of "状态：已完成")
+Dim ZH_INPROC   : ZH_INPROC   = ChrW(&H5904) & ChrW(&H7406) & ChrW(&H4E2D) ' 处理中 chuli-zhong   = in process (best-effort; state not observed)
+Dim ZH_RUNNING  : ZH_RUNNING  = ChrW(&H8FD0) & ChrW(&H884C) & ChrW(&H4E2D) ' 运行中 yunxing-zhong = running    (best-effort; state not observed)
+Dim ZH_ERROR    : ZH_ERROR    = ChrW(&H9519) & ChrW(&H8BEF)                ' 错误   cuowu         = error      (best-effort; state not observed)
+Dim ZH_FAILED   : ZH_FAILED   = ChrW(&H5931) & ChrW(&H8D25)                ' 失败   shibai        = failed     (best-effort; state not observed)
+Dim ZH_ABORTED  : ZH_ABORTED  = ChrW(&H5DF2) & ChrW(&H53D6) & ChrW(&H6D88) ' 已取消 yi-quxiao     = cancelled  (best-effort; state not observed)
 
 ' Match against:
 '   * SAP icon prefixes (locale-independent; @03/@DF/@AC = success-ish,

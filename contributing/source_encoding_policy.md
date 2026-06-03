@@ -197,16 +197,21 @@ emergency.
 
 - **P1 — DONE (2026-06-04):** the genuinely-executed literals were converted to
   `ChrW()`. In `sap_atc_check_run_status.vbs` the run-state words became named
-  `JA_*` **and `ZH_*`** constants — Simplified Chinese added for parity (ZH
-  wording is best-effort standard terms, **not** yet live-verified on a Chinese
-  ATC run; icon-ID prefixes stay authoritative). Each constant's trailing comment
-  carries the glyph per the glyph-in-comment exception above. The SE11 ellipsis
-  became `ChrW(&H2026)`. Validated on 32-bit cscript: a `ChrW` round-trip (incl.
-  `&H884C` > `&H8000`) plus a 15-case match harness (icon-ID + JA + ZH +
-  empty/noise), all passing under `Option Explicit`; a byte scan confirmed the
-  only executable-position non-ASCII left is one pre-existing em-dash inside a
-  `WScript.Echo` diagnostic string. Both files remain on the warning list (glyph
-  comments / em-dashes) — expected, per the glyph-in-comment trade-off.
+  `JA_*` **and `ZH_*`** constants (Simplified Chinese added for parity). Each
+  constant's trailing comment carries the glyph per the glyph-in-comment
+  exception above. The SE11 ellipsis became `ChrW(&H2026)`.
+  **ZH live-verification (S4D 1909, ZH logon, 2026-06-04):** a read-only probe of
+  the ATC Run Monitor grid (`SAPLSATC_UI_MONITOR`/200, column `STATE_ICON`) showed
+  3 completed run series with cell value `@DF\Q状态：已完成@` — so the COMPLETED
+  word `已完成` (and substring `完成`) is **confirmed**; `ZH_FINISHED` was set to the
+  exact observed `已完成`. RUNNING / ERROR states were absent at capture, so those
+  ZH words stay best-effort (the icon-ID path `@2F`/`@5C` covers them regardless).
+  Validated on 32-bit cscript: a `ChrW` round-trip (incl. `&H884C` > `&H8000`),
+  a 15-case match harness, and a replay of the **real captured** `@DF\Q已完成@`
+  cell value — all routing correctly under `Option Explicit`; a byte scan
+  confirmed the only executable-position non-ASCII left is one pre-existing
+  em-dash inside a `WScript.Echo` diagnostic. Both files remain on the warning
+  list (glyph comments / em-dashes) — expected, per the glyph-in-comment trade-off.
 - **P2 — polish (bulk, manual):** replace cosmetic `—`→`--`, `→`→`->`, `…`→`...`
   in diagnostics and generated TSV/Markdown text so customer consoles and output
   files stop showing `â€"`. Comments can follow but are lowest value (never run).

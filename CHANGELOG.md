@@ -56,7 +56,7 @@ has not had.
   / `sap_stms_log_read` ship working (candidate IDs + graceful degradation). All
   three VBS follow the Tier-3 attach contract. Completes the delivery chain
   `/sap-fix-incident` → `/sap-transport-readiness` → `/sap-se01 release` →
-  **`/sap-stms`**. Design spec: `contributing/design_sap_stms.md`. Totals:
+  **`/sap-stms`**. Totals:
   **77 skills** (sap-dev-core 55). **Live STMS calibration + import test pending.**
 
 ### Diagnose → fix closed loop: `/sap-fix-incident` + `/sap-st22 --deep`
@@ -89,8 +89,7 @@ has not had.
   `/sap-se01 release` → `/sap-stms`. Deploy is gated (`skill_operating_rules`
   Rule 2): the default PROPOSEs a diff and waits for confirmation. Findings flow
   through the reconciled finding model and register for `/sap-evidence-pack`.
-  Design spec: `contributing/design_sap_fix_incident.md`; companion STMS spec:
-  `contributing/design_sap_stms.md`. Totals: **76 skills** (sap-dev-core 54).
+  Totals: **76 skills** (sap-dev-core 54).
 - **`/sap-diagnose --fix`** (entry sugar) — runs the loop from one command:
   `/sap-diagnose` runs its ST22 leg `--deep`, presents the hypotheses, and — only
   when the rank-1 hypothesis is a custom-code defect and after an explicit
