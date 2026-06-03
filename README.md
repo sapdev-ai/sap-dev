@@ -9,7 +9,7 @@ SAP development automation skills for AI coding assistants.
 
 Project home: <https://sapdev.ai>
 
-## Available Plugins (4 plugins · 77 skills · 2 agents · v0.5.0)
+## Available Plugins (4 plugins · 77 skills · 2 agents · v0.6.0)
 
 | Plugin | Skills | Description |
 |--------|--------|-------------|
@@ -32,7 +32,7 @@ sap-dev/
 │   │   │   ├── scripts/          # Reusable PS1 / VBS helpers
 │   │   │   ├── rules/            # AI guidance conventions (mandatory)
 │   │   │   └── templates/        # Customer Brief, sample spec layouts
-│   │   └── skills/               # 50 skills
+│   │   └── skills/               # 55 skills
 │   ├── sap-gen-code/             # Plugin: spec → ABAP
 │   ├── sap-migrate/              # Plugin: S/4HANA custom-code migration
 │   └── sap-tcd/                  # Plugin: business transactions

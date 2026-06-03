@@ -2,7 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
-## Unreleased
+## [0.6.0] — 2026-06-03
+
+Completes the SAP delivery loop on top of 0.5.0's lifecycle platform: a
+**diagnose → fix** closed loop, **transport landscape movement** (DEV → QAS →
+PRD), AI semantic + **security** review, ABAP Unit generation, a reverse
+object → spec documenter, an environment preflight **doctor**, and a
+golden-screen **drift** harness. **4 plugins · 77 skills · 2 agents**
+(sap-dev-core 55, sap-gen-code 12, sap-migrate 7, sap-tcd 3). The newest
+write-capable / production-touching paths (`/sap-stms` import, `/sap-st22
+--deep`, `/sap-fix-incident` deploy) ship **gated and fail-safe**, with live
+calibration status noted per entry below — nothing claims a verification it
+has not had.
 
 ### Transport landscape movement: `/sap-stms`
 
