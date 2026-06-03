@@ -2,7 +2,7 @@
 # sap_finding_lib.ps1  -  Reconciled finding model for delivery-assurance skills
 #
 # Phase-0 foundation primitive #3 (model half; gate computation lives in
-# sap_gate_policy.ps1). See contributing/phase0_delivery_assurance_spec.md §C.
+# sap_gate_policy.ps1). See contributing/phase0_delivery_assurance_spec.md SecC.
 #
 # ONE severity / category / coverage / gate vocabulary that impact-analysis,
 # transport-readiness, ATC, and check-abap all map into. Two non-negotiables:
@@ -66,7 +66,7 @@ function _Normalize-SapFindingObject {
 }
 
 # ---------------------------------------------------------------------------
-# New-SapFinding — build one sapdev.finding/1 record. gate is '' until a policy
+# New-SapFinding - build one sapdev.finding/1 record. gate is '' until a policy
 # is applied (sap_gate_policy.ps1). -Object accepts a resolver record or any
 # object exposing .pgmid/.object/.obj_name (or $null).
 # ---------------------------------------------------------------------------
@@ -103,7 +103,7 @@ function New-SapFinding {
 }
 
 # ---------------------------------------------------------------------------
-# New-SapCheckResult — the honesty contract. Status is derived unless given:
+# New-SapCheckResult - the honesty contract. Status is derived unless given:
 #   -NotApplicable -> NOT_APPLICABLE
 #   -CouldNotCheck -> COULD_NOT_CHECK   (auth denied / RFC fail / run errored)
 #   findings > 0   -> CHECKED_FINDINGS
@@ -134,12 +134,12 @@ function New-SapCheckResult {
 }
 
 # ---------------------------------------------------------------------------
-# Get-SapGateCounts / Get-SapVerdict — roll up gated findings.
+# Get-SapGateCounts / Get-SapVerdict - roll up gated findings.
 #   any BLOCK            -> NO_GO
 #   else any WARN        -> GO_WITH_WARNINGS
 #   else                 -> GO
 # A COULD_NOT_CHECK anywhere (finding coverage or a check status) downgrades a
-# clean GO to GO_WITH_WARNINGS — we never claim GO on something we couldn't check.
+# clean GO to GO_WITH_WARNINGS - we never claim GO on something we couldn't check.
 # ---------------------------------------------------------------------------
 function Get-SapGateCounts {
     param([object[]] $Findings = @())

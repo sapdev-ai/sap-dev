@@ -12,7 +12,7 @@
     "version": "0.3.4",
     "last_updated": "2026-06-01",
     "total_plugins": 4,
-    "total_skills": 64,
+    "total_skills": 68,
     "categories": [
       "tooling"
     ]
@@ -33,12 +33,15 @@
         "./skills/sap-dev-init",
         "./skills/sap-dev-status",
         "./skills/sap-diagnose",
+        "./skills/sap-enhancement-advisor",
+        "./skills/sap-evidence-pack",
         "./skills/sap-function-group",
         "./skills/sap-gui-diagnose",
         "./skills/sap-gui-object-details",
         "./skills/sap-gui-probe",
         "./skills/sap-gui-record",
         "./skills/sap-gui-skill-scaffold",
+        "./skills/sap-impact-analysis",
         "./skills/sap-log-analyze",
         "./skills/sap-login",
         "./skills/sap-rfc-wrapper-class",
@@ -64,6 +67,7 @@
         "./skills/sap-sp02",
         "./skills/sap-st22",
         "./skills/sap-trace",
+        "./skills/sap-transport-readiness",
         "./skills/sap-transport-request",
         "./skills/sap-update-addon",
         "./skills/sap-where-used-list"

@@ -2,7 +2,7 @@
 # sap_artifact_lib.ps1  -  Artifact index for the delivery-assurance skills
 #
 # Phase-0 foundation primitive #2. See
-# contributing/phase0_delivery_assurance_spec.md  §B.
+# contributing/phase0_delivery_assurance_spec.md  SecB.
 #
 # Every analytical skill (impact-analysis, transport-readiness, evidence-pack,
 # enhancement-advisor) REGISTERS each file it writes into one append-only
@@ -115,7 +115,7 @@ function _Append-SapArtifactLine {
 }
 
 # ---------------------------------------------------------------------------
-# New-SapScopeKey — canonical scope slug. Pass a resolver record (-Resolved) or
+# New-SapScopeKey - canonical scope slug. Pass a resolver record (-Resolved) or
 # explicit -Kind/-Name/-Object. TR_<trkorr>, PKG_<pkg>, else <OBJECT>_<NAME>.
 # ---------------------------------------------------------------------------
 function New-SapScopeKey {
@@ -142,7 +142,7 @@ function New-SapScopeKey {
 }
 
 # ---------------------------------------------------------------------------
-# Get-SapArtifactDir — the canonical output folder for one (scope, skill, run),
+# Get-SapArtifactDir - the canonical output folder for one (scope, skill, run),
 # created on demand. Returns its absolute path.
 # ---------------------------------------------------------------------------
 function Get-SapArtifactDir {
@@ -165,7 +165,7 @@ function Get-SapArtifactDir {
 }
 
 # ---------------------------------------------------------------------------
-# Register-SapArtifact — append one manifest record. Returns the artifact id
+# Register-SapArtifact - append one manifest record. Returns the artifact id
 # (pass it to a later -Supersedes to mark this one replaced).
 # ---------------------------------------------------------------------------
 function Register-SapArtifact {
@@ -239,7 +239,7 @@ function Register-SapArtifact {
 }
 
 # ---------------------------------------------------------------------------
-# Find-SapArtifacts — query the manifest. Newest-first. Records that another
+# Find-SapArtifacts - query the manifest. Newest-first. Records that another
 # record explicitly supersedes are excluded unless -IncludeSuperseded.
 # Bad / non-JSON lines are skipped silently.
 # ---------------------------------------------------------------------------
@@ -262,7 +262,7 @@ function Find-SapArtifacts {
     }
 
     # Read once, tagging each record with its append sequence (line order). In
-    # an append-only log, append order is the authoritative recency order — it
+    # an append-only log, append order is the authoritative recency order - it
     # is the tie-breaker when wall-clock ts values collide (Windows DateTime.Now
     # resolves to ~15 ms, so artifacts registered in quick succession share a
     # millisecond). seq/ts are kept on a wrapper so they never leak into output.

@@ -2,10 +2,10 @@
 # sap_gate_policy.ps1  -  Gate computation for the reconciled finding model
 #
 # Phase-0 foundation primitive #3 (policy half; the model is in
-# sap_finding_lib.ps1). See contributing/phase0_delivery_assurance_spec.md §C.
+# sap_finding_lib.ps1). See contributing/phase0_delivery_assurance_spec.md SecC.
 #
 # Turns a finding's INTRINSIC severity into a GATE decision (BLOCK | WARN | INFO)
-# using the customer brief's Quality bar (§6) — NOT a second policy store — plus
+# using the customer brief's Quality bar (Sec6) - NOT a second policy store - plus
 # the --strict flag. Keeping severity and gate separate is deliberate: the same
 # MEDIUM finding BLOCKs under --strict and WARNs otherwise without its severity
 # changing.
@@ -24,7 +24,7 @@ if (-not (Get-Command Get-SapSeverityRank -ErrorAction SilentlyContinue)) {
 }
 
 # Default category -> gate map (applies when the brief is silent). Mirrors the
-# table in the spec §C.
+# table in the spec SecC.
 function _New-SapDefaultCategoryGate {
     return @{
         INACTIVE_OBJECT          = 'BLOCK'
@@ -42,7 +42,7 @@ function _New-SapDefaultCategoryGate {
 $script:SapStrictPromote = @('LOCK_OTHER_USER', 'MISSING_DEPENDENCY')
 
 # ---------------------------------------------------------------------------
-# Parse the brief's Quality bar (§6). Heuristic + fail-safe:
+# Parse the brief's Quality bar (Sec6). Heuristic + fail-safe:
 #   * A line that still carries the template's option list (`a` / `b` / `c`) is
 #     treated as UNFILLED -> defaults apply (ATC gates P1+P2, unit warns).
 #   * A filled line (customer narrowed to one answer) is matched by keyword.
@@ -71,7 +71,7 @@ function _Read-SapBriefQualityBar {
 }
 
 # ---------------------------------------------------------------------------
-# Get-SapGatePolicy — resolve the brief and build the policy object.
+# Get-SapGatePolicy - resolve the brief and build the policy object.
 # Brief resolution (when -BriefPath omitted): {custom_url}\customer_brief.md ->
 # <shared>\templates\customer_brief.md. Falls back to pure defaults if none.
 # ---------------------------------------------------------------------------
@@ -129,7 +129,7 @@ function Get-SapGatePolicy {
 }
 
 # ---------------------------------------------------------------------------
-# Resolve-SapGate — one finding + policy -> BLOCK | WARN | INFO.
+# Resolve-SapGate - one finding + policy -> BLOCK | WARN | INFO.
 # Order: couldn't-check cap -> ATC -> unit -> category map -> severity fallback
 #        -> strict promotion.
 # ---------------------------------------------------------------------------
@@ -146,14 +146,14 @@ function Resolve-SapGate {
     #    never bury it as INFO. (Applies even under --strict.)
     if ("$($Finding.coverage)".ToUpper() -eq 'COULD_NOT_CHECK') { return 'WARN' }
 
-    # 2. ATC — gated by the brief's severity threshold.
+    # 2. ATC - gated by the brief's severity threshold.
     if ($src -eq 'ATC' -or $cat -eq 'ATC') {
         if (-not $Policy.atc_gate_severity) { return 'INFO' }
         if ((Get-SapSeverityRank $sev) -ge (Get-SapSeverityRank $Policy.atc_gate_severity)) { return 'BLOCK' }
         return 'INFO'
     }
 
-    # 3. ABAP Unit — gated by the brief.
+    # 3. ABAP Unit - gated by the brief.
     if ($cat -eq 'UNIT_TEST' -or $src -eq 'ABAP_UNIT') { return "$($Policy.unit_gate)" }
 
     # 4. Explicit category map.

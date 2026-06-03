@@ -3,9 +3,9 @@
 #
 # Phase-0 foundation for the delivery-assurance skills (impact-analysis,
 # transport-readiness, evidence-pack, enhancement-advisor). See
-# contributing/phase0_delivery_assurance_spec.md  §A.
+# contributing/phase0_delivery_assurance_spec.md  SecA.
 #
-# Given a user token — with or without a leading KIND keyword — returns the
+# Given a user token - with or without a leading KIND keyword - returns the
 # canonical object identity in the TADIR vocabulary:
 #   PROGRAM ZMMR001 | ZMMR001 | TCODE ME21N | TR DEVK900123 | PACKAGE ZMM_CORE
 #       -> { pgmid, object, obj_name, kind, package, exists, active,
@@ -13,7 +13,7 @@
 #
 # Two usage modes
 # ---------------
-#   (1) Dot-source (preferred — caller already holds an RFC destination):
+#   (1) Dot-source (preferred - caller already holds an RFC destination):
 #         . "<...>\sap_object_resolver.ps1"
 #         $obj  = Resolve-SapObject -Destination $g_dest -Token "PROGRAM ZMMR001"
 #         $objs = Resolve-SapObject -Destination $g_dest -Token "TR DEVK900123" -Expand
@@ -25,19 +25,19 @@
 #
 # Run with 32-bit PowerShell (SAP NCo 3.1 is 32-bit).
 #
-# Tables read (all RFC_READ_TABLE-safe — none on sap_rfc_lib.ps1's forbidden
+# Tables read (all RFC_READ_TABLE-safe - none on sap_rfc_lib.ps1's forbidden
 # list; REPOSRC is never touched):
 #   TADIR  TFDIR  ENLFDIR  TSTC  E070  E071  TDEVC  DWINACTIV (active probe only)
 #
 # CLI output (parseable):
 #   OBJECT: pgmid=R3TR object=PROG name=ZMMR001 kind=PROGRAM package=ZMM_CORE exists=true active= via=TADIR confidence=HIGH note=
 #   STATUS: RESOLVED | NOT_FOUND | AMBIGUOUS | UNKNOWN_TYPE | RFC_ERROR
-# Exit: 0 resolved · 1 not found · 2 ambiguous / unknown type · 3 RFC failure.
+# Exit: 0 resolved - 1 not found - 2 ambiguous / unknown type - 3 RFC failure.
 # =============================================================================
 
 [CmdletBinding()]
 param(
-    # Endpoint / creds — all optional. Empty values fall back to the pinned
+    # Endpoint / creds - all optional. Empty values fall back to the pinned
     # connection profile inside Connect-SapRfc (sap_rfc_lib.ps1 Phase 4.3).
     [string] $Server        = '',
     [string] $Sysnr         = '',
@@ -96,7 +96,7 @@ function Get-SapKindMap {
 # RFC_READ_TABLE caps each OPTIONS row at 72 chars and concatenates the rows
 # (space-joined by the kernel) into the dynamic WHERE. A single
 # `field = '<=40-char value>'` clause fits, but `A AND B AND C` as ONE row
-# overflows for long object names — so split at AND boundaries, one clause per
+# overflows for long object names - so split at AND boundaries, one clause per
 # OPTIONS row, re-prefixing `AND` on continuations.
 function Add-RfcWhereClauses {
     param($Fn, [string] $Where)
@@ -208,7 +208,7 @@ function Get-SapObjectPackage {
 }
 
 # =============================================================================
-# Resolve-SapObject — the public entry point.
+# Resolve-SapObject - the public entry point.
 # =============================================================================
 function Resolve-SapObject {
     [CmdletBinding()]
@@ -255,18 +255,30 @@ function Resolve-SapObject {
             if (-not $Expand) {
                 return (New-SapObjectRecord -ObjName $name -Kind 'TR' -Exists $true -System $System -Client $Client -ResolvedVia 'E070' -Confidence 'HIGH' -Note $trNote)
             }
-            $e071 = Read-SapTableRows -Destination $Destination -Table 'E071' `
-                        -Where "TRKORR EQ '$name'" -Fields @('PGMID','OBJECT','OBJ_NAME')
-            if ($null -eq $e071) { return (New-SapObjectRecord -ObjName $name -Kind 'TR' -Exists $true -System $System -Client $Client -ResolvedVia 'E071' -Confidence 'LOW' -Note 'E071 read failed') }
+            # A request's objects usually live in its TASKS, not the request
+            # header - so union E071 across the request AND every child task
+            # (E070 STRKORR = request). Without this, expanding a request that
+            # has tasks returns 0 objects, a false-clean for downstream gates.
+            $trkorrs = New-Object System.Collections.Generic.List[string]
+            $trkorrs.Add($name)
+            $tasks = Read-SapTableRows -Destination $Destination -Table 'E070' `
+                        -Where "STRKORR EQ '$name'" -Fields @('TRKORR')
+            if ($tasks) { foreach ($t in $tasks) { if ("$($t.TRKORR)") { $trkorrs.Add("$($t.TRKORR)") } } }
+
             $out = @()
             $seen = @{}
-            foreach ($r in $e071) {
-                $key = "$($r.PGMID)|$($r.OBJECT)|$($r.OBJ_NAME)"
-                if ($seen.ContainsKey($key)) { continue }
-                $seen[$key] = $true
-                $pkg = Get-SapObjectPackage -Destination $Destination -Object $r.OBJECT -ObjName $r.OBJ_NAME
-                $out += (New-SapObjectRecord -Pgmid $r.PGMID -Object $r.OBJECT -ObjName $r.OBJ_NAME -Kind $r.OBJECT `
-                            -Package $pkg -Exists $true -System $System -Client $Client -ResolvedVia 'E071' -Confidence 'HIGH' -Note "in $name")
+            foreach ($tk in ($trkorrs | Select-Object -Unique)) {
+                $e071 = Read-SapTableRows -Destination $Destination -Table 'E071' `
+                            -Where "TRKORR EQ '$tk'" -Fields @('PGMID','OBJECT','OBJ_NAME')
+                if ($null -eq $e071) { continue }
+                foreach ($r in $e071) {
+                    $key = "$($r.PGMID)|$($r.OBJECT)|$($r.OBJ_NAME)"
+                    if ($seen.ContainsKey($key)) { continue }
+                    $seen[$key] = $true
+                    $pkg = Get-SapObjectPackage -Destination $Destination -Object $r.OBJECT -ObjName $r.OBJ_NAME
+                    $out += (New-SapObjectRecord -Pgmid $r.PGMID -Object $r.OBJECT -ObjName $r.OBJ_NAME -Kind $r.OBJECT `
+                                -Package $pkg -Exists $true -System $System -Client $Client -ResolvedVia 'E071' -Confidence 'HIGH' -Note "in $name")
+                }
             }
             return ,$out
         }
@@ -327,7 +339,7 @@ function Resolve-SapObject {
                             -Fields @('DEVCLASS') -RowCount 1
                 if ($null -eq $rows) { return (New-SapObjectRecord -Object $map.object -ObjName $name -Kind $map.kind -Exists $false -System $System -Client $Client -ResolvedVia 'RFC_ERROR' -Confidence 'LOW' -Note 'TADIR read failed') }
                 if ($rows.Count -eq 0) {
-                    # Not in TADIR under that type — it may still be an FM typed wrong.
+                    # Not in TADIR under that type - it may still be an FM typed wrong.
                     return (New-SapObjectRecord -Object $map.object -ObjName $name -Kind $map.kind -Exists $false -System $System -Client $Client -ResolvedVia 'TADIR' -Confidence 'HIGH' -Note 'no TADIR row for that type')
                 }
                 $rec = New-SapObjectRecord -Pgmid 'R3TR' -Object $map.object -ObjName $name -Kind $map.kind `
@@ -336,7 +348,7 @@ function Resolve-SapObject {
                 return $rec
             }
 
-            # No KIND — disambiguate by TADIR, then fall back to FM lookup.
+            # No KIND - disambiguate by TADIR, then fall back to FM lookup.
             $rows = Read-SapTableRows -Destination $Destination -Table 'TADIR' `
                         -Where "PGMID = 'R3TR' AND OBJ_NAME = '$name'" -Fields @('PGMID','OBJECT','OBJ_NAME','DEVCLASS')
             if ($null -eq $rows) { return (New-SapObjectRecord -ObjName $name -Kind '' -Exists $false -System $System -Client $Client -ResolvedVia 'RFC_ERROR' -Confidence 'LOW' -Note 'TADIR read failed') }
@@ -349,7 +361,7 @@ function Resolve-SapObject {
                 return $rec
             }
             if ($rows.Count -gt 1) {
-                # Ambiguous — same name across object types. Use TypeHint if it picks one.
+                # Ambiguous - same name across object types. Use TypeHint if it picks one.
                 if ($TypeHint) {
                     $hint = Get-SapKindMap $TypeHint
                     if ($hint) {
@@ -414,7 +426,7 @@ function Resolve-SapFunctionModule {
 }
 
 # =============================================================================
-# CLI body — skipped when the file is dot-sourced.
+# CLI body - skipped when the file is dot-sourced.
 # =============================================================================
 if ($MyInvocation.InvocationName -ne '.') {
 
