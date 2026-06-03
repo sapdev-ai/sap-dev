@@ -69,6 +69,27 @@ switch ($Action) {
 
     'start' {
         if (-not $Skill) { Write-Host "log_helper: -Skill is required for 'start'"; exit 0 }
+
+        # Orphan guard: a leftover state file means a previous run's 'end' was
+        # never called. Close that orphan as ABANDONED now (it writes to its own
+        # start-date log file) so a later 'end' can't silently close it as a
+        # bogus SUCCESS. Skip probe state files that intentionally persist a
+        # summary (observed/scenario_type) — the 'end' action keeps those on
+        # purpose for the scaffolder and they were already closed.
+        if (Test-Path -LiteralPath $StateFile) {
+            try {
+                $rawState  = Get-Content -LiteralPath $StateFile -Raw -Encoding UTF8 -ErrorAction SilentlyContinue
+                $probeKept = $rawState -and ($rawState -match '"observed"' -or $rawState -match '"scenario_type"')
+                if (-not $probeKept) {
+                    $orphan = Load-State -Path $StateFile
+                    if ($orphan) {
+                        Stop-SapLog -Run $orphan -Status ABANDONED -Extra @{ stale_state = $true; closed_by = 'start-eviction' }
+                        Write-Host "log_helper: closed orphaned run_id=$($orphan.RunId) as ABANDONED (previous run had no end)"
+                    }
+                }
+            } catch { }
+        }
+
         $params = @{}
         if ($ParamsJson) {
             try {

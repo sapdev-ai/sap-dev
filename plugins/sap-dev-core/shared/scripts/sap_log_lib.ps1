@@ -49,6 +49,7 @@ function Get-SapLogSettings {
         ConsoleEcho   = $false
         MaxSizeMB     = 10
         MaxBackups    = 5
+        StaleRunHours = 12
         RedactKeys    = @('sap_password','password','passwd','pwd','token','secret','api_key')
     }
 
@@ -90,6 +91,9 @@ function Get-SapLogSettings {
 
             $v = Get-SapSettingValue 'log_max_backups' ''
             if ($v) { $n = 0; if ([int]::TryParse($v, [ref]$n)) { $cfg.MaxBackups = $n } }
+
+            $v = Get-SapSettingValue 'log_stale_run_hours' ''
+            if ($v) { $d = 0.0; if ([double]::TryParse($v, [ref]$d)) { $cfg.StaleRunHours = $d } }
 
             $v = Get-SapSettingValue 'log_redact_keys' ''
             if ($v) {
@@ -364,6 +368,22 @@ function Stop-SapLog {
     if (-not $Run.Enabled) { return }
 
     $endTime = Get-Date
+
+    # Stale-run guard: a run whose start is older than the configured threshold
+    # almost certainly had its 'end' skipped when the work actually finished —
+    # the per-skill state file was orphaned and is only being closed now by a
+    # later invocation. Reporting that as the caller's requested SUCCESS would
+    # stamp a bogus multi-day duration onto the run's START-date log file (the
+    # filename is pinned at start). Demote success-like statuses to ABANDONED
+    # and flag the record so log analysis (and humans) aren't misled.
+    $reqStatus = $Status
+    $elapsedH  = ($endTime - $Run.StartTime).TotalHours
+    $cfgStale  = Get-SapLogSettings
+    $isStale   = ($cfgStale.StaleRunHours -gt 0 -and $elapsedH -gt $cfgStale.StaleRunHours)
+    if ($isStale -and ($Status -eq 'SUCCESS' -or $Status -eq 'EXISTED' -or $Status -eq 'SKIPPED')) {
+        $Status = 'ABANDONED'
+    }
+
     $level = if ($Status -eq 'SUCCESS' -or $Status -eq 'EXISTED' -or $Status -eq 'SKIPPED') { 'INFO' } else { 'ERROR' }
     if ($script:SapLogLevels[$level] -lt $Run.LevelNum) { return }
 
@@ -376,7 +396,12 @@ function Stop-SapLog {
         level         = $level
         status        = $Status
         exit_code     = $ExitCode
-        duration_ms   = [int]($endTime - $Run.StartTime).TotalMilliseconds
+        duration_ms   = [long]($endTime - $Run.StartTime).TotalMilliseconds
+    }
+    if ($isStale) {
+        $rec.stale_state = $true
+        $rec.stale_hours = [math]::Round($elapsedH, 1)
+        if ($reqStatus -ne $Status) { $rec.requested_status = $reqStatus }
     }
     if ($ErrorClass)  { $rec.error_class = $ErrorClass }
     if ($ErrorObject) {
