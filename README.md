@@ -9,12 +9,13 @@ SAP development automation skills for AI coding assistants.
 
 Project home: <https://sapdev.ai>
 
-## Available Plugins (3 plugins · 49 skills · 1 agent · v0.3.0)
+## Available Plugins (4 plugins · 70 skills · 2 agents · v0.5.0)
 
 | Plugin | Skills | Description |
 |--------|--------|-------------|
-| **sap-dev-core** | 36 + agent | Foundation. **Multi-profile login** (DPAPI-encrypted credentials per SAP system, AI-session pin so each Claude conversation drives one SAP), TR resolution, package / function-group management, ABAP Workbench (SE38 / SE37 / SE24 / SE11 / SE91 / SE16N / SE21 / SE01 / SE19 / SE41 / SE51 / SE54 / SNRO / SP02 / CMOD), 4-stage ATC quality gate, standalone activator, package mover, where-used list, RFC wrapper generators, BDC executor, GUI recording / inspection / visual diagnostics, **skill-authoring tooling** (`gui-probe` + `gui-skill-scaffold` — probe an unknown transaction with natural-language scenarios → scaffold a working skill draft), structured logging, log analysis, dev-env lifecycle (init / status / clean), **session broker** for parallel execution against multiple SAP sessions. Ships the **`abap-developer` agent** (BUILD / FIX / DEPLOY) that reads your Customer Brief and orchestrates the skills. |
+| **sap-dev-core** | 50 + agent | Foundation. **Multi-profile login** (DPAPI-encrypted credentials per SAP system, AI-session pin so each Claude conversation drives one SAP), TR resolution, package / function-group management, ABAP Workbench (SE38 / SE37 / SE24 / SE11 / SE91 / SE16N / SE21 / SE01 / SE19 / SE41 / SE51 / SE54 / SNRO / SP02 / CMOD), 4-stage ATC quality gate, ABAP Unit runner, standalone activator, package mover, where-used list, RFC wrapper generators, BDC executor, GUI recording / inspection / visual diagnostics, **skill-authoring tooling** (`gui-probe` + `gui-skill-scaffold` — probe an unknown transaction with natural-language scenarios → scaffold a working skill draft), **incident diagnosis** (`sap-diagnose` orchestrator over ST22 / SM13 / SM12 / SLG1 / SM37 readers + performance-trace analysis), **delivery assurance** (transport-readiness release gate, impact analysis, enhancement advisor, evidence pack), cross-system object compare / explain, structured logging, log analysis, dev-env lifecycle (init / status / clean), **session broker** for parallel execution against multiple SAP sessions. Ships the **`abap-developer` agent** (BUILD / FIX / DEPLOY) that reads your Customer Brief and orchestrates the skills. |
 | **sap-gen-code** | 10 | Spec → ABAP pipeline. Customise spec-template layout per customer, extract from Excel / Word / PDF, normalise via customer rules, validate DDIC and process, generate ABAP per Customer Brief profile (with FM-signature pre-fetch + per-system cache), validate naming / types / SQL / FM args via live RFC, auto-fix detected issues. |
+| **sap-migrate** | 7 + agent | S/4HANA custom-code migration engine. Run a brownfield conversion as a tracked campaign (`sap-cc-campaign`): inventory custom (Z/Y) objects, overlay runtime usage to flag unused code for decommission, run the S/4HANA-readiness ATC, triage findings into remediation tiers, and auto-remediate mechanical (R1) changes on a sandbox. Ships the **`cc-migration-engineer` agent**. Companion to sap-dev-core (install that first). |
 | **sap-tcd** | 3 | Business process automation: Business Partner (BP), Material Master (MM01 / MM02 / MM03), Sales Order (VA01 / VA02 / VA03). |
 
 ## Repository Structure
@@ -31,8 +32,9 @@ sap-dev/
 │   │   │   ├── scripts/          # Reusable PS1 / VBS helpers
 │   │   │   ├── rules/            # AI guidance conventions (mandatory)
 │   │   │   └── templates/        # Customer Brief, sample spec layouts
-│   │   └── skills/               # 36 skills
+│   │   └── skills/               # 50 skills
 │   ├── sap-gen-code/             # Plugin: spec → ABAP
+│   ├── sap-migrate/              # Plugin: S/4HANA custom-code migration
 │   └── sap-tcd/                  # Plugin: business transactions
 ├── schemas/
 │   ├── marketplace.schema.json   # Schema for marketplace.json
@@ -82,7 +84,7 @@ Follow the monorepo structure:
 2. Add `SKILL.md` and `README.md` to the skill directory.
 3. Add the skill path to the plugin's `skills` array in `.claude-plugin/marketplace.json`.
 4. Follow the [skill naming convention](CLAUDE.md#skill-naming-convention).
-5. Validate with `npm run validate:marketplace`.
+5. Validate with `npm run validate:marketplace` and `npm run check:consistency` (the latter fails if a skill directory is not registered in `marketplace.json`, or if any version / skill-count / plugin-count is out of sync).
 
 ## License
 

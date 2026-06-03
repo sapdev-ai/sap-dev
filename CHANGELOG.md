@@ -4,6 +4,62 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+## [0.5.0] — 2026-06-03
+
+Rolls up the interim 0.3.1–0.3.4 patch bumps and adds a fourth plugin plus
+five new skill families. **4 plugins · 70 skills · 2 agents.**
+
+### New plugin: `sap-migrate` — S/4HANA custom-code migration engine
+
+- Runs a brownfield custom-code conversion as a tracked **campaign**. Seven skills:
+  `sap-cc-campaign` (owns the campaign workspace + state ledger and orchestrates
+  the engine), `sap-cc-inventory` (classifies in-scope Z/Y objects from TADIR/TRDIR
+  over read-only RFC), `sap-cc-usage` (overlays runtime usage to split objects into
+  REMEDIATE / DECOMMISSION / REVIEW), `sap-cc-analyze` (runs the S/4HANA-readiness
+  ATC via `/sap-atc`), `sap-cc-triage` (classifies findings into remediation tiers
+  R1–R4 via the Simplification Knowledge Pack), `sap-cc-remediate` (sandbox-only R1
+  remediation after a mandatory dry-run — the one sap-migrate skill that writes),
+  and `sap-cc-learn` (feeds real ATC message ids back into the knowledge pack).
+- Ships the **`cc-migration-engineer` agent**, the `migration_brief.md` (+ sample)
+  templates, and the **Simplification Knowledge Pack** under
+  `plugins/sap-migrate/shared/knowledge/`.
+
+### sap-dev-core — new skill families
+
+- **Incident diagnosis (read-only):** `sap-diagnose` orchestrator that fans out
+  across five read-only evidence readers — `sap-st22` (short dumps, GUI),
+  `sap-sm13` (update-task failures), `sap-sm12` (lock entries via `ENQUEUE_READ`),
+  `sap-slg1` (application log / BALHDR), `sap-sm37` (background jobs / TBTCO) —
+  correlates the evidence into incident clusters and ranks root-cause hypotheses.
+- **Performance:** `sap-trace` analyzes an already-recorded ST05 / SAT trace (or an
+  imported file), ranks hotspots, flags anti-patterns, and maps each to a code-
+  quality rule + a fix.
+- **Delivery assurance:** `sap-transport-readiness` (RFC release gate → GO /
+  GO_WITH_WARNINGS / NO-GO), `sap-impact-analysis` (where-used / forward-dep / entry-
+  point analysis from the cross-reference index with a transparent risk band),
+  `sap-enhancement-advisor` (recommends the safest BAdI / SMOD / user-exit extension
+  point with transparent scoring), and `sap-evidence-pack` (collects registered
+  artifacts into an audit-ready pack with an honest "Missing evidence" section).
+  Backed by new Phase-0 shared libraries: `sap_object_resolver.ps1`,
+  `sap_artifact_lib.ps1`, `sap_finding_lib.ps1`, `sap_gate_policy.ps1`.
+- **Testing:** `sap-run-abap-unit` runs ABAP Unit on a deployed program / class via
+  SE38 / SE24 with a verdict gate and optional code coverage.
+- **Comprehension / compare:** `sap-explain-object` (acquires source, builds a
+  structure + call map, emits an explanation dossier) and `sap-compare` (diffs the
+  same object across two saved SAP systems over RFC).
+
+### Onboarding & infrastructure (folded in from 0.3.1–0.3.4)
+
+- First-run **`work_dir` onboarding** for `/sap-login` / `/sap-dev-init`, resolved
+  via the env-aware `Get-SapWorkDir` (env var `SAPDEV_AI_WORK_DIR` →
+  `settings.local.json` → `settings.json` → default) so a custom work directory
+  survives plugin updates.
+- Removed the dead VBScript settings library — settings are PowerShell-only; VBS
+  receives resolved values via `%%TOKEN%%` substitution + environment variables.
+- Added the **non-ASCII source guard** to `scripts/check-consistency.mjs`
+  (informational): flags BOM-less `.ps1` / `.vbs` files with bytes > 0x7F that would
+  mojibake under Windows PowerShell 5.1 / 32-bit cscript.
+
 ## [0.3.0] — 2026-05-27
 
 ### Syntax-check classifier — locale-aware shared lib (2026-05-27)
