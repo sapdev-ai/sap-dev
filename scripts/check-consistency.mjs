@@ -136,6 +136,10 @@ const TIER3_EXEMPT_VBS = new Set([
   'sap_login_capture_active_session.vbs',
   'sap_gui_security_warmup.vbs',
   'sap_attach_lib.vbs',
+  // generic golden-screen inspector: self-resolves SESSION_PATH (Chr(37)
+  // sentinel) like sap_gui_object_details.vbs, so it follows neither the attach
+  // contract nor the baseline gate.
+  'sap_screen_check_probe.vbs',
 ]);
 
 const LEGACY_ATTACH_PATTERNS = [
@@ -443,8 +447,19 @@ for (const plugin of mp.plugins) {
   for (const { skill, file, abs } of listVbsTemplates(skillsDir)) {
     if (TIER3_EXEMPT_VBS.has(file)) continue;
     const body = readFileSync(abs, 'utf8');
-    const looksOperational = /GetObject\("SAPGUI"\)/i.test(body) || /GetScriptingEngine/i.test(body);
-    if (!looksOperational) continue;
+    // A SAP-driving VBS is detected the way the Tier-3 contract describes it:
+    // migrated templates declare Const SESSION_PATH + include the attach lib +
+    // call AttachSapSession (the raw GetObject("SAPGUI") moved into
+    // sap_attach_lib.vbs), while legacy/unmigrated ones still bind the
+    // Scripting engine directly. Either way it drives a screen flow and needs a
+    // baseline. Non-driving VBS (static-analysis tools etc.) are skipped.
+    const isDriving =
+      /Const\s+SESSION_PATH\s*=\s*"%%SESSION_PATH%%"/i.test(body) ||
+      body.includes('%%ATTACH_LIB_VBS%%') ||
+      /AttachSapSession\s*\(/.test(body) ||
+      /GetObject\("SAPGUI"\)/i.test(body) ||
+      /GetScriptingEngine/i.test(body);
+    if (!isDriving) continue;
     baselineOperational++;
     const jsonAbs = join(dirname(abs), file.replace(/\.vbs$/i, '.screens.json'));
     if (existsSync(jsonAbs)) {

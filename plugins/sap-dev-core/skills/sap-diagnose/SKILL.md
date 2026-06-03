@@ -10,12 +10,16 @@ description: |
   recommended fix path.
   PURE READ-ONLY: this skill never writes to SAP. When a fix implies a write
   (release a lock, reprocess an update) it only PROPOSES the gated command; the
-  matching reader's remediate mode owns the confirmation.
+  matching reader's remediate mode owns the confirmation. With --fix, after
+  presenting the hypotheses it hands a CUSTOM-CODE-DEFECT top hypothesis to
+  /sap-fix-incident (the write-capable companion, which keeps its own
+  confirmation gate + DEV-only / Z-Y-only guard rails) — /sap-diagnose itself
+  still writes nothing.
   Mostly RFC-driven (SM13/SM12/SLG1/SM37) and therefore robust across releases;
   ST22 is GUI (ADT not used). Safe to point at production.
   Prerequisites: a saved profile via /sap-login (RFC password); SAP NCo 3.1
   (32-bit, .NET 4.0) in GAC; active SAP GUI session for the ST22 leg.
-argument-hint: "[<natural-language incident>] [--user U] [--tcode T] [--program P] [--job J] [--dump KEY] [--object TYPE:KEY] [--date today|YYYYMMDD] [--time HH:MM] [--window MIN] [--sources a,b] [--depth quick|standard|deep] [--remediate] [--connection PROFILE] [--report] [--out PATH]"
+argument-hint: "[<natural-language incident>] [--user U] [--tcode T] [--program P] [--job J] [--dump KEY] [--object TYPE:KEY] [--date today|YYYYMMDD] [--time HH:MM] [--window MIN] [--sources a,b] [--depth quick|standard|deep] [--remediate] [--fix] [--connection PROFILE] [--report] [--out PATH]"
 ---
 
 # SAP Incident Diagnosis Orchestrator
@@ -47,6 +51,10 @@ Task: $ARGUMENTS
 
 **Reader skills** (called via the Skill tool in Step 4): `/sap-st22`,
 `/sap-sm13`, `/sap-sm12`, `/sap-slg1`, `/sap-sm37`.
+
+**Fix hand-off** (Step 8.5, only with `--fix`): `/sap-fix-incident` — the
+write-capable companion. Diagnose stays read-only; it only invokes the fix skill
+(which owns its own confirmation gate + guard rails) after a confirmation.
 
 ---
 
@@ -111,6 +119,12 @@ independent — invoke them together; the GUI reader (st22) uses the pinned
 session, so run it on its own. A reader that errors or lacks authorization
 writes a `skipped` stub — record it and continue; never drop a source silently.
 
+> **`--fix` (or `--depth deep`) → run ST22 deep.** When `--fix` is set, invoke
+> `/sap-st22` with `--deep` so the deliverable carries a `dump_detail` (failing
+> `include`/`line` + source snippet) — that is the input `/sap-fix-incident`
+> needs in Step 8.5. Without it the fix skill would have to re-open the dump
+> itself. This stays read-only.
+
 ## Step 5 — Correlate
 
 ```bash
@@ -139,13 +153,16 @@ confirm_by, refute_by, recommended_action }`. Hard rules:
 
 | Root cause | Next command |
 |---|---|
-| custom-code defect | `/sap-explain-object <type> <name>` → `/sap-se38\|37\|24` fix |
+| custom-code defect | *(closed loop)* `/sap-fix-incident --incident <out>` — auto-chained by `--fix` (Step 8.5); or manually `/sap-explain-object <type> <name>` → `/sap-se38\|37\|24` fix |
 | config-missing | name the IMG/config table; verify read-only via `/sap-se16n` |
 | data-defect | point at the record (read-only `/sap-se16n`) |
 | lock-contention | *(gated)* `/sap-sm12 --release <lock>` — only with `--remediate` |
 | stuck update | *(gated)* `/sap-sm13 --reprocess <key>` — only with `--remediate` |
 
-The orchestrator performs no write under any flag.
+The orchestrator performs no write itself. With `--fix` it delegates the
+custom-code path to `/sap-fix-incident`, which owns its own confirmation gate
+(Rule 2) and guard rails; with `--remediate` it delegates lock/update writes to
+the reader's gated mode. Diagnose never mutates SAP directly under any flag.
 
 ## Step 8 — Emit Outputs
 
@@ -161,10 +178,43 @@ STATUS: NO_EVIDENCE window=<from>..<to>   (possible time-zone skew — see Failu
 STATUS: ERROR <reason>
 ```
 
+## Step 8.5 — Optional: Chain the Fix (`--fix`)
+
+Only when `--fix` was passed. **`/sap-diagnose` itself still writes nothing
+here** — it hands the deliverable to the gated `/sap-fix-incident`.
+
+Chain only if **both** hold:
+
+1. The deliverable was emitted (Step 8) with a non-empty `--out` path, and
+2. The rank-1 hypothesis `category == custom-code-defect`.
+
+Otherwise do NOT chain — print the Step-7 next command and stop (config-missing /
+data-defect / lock-contention have their own paths; a low-confidence or non-code
+top hypothesis is never auto-fixed).
+
+When both hold:
+
+1. **Present** the rank-1 hypothesis (statement, symptom_vs_root, evidence ids,
+   confidence) and say `--fix` will hand it to `/sap-fix-incident`.
+2. **Confirm** (Rule 2): *"Hand this custom-code root cause to /sap-fix-incident?
+   It will reproduce the defect as a test, propose a patch, and — after its own
+   confirmation — deploy to DEV behind a transport. (yes / no)"*. Proceed only on
+   explicit `yes`.
+3. **Invoke via the Skill tool**: `/sap-fix-incident --incident <out>` (the
+   Step-8 deliverable path). The fix skill re-applies its own guard rails
+   (Z/Y-only, DEV-only, never standard / production) and its own deploy gate —
+   this chain bypasses none of them.
+4. Relay the fix skill's `STATUS:` line back to the user.
+
+Echo `FIX_CHAIN: invoked target=<type:name>` or
+`FIX_CHAIN: skipped reason=<not-code|low-confidence|no-deliverable|declined>`.
+
 ## Step 9 — Clean Up
 
 Keep the deliverable under `{work_dir}\diagnose`; remove `{RUN_DIR}` unless
-`--depth deep` (then retain raw evidence for audit and say so).
+`--depth deep` (then retain raw evidence for audit and say so). **If `--fix`
+chained a fix (Step 8.5), retain the deliverable regardless** — it is the
+`--incident` input the fix skill consumed.
 
 ## Final — Log End
 

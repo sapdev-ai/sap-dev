@@ -14,7 +14,7 @@ description: |
   /sap-gui-record if your release uses different tree node IDs / grid
   column IDs.
   Prerequisites: Active SAP GUI session (use /sap-login first).
-argument-hint: "<OBJECT_TYPE> <OBJECT_NAME> [--variant=<NAME>] [--max-priority=<n>] [--object-set=<NAME>] [--run-series=<NAME>] [--poll-interval=<sec>] [--max-wait=<sec>] [--save-to=<PATH>] [--drill] [--no-drill]"
+argument-hint: "<OBJECT_TYPE> <OBJECT_NAME> [--variant=<NAME>] [--object-provider=<ID>] [--max-priority=<n>] [--object-set=<NAME>] [--run-series=<NAME>] [--poll-interval=<sec>] [--max-wait=<sec>] [--save-to=<PATH>] [--drill] [--no-drill]"
 ---
 
 # SAP ATC Quality Gate Skill
@@ -120,6 +120,7 @@ If neither brief nor argument supplies a value, default to `2`.
 | `OBJECT_TYPE` | yes | — | One of `PROGRAM` / `CLASS` / `INTERFACE` / `FUGR` / `DDIC` / `TYPEGROUP` / `WDYN`. SCI groups Class and Interface under one category, so both map to `XSO_CLAS` + `SO_CLAS-LOW`. **`FM` is intentionally rejected** — SCI Object Sets have no per-function-module category; pass `FUGR <function-group-name>` instead to scope at FG level. |
 | `OBJECT_NAME` | yes | — | UPPERCASE repository name. |
 | `--variant=<NAME>` | no | *(empty = system default)* | Global ATC check variant to run, e.g. `S4HANA_READINESS` for an S/4HANA-conversion readiness check. When omitted, the run series leaves the check-variant field untouched and ATC runs the system's configured default variant (the prior behaviour). **Passing a named variant is mandatory for migration readiness** — see `/sap-cc-analyze`, which calls this skill with `--variant=S4HANA_READINESS`. The named variant must EXIST and be GLOBAL on the connected system (readiness needs the Simplification Database loaded). Accepts `--check-variant=<NAME>` as an alias. |
+| `--object-provider=<ID>` | no | *(empty = LOCAL)* | **Central / remote ATC.** Binds the run series to a registered remote object provider (`DATA_SOURCE_ID`) so a central hub analyzes a remote satellite's code. Requires the hub to be configured (tx ATC → Manage System Groupings + an SM59 RFC destination to the satellite, hub check content ≥ the satellite's target release). When omitted, the run is LOCAL. When supplied but the provider field isn't on the config screen, Stage 2 **fails loud** (never silently runs local-as-remote). **The provider field id is UNVERIFIED** — no configured hub was available to record against; see "Central / remote ATC" below. |
 | `--max-priority=<n>` | no | `2` (or brief) | Gate threshold — fail if any priority ≤ this value has count > 0. |
 | `--object-set=<NAME>` | no | auto | Reuse a named SCI Object Set. If omitted, generate `ZGATE_<8-char-hash-of-objname>` so re-runs on the same target reuse the same set. |
 | `--run-series=<NAME>` | no | auto | Run Series name. If omitted, generate `RUN_<YYYYMMDD>_<HHMMSS>` to avoid collisions. |
@@ -202,7 +203,8 @@ re-record via `/sap-gui-record`.
 ## Step 4 — Stage 2: Create + Execute Run Series (ATC)
 
 Fill `sap_atc_create_run_series.vbs`. Tokens: `%%RUN_SERIES_NAME%%`,
-`%%OBJECT_SET_NAME%%`, `%%CHECK_VARIANT%%`, `%%SESSION_LOCK_VBS%%`.
+`%%OBJECT_SET_NAME%%`, `%%CHECK_VARIANT%%`, `%%OBJECT_PROVIDER%%`,
+`%%SESSION_LOCK_VBS%%`.
 
 Substitute `%%CHECK_VARIANT%%` with the parsed `--variant=` value, or the
 **empty string** when no variant was supplied (the empty value is what tells
@@ -224,6 +226,8 @@ $content  = $content.Replace('%%RUN_SERIES_NAME%%', 'THE_RUN_SERIES')
 $content  = $content.Replace('%%OBJECT_SET_NAME%%', 'THE_OBJECT_SET')
 # Empty string = run the system default variant (prior behaviour).
 $content  = $content.Replace('%%CHECK_VARIANT%%',   'THE_CHECK_VARIANT')
+# Empty string = LOCAL analysis; a value = remote object provider (central ATC).
+$content  = $content.Replace('%%OBJECT_PROVIDER%%', 'THE_OBJECT_PROVIDER')
 $content  = $content.Replace('%%SESSION_LOCK_VBS%%', "$shared\scripts\sap_session_lock.vbs")
 # Phase 3.5 session-attach plumbing.
 $sessionPath = ''
@@ -236,7 +240,8 @@ $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 
 Run via cscript. Expected lines:
 `VARIANT: <S4HANA_READINESS | SYSTEM_DEFAULT>` (which variant the run will use)
-`SUCCESS: Run series <NAME> scheduled (object set <SET>, variant <ID>).`
+`PROVIDER: <provider-id | LOCAL>` (LOCAL = this system's own code; an id = central/remote)
+`SUCCESS: Run series <NAME> scheduled (object set <SET>, variant <ID>, provider <P>).`
 
 Confirm the `VARIANT:` line reports the variant you intended — if you passed
 `--variant=S4HANA_READINESS` but it reads `SYSTEM_DEFAULT`, the token was not
@@ -583,6 +588,46 @@ operator can then run `/sap-sp02` against any spool produced via *List
 to capture a TXT copy.
 
 ---
+
+## Central / remote ATC (`--object-provider`)
+
+Large conversions run readiness ATC from a **central check system** (a hub on
+NW 7.52+/S4 that carries the S/4 simplification content) against the custom code
+on **remote satellites** (e.g. the ECC source), instead of running ATC on each
+system. Two ways to do that with this skill:
+
+1. **Logged-into-the-hub (no `--object-provider`)** — the simplest, fully
+   supported path: point your session at the hub (e.g.
+   `/sap-login --switch <check_system>`), make sure the code under test is
+   present there, and run `/sap-atc --variant=S4HANA_READINESS` *locally* on the
+   hub. This is the migration chain's default (see `/sap-cc-analyze`).
+2. **True remote object provider (`--object-provider=<ID>`)** — the hub analyzes
+   a satellite's code *in place* over RFC. The run series binds to a registered
+   object provider (`DATA_SOURCE_ID` / `SCA_DS_OBJECT_PROVIDER_ID`).
+
+**Prerequisites for option 2 (all on the hub):**
+- An **SM59 RFC destination** to each satellite.
+- A registered **object provider / system grouping** (tx ATC → *Manage System
+  Groupings*; stored in `SATC_AC_OSY_ATTR`). `/sap-atc` does not create these.
+- **Version direction:** the hub's check content must be **≥** the satellite's
+  target release. You check OLD systems FROM a NEW hub — never the reverse.
+- The **Simplification Database / readiness content** loaded on the hub (same as
+  for `--variant=S4HANA_READINESS`).
+
+**Status — UNVERIFIED (single-system limitation).** The remote object-provider
+field only appears on the run-series config screen once providers are
+registered; no configured hub was available, so the field id in `provCands`
+(`sap_atc_create_run_series.vbs`) is a conjecture. The **fail-loud guard is
+verified live (S/4HANA 1909):** with `--object-provider` set on a non-hub, Stage
+2 aborts with "no remote object-provider field found" *before any Save* — it
+never silently runs a LOCAL analysis under a remote request. On a real hub, if
+Stage 2 fails-loud, record the config screen via `/sap-gui-probe` and prepend the
+true field id to `provCands`, then update the table below.
+
+| Provider field candidate (UNVERIFIED) | Notes |
+|---|---|
+| `wnd[0]/usr/ctxtG_DYNP_3000-DATA_SOURCE_ID` / `cmb…` | Most likely (the run stamps `DATA_SOURCE_ID`; input or dropdown) |
+| `…-OBJECT_PROVIDER`, `ctxtSATC_CI_S_CFG_SERIE_UI_01-DATA_SOURCE_ID` | Alternatives |
 
 ## Limitations
 

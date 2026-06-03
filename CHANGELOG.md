@@ -4,6 +4,127 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Transport landscape movement: `/sap-stms`
+
+- **`/sap-stms`** (sap-dev-core) — the missing link after release: moves a
+  **released** TR through the landscape (DEV → QAS → PRD) and reads its import
+  status / return code. Four modes: **status** (default, read-only — a target's
+  import queue, or where a TR sits), **logs** (read-only — import log + RC mapped
+  0=OK / 4=OK_WITH_WARNINGS / 8=ERROR / 12=FATAL), **import** (write, gated), and
+  **import-all** (write, double-gated). Safety is the product: read-only default;
+  `import` needs explicit confirmation; a **production** target requires a typed
+  SID echo **plus** a second confirmation (the most outward-facing, least-
+  reversible action in the toolset); never imports an unreleased (`E070-TRSTATUS
+  != R`) or NO-GO TR without `--force`. Honesty contract: missing TMS import auth
+  → `COULD_NOT_IMPORT` (never a faked success); **RC 8/12 is a failure even if
+  the queue row looks "done."** GUI for the action, RFC (E070) for the
+  released-status read. The destructive `sap_stms_import.vbs` ships as a
+  **recording-gated, fail-safe scaffold**: its Import-Request / options-dialog
+  control IDs are `PLACEHOLDER_*` and a calibration gate ABORTS (`not-calibrated`,
+  presses nothing) until they are `/sap-gui-record`-captured for the release; even
+  once calibrated, the import button fires only after positively verifying the
+  selected queue row's `TRKORR` equals the requested TR — so an uncalibrated or
+  mis-targeted run fails safe, never mis-imports. Read-only `sap_stms_queue_read`
+  / `sap_stms_log_read` ship working (candidate IDs + graceful degradation). All
+  three VBS follow the Tier-3 attach contract. Completes the delivery chain
+  `/sap-fix-incident` → `/sap-transport-readiness` → `/sap-se01 release` →
+  **`/sap-stms`**. Design spec: `contributing/design_sap_stms.md`. Totals:
+  **77 skills** (sap-dev-core 55). **Live STMS calibration + import test pending.**
+
+### Diagnose → fix closed loop: `/sap-fix-incident` + `/sap-st22 --deep`
+
+- **`/sap-st22 --deep`** (sap-dev-core) — deep per-dump extraction. Opens each
+  in-scope dump from the ST22 list and scrapes the failing source line + snippet
+  into the event's `include`/`line` fields plus a new `dump_detail` object in the
+  shared `/sap-diagnose` evidence contract. Strictly additive — list rows are
+  collected before any dump is opened, so a deep failure can never lose the v1
+  evidence; every failure degrades to `detail_status = partial | skipped`
+  (HTML-rendered dumps yield `partial`, with exception/program still known from
+  the list level), never a false "no defect." The error line is anchored on the
+  locale-independent `>>>>` marker, so no branching on a translated section
+  header. New params `--deep` / `--dump-key` / `--max-deep`. Offline-verified
+  (clean 32-bit `cscript` compile + valid evidence schema); **live ST22
+  detail-screen calibration pending** (the detail container ID needs a
+  `/sap-gui-record` pass to lift HTML-rendered dumps from `partial` to `ok`).
+- **`/sap-fix-incident`** (sap-dev-core) — the write-capable companion to the
+  read-only `/sap-diagnose`, closing the last mile from a root cause to a
+  deployed, **test-verified** fix. Takes a diagnose deliverable (or a dump key)
+  whose top hypothesis is a CUSTOM-CODE DEFECT, acquires the failing source,
+  reasons a minimal patch, **reproduces the defect in an ABAP Unit test (RED)**
+  via `/sap-gen-abap-unit`, applies the patch, re-checks with `/sap-check-abap`,
+  deploys to a modifiable DEV system behind a transport (`/sap-se38|37|24` +
+  `/sap-activate-object`), and proves the test **GREEN** with
+  `/sap-run-abap-unit`. Hard guard rails: custom-code-defect on `Z*/Y*` only;
+  never patches SAP standard code (→ Note / enhancement, analysis only); never
+  writes to the incident's own system when it is non-modifiable / production —
+  the fix is made in DEV and handed to `/sap-transport-readiness` →
+  `/sap-se01 release` → `/sap-stms`. Deploy is gated (`skill_operating_rules`
+  Rule 2): the default PROPOSEs a diff and waits for confirmation. Findings flow
+  through the reconciled finding model and register for `/sap-evidence-pack`.
+  Design spec: `contributing/design_sap_fix_incident.md`; companion STMS spec:
+  `contributing/design_sap_stms.md`. Totals: **76 skills** (sap-dev-core 54).
+- **`/sap-diagnose --fix`** (entry sugar) — runs the loop from one command:
+  `/sap-diagnose` runs its ST22 leg `--deep`, presents the hypotheses, and — only
+  when the rank-1 hypothesis is a custom-code defect and after an explicit
+  confirmation — hands the deliverable to `/sap-fix-incident` (Step 8.5).
+  **`/sap-diagnose` itself still writes nothing**; the fix skill owns its deploy
+  gate + guard rails. No new skill (a flag on the existing orchestrator).
+
+### Live screen-drift check: `/sap-gui-screen-check` (GUI-robustness harness, half 2)
+
+- **`/sap-gui-screen-check`** (sap-dev-core, `sap-gui-*` family) — the live half
+  of the golden-screen harness. Replays the `*.screens.json` baselines against
+  the CURRENT SAP system: for each checkpoint it navigates via the `reach`
+  OK-code, reads the screen identity (program + dynpro), and tests that every
+  control ID the driving VBS depends on still resolves via `findById`. A missing
+  control or identity mismatch on a `captured` checkpoint is reported as **DRIFT
+  (BLOCKER)** — naming the exact control and the VBS that will silently mis-step
+  on this release; a `pending_live` checkpoint is captured and (only with
+  `--update-baseline`) promoted to `captured`. Language-independent (asserts IDs
+  + program/dynpro, never displayed text). Read-only against SAP except the gated
+  baseline write. Architecture: a deterministic PowerShell orchestrator
+  `references/sap_screen_check.ps1` (enumerate baselines, run the probe per
+  checkpoint, compare identity + control presence, roll up a `SCREENCHECK:`
+  verdict, exit 1 on drift) shelling the read-only probe
+  `references/sap_screen_check_probe.vbs` (self-resolves SESSION_PATH like
+  `sap_gui_object_details.vbs`; Tier-3 + baseline exempt). **Live-smoked
+  (assess-only) on S4D 1909 (2026-06-03):** the probe attaches and reads screen
+  identity; the SKILL.md data-loss guard correctly fired on a non-idle session,
+  so the navigate + promote path is verified on first idle-session run.
+- **Baselines backfilled** (static / `pending_live`): `sap_se37_create`,
+  `sap_se24_create`, `sap_se11_{domain,dataelement,structure,table}_create` —
+  screen-baseline coverage now **7/116**.
+- v1 scope: OK-code (initial-screen) checkpoints only; new-control INFO diff and
+  `sap_finding_lib` bridging are documented future work. Totals: **75 skills**
+  (sap-dev-core 53).
+
+### Golden-screen baseline coverage gate (GUI-robustness harness, half 1)
+
+- **New CI gate** in `scripts/check-consistency.mjs` — every operational
+  SAP-driving `.vbs` under `skills/<skill>/references/` should ship a screen
+  fingerprint baseline `<stem>.screens.json` (schema `sapdev.screenbaseline/1`)
+  recording the control IDs + screen identity (program/dynpro) it depends on at
+  each checkpoint. Two tiers, mirroring the non-ASCII guard's "don't break the
+  build on pre-existing debt" stance: a **missing** baseline is an informational
+  `WARN` and a ratcheting `screen-baseline coverage N/M` metric; a **malformed**
+  baseline is a **hard error**. Driving-VBS detection follows the Tier-3 contract
+  (declares `Const SESSION_PATH` / includes `%%ATTACH_LIB_VBS%%` / calls
+  `AttachSapSession` / binds the Scripting engine, minus the exempt set) — so it
+  catches both migrated and legacy templates. Initial coverage: **1/116**.
+- **Contract doc** `contributing/golden_screen_baselines.md` (repo-level, not
+  shipped) — schema, worked example, authoring guide, and the promotion path to
+  a hard gate once coverage reaches 100%. CLAUDE.md Shared Resources updated.
+- **Seeded baseline** `sap-se38/references/sap_se38_create.screens.json` —
+  `initial` checkpoint, `method: static` / `status: pending_live`, dependency set
+  (`ctxtRS38M-PROGRAMM`, `radRS38M-FUNC_EDIT`, `btnNEW`, `okcd`) extracted from
+  the VBS; live `identity` capture pending the `/sap-gui-screen-check` build.
+- This is the **static half** of the harness; the live half
+  (`/sap-gui-screen-check` — replays baselines against a target release, reports
+  drift as BLOCKER findings) is the next step. The gate is the pre-flight
+  counterpart to the per-object RFC PROGDIR/DWINACTIV post-deploy verify: that
+  catches "did the write land?" after a run; this catches "will the write path
+  even execute?" before, across all skills.
+
 ### Environment preflight: `/sap-doctor` (read-only)
 
 - **`/sap-doctor`** (sap-dev-core) — a `brew doctor` / `flutter doctor` for the

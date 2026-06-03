@@ -3,3 +3,11 @@ ar001	BP_CVI	SD_CUSTOMER_MAINTAIN_ALL	FM	CVI_EI_INBOUND_MAIN	FM	Y	recipes/BP_CVI
 ar002	BP_CVI	BAPI_CUSTOMER_CREATEFROMDATA1	BAPI	BAPI_BUPA_CREATE_FROM_DATA	BAPI	Y	recipes/BP_CVI.md	Single BP create; assign customer role afterwards
 ar003	ACDOCA_FIN	DIRECT_UPDATE_GLT0_BSEG	PATTERN	BAPI_ACC_DOCUMENT_POST	BAPI	Y	recipes/ACDOCA_FIN.md	Never post FI by direct table update; use the accounting document BAPI
 ar004	MATDOC_STOCK	DIRECT_UPDATE_MARD_STOCK	PATTERN	BAPI_GOODSMVT_CREATE	BAPI	Y	recipes/MATDOC_STOCK.md	Stock changes only via goods movements
+ar005	MATDOC_DOCS	DIRECT_UPDATE_MKPF_MSEG	PATTERN	BAPI_GOODSMVT_CREATE	BAPI	Y	recipes/MATDOC_DOCS.md	Material documents created only via goods movement; never write MKPF/MSEG/MATDOC
+ar006	SD_PRICING	DIRECT_UPDATE_KONV	PATTERN	SD/MM document processing + pricing	PATTERN	Y	recipes/SD_PRICING.md	Conditions created/changed via document processing/pricing; never write KONV/PRCD_ELEMENTS
+ar007	CREDIT_MGMT	FD32	TXN	UKM_BP	TXN	Y	recipes/CREDIT_MGMT.md	Credit master maintained in FSCM (UKM_BP); no 1:1 - redesign
+ar008	CREDIT_MGMT	CLASSIC_SD_CREDIT_CHECK	PATTERN	FSCM credit check (BRF+)	PATTERN	Y	recipes/CREDIT_MGMT.md	SD credit checks move to FSCM; re-implement user-exits/BAdIs against the FSCM framework
+ar009	OUTPUT_MGMT	RSNAST00	PATTERN	S/4 Output Management	PATTERN	Y	recipes/OUTPUT_MGMT.md	OM-enabled documents are not driven by RSNAST00/NAST; redesign onto OM determination + forms
+ar010	LIS_ANALYTICS	LIS_INFO_STRUCTURE_READ	PATTERN	released logistics CDS analytical view	PATTERN	Y	recipes/LIS_ANALYTICS.md	Source metrics from released CDS views, not persisted S### info structures
+ar011	FI_OPENITEM_INDEX	DIRECT_WRITE_BS_INDEX	PATTERN	BAPI_ACC_DOCUMENT_POST	BAPI	Y	recipes/FI_OPENITEM_INDEX.md	Index tables are read-only views; post via the accounting BAPI, never write
+ar012	COMPAT_VIEW_WRITE	DIRECT_DML_COMPAT_VIEW	PATTERN	released domain API (BAPI_GOODSMVT_CREATE / BAPI_ACC_DOCUMENT_POST / BP / pricing)	PATTERN	Y	recipes/COMPAT_VIEW_WRITE.md	Replace direct DML on redirected standard tables with the released API for the operation

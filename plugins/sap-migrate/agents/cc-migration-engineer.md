@@ -76,7 +76,8 @@ Phases differ in what they need:
 | Phase | Needs |
 |---|---|
 | campaign / triage | nothing (offline) |
-| usage (v1) | a usage export file (offline ingest) |
+| usage — FILE | a usage export file (offline ingest) |
+| usage — SCMON/UPL | RFC to the **source** profile (reads ABAP Call Monitor / SUSG; NO_DATA → safe REMEDIATE; heed WINDOW_WARN) |
 | **inventory** | RFC to the **source** profile |
 | **analyze** | SAP GUI + `/sap-atc` recorded for this release; readiness variant + Simplification DB on the connected system |
 | **remediate** | SAP GUI deploy to the **sandbox** |

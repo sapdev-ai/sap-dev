@@ -3,18 +3,26 @@ name: sap-cc-campaign
 description: |
   Owns the S/4HANA custom-code migration *campaign workspace* and is the
   orchestration entry point for the migration engine (sap-migrate plugin).
-  Four subcommands:
+  Five subcommands:
     (a) init   — create a campaign workspace under {work_dir}\migrations\<id>
                  from the migration Customer Brief (source release, target
                  S/4 release, in-scope packages, decommission policy, the
                  source / sandbox / remote-ATC connection profiles, human
                  gates), seed campaign.json + the empty state ledger.
-    (b) status — print per-state / per-tier counts for the campaign.
-    (c) report — render reports/dashboard.md (state + tier + pattern rollup,
-                 % auto-fixed, ATC-clean rate, decommission savings).
+    (b) status — print per-state / per-tier counts + the headline metrics.
+    (c) report — render reports/dashboard.md: the migration dashboard. State +
+                 tier + pattern rollup plus five KPIs — decommission savings,
+                 ATC-clean rate, auto-fix rate (R1 mechanical, from fixlog.tsv),
+                 unresolved/UNMATCHED findings (the human-triage backlog + the
+                 /sap-cc-learn feed), and business-owner sign-off status. Every
+                 percentage is honest: "n/a" (not 0%) when the underlying ledger
+                 hasn't been produced yet.
     (d) next   — recommend the next pipeline skill to run for this campaign,
                  honouring the human-approval gates (scope sign-off, dry-run
                  review).
+    (e) signoff— record/update one business-owner sign-off (gate, owner,
+                 status, date, note) in campaign.json so the dashboard can show
+                 governance status. Offline; the only writer of signoffs[].
   Pure workspace/state/reporting skill — OFFLINE: it never opens a SAP GUI
   session, makes no RFC call, and needs no SAP NCo. It only reads/writes the
   campaign workspace files that the other sap-cc-* skills produce and consume.
@@ -22,7 +30,7 @@ description: |
   Prerequisites: none (no SAP connection). The downstream skills it sequences
   (/sap-cc-inventory, /sap-cc-usage, /sap-cc-analyze, /sap-cc-triage,
   /sap-cc-remediate) do require SAP access.
-argument-hint: "<init|status|report|next> --campaign <id> [--brief <path>] [--source <profile>] [--sandbox <profile>] [--check-system <profile>] [--target-release <rel>]"
+argument-hint: "<init|status|report|next|signoff> --campaign <id> [--brief <path>] [--source <profile>] [--sandbox <profile>] [--check-system <profile>] [--target-release <rel>] [--gate <gate>] [--owner <name>] [--signoff-status APPROVED|PENDING|REJECTED] [--note <text>]"
 ---
 
 # SAP Custom-Code Migration — Campaign Manager
@@ -90,13 +98,17 @@ powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_
 
 Parse `$ARGUMENTS`:
 
-- **Positional 1** — the subcommand: `init` | `status` | `report` | `next`. If
-  missing or unrecognised → print usage (the `argument-hint`) and exit `2`.
+- **Positional 1** — the subcommand: `init` | `status` | `report` | `next` |
+  `signoff`. If missing or unrecognised → print usage (the `argument-hint`) and
+  exit `2`.
 - `--campaign <id>` — **required for all subcommands.** Validate it matches
   `^[A-Za-z0-9_-]{1,40}$` (it becomes a folder name). On violation exit `2`.
 - `init` also accepts: `--brief <path>`, `--source <profile>`,
   `--sandbox <profile>`, `--check-system <profile>`, `--target-release <rel>`.
   These override the corresponding fields read from the brief.
+- `signoff` also accepts: `--gate <gate>` (**required** — e.g. `scope_signoff`,
+  `dryrun_review`, `go_live`), `--owner <name>`, `--signoff-status <APPROVED|
+  PENDING|REJECTED>` (default `APPROVED`), `--note <text>`.
 
 Set `{CAMPAIGN_DIR}` = `{work_dir}\migrations\{campaign-id}`.
 
@@ -159,9 +171,18 @@ and exit `0`.
   },
   "target": { "s4_release": "S/4HANA 2023", "sp": "SP02" },
   "scope":  { "in_scope_packages": ["Z*", "Y*"], "decommission_policy": "conservative" },
-  "human_gates": { "scope_signoff": true, "dryrun_review": true, "tier_r2_plus": true }
+  "human_gates": { "scope_signoff": true, "dryrun_review": true, "tier_r2_plus": true },
+  "signoffs": [
+    { "gate": "scope_signoff", "status": "APPROVED", "owner": "Jane PM", "date": "2026-06-03", "note": "approved in CCB" }
+  ]
 }
 ```
+
+`signoffs[]` is **optional** and written only by the `signoff` subcommand (Step
+6). Each entry: `gate` (key, matches a `human_gates` key or any milestone),
+`status` (`APPROVED` / `PENDING` / `REJECTED`), `owner`, `date` (ISO-8601),
+`note`. The `report` dashboard renders one row per configured gate, marking it
+PENDING until a matching sign-off is recorded.
 
 `phase` ∈ `ASSESS` → `ANALYZE` → `REMEDIATE` → `VALIDATE` → `DELIVER` → `DONE`.
 It is a campaign-level rollup recomputed by `status` / `report` / `next` from
@@ -186,7 +207,9 @@ STATE: <STATE> | COUNT: <n>
 ...
 TIER: <R1|R2|R3|R4|-> | COUNT: <n>
 METRIC: decommission_savings_pct | VALUE: <n>
-METRIC: atc_clean_pct | VALUE: <n>
+METRIC: atc_clean_pct | VALUE: <n>          (-1 = n/a: nothing remediated yet)
+METRIC: auto_fix_rate_pct | VALUE: <n>      (-1 = n/a: no fixlog yet)
+METRIC: unmatched_findings_pct | VALUE: <n> (-1 = n/a: nothing triaged yet)
 STATUS: PHASE=<phase> TOTAL=<n> REMEDIATE=<n> DECOMMISSION=<n> REVIEW=<n>
 ```
 
@@ -206,9 +229,21 @@ recommend `/sap-cc-inventory`).
 
 ## Step 4 — Subcommand: `report`
 
-Same aggregation as `status`, but **also** fold in the per-pattern counts from
-`{CAMPAIGN_DIR}\findings\findings_triaged.tsv` (column `pattern`) when present,
-and **write** the rendered dashboard to `{CAMPAIGN_DIR}\reports\dashboard.md`.
+Same aggregation as `status`, but **also** folds in three more ledgers and
+**writes** the rendered dashboard to `{CAMPAIGN_DIR}\reports\dashboard.md`:
+
+- per-pattern counts from `findings\findings_triaged.tsv` (column `pattern`);
+- **unresolved findings** = rows with `pattern=UNMATCHED` (the human-triage
+  backlog) → an `unmatched_findings_pct` metric + the top UNMATCHED
+  `message_id`s (the feed for `/sap-cc-learn`);
+- **auto-fix rate** from `remediation\fixlog.tsv` = share of attempted objects
+  the R1 mechanical rules actually rewrote (`auto_changes>0`);
+- **business-owner sign-offs** = `campaign.json.human_gates` cross-referenced
+  with the optional `campaign.json.signoffs[]` (PENDING when not recorded).
+
+Every percentage is honest: a metric whose source ledger does not exist yet is
+reported as `-1` on the `METRIC:` line and rendered **`n/a`** (never `0%`) in the
+dashboard — so "not measured yet" is never mistaken for "perfect / zero".
 
 ```bash
 powershell -ExecutionPolicy Bypass -File "<SKILL_DIR>\references\sap_cc_campaign.ps1" -Action report -CampaignDir "{CAMPAIGN_DIR}"
@@ -248,8 +283,27 @@ Sandbox <sandbox_profile>   Remote-ATC <check_system_profile>   Phase: <phase>
 | R2   |  <n>    |       | ADD_ORDER_BY   |  <n>     |
 | ...  |         |       | ...            |          |
 
-ATC-clean after remediation: <atc_clean_pct>%
+## Key metrics
+| Metric | Value |
+|--------|-------|
+| Decommission savings | <n>% (objects retired without remediation) |
+| ATC-clean after remediation | <n>% | n/a |
+| Auto-fix rate (R1 mechanical) | <n>% (<auto>/<total> objects rewritten by rule) |
+| Unresolved findings (need human triage) | <n>% (<unmatched>/<total> findings UNMATCHED) |
+
+## Unresolved findings (feed for /sap-cc-learn)
+| Message id | Findings |   (top UNMATCHED message ids; classify via /sap-cc-learn)
+|------------|----------|
+
+## Business-owner sign-offs
+| Gate | Status | Owner | Date |   (one row per human gate; PENDING until recorded)
+|------|--------|-------|------|
 ```
+
+The helper also emits parseable lines the orchestrator can surface:
+`METRIC: <name> | VALUE: <int>` (four metrics; `-1` = n/a),
+`PATTERN: <pattern> | COUNT: <n>`, `UNRESOLVED: <message_id> | COUNT: <n>`, and
+`SIGNOFF: gate=<g> status=<APPROVED|PENDING|REJECTED> owner=<o> date=<d>`.
 
 Print `REPORT: wrote {CAMPAIGN_DIR}\reports\dashboard.md` and echo the headline
 metrics. Exit `0`.
@@ -286,6 +340,32 @@ The helper prints exactly one line:
 Surface that recommendation to the operator. **Never auto-run a downstream
 write skill past a gate** — at a gate, stop and ask for explicit approval.
 Exit `0`.
+
+---
+
+## Step 6 — Subcommand: `signoff`
+
+Record (or update) one business-owner sign-off so the dashboard can show
+governance status against the campaign's human gates. This is the **only**
+writer of `campaign.json.signoffs[]`. Upsert is by `gate` — re-running for the
+same gate replaces that entry (e.g. PENDING → APPROVED, or a re-approval after
+scope change).
+
+```bash
+powershell -ExecutionPolicy Bypass -File "<SKILL_DIR>\references\sap_cc_campaign.ps1" -Action signoff -CampaignDir "{CAMPAIGN_DIR}" -Gate "<gate>" -Owner "<name>" -SignoffStatus <APPROVED|PENDING|REJECTED> -Note "<text>"
+```
+
+- `--gate` is **required** (helper exits `2` without it). Convention: use the
+  gate keys the pipeline already understands — `scope_signoff`, `dryrun_review`
+  — plus any milestone you want to track (e.g. `go_live`). A sign-off for a gate
+  that isn't in `human_gates` is still recorded and shown (extra approval).
+- The helper stamps today's date, validates `campaign.json` re-parses after the
+  write, and prints `SIGNOFF: gate=<g> status=<s> owner=<o> date=<d>`.
+- This is a **governance record**, not an enforcement gate: it does not unblock
+  `next` (the operator still approves interactively at the gate). It makes "who
+  approved what, when" visible on the dashboard.
+
+Exit `0` on success; `2` on missing `--gate` or workspace I/O failure.
 
 ---
 
@@ -346,13 +426,17 @@ Upsert rule for all skills: match on `(obj_name, obj_type)`; replace the row's
 
 ## Helper output contract (`references/sap_cc_campaign.ps1`)
 
-CLI: `-Action <init|status|report|next> -CampaignDir <abs-path> [-BriefPath <p>]`.
-Emits parseable lines (one fact per line, `KEY: value | KEY: value`) followed by
-a single `STATUS:` summary line, and uses exit codes `0` ok / `1` gaps (e.g.
-empty ledger) / `2` error (bad/missing workspace). It performs no SAP I/O. Keep
-the line grammar stable — `status` / `report` / `next` and `/sap-log-analyze`
-parse it. (This helper is the one companion file to build next; this SKILL.md
-defines its full contract.)
+CLI: `-Action <init|status|report|next|signoff> -CampaignDir <abs-path>
+[-CampaignId <id>] [-ProfileJson <json>] [-Gate <g>] [-Owner <o>]
+[-SignoffStatus <APPROVED|PENDING|REJECTED>] [-Note <t>]`.
+Emits parseable lines (one fact per line, `KEY: value | KEY: value`) — `STATE:`,
+`TIER:`, `DECISION:`, `METRIC:` (names `decommission_savings_pct`,
+`atc_clean_pct`, `auto_fix_rate_pct`, `unmatched_findings_pct`; `-1` = n/a),
+`PATTERN:`, `UNRESOLVED:`, `SIGNOFF:`, `NEXT:`, `INIT:`/`EXISTED:`/`REPORT:` —
+followed by a single `STATUS:` summary line. Exit codes `0` ok / `1` gaps (e.g.
+empty ledger) / `2` error (bad/missing workspace, missing `--gate`). It performs
+no SAP I/O. Keep the line grammar stable — the subcommands and `/sap-log-analyze`
+parse it.
 
 ---
 
@@ -368,10 +452,18 @@ defines its full contract.)
 
 ## Limitations / Known gaps (draft)
 
-- **Companion helper shipped (v1).** `references/sap_cc_campaign.ps1` implements
-  `init` / `status` / `report` / `next`. The R2–R4 remediation tiers and the
-  other sap-cc-* skills are still to come — so `next` recommends `MANUAL` once
-  the R1 / decommission work is exhausted.
+- **Companion helper shipped (v2).** `references/sap_cc_campaign.ps1` implements
+  `init` / `status` / `report` / `next` / `signoff`. The `report` dashboard now
+  carries the full KPI set (decommission savings, ATC-clean, **auto-fix rate**
+  from `fixlog.tsv`, **unresolved/UNMATCHED** from `findings_triaged.tsv`, and
+  **business-owner sign-off** status), each rendered `n/a` until its ledger
+  exists. The R2–R4 remediation tiers and some sap-cc-* skills are still
+  evolving — so `next` recommends `MANUAL` once the R1 / decommission work is
+  exhausted.
+- **Sign-off is a governance record, not an enforcement gate.** `signoff`
+  records who approved a gate for the dashboard; it does not unblock `next`
+  (the operator still approves interactively). The `report` dashboard cross-
+  references `human_gates` against `signoffs[]` so unrecorded gates show PENDING.
 - **Migration brief shipped.** `migration_brief.md` (+ `migration_brief_sample.md`)
   ships in `shared/templates`; `init` reads it, or runs brief-less from CLI flags
   (absent fields recorded blank rather than failing). The `_JA` variant is

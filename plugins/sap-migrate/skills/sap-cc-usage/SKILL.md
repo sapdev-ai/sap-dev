@@ -6,16 +6,23 @@ description: |
   campaign's decommission policy, writes `usage.tsv` + `scope.tsv`
   (REMEDIATE / DECOMMISSION / REVIEW), and advances `state.tsv`. This is the
   step that produces the headline "X% retired without remediation" number.
-  v1 is OFFLINE and file-driven: usage comes from an export
-  (`--usage-file`, the SCMON/SUSG/Solution-Manager output) — direct SCMON/UPL
-  RFC read is a later increment. SAFETY: the `conservative` policy never
-  auto-decommissions; it parks unused objects as REVIEW pending the
-  `/sap-where-used-list` reference-safety check (so a still-referenced object is
-  never deleted). `aggressive` flags all unused objects DECOMMISSION (no
-  reference check — use with care). Run after `/sap-cc-inventory`, before
-  `/sap-cc-analyze`.
-  Prerequisites: a usage export for FILE source (no SAP connection needed in v1).
-argument-hint: "--campaign <id> [--usage-file <path>] [--usage-source FILE|SCMON|NONE] [--policy none|conservative|aggressive] [--min-exec 0]"
+  Two usage sources: (FILE) a hand-supplied export, and (SCMON/UPL) a DIRECT
+  RFC read of the source system's ABAP Call Monitor (tx SCMON) / SUSG
+  aggregation — `sap_cc_scmon_read.ps1` reads `SUSG_V_DATA` (aggregated) or
+  `SCMON_VDATA` (raw) and produces the same export the FILE path ingests. The
+  FILE/NONE paths are offline; only the SCMON/UPL read opens an RFC connection
+  to the campaign's `source_profile`.
+  SAFETY: if SCMON/SUSG has NO data (monitoring not active), the read returns
+  NO_DATA and every object defaults to REMEDIATE — "no monitoring data" is never
+  read as "everything unused". The `conservative` policy never auto-decommissions;
+  it parks unused objects as REVIEW pending the `/sap-where-used-list`
+  reference-safety check. `aggressive` flags all unused objects DECOMMISSION (no
+  reference check — use with care). A short observation window emits a WINDOW_WARN
+  (short windows miss period-end / year-end jobs and over-flag objects as unused).
+  Run after `/sap-cc-inventory`, before `/sap-cc-analyze`.
+  Prerequisites: FILE/NONE need no SAP connection; SCMON/UPL need SAP NCo 3.1
+  (32-bit) + a saved `source_profile` (or a pinned `/sap-login` connection).
+argument-hint: "--campaign <id> [--usage-source FILE|SCMON|UPL|NONE] [--usage-file <path>] [--source-profile <ref>] [--namespaces Z,Y] [--policy none|conservative|aggressive] [--min-exec 0]"
 ---
 
 # SAP Custom-Code Migration — Usage & Decommission Scoping
@@ -37,16 +44,19 @@ Task: $ARGUMENTS
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/settings_lookup.md` | *(rule)* | Settings / `work_dir` resolution. |
 | `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_settings_lib.ps1` + `sap_connection_lib.ps1` | *(dot-source)* | `Get-SapWorkDir`. |
 | `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_log_helper.ps1` | *(invoke)* | Start/step/end JSONL logging. |
-| `<SKILL_DIR>/references/sap_cc_usage.ps1` | *(invoke)* | Joins usage onto inventory, applies the policy, writes `usage.tsv` + `scope.tsv`, advances `state.tsv`. Emits parseable `USAGE:` / `DECISION:` / `METRIC:` / `STATUS:` lines. |
+| `<SKILL_DIR>/references/sap_cc_usage.ps1` | *(invoke)* | Joins usage onto inventory, applies the policy, writes `usage.tsv` + `scope.tsv`, advances `state.tsv`. Emits parseable `USAGE:` / `DECISION:` / `METRIC:` / `STATUS:` lines. Offline (files only). |
+| `<SKILL_DIR>/references/sap_cc_scmon_read.ps1` | *(invoke, RFC)* | **Direct SCMON/UPL reader** (SCMON/UPL source only). Reads the source system's `SUSG_V_DATA` (aggregated) / `SCMON_VDATA` (raw) + `SUSG_ADMIN` (window) via RFC and writes a usage export TSV. Emits `SCMON:` / `WINDOW_WARN:` / `EXPORT:` / `STATUS: OK\|NO_DATA\|ERROR`. |
+| `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_rfc_lib.ps1` + `sap_dpapi.ps1` | *(used by the reader)* | NCo 3.1 connect + source-profile password decrypt (SCMON/UPL path only). |
 | `/sap-where-used-list` | *(skill)* | Used in the **reference-safety check** (Step 4) to confirm a REVIEW candidate has no inbound callers among still-used objects before it is decommissioned. |
 
 The workspace contract (`usage.tsv` / `scope.tsv` columns, the
 SCOPED / DECOMMISSIONED / REVIEW states, the upsert rule) is defined by
 `/sap-cc-campaign`. This skill **owns** `usage.tsv` and `scope.tsv`.
 
-> v1 is an offline file-processing skill — no SAP GUI, broker, attach lib, RFC,
-> or TR. The only SAP-touching part is the optional reference-safety check in
-> Step 4, which delegates to `/sap-where-used-list`.
+> The scoping helper (`sap_cc_usage.ps1`) and the FILE/NONE paths are offline —
+> no SAP GUI, broker, attach lib, or TR. Two parts touch SAP, both read-only:
+> the **SCMON/UPL reader** (RFC against the `source_profile`, Step 1.5) and the
+> optional reference-safety check (Step 4, via `/sap-where-used-list`).
 
 ---
 
@@ -78,12 +88,50 @@ powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_
   TSV/CSV, **col1 = object name**, **col2 = exec count**, optional **col3 = last
   used**; a header row is auto-detected. A single-column file (just names) is
   treated as "present = used".
-- `--usage-source FILE|SCMON|NONE` — defaults to FILE when `--usage-file` is
-  given, else NONE. `SCMON`/`UPL` are not yet read directly (v1 prints a WARN
-  and proceeds with no usage data — everything REMEDIATE).
+- `--usage-source FILE|SCMON|UPL|NONE` — defaults to FILE when `--usage-file`
+  is given, else NONE.
+  - `FILE` — ingest the `--usage-file` export (offline).
+  - `SCMON` / `UPL` — **read usage directly from the source system** (Step 1.5):
+    run `sap_cc_scmon_read.ps1` over RFC, then ingest its export. On NW 7.52+/S4
+    SCMON subsumes UPL, so both read the same SUSG/SCMON path.
+  - `NONE` — no usage data; every object → REMEDIATE (safe).
+- `--source-profile <ref>` — (SCMON/UPL) connection profile of the system whose
+  usage to read; defaults to the campaign's `source_profile`, else the pinned
+  `/sap-login` connection.
+- `--namespaces <list>` — (SCMON/UPL) `OBJ_NAME` prefixes to read, default
+  `Z,Y`. Add customer namespaces (e.g. `Z,Y,/ACME/`) for non-Z/Y custom code.
 - `--policy none|conservative|aggressive` — defaults to the brief's
   `scope.decommission_policy`, else `conservative`.
 - `--min-exec <n>` — "used" means `exec_count > n` (default 0).
+
+---
+
+## Step 1.5 — Direct SCMON/UPL read (only when `--usage-source SCMON|UPL`)
+
+Skip this step for FILE / NONE. For SCMON/UPL, read usage from the source system
+first, then feed the result into Step 2.
+
+Run the reader via **32-bit PowerShell** (SAP NCo 3.1 is in the 32-bit GAC):
+
+```bash
+C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File "<SKILL_DIR>\references\sap_cc_scmon_read.ps1" -CampaignDir "{CAMPAIGN_DIR}" -WorkDir "{work_dir}"
+```
+
+Append `-SourceProfile "<ref>"` and/or `-Namespaces "Z,Y,/ACME/"` to mirror the
+flags. The reader writes `{CAMPAIGN_DIR}\usage_scmon_export.tsv`. Parse its last
+`STATUS:` line:
+
+| `STATUS:` | Meaning | Action |
+|---|---|---|
+| `OK` | Usage read; export written (`EXPORT:` line). | Proceed to Step 2 with `-UsageSource SCMON -UsageFile {CAMPAIGN_DIR}\usage_scmon_export.tsv`. |
+| `NO_DATA` | SCMON/SUSG empty — monitoring not active/aggregated. | **Do NOT decommission anything.** Surface the `WARN:` to the operator, then run Step 2 with `-UsageSource NONE` (every object → REMEDIATE). Recommend activating SCMON (tx SCMON) + aggregating via SUSG for ≥ 12 months. |
+| `ERROR` | RFC/profile failure (see the `ERROR:` line). | Fix the connection (`/sap-login`) or fall back to a manual `--usage-file` export. |
+
+**Always surface any `WINDOW_WARN:` line.** It means the observation window is
+short (or has gaps) — unused-flagging will over-decommission because period-end /
+quarter-end / year-end jobs fall outside the window. When you see it, advise the
+operator to treat DECOMMISSION candidates as REVIEW until a ≥ 12-month window is
+available (and prefer `conservative` policy, which already parks them as REVIEW).
 
 ---
 
@@ -93,8 +141,12 @@ powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_
 powershell -ExecutionPolicy Bypass -File "<SKILL_DIR>\references\sap_cc_usage.ps1" -CampaignDir "{CAMPAIGN_DIR}"
 ```
 
-Append any of `-UsageFile "<path>"`, `-UsageSource FILE`, `-Policy conservative`,
-`-MinExec 0` to mirror the flags. (Plain `powershell` is fine — v1 needs no NCo.)
+Append any of `-UsageFile "<path>"`, `-UsageSource FILE|SCMON|UPL|NONE`,
+`-Policy conservative`, `-MinExec 0` to mirror the flags. For the **SCMON/UPL**
+path, pass `-UsageSource SCMON -UsageFile {CAMPAIGN_DIR}\usage_scmon_export.tsv`
+(the Step 1.5 export) — the helper ingests it but stamps `usage_source=SCMON` in
+`usage.tsv` for provenance. The scoping helper itself needs no NCo (the RFC work
+is done in Step 1.5).
 
 **Policy semantics:**
 
@@ -157,16 +209,29 @@ After any promotions, re-run `/sap-cc-campaign report` to refresh the dashboard.
 - `{CAMPAIGN_DIR}\usage.tsv` — `obj_name · obj_type · exec_count · last_used_on · usage_source · used_flag` (this skill owns it).
 - `{CAMPAIGN_DIR}\scope.tsv` — `obj_name · obj_type · decision · reason · referenced_by_used` (this skill owns it).
 - `{CAMPAIGN_DIR}\state.tsv` — decisions set; INVENTORIED objects advanced to SCOPED / DECOMMISSIONED / REVIEW.
+- `{CAMPAIGN_DIR}\usage_scmon_export.tsv` — (SCMON/UPL source only) the raw export the reader produced from the source system's Call Monitor; kept as evidence of what usage was read.
 
 ---
 
 ## Limitations / Known gaps (draft)
 
-- **Usage ingestion is file-based in v1.** Direct SCMON / UPL / SUSG RFC reads
-  are deferred (the data structures and access paths vary by release and often
-  live in Solution Manager, not the dev box). Export usage centrally and pass
-  `--usage-file`. `--usage-source SCMON` currently WARNs and proceeds with no
-  usage data.
+- **SCMON/UPL direct read shipped (v2).** `--usage-source SCMON|UPL` now reads
+  the source system's ABAP Call Monitor / SUSG aggregation over RFC
+  (`sap_cc_scmon_read.ps1` → `SUSG_V_DATA` aggregated, `SCMON_VDATA` raw
+  fallback, `SUSG_ADMIN` for the window). Caveats:
+  - **Observation window is decisive.** Usage truth = SCMON's collection window.
+    A short window over-flags objects as unused (period-end / year-end jobs are
+    missed). The reader emits `WINDOW_WARN` when the window is < 12 months or has
+    gaps; prefer `conservative` policy until a long window exists. **Verified live
+    on S/4HANA 1909: connect + the empty-data safe path (NO_DATA → REMEDIATE).**
+  - **Requires monitoring data on the *source*.** If SCMON isn't active / SUSG
+    isn't aggregated, the read returns NO_DATA and everything defaults to
+    REMEDIATE (safe). Activate SCMON + run SUSG aggregation first.
+  - **UPL on older releases** (pre-7.52, Solution-Manager-fed) used different
+    tables; this reader targets the SCMON/SUSG model. For those, export from
+    Solution Manager and use `--usage-file`.
+  - Exec counts above the 32-bit range fall back to "used" (the used/unused
+    signal is preserved; the exact count may be capped).
 - **Reference-safety promotion is manual in v1.** `conservative` parks unused
   objects as REVIEW; promoting them to DECOMMISSION via `/sap-where-used-list`
   is operator-driven (Step 4). The automated batch promotion is the next

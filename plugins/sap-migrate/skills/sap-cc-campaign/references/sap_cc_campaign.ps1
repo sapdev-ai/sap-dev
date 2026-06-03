@@ -163,14 +163,14 @@ function Get-Unmatched([string]$dir){
 # optional campaign.json `signoffs` array. Returns one row per gate (PENDING when
 # not recorded) plus any extra recorded sign-offs for non-gate milestones.
 function Get-Signoffs([string]$dir){
-    $out = New-Object System.Collections.Generic.List[object]
+    $out = @()
     $p = Join-Path $dir 'campaign.json'
-    if(-not (Test-Path -LiteralPath $p)){ return ,$out }
+    if(-not (Test-Path -LiteralPath $p)){ return $out }
     $c = $null
-    try { $c = Get-Content -LiteralPath $p -Raw -Encoding UTF8 | ConvertFrom-Json } catch { return ,$out }
-    $gateNames = New-Object System.Collections.Generic.List[string]
+    try { $c = Get-Content -LiteralPath $p -Raw -Encoding UTF8 | ConvertFrom-Json } catch { return $out }
+    $gateNames = @()
     if($c.human_gates){
-        foreach($pp in $c.human_gates.PSObject.Properties){ if([bool]$pp.Value){ $gateNames.Add($pp.Name) } }
+        foreach($pp in $c.human_gates.PSObject.Properties){ if([bool]$pp.Value){ $gateNames += $pp.Name } }
     }
     $sign = @{}
     if($c.signoffs){ foreach($s in @($c.signoffs)){ if($s.gate){ $sign[[string]$s.gate] = $s } } }
@@ -178,16 +178,16 @@ function Get-Signoffs([string]$dir){
         if($sign.ContainsKey($g)){
             $s = $sign[$g]
             $st = if($s.status){ [string]$s.status } else { 'APPROVED' }
-            $out.Add([pscustomobject]@{ gate=$g; status=$st; owner=([string]$s.owner); date=([string]$s.date); note=([string]$s.note) })
+            $out += [pscustomobject]@{ gate=$g; status=$st; owner=([string]$s.owner); date=([string]$s.date); note=([string]$s.note) }
         } else {
-            $out.Add([pscustomobject]@{ gate=$g; status='PENDING'; owner=''; date=''; note='' })
+            $out += [pscustomobject]@{ gate=$g; status='PENDING'; owner=''; date=''; note='' }
         }
     }
     foreach($k in $sign.Keys){
         if(-not ($gateNames -contains $k)){
             $s = $sign[$k]
             $st = if($s.status){ [string]$s.status } else { 'APPROVED' }
-            $out.Add([pscustomobject]@{ gate=$k; status=$st; owner=([string]$s.owner); date=([string]$s.date); note=([string]$s.note) })
+            $out += [pscustomobject]@{ gate=$k; status=$st; owner=([string]$s.owner); date=([string]$s.date); note=([string]$s.note) }
         }
     }
     return $out
@@ -447,10 +447,10 @@ try {
             $today = (Get-Date).ToString('yyyy-MM-dd')
             $entry = [pscustomobject]@{ gate=$Gate; status=$SignoffStatus; owner=$Owner; date=$today; note=$Note }
             # upsert into signoffs[] by gate (replace any existing entry for this gate)
-            $list = New-Object System.Collections.Generic.List[object]
-            if($cj.signoffs){ foreach($s in @($cj.signoffs)){ if(([string]$s.gate) -ne $Gate){ $list.Add($s) } } }
-            $list.Add($entry)
-            $arr = @($list)
+            $kept = @()
+            if($cj.signoffs){ foreach($s in @($cj.signoffs)){ if(([string]$s.gate) -ne $Gate){ $kept += $s } } }
+            $kept += $entry
+            $arr = @($kept)
             if($cj.PSObject.Properties.Name -contains 'signoffs'){ $cj.signoffs = $arr }
             else { $cj | Add-Member -NotePropertyName signoffs -NotePropertyValue $arr }
             if($cj.PSObject.Properties.Name -contains 'updated'){ $cj.updated = $today }

@@ -126,9 +126,31 @@ LINE/MSG_TEXT). Collect every drill export under one folder, e.g.
   prepared sandbox/check system (the campaign's `sandbox`/`check_system`).
 - `/sap-atc` requires a one-time **Scripting Recorder** session per release to
   capture its SCI/ATC node + grid IDs — see `/sap-atc` and `/sap-gui-record`.
-- **Scale (v1):** this is per-object. For large estates this is slow; the
-  batched single-object-set run and **remote ATC** (one check system analyzing
-  the source over RFC) are documented enhancements — see Limitations.
+
+### Central / remote check system
+
+Readiness checks must run on a system that **has** the S/4 simplification content
+— typically NOT the source ECC. Use the campaign's `check_system_profile` (the
+hub). Two modes:
+
+1. **Run on the hub (recommended, fully supported).** Before the ATC loop, point
+   the session at the check system: `/sap-login --switch <check_system_profile>`.
+   `/sap-atc` then runs on the hub, which carries the readiness content. The hub
+   must have the code under test (transported/copied in) and its check content
+   must be **≥** the target release (version direction: check OLD from NEW).
+   When `campaign.json.systems.check_system_profile` is set, prefer this — do NOT
+   run readiness ATC on the bare source ECC (it lacks the content; the run would
+   fail-loud on the variant or yield nothing useful).
+2. **True remote object provider.** If the hub is configured for central ATC
+   (tx ATC → Manage System Groupings + an SM59 RFC destination to the source),
+   pass `/sap-atc … --object-provider=<DATA_SOURCE_ID>` so the hub analyzes the
+   source in place. `/sap-atc` fails loud if the provider isn't configured (it
+   never silently runs a local analysis as remote). **Note:** the provider field
+   id is unverified (no configured hub was available to record against) — see
+   `/sap-atc` "Central / remote ATC".
+
+- **Scale (v1):** this is per-object. For large estates a batched single-object-
+  set run is still a documented enhancement (see Limitations).
 
 ---
 
@@ -180,10 +202,15 @@ After ingest, recommend triage: `/sap-cc-campaign next` (→ `/sap-cc-triage`).
 ## Limitations / Known gaps (draft)
 
 - **Per-object ATC in v1.** The worklist is looped through `/sap-atc` one object
-  at a time. A single batched ATC **object set** (one run for many objects) and
-  **remote ATC** (a central check system analyzing the source over an RFC
-  destination) are the scale enhancements — both need their own recorded ATC
-  flow, which is why they're deferred rather than guessed.
+  at a time. A single batched ATC **object set** (one run for many objects) is
+  still a scale enhancement (needs its own recorded flow).
+- **Central / remote check system supported (see Step 2 "Central / remote check
+  system").** Run readiness on the hub via `/sap-login --switch <check_system>`
+  (recommended), or — when the hub is configured for central ATC — pass
+  `/sap-atc … --object-provider=<id>` for a true remote run. The `--object-provider`
+  field id is **unverified** (no configured hub was available to record against);
+  the fail-loud guard is verified live, so a misconfigured remote run aborts
+  rather than silently running local. Version direction: hub content ≥ target.
 - **Simplification-item capture depends on the export.** The
   `simplification_item` / `sap_note` columns are populated only if the ATC
   readiness export includes them; `/sap-atc`'s current count-oriented output may

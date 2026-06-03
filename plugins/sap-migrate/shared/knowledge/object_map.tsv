@@ -6,3 +6,12 @@ om004	ACDOCA_FIN	GLT0	TABLE	ACDOCA	TABLE	READ_ONLY	AGGREGATED_INTO	Classic GL to
 om005	ACDOCA_FIN	FAGLFLEXA	TABLE	ACDOCA	TABLE	READ_ONLY	AGGREGATED_INTO	New GL line items merged into ACDOCA
 om006	BP_CVI	XD01	TXN	BP	TXN	READ_WRITE	REPLACED_BY	Create/maintain customer via BP role FLCU00/FLCU01
 om007	BP_CVI	XK01	TXN	BP	TXN	READ_WRITE	REPLACED_BY	Create/maintain vendor via BP role FLVN00/FLVN01
+om008	SD_PRICING	KONV	TABLE	PRCD_ELEMENTS	TABLE	READ_ONLY	REPLACED_BY	Pricing conditions persisted here; key KNUMV; a compat view may also serve reads - verify per release; never write directly
+om009	FI_OPENITEM_INDEX	BSID	TABLE	BSID	COMPAT_VIEW	READ_ONLY	COMPAT_VIEW_FOR	AR open items; same-named view over BSEG/ACDOCA; read-only, performance differs
+om010	FI_OPENITEM_INDEX	BSAD	TABLE	BSAD	COMPAT_VIEW	READ_ONLY	COMPAT_VIEW_FOR	AR cleared items; read-only compatibility view
+om011	FI_OPENITEM_INDEX	BSIK	TABLE	BSIK	COMPAT_VIEW	READ_ONLY	COMPAT_VIEW_FOR	AP open items; read-only compatibility view
+om012	FI_OPENITEM_INDEX	BSAK	TABLE	BSAK	COMPAT_VIEW	READ_ONLY	COMPAT_VIEW_FOR	AP cleared items; read-only compatibility view
+om013	MATDOC_DOCS	MKPF	TABLE	MATDOC	TABLE	READ_ONLY	AGGREGATED_INTO	Document header now in MATDOC; compatibility view preserves MKPF shape - verify name per release
+om014	MATDOC_DOCS	MSEG	TABLE	MATDOC	TABLE	READ_ONLY	AGGREGATED_INTO	Document items now in MATDOC; compatibility view preserves MSEG shape
+om015	CREDIT_MGMT	KNKK	TABLE	UKMBP_CMS_SGM	TABLE	READ_ONLY	REPLACED_BY	Classic credit-control-area segment -> FSCM BP credit segment; NO 1:1 mapping, redesign; verify FSCM table per release
+om016	CREDIT_MGMT	KNKA	TABLE	UKMBP_CMS	TABLE	READ_ONLY	REPLACED_BY	Classic central credit data -> FSCM; NO 1:1 mapping; verify per release

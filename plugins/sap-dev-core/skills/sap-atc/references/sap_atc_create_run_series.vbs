@@ -36,6 +36,12 @@
 '                          this release, the script FAILS LOUD rather than
 '                          silently running the default (which would misreport
 '                          non-readiness findings as readiness).
+'   %%OBJECT_PROVIDER%%   Optional CENTRAL-ATC remote object provider id
+'                          (DATA_SOURCE_ID). Empty / unsubstituted = LOCAL
+'                          analysis. When supplied but no provider field is on
+'                          the config screen (system not a configured hub), the
+'                          script FAILS LOUD rather than running a local analysis
+'                          mislabeled as remote. UNVERIFIED field id (no hub).
 '   %%SESSION_LOCK_VBS%%  Path to sap_session_lock.vbs.
 '
 ' Output (last line):
@@ -50,15 +56,18 @@ Option Explicit
 
 Const RUN_SERIES_NAME = "%%RUN_SERIES_NAME%%"
 Const OBJECT_SET_NAME = "%%OBJECT_SET_NAME%%"
-Const CHECK_VARIANT   = "%%CHECK_VARIANT%%"  ' empty / unsubstituted = use system default variant
-Const SESSION_PATH    = "%%SESSION_PATH%%"   ' empty / unsubstituted = use default
+Const CHECK_VARIANT   = "%%CHECK_VARIANT%%"   ' empty / unsubstituted = use system default variant
+Const OBJECT_PROVIDER = "%%OBJECT_PROVIDER%%" ' empty / unsubstituted = LOCAL analysis (no remote provider)
+Const SESSION_PATH    = "%%SESSION_PATH%%"    ' empty / unsubstituted = use default
 
-' Runtime-built sentinel for the CHECK_VARIANT token (Chr(37)=%). Built at
-' runtime so the wrapper's blanket .Replace('%%CHECK_VARIANT%%', ...) cannot
-' corrupt this comparison literal. If the token was never substituted (left as
-' "%%CHECK_VARIANT%%"), we treat it as "no variant" = system default.
+' Runtime-built sentinels for the %%..%% tokens (Chr(37)=%). Built at runtime so
+' the wrapper's blanket .Replace('%%TOKEN%%', ...) cannot corrupt these
+' comparison literals. An unsubstituted token (left as "%%TOKEN%%") is treated
+' as "not requested" (default behaviour).
 Dim CHKV_TOKEN : CHKV_TOKEN = Chr(37) & Chr(37) & "CHECK_VARIANT" & Chr(37) & Chr(37)
 Dim WANT_VARIANT : WANT_VARIANT = (Len(CHECK_VARIANT) > 0) And (CHECK_VARIANT <> CHKV_TOKEN)
+Dim PROV_TOKEN : PROV_TOKEN = Chr(37) & Chr(37) & "OBJECT_PROVIDER" & Chr(37) & Chr(37)
+Dim WANT_PROVIDER : WANT_PROVIDER = (Len(OBJECT_PROVIDER) > 0) And (OBJECT_PROVIDER <> PROV_TOKEN)
 
 Const VKEY_ENTER    = 0
 Const VKEY_F8       = 8
@@ -223,6 +232,59 @@ If WANT_VARIANT Then
     End If
 End If
 
+' --- 5a-prov. Remote object provider (CENTRAL ATC, optional) -------------
+' For a CENTRAL ATC hub that analyzes a REMOTE satellite, the run series is
+' bound to a registered object provider (DATA_SOURCE_ID /
+' SCA_DS_OBJECT_PROVIDER_ID; registered via tx ATC "Manage System Groupings",
+' table SATC_AC_OSY_ATTR + an RFC destination to the satellite; the hub's check
+' content must be >= the satellite's target release). This selector only appears
+' on the config screen once object providers are registered, so the field id is
+' UNVERIFIED (no configured hub was available to record against). When
+' --object-provider is requested but no candidate resolves, FAIL LOUD rather
+' than silently running a LOCAL analysis mislabeled as a remote one.
+Dim providerApplied : providerApplied = False
+If WANT_PROVIDER Then
+    WScript.Echo "INFO: Setting remote object provider = " & OBJECT_PROVIDER & " ..."
+    Dim provCands, pj, sProvFld, oProvFld, sProvType
+    provCands = Array( _
+        "wnd[0]/usr/ctxtG_DYNP_3000-DATA_SOURCE_ID", _
+        "wnd[0]/usr/cmbG_DYNP_3000-DATA_SOURCE_ID", _
+        "wnd[0]/usr/ctxtG_DYNP_3000-OBJECT_PROVIDER", _
+        "wnd[0]/usr/cmbG_DYNP_3000-OBJECT_PROVIDER", _
+        "wnd[0]/usr/ctxtSATC_CI_S_CFG_SERIE_UI_01-DATA_SOURCE_ID", _
+        "wnd[0]/usr/cmbSATC_CI_S_CFG_SERIE_UI_01-DATA_SOURCE_ID")
+    For pj = 0 To UBound(provCands)
+        sProvFld = provCands(pj)
+        On Error Resume Next
+        Set oProvFld = Nothing
+        Set oProvFld = oSess.findById(sProvFld)
+        If Err.Number = 0 And Not (oProvFld Is Nothing) Then
+            sProvType = oProvFld.Type
+            If sProvType = "GuiComboBox" Then
+                oProvFld.key = OBJECT_PROVIDER
+            Else
+                oProvFld.Text = OBJECT_PROVIDER
+                oProvFld.setFocus
+            End If
+            If Err.Number = 0 Then
+                providerApplied = True
+                WScript.Echo "INFO: Object-provider field matched: " & sProvFld & " (" & sProvType & ")"
+            End If
+        End If
+        Err.Clear
+        On Error GoTo 0
+        If providerApplied Then Exit For
+    Next
+    If Not providerApplied Then
+        WScript.Echo "ERROR: --object-provider=" & OBJECT_PROVIDER & " was requested but no remote object-provider field was found on the run-series config screen."
+        WScript.Echo "       This system likely has NO registered ATC object providers. Central ATC requires: tx ATC > Manage System Groupings (a registered provider for the satellite), an SM59 RFC destination to it, and the hub's check content >= the satellite's target release."
+        WScript.Echo "       If this IS a configured central hub, the field id differs by release -- record the config screen via /sap-gui-probe and add it to provCands in sap_atc_create_run_series.vbs."
+        WScript.Echo "       Refusing to run a LOCAL analysis under a --object-provider (remote) request."
+        ReleaseSession oSess, wasLocked
+        WScript.Quit 1
+    End If
+End If
+
 oSess.findById("wnd[0]").sendVKey VKEY_ENTER
 WScript.Sleep 800
 
@@ -235,7 +297,7 @@ WScript.Sleep 800
 ' here would risk a false failure on the happy path. The variant itself is
 ' already proven applied: 5a set it on the verified field and would have
 ' failed loud if the field were missing.
-If variantApplied Then
+If variantApplied Or providerApplied Then
     On Error Resume Next
     Dim sVarSbarType, sVarSbar
     sVarSbarType = oSess.findById("wnd[0]/sbar").MessageType
@@ -400,5 +462,8 @@ Else
     sVariantId = "SYSTEM_DEFAULT"
 End If
 WScript.Echo "VARIANT: " & sVariantId
-WScript.Echo "SUCCESS: Run series " & UCase(RUN_SERIES_NAME) & " scheduled (object set " & UCase(OBJECT_SET_NAME) & ", variant " & sVariantId & ")."
+Dim sProvId
+If providerApplied Then sProvId = OBJECT_PROVIDER Else sProvId = "LOCAL"
+WScript.Echo "PROVIDER: " & sProvId
+WScript.Echo "SUCCESS: Run series " & UCase(RUN_SERIES_NAME) & " scheduled (object set " & UCase(OBJECT_SET_NAME) & ", variant " & sVariantId & ", provider " & sProvId & ")."
 WScript.Quit 0

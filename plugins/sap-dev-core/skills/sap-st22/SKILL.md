@@ -5,14 +5,19 @@ description: |
   GUI mode (ADT is NOT used). SNAP is a cluster table, so dumps are read by
   driving ST22 via SAP GUI Scripting. Read-only: sets the date/user selection,
   displays the dump list, and scrapes it into the shared diagnose evidence
-  contract. Deep per-dump extraction (call stack / variables) is a v2
-  enhancement. Usually invoked by /sap-diagnose; runs standalone.
-  Component IDs for the ST22 selection/grid vary by release — the reader tries
-  candidates and degrades to a clean 'skipped' with a /sap-gui-record hint if it
-  cannot locate the list (same policy as /sap-atc).
+  contract. With --deep it additionally opens each in-scope dump and scrapes the
+  failing source line + snippet into the event's include/line + a dump_detail
+  object (this is what /sap-fix-incident consumes to root-cause a dump). Deep is
+  strictly additive — every deep failure degrades to detail_status=partial|skipped
+  and never loses the list-level evidence. Usually invoked by /sap-diagnose; runs
+  standalone.
+  Component IDs for the ST22 selection/grid + the dump detail view vary by
+  release — the reader tries candidates and degrades to a clean 'skipped' (list)
+  or 'partial' (detail) with a /sap-gui-record hint if it cannot locate them
+  (same policy as /sap-atc).
   Prerequisites: active SAP GUI session (use /sap-login first); RZ11
   sapgui/user_scripting = TRUE.
-argument-hint: "[--anchor PATH] [--user U] [--date today|YYYYMMDD] [--window MIN] [--session PATH] [--out PATH] [--top-n N]"
+argument-hint: "[--anchor PATH] [--user U] [--date today|YYYYMMDD] [--window MIN] [--session PATH] [--out PATH] [--top-n N] [--deep] [--dump-key KEY] [--max-deep N]"
 ---
 
 # SAP ST22 Dump Reader (Diagnose, GUI)
@@ -51,18 +56,33 @@ powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_
 ## Step 1 — Resolve the Anchor + Build the Params File
 
 `--anchor <path>` (orchestrator) or build `{RUN_DIR}\anchor.json` from flags.
-Derive the ST22 params file from the anchor:
+Parse the deep flags from `$ARGUMENTS`: `--deep` → `$deep=$true`; `--dump-key
+<KEY>` → `$dumpKey`; `--max-deep <N>` → `$maxDeep` (default 5). Derive the ST22
+params file from the anchor:
 
 ```powershell
 $a = Get-Content '{RUN_DIR}\anchor.json' -Raw | ConvertFrom-Json
 $from = "$($a.window.from_ts)"; $to = "$($a.window.to_ts)"
-@(
+$lines = @(
   "FROMDATE=" + $from.Substring(0,8),
   "TODATE="   + $to.Substring(0,8),
   "USER="     + "$($a.user)",
   "TOPN=200"
-) | Set-Content '{RUN_DIR}\st22_params.txt' -Encoding Default
+)
+# Deep mode (only when the caller passed --deep): open each in-scope dump and
+# scrape the failing line + snippet. --dump-key scopes to one dump (the
+# synthetic key = yyyymmdd + hhmmss + program); --max-deep bounds the crawl.
+if ($deep)    { $lines += "DEEP=1" }
+if ($dumpKey) { $lines += "DUMPKEY=$dumpKey" }
+if ($maxDeep) { $lines += "MAXDEEP=$maxDeep" }
+$lines | Set-Content '{RUN_DIR}\st22_params.txt' -Encoding Default
 ```
+
+> **Deep mode is read-only too.** Opening a dump and pressing Back changes
+> nothing in SAP. But it is slower (one GUI round-trip per dump), so it is
+> opt-in and bounded by `--max-deep`. `/sap-diagnose` only requests `--deep`
+> when a hypothesis needs the failing line (i.e. the custom-code-defect path
+> that feeds `/sap-fix-incident`).
 
 ## Step 2 — Run the Reader (32-bit cscript)
 
@@ -89,8 +109,18 @@ C:\Windows\SysWOW64\cscript.exe //NoLogo "{RUN_DIR}\st22_run.vbs"
 (32-bit `cscript` is mandatory — SAP GUI Scripting COM is 32-bit. Never `cmd /c`.)
 
 ## Step 3 — Report
-Parse `EVIDENCE: source=ST22 ...` + `evidence_st22.json`. If `status=skipped`,
-report the reason (likely "grid not found — run /sap-gui-record on ST22").
+Parse `EVIDENCE: source=ST22 status=ok events=<n> deep=<n> ...` +
+`evidence_st22.json`. If `status=skipped`, report the reason (likely "grid not
+found — run /sap-gui-record on ST22"). In `--deep` mode, each event may carry a
+`dump_detail` object — surface its `detail_status`:
+
+- `ok` — failing `include`/`line` + a `source_extract` snippet were captured
+  (this is what a downstream fix consumes).
+- `partial` — the dump was opened but its body was not scrapeable (typically an
+  HTML-rendered dump). The exception / program are still known from the list
+  level; recommend a `/sap-gui-record` pass on the ST22 dump-detail screen for
+  this release. **Never report `partial` as "no defect found."**
+- `skipped` — could not re-open the dump from the list.
 
 ## Final — Log End
 
@@ -103,9 +133,21 @@ powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_
   reader tries candidate IDs then scans for the grid; if it cannot locate the
   list it emits `status=skipped` with a hint to run `/sap-gui-record` on ST22 and
   update the candidates in `sap_st22_read.vbs`.
-- **List-level only (v1).** Emits date/time/user/program/exception/short-text +
-  a synthetic `dump_key` (date+time+program) so SM13 can link to it. Call-stack
-  and variable extraction (opening each dump) is a v2 enhancement.
+- **List level** emits date/time/user/program/exception/short-text + a synthetic
+  `dump_key` (date+time+program) so SM13 can link to it. `--deep` adds the
+  failing line + source snippet on top (see below).
+- **Deep detail recording debt.** The dump detail view's text container ID
+  varies by release; the scraper walks `wnd[0]/usr` for `GuiTextedit` controls
+  and anchors the error line on the locale-independent `>>>>` marker. On releases
+  that render the dump as an **HTML viewer** there is no readable text control,
+  so deep returns `detail_status=partial` (exception/program still captured) —
+  run `/sap-gui-record` on the ST22 dump-open and add the detail container ID to
+  `sap_st22_read.vbs` (`ReadDetailText` candidates) to lift it to `ok`. **Live
+  calibration on the target release is pending** — the candidate-ID + `>>>>`
+  approach is built and degrades safely, but has not yet been recorded against a
+  real ST22 dump.
+- **Call-stack / chosen-variables** parsing (the `call_stack` / `chosen_variables`
+  arrays in `dump_detail`) is the next deep increment; v1 deep leaves them empty.
 - **Requires an active GUI session** and `sapgui/user_scripting = TRUE`.
 - **Modal SAP GUI Security dialog** suspends scripting; if a file-IO dialog
   appears, the orchestrator's sidecar pattern applies (this reader does no file

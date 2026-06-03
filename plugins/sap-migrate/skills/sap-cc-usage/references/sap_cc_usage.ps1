@@ -142,8 +142,19 @@ try {
         if ($u.error) { Write-Output "ERROR: $($u.error)"; Write-Output 'STATUS: ERROR'; exit 2 }
         $usageMap = $u.map; $matched = $u.matched; $haveUsage = $true
     } elseif ($src -eq 'SCMON' -or $src -eq 'UPL') {
-        Write-Output "WARN: direct $src read is not implemented in v1 -- export usage from SCMON/SUSG/Solution Manager and pass --usage-file. Proceeding with NO usage data (all objects -> REMEDIATE; nothing decommissioned)."
-        $src = 'NONE'
+        # Direct read: sap_cc_scmon_read.ps1 (run by the SKILL via RFC against the
+        # source system) writes a usage export; we ingest it here but KEEP the
+        # SCMON/UPL provenance in usage.tsv. If no export was produced (monitoring
+        # not active -> reader emitted STATUS:NO_DATA), fall back to the SAFE NONE
+        # path: every object -> REMEDIATE, nothing decommissioned.
+        if (-not [string]::IsNullOrWhiteSpace($UsageFile) -and (Test-Path -LiteralPath $UsageFile)) {
+            $u = Read-UsageFile $UsageFile
+            if ($u.error) { Write-Output "ERROR: $($u.error)"; Write-Output 'STATUS: ERROR'; exit 2 }
+            $usageMap = $u.map; $matched = $u.matched; $haveUsage = $true
+        } else {
+            Write-Output "WARN: no $src usage export available (run sap_cc_scmon_read.ps1 first, or pass --usage-file). Proceeding with NO usage data (all objects -> REMEDIATE; nothing decommissioned)."
+            $src = 'NONE'
+        }
     }
     # NONE -> no usage data: used_flag stays UNKNOWN, everything REMEDIATE (safe).
 

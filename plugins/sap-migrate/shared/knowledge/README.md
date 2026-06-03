@@ -11,9 +11,18 @@ This is a **plugin-shared resource**, distinct from the per-campaign workspace
 under `{work_dir}\migrations\{campaign_id}\` (which is owned by
 `/sap-cc-campaign`). Nothing here is campaign-specific.
 
-> **Status:** seed pack. 5 patterns (3 ACTIVE, 2 DRAFT). The DRAFT patterns
-> (`ACDOCA_FIN`, `BP_CVI`) carry representative mappings that MUST be verified
-> against the target release before auto-remediation. See `manifest.json`.
+> **Status:** 12 patterns (3 ACTIVE, 9 DRAFT). All DRAFT patterns carry
+> representative mappings that MUST be verified against the target release
+> before auto-remediation (and `/sap-cc-remediate` excludes DRAFT from
+> auto-apply). The 2026-06 additions are S/4 data-model + functional patterns:
+> `SD_PRICING` (KONV→PRCD_ELEMENTS, R2), `FI_OPENITEM_INDEX` (BSID/BSAD/BSIK/BSAK
+> compat views, R2), `MATDOC_DOCS` (MKPF/MSEG→MATDOC, R2), `CREDIT_MGMT`
+> (FD32→FSCM, R3 MANUAL), `OUTPUT_MGMT` (NAST→S/4 OM, R3 MANUAL), `LIS_ANALYTICS`
+> (info structures→CDS, R3 MANUAL), `COMPAT_VIEW_WRITE` (DML on read-only compat
+> views, R2 MANUAL). None are R1 — they expand the AI-assisted (R2/R3) base, not
+> the mechanical auto-remediator. Their `detect_message_ids` are intentionally
+> blank (filled from real ATC runs via the flywheel); they match on
+> simplification item / code regex until then. See `manifest.json`.
 
 ## Why it is layered (not one big TSV)
 Remediation needs two kinds of content: *queryable structured data* (old→new

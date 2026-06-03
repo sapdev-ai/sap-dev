@@ -1,0 +1,23 @@
+{
+  "schema": "sapdev.screenbaseline/1",
+  "vbs": "sap_se37_create.vbs",
+  "captured_on": {
+    "release": "",
+    "kernel": "",
+    "date": "",
+    "method": "static"
+  },
+  "checkpoints": [
+    {
+      "id": "initial",
+      "reach": { "okcode": "/nSE37" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/tbar[0]/okcd",
+        "wnd[0]/usr/ctxtRS38L-NAME",
+        "wnd[0]/usr/btnBUT2"
+      ],
+      "status": "pending_live"
+    }
+  ]
+}
