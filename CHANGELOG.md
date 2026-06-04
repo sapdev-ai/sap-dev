@@ -4,7 +4,17 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.6.1] — 2026-06-04
+
 ### Fixed
+
+- **Source-encoding hygiene (ASCII-first cleanup).** Converted the lone genuinely-executed
+  CJK literal in `sap_update_addon_se16.vbs` (the success/error `WScript.Echo`) to `ChrW()`,
+  removed the UTF-8 BOMs from the five `sap_change_package_{se11,se24,se37,se38,se91}.vbs`
+  templates (plus `cmod`), and ASCII-cleaned their comment em-dashes (`—` → `--`). All six are
+  now pure ASCII; the non-ASCII guard holds at 133. Recorded the standing decision **not** to
+  convert the tree to UTF-16 / UTF-8-BOM, plus the runtime file-I/O and SAP `GUI_UPLOAD`
+  (`codepage='4110'`) encoding axes, in `contributing/source_encoding_policy.md`.
 
 - **CJK/JA mojibake in PowerShell JSON ingest under Windows PowerShell 5.1.**
   `Get-Content -Raw | ConvertFrom-Json` reads with the system ANSI codepage by
