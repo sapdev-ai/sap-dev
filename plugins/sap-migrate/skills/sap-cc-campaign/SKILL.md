@@ -334,6 +334,15 @@ Recommendation logic (the helper encodes this; documented here as the contract):
 | `VERIFIED` not `TRANSPORTED` | bundle + release the transport (productionization pipeline) |
 | All objects `TRANSPORTED` or `DECOMMISSIONED` | `DONE` — campaign complete |
 
+**Analyze-skipped objects are non-blocking.** A REMEDIATE object whose type has
+no ATC category (DEVC, MSAG, bare FUNC) is diverted by `/sap-cc-analyze` to
+`findings\analyze_skipped.tsv` and left `SCOPED` (it can never be analyzed). The
+recommender excludes such objects from the "await analysis" count — so `next`
+advances to `/sap-cc-triage` instead of looping on `/sap-cc-analyze` — **and**
+from the DONE check, so the campaign still converges (DONE notes `(<n> skipped:
+no ATC category)`). They remain visible as `SCOPED` in `status`/`report`; the
+reason is in `analyze_skipped.tsv`.
+
 The helper prints exactly one line:
 `NEXT: skill=<skill-or-DONE-or-PAUSE> reason=<short> [gate=<scope_signoff|dryrun_review>]`
 

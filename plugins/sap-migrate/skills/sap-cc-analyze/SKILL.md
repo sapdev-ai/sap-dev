@@ -193,7 +193,7 @@ After ingest, recommend triage: `/sap-cc-campaign next` (→ `/sap-cc-triage`).
 ## Step 4 — Outputs (campaign workspace)
 
 - `{CAMPAIGN_DIR}\findings\analyze_worklist.tsv` — `obj_name · obj_type · atc_type` (objects to run, with the mapped `/sap-atc` type).
-- `{CAMPAIGN_DIR}\findings\analyze_skipped.tsv` — `obj_name · obj_type · reason` (in-scope objects with no ATC category; left SCOPED, not analyzed).
+- `{CAMPAIGN_DIR}\findings\analyze_skipped.tsv` — `obj_name · obj_type · reason` (in-scope objects with no ATC category; left SCOPED, not analyzed). `/sap-cc-campaign next` reads this file and treats these objects as **non-blocking** (excluded from the await-analysis count and the DONE check), so they never wedge the recommender and the pipeline still converges.
 - `{CAMPAIGN_DIR}\findings\findings_raw.tsv` — `obj_name · obj_type · check_id · priority · line · message_id · message_text · simplification_item · sap_note`.
 - `{CAMPAIGN_DIR}\state.tsv` — REMEDIATE objects advanced SCOPED → ANALYZED.
 

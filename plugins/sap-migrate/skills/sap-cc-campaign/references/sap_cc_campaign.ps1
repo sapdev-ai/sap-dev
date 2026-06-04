@@ -74,21 +74,61 @@ function Get-Ledger([string]$dir){
     try { $r = @(Import-Csv -LiteralPath $p -Delimiter "`t"); return ,$r } catch { return ,@() }
 }
 
+# Objects /sap-cc-analyze diverted to findings\analyze_skipped.tsv because their
+# type has no /sap-atc Object-Set category (DEVC, MSAG, bare FUNC, ...). They are
+# REMEDIATE but can never advance past SCOPED via analysis, so the recommender +
+# phase rollup must treat such REMEDIATE+SCOPED objects as NON-BLOCKING -- else
+# `next` recommends /sap-cc-analyze forever and the campaign never converges to
+# DONE (the F2 wedge). Returns a hashtable keyed "OBJNAME|OBJTYPE" (uppercased).
+function Get-SkippedKeys([string]$dir){
+    $h = @{}
+    $p = Join-Path $dir 'findings\analyze_skipped.tsv'
+    if(-not (Test-Path -LiteralPath $p)){ return $h }
+    try {
+        foreach($r in @(Import-Csv -LiteralPath $p -Delimiter "`t")){
+            $nm = [string]$r.obj_name; $ty = [string]$r.obj_type
+            if($nm){ $h[("$nm|$ty").ToUpper()] = $true }
+        }
+    } catch {}
+    return $h
+}
+
+# Rows minus the "analyze-skipped, still SCOPED" objects (the no-ATC-category
+# divert). Only a REMEDIATE object still in SCOPED and listed in
+# analyze_skipped.tsv is dropped; if it ever advances (or isn't REMEDIATE), the
+# normal logic governs it. Unary-comma return guards the all-skipped empty case
+# (an empty array would otherwise unroll to $null across the return boundary).
+function Get-ActiveRows($rows,$skipKeys){
+    if($null -eq $skipKeys){ $skipKeys = @{} }
+    $out = New-Object System.Collections.Generic.List[object]
+    foreach($r in @($rows)){
+        $k = ("$($r.obj_name)|$($r.obj_type)").ToUpper()
+        $skipClosed = ($r.decision -eq 'REMEDIATE') -and ($r.state -eq 'SCOPED') -and ($skipKeys.ContainsKey($k))
+        if(-not $skipClosed){ $out.Add($r) }
+    }
+    # ,$out.ToArray() (NOT ,@($out)) -- the unary comma on @(List[object]) throws
+    # "Argument types do not match"; .ToArray() yields a clean object[] and the
+    # comma still guards the empty case from unrolling to $null on return.
+    return ,$out.ToArray()
+}
+
 # Campaign-level phase = the phase of the least-advanced REMEDIATE-track object.
-function Get-Phase($rows){
+function Get-Phase($rows,$skipKeys){
     $rows = @($rows)
     if($rows.Count -eq 0){ return 'ASSESS' }
     $dH = Tally $rows 'decision'
     $undecided = (HGet $dH '') + (HGet $dH '-')
     if($undecided -gt 0){ return 'ASSESS' }
-    $rem = @($rows | Where-Object { $_.decision -eq 'REMEDIATE' })
+    $active = Get-ActiveRows $rows $skipKeys
+    $rem = @($active | Where-Object { $_.decision -eq 'REMEDIATE' })
     $rs  = Tally $rem 'state'
     if((HGet $rs 'SCOPED') -gt 0 -or (HGet $rs 'ANALYZED') -gt 0){ return 'ANALYZE' }
     if((HGet $rs 'TRIAGED') -gt 0 -or (HGet $rs 'REMEDIATED') -gt 0){ return 'REMEDIATE' }
     if((HGet $rs 'VERIFIED') -gt 0){ return 'VALIDATE' }
-    $allH = Tally $rows 'state'
-    $terminal = (HGet $allH 'TRANSPORTED') + (HGet $allH 'DECOMMISSIONED')
-    if($terminal -ge $rows.Count){ return 'DONE' }
+    # DONE once no ACTIVE object remains non-terminal -- analyze-skipped objects,
+    # excluded from $active, never block convergence.
+    $nonTerminal = @($active | Where-Object { $_.state -notin @('TRANSPORTED','DECOMMISSIONED') }).Count
+    if($nonTerminal -eq 0){ return 'DONE' }
     return 'DELIVER'
 }
 
@@ -226,7 +266,10 @@ function Update-Phase([string]$dir,[string]$phase){
 }
 
 # The pipeline recommender -- encodes the NEXT table from SKILL.md Step 5.
-function Recommend-Next($rows,$gates){
+# $skipKeys (from Get-SkippedKeys) lets us treat REMEDIATE+SCOPED objects with no
+# ATC category as non-blocking, so `next` advances to /sap-cc-triage instead of
+# wedging on /sap-cc-analyze and the campaign can still reach DONE.
+function Recommend-Next($rows,$gates,$skipKeys){
     $rows = @($rows)
     if($rows.Count -eq 0){
         return [pscustomobject]@{ skill='/sap-cc-inventory'; reason='no objects inventoried yet'; gate='' }
@@ -235,7 +278,11 @@ function Recommend-Next($rows,$gates){
     if($undecided -gt 0){
         return [pscustomobject]@{ skill='/sap-cc-usage'; reason="$undecided inventoried object(s) not yet scoped"; gate='' }
     }
-    $rem = @($rows | Where-Object { $_.decision -eq 'REMEDIATE' })
+    # Drop analyze-skipped (no-ATC-category) objects from the progress checks so a
+    # type with no readiness category (DEVC, MSAG, ...) never blocks the pipeline.
+    $active  = Get-ActiveRows $rows $skipKeys
+    $skipped = @($rows).Count - @($active).Count
+    $rem = @($active | Where-Object { $_.decision -eq 'REMEDIATE' })
     $needAnalyze = CW $rem { $_.state -eq 'SCOPED' }
     if($needAnalyze -gt 0){
         $g = if($gates.scope_signoff){ 'scope_signoff' } else { '' }
@@ -254,21 +301,23 @@ function Recommend-Next($rows,$gates){
     if($needVerify -gt 0){
         return [pscustomobject]@{ skill='/sap-cc-remediate'; reason="$needVerify remediated object(s) await ATC re-check (--recheck)"; gate='' }
     }
-    $needTransport = CW $rows { $_.state -eq 'VERIFIED' }
+    $needTransport = CW $active { $_.state -eq 'VERIFIED' }
     if($needTransport -gt 0){
         return [pscustomobject]@{ skill='/sap-transport-request'; reason="$needTransport verified object(s) ready to bundle + release"; gate='' }
     }
-    $nonTerminal = CW $rows { $_.state -notin @('TRANSPORTED','DECOMMISSIONED') }
+    $nonTerminal = CW $active { $_.state -notin @('TRANSPORTED','DECOMMISSIONED') }
     if($nonTerminal -gt 0){
-        $review = CW $rows { $_.decision -eq 'REVIEW' }
-        $higher = CW $rem  { $_.state -eq 'TRIAGED' -and ([string]$_.tier) -in @('R2','R3','R4') }
+        $review = CW $active { $_.decision -eq 'REVIEW' }
+        $higher = CW $rem    { $_.state -eq 'TRIAGED' -and ([string]$_.tier) -in @('R2','R3','R4') }
         $bits = @()
         if($review -gt 0){ $bits += "$review in REVIEW (operator decision)" }
         if($higher -gt 0){ $bits += "$higher tier R2-R4 (Phase-2 / manual remediation)" }
         $reason = if($bits.Count -gt 0){ $bits -join '; ' } else { 'remaining non-terminal objects need manual attention' }
         return [pscustomobject]@{ skill='MANUAL'; reason=$reason; gate='' }
     }
-    return [pscustomobject]@{ skill='DONE'; reason='all objects transported or decommissioned'; gate='' }
+    $doneReason = 'all objects transported or decommissioned'
+    if($skipped -gt 0){ $doneReason += " ($skipped skipped: no ATC category)" }
+    return [pscustomobject]@{ skill='DONE'; reason=$doneReason; gate='' }
 }
 
 function Build-Dashboard([string]$dir,$rows,[string]$phase,$patCounts){
@@ -399,8 +448,9 @@ try {
     $cjson = Join-Path $CampaignDir 'campaign.json'
     if(-not (Test-Path -LiteralPath $cjson)){ Write-Output "ERROR: campaign workspace not found at $CampaignDir (run -Action init first)"; exit 2 }
 
-    $rows  = Get-Ledger $CampaignDir
-    $phase = Get-Phase $rows
+    $rows     = Get-Ledger $CampaignDir
+    $skipKeys = Get-SkippedKeys $CampaignDir
+    $phase    = Get-Phase $rows $skipKeys
 
     switch($Action){
         'status' {
@@ -435,7 +485,7 @@ try {
         }
         'next' {
             $gates = Get-Gates $CampaignDir
-            $n = Recommend-Next $rows $gates
+            $n = Recommend-Next $rows $gates $skipKeys
             $line = "NEXT: skill=$($n.skill) reason=$($n.reason)"
             if($n.gate){ $line += " gate=$($n.gate)" }
             Write-Output $line
