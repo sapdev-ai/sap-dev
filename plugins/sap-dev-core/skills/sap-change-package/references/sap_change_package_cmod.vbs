@@ -7,7 +7,7 @@
 '
 ' Tokens:
 '   %%OBJECT_NAME%%      Enhancement project name (max 8, e.g. "ZHKPJ001")
-'   %%NEW_PACKAGE%%      Target package — "$TMP" (or any $*) for local,
+'   %%NEW_PACKAGE%%      Target package -- "$TMP" (or any $*) for local,
 '                        "Z*" / "Y*" for transportable.
 '   %%TRANSPORT%%        Pre-resolved TR (TMP_TO_TRANSPORT mode); empty otherwise.
 '   %%TR_DESCRIPTION%%   Description for the "Create Request" popup if it appears.
@@ -73,7 +73,7 @@ WScript.Sleep 500
 ' ------ Run the shared change-package flow ------------------------------------
 ChangePackageFlow
 
-' Should not reach here — ChangePackageFlow exits.
+' Should not reach here -- ChangePackageFlow exits.
 WScript.Quit 0
 
 
@@ -130,7 +130,7 @@ Sub ChangePackageFlow
 
     ' --- 6. Locality-specific finishing --------------------------------------
     If Left(sPkg, 1) = "$" Then
-        ' --- 6a. Going to LOCAL — press Local object button ------------------
+        ' --- 6a. Going to LOCAL -- press Local object button ------------------
         On Error Resume Next
         If InStr(oSess.ActiveWindow.Id, "wnd[1]") > 0 Then
             Set oCtrl = oSess.findById("wnd[1]/tbar[0]/btn[12]")
@@ -146,7 +146,7 @@ Sub ChangePackageFlow
         Err.Clear
         On Error GoTo 0
     Else
-        ' --- 6b. Going to TRANSPORTABLE — handle TR assignment ---------------
+        ' --- 6b. Going to TRANSPORTABLE -- handle TR assignment ---------------
         On Error Resume Next
         If InStr(oSess.ActiveWindow.Id, "wnd[1]") > 0 Then
             Set oCtrl = Nothing
@@ -160,7 +160,7 @@ Sub ChangePackageFlow
                     HandlePopupChain
                 Else
                     Err.Clear
-                    WScript.Echo "INFO: No TRANSPORT supplied — pressing 'Create Request' (btn[8])."
+                    WScript.Echo "INFO: No TRANSPORT supplied -- pressing 'Create Request' (btn[8])."
                     oSess.findById("wnd[1]/tbar[0]/btn[8]").press
                     WScript.Sleep 1500
                     HandlePopupChain

@@ -152,6 +152,22 @@ the appropriate BOM per the policy table.
 (The count is a **living metric** — it ticked to `134` mid-authoring when a
 concurrent session added an em-dash to `sap_update_addon_detect.ps1` /
 `sap_log_*.ps1`, which is precisely the regression the guard exists to surface.)
+
+**2026-06-04 cleanup pass.** Count re-verified at `133` — the headline is unchanged
+but the *composition* shifted. Two fixes landed:
+
+- `sap_update_addon_se16.vbs` — the success/error summary `WScript.Echo` was a
+  *previously unlisted* genuinely-executed literal (`"成功: … エラー: …"`); rebuilt via
+  `ChrW(&H6210)&ChrW(&H529F)` (`成功`) and `ChrW(&H30A8)&ChrW(&H30E9)&ChrW(&H30FC)`
+  (`エラー`), glyphs kept only in the trailing comment. It stays on the list for that
+  comment glyph + a header em-dash — intentional, per the glyph-in-comment exception.
+- `sap_change_package_{se11,se24,se37,se38,se91}.vbs` — UTF-8 BOMs removed (a BOM on a
+  `.vbs` can choke WSH, per the policy table) and comment/echo `—`→`--`;
+  `sap_change_package_cmod.vbs` cleaned in the same pass. All six are now **pure ASCII**
+  and off the guard list. (The five had been BOM-*skipped* before, so un-BOMing them
+  briefly pushed the count to `139` until the `—`→`--` pass brought it back to `133`.)
+  Sibling `sap-se11/references/sap_se11_change_package.vbs` keeps a pre-existing em-dash
+  — left for the P2 backlog.
 A byte-level scan of every non-ASCII *line* (not just the first per file) across
 those files:
 
@@ -219,6 +235,33 @@ emergency.
   `—`→`--` pass would also corrupt the intentional JA literals).
 - **P3 — process:** once the tree is clean, promote the guard to a hard error to
   catch regressions (the ratchet).
+
+## Decision log
+
+- **2026-06-04 — Rejected any *tree-wide* conversion to UTF-16 LE or UTF-8-with-BOM.**
+  Evaluated on the back of a "we have to handle kanji / wrong-codepage trouble" concern.
+  Conclusion: **keep ASCII-first**; UTF-8 BOM stays a *per-file* opt-in, never tree-wide.
+  Rationale, consolidated:
+  - **Git.** UTF-16 is treated as **binary** by git (NUL bytes) → no line diffs, painful
+    3-way merges; no `.gitattributes` / `working-tree-encoding` exists in this repo today,
+    and `working-tree-encoding` wouldn't fix the *non-git* readers anyway. UTF-8-with-BOM
+    *is* git-safe (text, line-diffable) — that is exactly why it's the opt-in — but
+    32-bit `cscript` chokes on a UTF-8 BOM in a `.vbs`, so it is not a blanket answer.
+  - **Redundant.** A driving `.vbs` is already written to `{WORK_TEMP}` as UTF-16 LE
+    before `cscript` runs it (`Set-Content -Encoding Unicode` / `[IO.File]::WriteAllText(…,
+    UnicodeEncoding)`), so `cscript` never decodes the *committed* file — committing it as
+    UTF-16 buys nothing for execution.
+  - **Cost.** ~287 `FSO.OpenTextFile` includes (ASCII/MBCS mode), ~47 PowerShell readers
+    (`ReadAllText` / `[Encoding]::UTF8`), and the JS guard (`readFileSync(…, 'utf8')`) all
+    assume UTF-8 / ASCII; a flip would have to touch every one.
+  - **Orthogonal to kanji.** Runtime kanji *data* (SAP GUI `BSTR`, NCo `.NET String`,
+    `ADODB.Stream` UTF-8 file reads) is already UTF-16 in memory regardless of source
+    encoding. Source encoding only governs glyphs *typed into the file*, which `ChrW()` /
+    `[char]` already cover.
+
+  **Standing rule:** UTF-8 BOM is a per-file opt-in (a `.ps1` that truly needs non-ASCII,
+  or a leaf `.vbs` template that is read-as-UTF-8 then written UTF-16 at runtime); never
+  tree-wide; FSO-included shared libs stay ASCII via `ChrW()`.
 
 ## Related
 

@@ -132,7 +132,7 @@ Sub ChangePackageFlow
                     HandlePopupChain
                 Else
                     Err.Clear
-                    WScript.Echo "INFO: No TRANSPORT —pressing Create Request (btn[8])."
+                    WScript.Echo "INFO: No TRANSPORT -- pressing Create Request (btn[8])."
                     oSess.findById("wnd[1]/tbar[0]/btn[8]").press
                     WScript.Sleep 1500
                     HandlePopupChain

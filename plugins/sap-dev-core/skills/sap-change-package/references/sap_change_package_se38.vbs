@@ -5,7 +5,7 @@
 '
 ' Tokens:
 '   %%OBJECT_NAME%%      Program name (e.g. "ZHKTEST003")
-'   %%NEW_PACKAGE%%      Target package —"$TMP" (or any $*) for local,
+'   %%NEW_PACKAGE%%      Target package -- "$TMP" (or any $*) for local,
 '                        "Z*" / "Y*" for transportable.
 '   %%TRANSPORT%%        Pre-resolved TR (TMP_TO_TRANSPORT mode); empty
 '                        otherwise.
@@ -69,7 +69,7 @@ On Error GoTo 0
 ' ------ Run the shared change-package flow ------------------------------------
 ChangePackageFlow
 
-' Should not reach here —ChangePackageFlow exits.
+' Should not reach here -- ChangePackageFlow exits.
 WScript.Quit 0
 
 
@@ -127,7 +127,7 @@ Sub ChangePackageFlow
 
     ' --- 6. Locality-specific finishing --------------------------------------
     If Left(sPkg, 1) = "$" Then
-        ' --- 6a. Going to LOCAL —press Local object button -------------------
+        ' --- 6a. Going to LOCAL -- press Local object button -------------------
         On Error Resume Next
         If InStr(oSess.ActiveWindow.Id, "wnd[1]") > 0 Then
             Set oCtrl = oSess.findById("wnd[1]/tbar[0]/btn[12]")
@@ -143,7 +143,7 @@ Sub ChangePackageFlow
         Err.Clear
         On Error GoTo 0
     Else
-        ' --- 6b. Going to TRANSPORTABLE —handle TR assignment ----------------
+        ' --- 6b. Going to TRANSPORTABLE -- handle TR assignment ----------------
         On Error Resume Next
         If InStr(oSess.ActiveWindow.Id, "wnd[1]") > 0 Then
             ' Check for an existing-TR input field
@@ -157,16 +157,16 @@ Sub ChangePackageFlow
                     WScript.Sleep 1500
                     HandlePopupChain
                 Else
-                    ' No TR supplied —press Create Request
+                    ' No TR supplied -- press Create Request
                     Err.Clear
-                    WScript.Echo "INFO: No TRANSPORT supplied —pressing 'Create Request' (btn[8])."
+                    WScript.Echo "INFO: No TRANSPORT supplied -- pressing 'Create Request' (btn[8])."
                     oSess.findById("wnd[1]/tbar[0]/btn[8]").press
                     WScript.Sleep 1500
                     HandlePopupChain
                 End If
             Else
                 Err.Clear
-                ' No TR field —try Create Request defensively
+                ' No TR field -- try Create Request defensively
                 Set oCtrl = Nothing
                 Set oCtrl = oSess.findById("wnd[1]/tbar[0]/btn[8]")
                 If Err.Number = 0 And Not (oCtrl Is Nothing) Then
