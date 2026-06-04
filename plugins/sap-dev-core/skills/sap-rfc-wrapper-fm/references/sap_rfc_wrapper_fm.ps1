@@ -108,7 +108,7 @@ for ($i = 0; $i -lt $tblOut.RowCount; $i++) {
     if ($ptype -in @("E","C","T")) {
         if ($lastPName -ne "" -and $pname -ne $lastPName) {
             $outPath = Join-Path $WORK_TEMP "out_$lastPName.xml"
-            [System.IO.File]::WriteAllText($outPath, $accum, [System.Text.Encoding]::Unicode)
+            [System.IO.File]::WriteAllText($outPath, $accum, [System.Text.UnicodeEncoding]::new($false, $true))
             Write-Host "OUTPUT_FILE: $lastPName -> $outPath"
             $outCount++
             $accum = ""
@@ -119,7 +119,7 @@ for ($i = 0; $i -lt $tblOut.RowCount; $i++) {
 }
 if ($lastPName -ne "") {
     $outPath = Join-Path $WORK_TEMP "out_$lastPName.xml"
-    [System.IO.File]::WriteAllText($outPath, $accum, [System.Text.Encoding]::Unicode)
+    [System.IO.File]::WriteAllText($outPath, $accum, [System.Text.UnicodeEncoding]::new($false, $true))
     Write-Host "OUTPUT_FILE: $lastPName -> $outPath"
     $outCount++
 }

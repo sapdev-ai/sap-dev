@@ -603,7 +603,7 @@ foreach ($p in $report.probes) {
     }
 
     # Substitute into the VBS template.
-    $vbs = Get-Content $tplVbs -Raw
+    $vbs = [System.IO.File]::ReadAllText($tplVbs, [System.Text.Encoding]::UTF8)
     $vbs = $vbs.Replace('{{SKILL_NAME_LOWER}}',     $skillFnBase)
     $vbs = $vbs.Replace('{{MODE}}',                 $mode)
     $vbs = $vbs.Replace('{{SCAFFOLD_TIMESTAMP}}',   $timestamp)
@@ -617,7 +617,9 @@ foreach ($p in $report.probes) {
     } else {
         $vbsPath = Join-Path $OutputDir ("references\sap_{0}_{1}.vbs" -f $skillFnBase, $mode)
     }
-    Set-Content -Path $vbsPath -Value $vbs -Encoding Unicode
+    # Committed reference .vbs = UTF-8 no BOM (git-diffable, ASCII-policy clean);
+    # the generated wrapper reads it back as UTF-8. Runtime *_run.vbs stays UTF-16 LE.
+    [System.IO.File]::WriteAllText($vbsPath, $vbs, [System.Text.UTF8Encoding]::new($false))
 
     $probeId      = $p.id
     $actionCount  = $p.action_count

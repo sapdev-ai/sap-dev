@@ -238,7 +238,7 @@ Generate the filled-in warmup VBS:
 
 ```powershell
 $probe = Join-Path "{work_dir}" ("sap_gui_warmup_" + (Get-Date -Format yyyyMMddHHmmss) + ".bmp")
-$warmupSrc = Get-Content '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_gui_security_warmup.vbs' -Raw
+$warmupSrc = [System.IO.File]::ReadAllText('<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_gui_security_warmup.vbs', [System.Text.Encoding]::UTF8)
 # IMPORTANT: use the .Replace() string method, NOT the -replace operator.
 # -replace treats the replacement string as a regex. Passing a Windows path
 # through [regex]::Escape escapes the `.bmp` dot as `\.`; the trailing
@@ -309,7 +309,7 @@ Run a SECOND warmup. If trust persisted, Hardcopy succeeds with no dialog and th
 
 ```powershell
 $probe2 = Join-Path "{work_dir}" ("sap_gui_warmup_verify_" + (Get-Date -Format yyyyMMddHHmmss) + ".bmp")
-$warmupSrc2 = Get-Content '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_gui_security_warmup.vbs' -Raw
+$warmupSrc2 = [System.IO.File]::ReadAllText('<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_gui_security_warmup.vbs', [System.Text.Encoding]::UTF8)
 # .Replace() (literal), not -replace (regex). See the first warmup block for why.
 $warmupSrc2 = $warmupSrc2.Replace('%%PROBE_FILE%%', $probe2)
 [System.IO.File]::WriteAllText("{WORK_TEMP}\sap_gui_security_warmup_verify.vbs", $warmupSrc2, [System.Text.UnicodeEncoding]::new($false, $true))
@@ -527,8 +527,8 @@ The definition file is at:
 Copy and re-encode as Unicode (UTF-16 LE — required by sap-se11 templates):
 ```powershell
 Copy-Item '<SKILL_DIR>\..\sap-rfc-wrapper-fm\references\ZCMST_RFC_PARAM.def' '{WORK_TEMP}\ZCMST_RFC_PARAM.def'
-$c = Get-Content '{WORK_TEMP}\ZCMST_RFC_PARAM.def' -Raw
-Set-Content '{WORK_TEMP}\ZCMST_RFC_PARAM.def' $c -Encoding Unicode
+$c = [System.IO.File]::ReadAllText('{WORK_TEMP}\ZCMST_RFC_PARAM.def', [System.Text.Encoding]::UTF8)
+[System.IO.File]::WriteAllText('{WORK_TEMP}\ZCMST_RFC_PARAM.def', $c, [System.Text.UnicodeEncoding]::new($false, $true))
 ```
 
 Run:
@@ -560,8 +560,8 @@ The definition file is at:
 Copy and re-encode:
 ```powershell
 Copy-Item '<SKILL_DIR>\..\sap-rfc-wrapper-fm\references\ZCMCT_RFC_PARAM.def' '{WORK_TEMP}\ZCMCT_RFC_PARAM.def'
-$c = Get-Content '{WORK_TEMP}\ZCMCT_RFC_PARAM.def' -Raw
-Set-Content '{WORK_TEMP}\ZCMCT_RFC_PARAM.def' $c -Encoding Unicode
+$c = [System.IO.File]::ReadAllText('{WORK_TEMP}\ZCMCT_RFC_PARAM.def', [System.Text.Encoding]::UTF8)
+[System.IO.File]::WriteAllText('{WORK_TEMP}\ZCMCT_RFC_PARAM.def', $c, [System.Text.UnicodeEncoding]::new($false, $true))
 ```
 
 Run:

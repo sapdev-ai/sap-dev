@@ -188,7 +188,7 @@ The check VBScript template is at `./references/sap_va01_check.vbs`.
 
 Write `{WORK_TEMP}\sap_va01_check_run.ps1`:
 ```powershell
-$content = Get-Content '<SKILL_DIR>\references\sap_va01_check.vbs' -Raw
+$content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_va01_check.vbs', [System.Text.Encoding]::UTF8)
 $content = $content -replace '%%ORDER_NUMBER%%','THE_ORDER_NUMBER'
 # Phase 3.5 session-attach plumbing.
 $sessionPath = ''
@@ -196,7 +196,7 @@ $content = $content -replace '%%SESSION_PATH%%', $sessionPath
 $content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-Set-Content '{WORK_TEMP}\sap_va01_check_run.vbs' $content -Encoding Unicode
+[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_va01_check_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 Replace `THE_ORDER_NUMBER` with the actual order number and `<SKILL_DIR>` with the absolute path to this skill directory.
@@ -227,7 +227,7 @@ The update VBScript template is at `./references/sap_va01_update.vbs`.
 
 Write `{WORK_TEMP}\sap_va01_update_run.ps1`:
 ```powershell
-$content = Get-Content '<SKILL_DIR>\references\sap_va01_update.vbs' -Raw
+$content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_va01_update.vbs', [System.Text.Encoding]::UTF8)
 $content = $content -replace '%%ORDER_NUMBER%%','THE_ORDER_NUMBER'
 $content = $content -replace '%%DEFINITION_FILE%%','THE_DEFINITION_FILE'
 # Phase 3.5 session-attach plumbing.
@@ -236,7 +236,7 @@ $content = $content -replace '%%SESSION_PATH%%', $sessionPath
 $content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-Set-Content '{WORK_TEMP}\sap_va01_update_run.vbs' $content -Encoding Unicode
+[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_va01_update_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 Replace `THE_ORDER_NUMBER`, `THE_DEFINITION_FILE` (absolute path with backslashes), and `<SKILL_DIR>`.
@@ -267,7 +267,7 @@ The create VBScript template is at `./references/sap_va01_create.vbs`.
 
 Write `{WORK_TEMP}\sap_va01_create_run.ps1`:
 ```powershell
-$content = Get-Content '<SKILL_DIR>\references\sap_va01_create.vbs' -Raw
+$content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_va01_create.vbs', [System.Text.Encoding]::UTF8)
 $content = $content -replace '%%ORDER_TYPE%%','THE_ORDER_TYPE'
 $content = $content -replace '%%SALES_ORG%%','THE_SALES_ORG'
 $content = $content -replace '%%DIST_CHANNEL%%','THE_DIST_CHANNEL'
@@ -280,7 +280,7 @@ $content = $content -replace '%%SESSION_PATH%%', $sessionPath
 $content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-Set-Content '{WORK_TEMP}\sap_va01_create_run.vbs' $content -Encoding Unicode
+[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_va01_create_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 Replace all `THE_*` placeholders and `<SKILL_DIR>`.

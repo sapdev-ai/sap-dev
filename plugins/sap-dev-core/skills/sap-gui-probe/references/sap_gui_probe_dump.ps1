@@ -59,7 +59,7 @@ if (-not (Test-Path $outDir)) {
 $stamp     = Get-Date -Format 'yyyyMMddHHmmssfff'
 $runtimeVbs = Join-Path $outDir ("_dump_" + $stamp + ".vbs")
 
-$content = Get-Content $templateVbs -Raw
+$content = [System.IO.File]::ReadAllText($templateVbs, [System.Text.Encoding]::UTF8)
 $content = $content.Replace('%%MODE%%',         $Mode)
 $content = $content.Replace('%%FILTER%%',       $Filter)
 $content = $content.Replace('%%WINDOW%%',       $Window)
@@ -77,7 +77,7 @@ $content = $content -replace `
     '(?m)^(\s*Dim\s+SESSION_PATH\s*:\s*SESSION_PATH\s*=\s*")%%SESSION_PATH%%(")', `
     ('${1}' + $sessionPathLiteral + '${2}')
 
-Set-Content -Path $runtimeVbs -Value $content -Encoding Unicode
+[System.IO.File]::WriteAllText($runtimeVbs, $content, [System.Text.UnicodeEncoding]::new($false, $true))
 
 # 32-bit cscript is required for SAP GUI Scripting COM bindings.
 $cscript = 'C:\Windows\SysWOW64\cscript.exe'

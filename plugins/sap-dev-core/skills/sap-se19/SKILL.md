@@ -175,7 +175,7 @@ cscript:
 
 ```powershell
 $tpl = '<SKILL_DIR>\references\<MODE_VBS>'
-$c = Get-Content $tpl -Raw
+$c = [System.IO.File]::ReadAllText($tpl, [System.Text.Encoding]::UTF8)
 # --- per-mode tokens (only those present in the chosen VBS) ---
 $c = $c -replace '%%ENH_SPOT%%','<ENH_SPOT>'
 $c = $c -replace '%%ENH_IMPL_NAME%%','<ENH_IMPL>'
@@ -195,7 +195,7 @@ $c = $c -replace '%%SESSION_PATH%%',''
 $c = $c -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-Set-Content '{WORK_TEMP}\se19_run.vbs' $c -Encoding Unicode
+[System.IO.File]::WriteAllText('{WORK_TEMP}\se19_run.vbs', $c, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 

@@ -742,7 +742,7 @@ below with the values from Step 1 (UPPERCASE program/status). Leave a token's
 replacement value as an empty string when the operation does not use it.
 
 ```powershell
-$content = Get-Content '{WORK_TEMP}\sap_se41_ops.vbs' -Raw
+$content = [System.IO.File]::ReadAllText('{WORK_TEMP}\sap_se41_ops.vbs', [System.Text.Encoding]::UTF8)
 $content = $content -replace '%%OPERATION%%','THE_OPERATION'
 $content = $content -replace '%%PROGRAM%%','THE_PROGRAM'
 $content = $content -replace '%%STATUS%%','THE_STATUS'
@@ -756,7 +756,7 @@ $content = $content -replace '%%SESSION_PATH%%', ''
 $content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-Set-Content '{WORK_TEMP}\sap_se41_ops_run.vbs' $content -Encoding Unicode
+[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_se41_ops_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 

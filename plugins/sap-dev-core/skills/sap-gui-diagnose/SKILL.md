@@ -138,7 +138,7 @@ Fill the capture template:
 $skillDir   = '<SKILL_DIR>'
 $diagDir    = '{DIAG_DIR}'
 $manifest   = "$diagDir\manifest.tsv"
-$content    = Get-Content "$skillDir\references\sap_gui_diagnose_capture.vbs" -Raw
+$content    = [System.IO.File]::ReadAllText("$skillDir\references\sap_gui_diagnose_capture.vbs", [System.Text.Encoding]::UTF8)
 $content    = $content.Replace('%%OUTPUT_DIR%%', $diagDir)
 $content    = $content.Replace('%%MANIFEST%%',   $manifest)
 # Session-attach plumbing (Phase 3.5 multi-connection aware). Resolution:
@@ -149,7 +149,7 @@ $content    = $content.Replace('%%SESSION_PATH%%',   $sessionPath)
 $content    = $content.Replace('%%ATTACH_LIB_VBS%%', '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs')
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-Set-Content "{WORK_TEMP}\sap_gui_diagnose_capture_run.vbs" $content -Encoding Unicode
+[System.IO.File]::WriteAllText("{WORK_TEMP}\sap_gui_diagnose_capture_run.vbs", $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 

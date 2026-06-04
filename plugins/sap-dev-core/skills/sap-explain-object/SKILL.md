@@ -126,14 +126,14 @@ $r = Read-SapAbapSource -Name '{OBJECT}' -Type '{TYPE}' -OutDir '{OUT}' -WithInc
 SE24 GUI download VBS (skip if `{NOGUI}`):
 ```powershell
 $skillSe24 = '<SKILL_DIR>\..\sap-se24'
-$vbs = (Get-Content "$skillSe24\references\sap_se24_check_and_download.vbs" -Raw).
+$vbs = ([System.IO.File]::ReadAllText("$skillSe24\references\sap_se24_check_and_download.vbs", [System.Text.Encoding]::UTF8)).
   Replace('%%CLASS_NAME%%','{OBJECT}').
   Replace('%%OUTPUT_FILE%%','{OUT}\source.txt').
   Replace('%%SESSION_PATH%%','').
   Replace('%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs')
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-Set-Content '{WORK_TEMP}\explain_dl.vbs' $vbs -Encoding Unicode
+[System.IO.File]::WriteAllText('{WORK_TEMP}\explain_dl.vbs', $vbs, [System.Text.UnicodeEncoding]::new($false, $true))
 ```
 ```bash
 "C:/Windows/SysWOW64/cscript.exe" //NoLogo "{WORK_TEMP}\explain_dl.vbs"

@@ -16,7 +16,7 @@
 '   4.  Compare parameter names and types; check compatibility
 '   5.  Write tab-delimited result file
 '
-' Tokens replaced at run time by PowerShell Set-Content -Encoding Unicode:
+' Tokens replaced at run time by PowerShell [IO.File]::WriteAllText (UTF-16 LE):
 '   %%SAP_SERVER%%     Application server host       e.g. "10.0.0.1"
 '   %%SAP_SYSNR%%      2-digit system number         e.g. "00"
 '   %%SAP_CLIENT%%     3-digit client number         e.g. "100"

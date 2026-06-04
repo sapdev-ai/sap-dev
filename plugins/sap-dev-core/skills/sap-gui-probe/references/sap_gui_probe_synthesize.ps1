@@ -123,6 +123,6 @@ foreach ($file in $actionFiles) {
 
 [void]$sb.AppendLine("WScript.Echo ""REPLAY DONE""")
 
-Set-Content -Path $OutFile -Value $sb.ToString() -Encoding Unicode
+[System.IO.File]::WriteAllText($OutFile, $sb.ToString(), [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Output "synthesized: $OutFile ($($actionFiles.Count) actions)"
 exit 0

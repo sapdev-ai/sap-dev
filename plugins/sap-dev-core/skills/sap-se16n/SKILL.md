@@ -168,7 +168,7 @@ The VBS template is at `./references/sap_se16n.vbs`.
 
 Write `{WORK_TEMP}\sap_se16n_run.ps1`:
 ```powershell
-$content = Get-Content '<SKILL_DIR>\references\sap_se16n.vbs' -Raw
+$content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_se16n.vbs', [System.Text.Encoding]::UTF8)
 $content = $content -replace '%%TABLE_NAME%%','THE_TABLE'
 $content = $content -replace '%%PARAMS_FILE%%','{WORK_TEMP}\se16n_params.txt'
 $content = $content -replace '%%OUTPUT_FILE%%','{WORK_TEMP}\se16n_THE_TABLE.txt'
@@ -186,7 +186,7 @@ $content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scr
 # default for the single-conn case.
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-Set-Content '{WORK_TEMP}\sap_se16n_run.vbs' $content -Encoding Unicode
+[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_se16n_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 Replace `THE_TABLE` with the actual table name (UPPERCASE) and `<SKILL_DIR>` /

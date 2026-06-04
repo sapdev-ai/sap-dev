@@ -127,7 +127,7 @@ If the user provided intervals inline (e.g. `01: 0000000001 – 0099999999`):
 2. Re-encode as Unicode (UTF-16 LE):
    ```powershell
    $c = Get-Content '{WORK_TEMP}\<NRO_NAME>_intervals.txt' -Raw
-   Set-Content '{WORK_TEMP}\<NRO_NAME>_intervals.txt' $c -Encoding Unicode
+   [System.IO.File]::WriteAllText('{WORK_TEMP}\<NRO_NAME>_intervals.txt', $c, [System.Text.UnicodeEncoding]::new($false, $true))
    ```
 3. Confirm by reading the first few lines back.
 
@@ -149,7 +149,7 @@ The check VBScript template is at `./references/sap_snro_check.vbs`.
 
 Write `{WORK_TEMP}\sap_snro_check_run.ps1`:
 ```powershell
-$content = Get-Content '<SKILL_DIR>\references\sap_snro_check.vbs' -Raw
+$content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_snro_check.vbs', [System.Text.Encoding]::UTF8)
 $content = $content.Replace('%%NRO_NAME%%','THE_NRO_NAME')
 # Phase 3.5 session-attach plumbing.
 $sessionPath = ''
@@ -157,7 +157,7 @@ $content = $content.Replace('%%SESSION_PATH%%',   $sessionPath)
 $content = $content.Replace('%%ATTACH_LIB_VBS%%', '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs')
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-Set-Content '{WORK_TEMP}\sap_snro_check_run.vbs' $content -Encoding Unicode
+[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_snro_check_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 Replace `THE_NRO_NAME` with the actual NRO name (UPPERCASE) and `<SKILL_DIR>` with the absolute path to this skill directory.
@@ -193,7 +193,7 @@ Write `{WORK_TEMP}\sap_snro_create_run.ps1`:
 ```powershell
 $skillDir = '<SKILL_DIR>'
 $tpl      = "$skillDir\references\sap_snro_create.vbs"
-$content  = Get-Content $tpl -Raw
+$content  = [System.IO.File]::ReadAllText($tpl, [System.Text.Encoding]::UTF8)
 $content  = $content.Replace('%%NRO_NAME%%',   'THE_NRO_NAME')
 $content  = $content.Replace('%%SHORT_TEXT%%', 'THE_SHORT_TEXT')
 $content  = $content.Replace('%%LONG_TEXT%%',  'THE_LONG_TEXT')
@@ -207,7 +207,7 @@ $content  = $content.Replace('%%SESSION_PATH%%',     $sessionPath)
 $content  = $content.Replace('%%ATTACH_LIB_VBS%%',   '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs')
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-Set-Content '{WORK_TEMP}\sap_snro_create_run.vbs' $content -Encoding Unicode
+[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_snro_create_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 Use `.Replace()` (literal). Replace `<SKILL_DIR>` and all `THE_*` placeholders. If `LONG_TEXT` is blank, pass the short text. If `PERCENTAGE` is blank, pass `10.0`. If package/transport not provided, pass empty strings.
@@ -239,7 +239,7 @@ Write `{WORK_TEMP}\sap_snro_update_run.ps1`:
 ```powershell
 $skillDir = '<SKILL_DIR>'
 $tpl      = "$skillDir\references\sap_snro_update.vbs"
-$content  = Get-Content $tpl -Raw
+$content  = [System.IO.File]::ReadAllText($tpl, [System.Text.Encoding]::UTF8)
 $content  = $content.Replace('%%NRO_NAME%%',   'THE_NRO_NAME')
 $content  = $content.Replace('%%SHORT_TEXT%%', 'THE_SHORT_TEXT')
 $content  = $content.Replace('%%LONG_TEXT%%',  'THE_LONG_TEXT')
@@ -253,7 +253,7 @@ $content  = $content.Replace('%%SESSION_PATH%%',     $sessionPath)
 $content  = $content.Replace('%%ATTACH_LIB_VBS%%',   '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs')
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-Set-Content '{WORK_TEMP}\sap_snro_update_run.vbs' $content -Encoding Unicode
+[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_snro_update_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 Pass empty strings for fields the user does not want to change. The VBS only touches fields whose token is non-empty.
@@ -293,7 +293,7 @@ Write `{WORK_TEMP}\sap_snro_intervals_run.ps1`:
 ```powershell
 $skillDir = '<SKILL_DIR>'
 $tpl      = "$skillDir\references\sap_snro_intervals.vbs"
-$content  = Get-Content $tpl -Raw
+$content  = [System.IO.File]::ReadAllText($tpl, [System.Text.Encoding]::UTF8)
 $content  = $content.Replace('%%NRO_NAME%%',     'THE_NRO_NAME')
 $content  = $content.Replace('%%INTERVALS_FILE%%','THE_INTERVALS_FILE')
 # Phase 3.5 session-attach plumbing.
@@ -302,7 +302,7 @@ $content  = $content.Replace('%%SESSION_PATH%%',   $sessionPath)
 $content  = $content.Replace('%%ATTACH_LIB_VBS%%', '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs')
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-Set-Content '{WORK_TEMP}\sap_snro_intervals_run.vbs' $content -Encoding Unicode
+[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_snro_intervals_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 

@@ -416,7 +416,7 @@ The check VBScript template is at `./references/sap_se11_check.vbs`. It works fo
 
 Write `{WORK_TEMP}\sap_se11_check_run.ps1`:
 ```powershell
-$content = Get-Content '<SKILL_DIR>\references\sap_se11_check.vbs' -Raw
+$content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_se11_check.vbs', [System.Text.Encoding]::UTF8)
 $content = $content -replace '%%OBJECT_TYPE%%','THE_OBJECT_TYPE'
 $content = $content -replace '%%OBJECT_NAME%%','THE_OBJECT_NAME'
 # Phase 3.5 session-attach plumbing.
@@ -425,7 +425,7 @@ $content = $content -replace '%%SESSION_PATH%%', $sessionPath
 $content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-Set-Content '{WORK_TEMP}\sap_se11_check_run.vbs' $content -Encoding Unicode
+[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_se11_check_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 Replace `THE_OBJECT_TYPE` with one of: `TABLE`, `VIEW`, `DATATYPE`, `TYPEGROUP`, `DOMAIN`, `SEARCHHELP`, `LOCKOBJECT`.
@@ -486,7 +486,7 @@ Write a names file with one domain name per line, then fill and run the PS1:
 ```powershell
 # Write domain names to check (one per line)
 $names = "BUKRS`r`nWAERS`r`n"
-[System.IO.File]::WriteAllText("{WORK_TEMP}\check_dom_names.txt", $names, [System.Text.Encoding]::Unicode)
+[System.IO.File]::WriteAllText("{WORK_TEMP}\check_dom_names.txt", $names, [System.Text.UnicodeEncoding]::new($false, $true))
 
 # Fill PS1 template
 $ps = Get-Content '<SKILL_DIR>\references\sap_se11_check_domains.ps1' -Raw -Encoding UTF8
@@ -516,7 +516,7 @@ Same pattern — write names file, fill PS1, run:
 
 ```powershell
 $names = "BUKRS`r`nMATNR`r`nWAERK`r`n"
-[System.IO.File]::WriteAllText("{WORK_TEMP}\check_de_names.txt", $names, [System.Text.Encoding]::Unicode)
+[System.IO.File]::WriteAllText("{WORK_TEMP}\check_de_names.txt", $names, [System.Text.UnicodeEncoding]::new($false, $true))
 
 $ps = Get-Content '<SKILL_DIR>\references\sap_se11_check_dataelements.ps1' -Raw -Encoding UTF8
 $ps = $ps -replace '%%NAMES_FILE%%',   '{WORK_TEMP}\check_de_names.txt'
@@ -663,7 +663,7 @@ Select the appropriate update VBScript based on the object type:
 
 Write `{WORK_TEMP}\sap_se11_update_run.ps1`:
 ```powershell
-$content = Get-Content '<SKILL_DIR>\references\sap_se11_<TYPE>_update.vbs' -Raw
+$content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_se11_<TYPE>_update.vbs', [System.Text.Encoding]::UTF8)
 $content = $content -replace '%%OBJECT_NAME%%','THE_OBJECT_NAME'
 $content = $content -replace '%%DEFINITION_FILE%%','THE_DEFINITION_FILE_PATH'
 $content = $content -replace '%%PACKAGE%%','THE_PACKAGE'
@@ -680,7 +680,7 @@ $content = $content -replace '%%SESSION_PATH%%', $sessionPath
 $content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-Set-Content '{WORK_TEMP}\sap_se11_update_run.vbs' $content -Encoding Unicode
+[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_se11_update_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 Replace `<TYPE>` with the lowercase object type (table, view, dataelement, structure, tabletype, typegroup, domain, searchhelp, lockobject). Replace all `THE_*` placeholders and `<SKILL_DIR>`. `THE_PACKAGE` and `THE_TRANSPORT` are optional — use empty string for local object.
@@ -776,7 +776,7 @@ Select the appropriate create VBScript based on the object type:
 
 Write `{WORK_TEMP}\sap_se11_create_run.ps1`:
 ```powershell
-$content = Get-Content '<SKILL_DIR>\references\sap_se11_<TYPE>_create.vbs' -Raw
+$content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_se11_<TYPE>_create.vbs', [System.Text.Encoding]::UTF8)
 $content = $content -replace '%%OBJECT_NAME%%','THE_OBJECT_NAME'
 $content = $content -replace '%%OBJECT_DESCRIPTION%%','THE_OBJECT_DESCRIPTION'
 $content = $content -replace '%%DEFINITION_FILE%%','THE_DEFINITION_FILE_PATH'
@@ -845,7 +845,7 @@ $content = $content -replace '%%POST_ACTIVATE_VERIFY_VBS%%','<SAP_DEV_CORE_SHARE
 $content = $content -replace '%%POST_ACTIVATE_VERIFY_PS1%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_se11_post_activate_verify.ps1'
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-Set-Content '{WORK_TEMP}\sap_se11_create_run.vbs' $content -Encoding Unicode
+[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_se11_create_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 
@@ -1032,7 +1032,7 @@ The VBScript template is at `./references/sap_se11_change_package.vbs`.
 
 Write `{WORK_TEMP}\sap_se11_chgpkg_run.ps1`:
 ```powershell
-$content = Get-Content '<SKILL_DIR>\references\sap_se11_change_package.vbs' -Raw
+$content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_se11_change_package.vbs', [System.Text.Encoding]::UTF8)
 $content = $content -replace '%%OBJECT_TYPE%%','THE_OBJECT_TYPE'
 $content = $content -replace '%%OBJECT_NAME%%','THE_OBJECT_NAME'
 $content = $content -replace '%%PACKAGE%%','THE_PACKAGE'
@@ -1044,7 +1044,7 @@ $content = $content -replace '%%SESSION_PATH%%', $sessionPath
 $content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-Set-Content '{WORK_TEMP}\sap_se11_chgpkg_run.vbs' $content -Encoding Unicode
+[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_se11_chgpkg_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 Replace `THE_OBJECT_TYPE` (one of TABL/VIEW/DTEL/TTYP/DOMA/SHLP/ENQU), `THE_OBJECT_NAME`
@@ -1135,7 +1135,7 @@ prompt (also Yes) and the post-delete TR popup (`ctxtKO008-TRKORR`).
 
 Write `{WORK_TEMP}\sap_se11_delete_run.ps1`:
 ```powershell
-$content = Get-Content '<SKILL_DIR>\references\sap_se11_delete.vbs' -Raw
+$content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_se11_delete.vbs', [System.Text.Encoding]::UTF8)
 $content = $content -replace '%%OBJECT_TYPE%%','THE_OBJECT_TYPE'
 $content = $content -replace '%%OBJECT_NAME%%','THE_OBJECT_NAME'
 $content = $content -replace '%%TRANSPORT%%','THE_TRANSPORT'
@@ -1146,7 +1146,7 @@ $content = $content -replace '%%SESSION_PATH%%', $sessionPath
 $content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-Set-Content '{WORK_TEMP}\sap_se11_delete_run.vbs' $content -Encoding Unicode
+[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_se11_delete_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 Replace `THE_OBJECT_TYPE`, `THE_OBJECT_NAME`, `THE_TRANSPORT`, and `<SKILL_DIR>`.

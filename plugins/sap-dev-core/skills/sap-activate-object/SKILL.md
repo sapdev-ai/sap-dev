@@ -189,7 +189,7 @@ Pick the template by transaction:
 
 Token-replace into `{WORK_TEMP}\sap_activate_<txn>_run.ps1`:
 ```powershell
-$content = Get-Content '<SKILL_DIR>\references\sap_activate_<TXN>.vbs' -Raw
+$content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_activate_<TXN>.vbs', [System.Text.Encoding]::UTF8)
 $content = $content -replace '%%OBJECT_NAME%%','THE_NAME'
 $content = $content -replace '%%OBJECT_TYPE%%','THE_TYPE'   # SE11 only
 $content = $content -replace '%%ACTIVATION_LOG_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_activation_log.vbs'   # SE11 only
@@ -200,7 +200,7 @@ $content = $content -replace '%%SESSION_PATH%%', $sessionPath
 $content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-Set-Content '{WORK_TEMP}\sap_activate_<TXN>_run.vbs' $content -Encoding Unicode
+[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_activate_<TXN>_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 

@@ -185,7 +185,7 @@ single run.
 
 Write `{WORK_TEMP}\sap_se01_create_run.ps1`:
 ```powershell
-$content = Get-Content '<SKILL_DIR>\references\sap_se01_create.vbs' -Raw
+$content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_se01_create.vbs', [System.Text.Encoding]::UTF8)
 $content = $content -replace '%%REQUEST_TYPE%%','THE_TYPE'
 $content = $content -replace '%%DESCRIPTION%%','THE_DESC'
 $content = $content -replace '%%SESSION_LOCK_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_session_lock.vbs'
@@ -195,7 +195,7 @@ $content = $content -replace '%%SESSION_PATH%%', $sessionPath
 $content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-Set-Content '{WORK_TEMP}\sap_se01_create_run.vbs' $content -Encoding Unicode
+[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_se01_create_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 Replace `THE_TYPE` (W or C), `THE_DESC` (short text), and `<SKILL_DIR>` /
@@ -341,7 +341,7 @@ Template: `./references/sap_se01_release.vbs`. Token: `%%TRANSPORT%%`.
 
 Write `{WORK_TEMP}\sap_se01_release_run.ps1`:
 ```powershell
-$content = Get-Content '<SKILL_DIR>\references\sap_se01_release.vbs' -Raw
+$content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_se01_release.vbs', [System.Text.Encoding]::UTF8)
 $content = $content -replace '%%TRANSPORT%%','THE_TR'
 # Phase 3.5 session-attach plumbing.
 $sessionPath = ''
@@ -349,7 +349,7 @@ $content = $content -replace '%%SESSION_PATH%%', $sessionPath
 $content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-Set-Content '{WORK_TEMP}\sap_se01_release_run.vbs' $content -Encoding Unicode
+[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_se01_release_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 

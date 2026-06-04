@@ -232,7 +232,7 @@ Set-Content '{WORK_TEMP}\sap_checkfm_ddic_helper.ps1' $d -Encoding UTF8
 
 Write `{WORK_TEMP}\sap_checkfm_run.ps1`:
 ```powershell
-$content = Get-Content '<SKILL_DIR>\references\sap_check_fm.vbs' -Raw
+$content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_check_fm.vbs', [System.Text.Encoding]::UTF8)
 $content = $content -replace '%%SAP_SERVER%%',         'THE_SERVER'
 $content = $content -replace '%%SAP_SYSNR%%',          'THE_SYSNR'
 $content = $content -replace '%%SAP_CLIENT%%',         'THE_CLIENT'
@@ -247,7 +247,7 @@ $content = $content -replace '%%FM_RESULT_FILE%%',     '{WORK_TEMP}\sap_checkfm_
 $content = $content -replace '%%DDIC_HELPER_PS1%%',    '{WORK_TEMP}\sap_checkfm_ddic_helper.ps1'
 $content = $content -replace '%%DDIC_REQUEST_FILE%%',  '{WORK_TEMP}\sap_checkfm_ddic_request.txt'
 $content = $content -replace '%%DDIC_RESULT_FILE%%',   '{WORK_TEMP}\sap_checkfm_ddic_result.tsv'
-Set-Content '{WORK_TEMP}\sap_checkfm_run.vbs' $content -Encoding Unicode
+[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_checkfm_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 Replace all `THE_*` placeholders and `<SKILL_DIR>` / `<SAP_DEV_CORE_SHARED_DIR>` / `<FM_HELPER_TEMPLATE>` with absolute paths.

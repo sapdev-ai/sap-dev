@@ -120,13 +120,13 @@ Write `{WORK_TEMP}\sap_gui_object_details_run.ps1`:
 ```powershell
 $skillDir = '<SKILL_DIR>'
 $workTemp = '{WORK_TEMP}'
-$content  = Get-Content "$skillDir\references\sap_gui_object_details.vbs" -Raw
+$content  = [System.IO.File]::ReadAllText("$skillDir\references\sap_gui_object_details.vbs", [System.Text.Encoding]::UTF8)
 $content  = $content.Replace('%%MODE%%','THE_MODE')
 $content  = $content.Replace('%%FILTER%%','THE_FILTER')
 $content  = $content.Replace('%%WINDOW%%','THE_WINDOW')
 $content  = $content.Replace('%%MAX_DEPTH%%','10')
 $content  = $content.Replace('%%OUTPUT_FILE%%','THE_OUTPUT_FILE')
-Set-Content "$workTemp\sap_gui_object_details_run.vbs" $content -Encoding Unicode
+[System.IO.File]::WriteAllText("$workTemp\sap_gui_object_details_run.vbs", $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 

@@ -136,7 +136,7 @@ Every GUI operation uses the same token-substitution + execute pattern. Write
 with **32-bit** cscript.
 
 ```powershell
-$content = Get-Content '<SKILL_DIR>\references\<TEMPLATE>.vbs' -Raw
+$content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\<TEMPLATE>.vbs', [System.Text.Encoding]::UTF8)
 # --- mode-specific tokens (see each step) ---
 $content = $content -replace '%%PROJECT_NAME%%','THE_PROJECT'
 # ... e.g. %%ENHANCEMENTS%% / %%SHORT_TEXT%% / %%PACKAGE%% / %%TRANSPORT%% ...
@@ -146,7 +146,7 @@ $content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scr
 $content = $content -replace '%%SESSION_LOCK_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_session_lock.vbs'
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-Set-Content '{WORK_TEMP}\<TEMPLATE>_run.vbs' $content -Encoding Unicode
+[System.IO.File]::WriteAllText('{WORK_TEMP}\<TEMPLATE>_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 

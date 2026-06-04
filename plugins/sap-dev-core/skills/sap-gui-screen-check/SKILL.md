@@ -96,10 +96,10 @@ running the probe once with an empty OK-code (assess-only, no navigation):
 
 ```powershell
 $skill = '<SKILL_DIR>'
-$vbs = (Get-Content "$skill\references\sap_screen_check_probe.vbs" -Raw) `
+$vbs = ([System.IO.File]::ReadAllText("$skill\references\sap_screen_check_probe.vbs", [System.Text.Encoding]::UTF8)) `
        -replace '%%SESSION_PATH%%','' -replace '%%OKCODE%%','' -replace '%%REQUIRED_IDS%%',''
 $run = '{WORK_TEMP}\sap_screen_check_guard.vbs'
-[System.IO.File]::WriteAllText($run, $vbs, [System.Text.Encoding]::Unicode)
+[System.IO.File]::WriteAllText($run, $vbs, [System.Text.UnicodeEncoding]::new($false, $true))
 & C:\Windows\SysWOW64\cscript.exe //NoLogo $run
 Remove-Item $run -ErrorAction SilentlyContinue
 ```

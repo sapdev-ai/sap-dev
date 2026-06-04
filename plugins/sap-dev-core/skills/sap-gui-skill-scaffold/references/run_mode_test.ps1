@@ -94,7 +94,7 @@ if (-not $variantPath -or -not (Test-Path $variantPath)) {
 }
 
 # --- 2. Substitute parameters + session-attach tokens ------------------------
-$content = Get-Content $variantPath -Raw
+$content = [System.IO.File]::ReadAllText($variantPath, [System.Text.Encoding]::UTF8)
 
 $paramsObj = $null
 try { $paramsObj = $ParamsJson | ConvertFrom-Json } catch { $paramsObj = $null }
@@ -123,7 +123,7 @@ $content = $content.Replace('%%ATTACH_LIB_VBS%%', "$attachLib")
 $env:SAPDEV_SESSION_PATH = "$effSession"
 
 $runtimeVbs = Join-Path $OutputDir 'run.vbs'
-Set-Content -Path $runtimeVbs -Value $content -Encoding Unicode
+[System.IO.File]::WriteAllText($runtimeVbs, $content, [System.Text.UnicodeEncoding]::new($false, $true))
 
 # --- 3. Run via 32-bit cscript -----------------------------------------------
 $cscript = 'C:\Windows\SysWOW64\cscript.exe'

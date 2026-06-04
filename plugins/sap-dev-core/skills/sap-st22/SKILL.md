@@ -99,7 +99,7 @@ $vbs = $vbs.Replace('%%ATTACH_LIB_VBS%%', "$shared\sap_attach_lib.vbs")
 $vbs = $vbs.Replace('%%SESSION_PATH%%',   '')   # or the --session value
 $vbs = $vbs.Replace('%%PARAMS_FILE%%',    '{RUN_DIR}\st22_params.txt')
 $vbs = $vbs.Replace('%%OUTPUT_FILE%%',    '{RUN_DIR}\evidence_st22.json')
-[IO.File]::WriteAllText('{RUN_DIR}\st22_run.vbs', $vbs, [Text.Encoding]::Unicode)
+[IO.File]::WriteAllText('{RUN_DIR}\st22_run.vbs', $vbs, [System.Text.UnicodeEncoding]::new($false, $true))
 ```
 
 ```bash

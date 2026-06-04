@@ -189,7 +189,7 @@ $lines += "PARAM1`tI`tPROGNAME`t<?xml ...SCALAR_XML_HERE...>"
 $lines += "SOURCE_LINES`tT`tABAPTXT255_TAB`t<?xml ...TABLE_XML_HERE...>"
 $lines += "RESULT`tE`tBAPIRETURN`t"
 $content = $lines -join "`r`n"
-[System.IO.File]::WriteAllText('{WORK_TEMP}\{FM_NAME}_params.txt', $content, [System.Text.Encoding]::Unicode)
+[System.IO.File]::WriteAllText('{WORK_TEMP}\{FM_NAME}_params.txt', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 

@@ -141,7 +141,7 @@ Write `{WORK_TEMP}\sap_trace_run.ps1`:
 ```powershell
 $tpl = '<SKILL_DIR>\references\sap_trace_st05.vbs'   # or ..._sat.vbs
 $out = '{WORK_TEMP}\trace_st05_RUNTS.txt'             # RUNTS = a timestamp string
-$content = Get-Content $tpl -Raw
+$content = [System.IO.File]::ReadAllText($tpl, [System.Text.Encoding]::UTF8)
 $content = $content -replace '%%OUTPUT_FILE%%', $out
 $content = $content -replace '%%FILTER_USER%%', 'THE_USER'
 $content = $content -replace '%%FROM_TIME%%',   'HH:MM:SS'
@@ -155,7 +155,7 @@ $content = $content -replace '%%SESSION_PATH%%',   $sessionPath
 $content = $content -replace '%%ATTACH_LIB_VBS%%', '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-Set-Content '{WORK_TEMP}\sap_trace_run.vbs' $content -Encoding Unicode
+[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_trace_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 

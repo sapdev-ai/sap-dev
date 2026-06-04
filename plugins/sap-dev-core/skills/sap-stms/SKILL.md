@@ -211,7 +211,7 @@ $vbs = $vbs.Replace('%%TARGET_CLIENT%%',   'THE_CLIENT')
 $vbs = $vbs.Replace('%%IMMEDIATE%%',       '1')       # 1 = import now, 0 = scheduled
 $vbs = $vbs.Replace('%%LEAVE_IN_QUEUE%%',  '0')
 $vbs = $vbs.Replace('%%OUTPUT_FILE%%',     '{RUN}\import.json')
-[IO.File]::WriteAllText('{RUN}\stms_import_run.vbs', $vbs, [Text.Encoding]::Unicode)
+[IO.File]::WriteAllText('{RUN}\stms_import_run.vbs', $vbs, [System.Text.UnicodeEncoding]::new($false, $true))
 ```
 
 ```bash

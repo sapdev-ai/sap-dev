@@ -152,7 +152,7 @@ The check VBScript template is at `./references/sap_se91_check.vbs`.
 
 Write `{WORK_TEMP}\sap_se91_check_run.ps1`:
 ```powershell
-$content = Get-Content '<SKILL_DIR>\references\sap_se91_check.vbs' -Raw
+$content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_se91_check.vbs', [System.Text.Encoding]::UTF8)
 $content = $content -replace '%%MSG_CLASS%%','THE_MSG_CLASS'
 # Phase 3.5 session-attach plumbing.
 $sessionPath = ''
@@ -160,7 +160,7 @@ $content = $content -replace '%%SESSION_PATH%%', $sessionPath
 $content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-Set-Content '{WORK_TEMP}\sap_se91_check_run.vbs' $content -Encoding Unicode
+[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_se91_check_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 Replace `THE_MSG_CLASS` with the actual message class name (UPPERCASE) and `<SKILL_DIR>` with the absolute path to this skill directory.
@@ -275,7 +275,7 @@ The update VBScript template is at `./references/sap_se91_update.vbs`.
 
 Write `{WORK_TEMP}\sap_se91_update_run.ps1`:
 ```powershell
-$content = Get-Content '<SKILL_DIR>\references\sap_se91_update.vbs' -Raw
+$content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_se91_update.vbs', [System.Text.Encoding]::UTF8)
 $content = $content -replace '%%MSG_CLASS%%','THE_MSG_CLASS'
 $content = $content -replace '%%MESSAGES_FILE%%','THE_MESSAGES_FILE'
 $content = $content -replace '%%PACKAGE%%','THE_PACKAGE'
@@ -286,7 +286,7 @@ $content = $content -replace '%%SESSION_PATH%%', $sessionPath
 $content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-Set-Content '{WORK_TEMP}\sap_se91_update_run.vbs' $content -Encoding Unicode
+[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_se91_update_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 Replace `THE_MSG_CLASS` (UPPERCASE), `THE_MESSAGES_FILE` (absolute path with backslashes), `THE_PACKAGE`, `THE_TRANSPORT`, and `<SKILL_DIR>`. If package/transport not provided, replace with empty strings.
@@ -317,7 +317,7 @@ The create VBScript template is at `./references/sap_se91_create.vbs`.
 
 Write `{WORK_TEMP}\sap_se91_create_run.ps1`:
 ```powershell
-$content = Get-Content '<SKILL_DIR>\references\sap_se91_create.vbs' -Raw
+$content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_se91_create.vbs', [System.Text.Encoding]::UTF8)
 $content = $content -replace '%%MSG_CLASS%%','THE_MSG_CLASS'
 $content = $content -replace '%%SHORT_TEXT%%','THE_SHORT_TEXT'
 $content = $content -replace '%%MESSAGES_FILE%%','THE_MESSAGES_FILE'
@@ -329,7 +329,7 @@ $content = $content -replace '%%SESSION_PATH%%', $sessionPath
 $content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-Set-Content '{WORK_TEMP}\sap_se91_create_run.vbs' $content -Encoding Unicode
+[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_se91_create_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 
@@ -428,7 +428,7 @@ Write `{WORK_TEMP}\sap_se91_change_props_run.ps1`:
 ```powershell
 $skillDir = '<SKILL_DIR>'
 $tpl      = "$skillDir\references\sap_se91_change_props.vbs"
-$content  = Get-Content $tpl -Raw
+$content  = [System.IO.File]::ReadAllText($tpl, [System.Text.Encoding]::UTF8)
 $content  = $content.Replace('%%MSG_CLASS%%',   'THE_MSG_CLASS')
 $content  = $content.Replace('%%SHORT_TEXT%%',  'THE_SHORT_TEXT')
 $content  = $content.Replace('%%RESPONSIBLE%%', 'THE_RESPONSIBLE')
@@ -439,7 +439,7 @@ $content  = $content.Replace('%%SESSION_PATH%%',     $sessionPath)
 $content  = $content.Replace('%%ATTACH_LIB_VBS%%',   '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs')
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-Set-Content '{WORK_TEMP}\sap_se91_change_props_run.vbs' $content -Encoding Unicode
+[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_se91_change_props_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 Use `.Replace()` (literal) — short-text values may contain regex

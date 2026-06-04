@@ -197,7 +197,7 @@ The check VBScript template is at `./references/sap_se24_check.vbs`.
 
 Write `{WORK_TEMP}\sap_se24_check_run.ps1`:
 ```powershell
-$content = Get-Content '<SKILL_DIR>\references\sap_se24_check.vbs' -Raw
+$content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_se24_check.vbs', [System.Text.Encoding]::UTF8)
 $content = $content -replace '%%CLASS_NAME%%','THE_CLASS_NAME'
 # Phase 3.5 session-attach plumbing.
 $sessionPath = ''
@@ -205,7 +205,7 @@ $content = $content -replace '%%SESSION_PATH%%', $sessionPath
 $content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-Set-Content '{WORK_TEMP}\sap_se24_check_run.vbs' $content -Encoding Unicode
+[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_se24_check_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 Replace `THE_CLASS_NAME` with the actual class name (UPPERCASE) and `<SKILL_DIR>` with the absolute path to this skill directory.
@@ -281,7 +281,7 @@ per class.
 
 Write `{WORK_TEMP}\sap_se24_update_run.ps1`:
 ```powershell
-$content = Get-Content '<SKILL_DIR>\references\sap_se24_update.vbs' -Raw
+$content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_se24_update.vbs', [System.Text.Encoding]::UTF8)
 $content = $content -replace '%%CLASS_NAME%%','THE_CLASS_NAME'
 $content = $content -replace '%%ABAP_SOURCE_FILE%%','THE_SOURCE_PATH'
 $content = $content -replace '%%PACKAGE%%','THE_PACKAGE'
@@ -294,7 +294,7 @@ $content = $content -replace '%%SESSION_PATH%%', $sessionPath
 $content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-Set-Content '{WORK_TEMP}\sap_se24_update_run.vbs' $content -Encoding Unicode
+[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_se24_update_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 Replace `THE_CLASS_NAME` (UPPERCASE), `THE_SOURCE_PATH` (absolute path with backslashes),
@@ -361,7 +361,7 @@ It does NOT upload source code. After creation, you must:
 
 Write `{WORK_TEMP}\sap_se24_create_run.ps1`:
 ```powershell
-$content = Get-Content '<SKILL_DIR>\references\sap_se24_create.vbs' -Raw
+$content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_se24_create.vbs', [System.Text.Encoding]::UTF8)
 $content = $content -replace '%%CLASS_NAME%%','THE_CLASS_NAME'
 $content = $content -replace '%%CLASS_DESCRIPTION%%','THE_DESCRIPTION'
 $content = $content -replace '%%PACKAGE%%','THE_PACKAGE'
@@ -372,7 +372,7 @@ $content = $content -replace '%%SESSION_PATH%%', $sessionPath
 $content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-Set-Content '{WORK_TEMP}\sap_se24_create_run.vbs' $content -Encoding Unicode
+[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_se24_create_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 Replace all `THE_*` placeholders (PACKAGE/TRANSPORT blank if local $TMP) and `<SKILL_DIR>`.
@@ -437,7 +437,7 @@ The reference VBS is at `./references/sap_se24_test_classes.vbs`.
 
 Write `{WORK_TEMP}\sap_se24_test_classes_run.ps1`:
 ```powershell
-$content = Get-Content '<SKILL_DIR>\references\sap_se24_test_classes.vbs' -Raw
+$content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_se24_test_classes.vbs', [System.Text.Encoding]::UTF8)
 $content = $content -replace '%%CLASS_NAME%%','THE_CLASS_NAME'
 $content = $content -replace '%%TEST_SOURCE_FILE%%','THE_TEST_SOURCE_PATH'
 $content = $content -replace '%%TRANSPORT%%','THE_TRANSPORT'
@@ -448,7 +448,7 @@ $content = $content -replace '%%SESSION_PATH%%', $sessionPath
 $content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-Set-Content '{WORK_TEMP}\sap_se24_test_classes_run.vbs' $content -Encoding Unicode
+[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_se24_test_classes_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 Replace `THE_CLASS_NAME` (UPPERCASE), `THE_TEST_SOURCE_PATH` (absolute path with
@@ -528,7 +528,7 @@ Write `{WORK_TEMP}\sap_se24_change_props_run.ps1`:
 ```powershell
 $skillDir = '<SKILL_DIR>'
 $tpl      = "$skillDir\references\sap_se24_change_props.vbs"
-$content  = Get-Content $tpl -Raw
+$content  = [System.IO.File]::ReadAllText($tpl, [System.Text.Encoding]::UTF8)
 $content  = $content.Replace('%%CLASS_NAME%%',  'THE_CLASS_NAME')
 $content  = $content.Replace('%%DESCRIPTION%%', 'THE_DESCRIPTION')
 $content  = $content.Replace('%%STATUS%%',      'THE_STATUS')
@@ -541,7 +541,7 @@ $content  = $content.Replace('%%SESSION_PATH%%',     $sessionPath)
 $content  = $content.Replace('%%ATTACH_LIB_VBS%%',   '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs')
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-Set-Content '{WORK_TEMP}\sap_se24_change_props_run.vbs' $content -Encoding Unicode
+[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_se24_change_props_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 Use `.Replace()` (literal) — description text may contain regex
@@ -656,7 +656,7 @@ Write `{WORK_TEMP}\sap_se24_delete_run.ps1`:
 ```powershell
 $skillDir = '<SKILL_DIR>'
 $tpl      = "$skillDir\references\sap_se24_delete.vbs"
-$content  = Get-Content $tpl -Raw
+$content  = [System.IO.File]::ReadAllText($tpl, [System.Text.Encoding]::UTF8)
 $content  = $content.Replace('%%CLASS_NAME%%',      'THE_CLASS_NAME')
 $content  = $content.Replace('%%TRANSPORT%%',       'THE_TRANSPORT')
 $content  = $content.Replace('%%SESSION_LOCK_VBS%%', '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_session_lock.vbs')
@@ -665,7 +665,7 @@ $content  = $content.Replace('%%SESSION_PATH%%',     $sessionPath)
 $content  = $content.Replace('%%ATTACH_LIB_VBS%%',   '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs')
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-Set-Content '{WORK_TEMP}\sap_se24_delete_run.vbs' $content -Encoding Unicode
+[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_se24_delete_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 Replace `<SKILL_DIR>` and the `THE_*` placeholders.
@@ -809,7 +809,7 @@ $outFile   = 'THE_OUTPUT_FILE'
 $skillDir  = 'THE_SKILL_DIR'
 $workTemp  = 'THE_WORK_TEMP'
 
-$content = Get-Content "$skillDir\references\sap_se24_check_and_download.vbs" -Raw
+$content = [System.IO.File]::ReadAllText("$skillDir\references\sap_se24_check_and_download.vbs", [System.Text.Encoding]::UTF8)
 $content = $content -replace '%%CLASS_NAME%%',  $className
 $content = $content -replace '%%OUTPUT_FILE%%', $outFile
 # Phase 3.5 session-attach plumbing.
@@ -818,7 +818,7 @@ $content = $content -replace '%%SESSION_PATH%%',   $sessionPath
 $content = $content -replace '%%ATTACH_LIB_VBS%%', '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp $workTemp
-Set-Content "$workTemp\sap_se24_check_and_download_run.vbs" $content -Encoding Unicode
+[System.IO.File]::WriteAllText("$workTemp\sap_se24_check_and_download_run.vbs", $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 

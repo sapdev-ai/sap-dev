@@ -16,7 +16,7 @@
 '  5d.  Validate SQL field references against table definitions
 '   6.  Write tab-delimited result file
 '
-' Tokens replaced at run time by PowerShell Set-Content -Encoding Unicode:
+' Tokens replaced at run time by PowerShell [IO.File]::WriteAllText (UTF-16 LE):
 '   %%SAP_SERVER%%     Application server host         (empty = offline mode)
 '   %%SAP_SYSNR%%      2-digit system number
 '   %%SAP_CLIENT%%     3-digit client number

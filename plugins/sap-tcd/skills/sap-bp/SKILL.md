@@ -160,7 +160,7 @@ The check VBScript template is at `./references/sap_bp_check.vbs`.
 
 Write `{WORK_TEMP}\sap_bp_check_run.ps1`:
 ```powershell
-$content = Get-Content '<SKILL_DIR>\references\sap_bp_check.vbs' -Raw
+$content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_bp_check.vbs', [System.Text.Encoding]::UTF8)
 $content = $content -replace '%%BP_NUMBER%%','THE_BP_NUMBER'
 # Phase 3.5 session-attach plumbing.
 $sessionPath = ''
@@ -168,7 +168,7 @@ $content = $content -replace '%%SESSION_PATH%%', $sessionPath
 $content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-Set-Content '{WORK_TEMP}\sap_bp_check_run.vbs' $content -Encoding Unicode
+[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_bp_check_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 Replace `THE_BP_NUMBER` with the actual BP number and `<SKILL_DIR>` with the absolute path to this skill directory.
@@ -199,7 +199,7 @@ The update VBScript template is at `./references/sap_bp_update.vbs`.
 
 Write `{WORK_TEMP}\sap_bp_update_run.ps1`:
 ```powershell
-$content = Get-Content '<SKILL_DIR>\references\sap_bp_update.vbs' -Raw
+$content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_bp_update.vbs', [System.Text.Encoding]::UTF8)
 $content = $content -replace '%%BP_NUMBER%%','THE_BP_NUMBER'
 $content = $content -replace '%%DEFINITION_FILE%%','THE_DEFINITION_FILE'
 # Phase 3.5 session-attach plumbing.
@@ -208,7 +208,7 @@ $content = $content -replace '%%SESSION_PATH%%', $sessionPath
 $content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-Set-Content '{WORK_TEMP}\sap_bp_update_run.vbs' $content -Encoding Unicode
+[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_bp_update_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 Replace `THE_BP_NUMBER`, `THE_DEFINITION_FILE` (absolute path with backslashes), and `<SKILL_DIR>`.
@@ -253,7 +253,7 @@ The create VBScript template is at `./references/sap_bp_create.vbs`.
 
 Write `{WORK_TEMP}\sap_bp_create_run.ps1`:
 ```powershell
-$content = Get-Content '<SKILL_DIR>\references\sap_bp_create.vbs' -Raw
+$content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_bp_create.vbs', [System.Text.Encoding]::UTF8)
 $content = $content -replace '%%BP_NUMBER%%','THE_BP_NUMBER'
 $content = $content -replace '%%BP_ROLE%%','THE_BP_ROLE'
 $content = $content -replace '%%BP_GROUPING%%','THE_BP_GROUPING'
@@ -265,7 +265,7 @@ $content = $content -replace '%%SESSION_PATH%%', $sessionPath
 $content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-Set-Content '{WORK_TEMP}\sap_bp_create_run.vbs' $content -Encoding Unicode
+[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_bp_create_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 Replace all `THE_*` placeholders and `<SKILL_DIR>`.

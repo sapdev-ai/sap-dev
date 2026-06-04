@@ -196,9 +196,9 @@ For each step (using SE38 as the example), generate a per-probe PS1, run it, the
 
 ```powershell
 # Example for probe 1 (SE38):
-$content = Get-Content '<SKILL_DIR>\..\sap-se38\references\sap_se38_check.vbs' -Raw
+$content = [System.IO.File]::ReadAllText('<SKILL_DIR>\..\sap-se38\references\sap_se38_check.vbs', [System.Text.Encoding]::UTF8)
 $content = $content -replace '%%PROGRAM_NAME%%','THE_OBJECT_NAME'
-Set-Content '{WORK_TEMP}\sap_check_fix_probe_se38.vbs' $content -Encoding Unicode
+[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_check_fix_probe_se38.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 ```
 
 Then:

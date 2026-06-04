@@ -339,7 +339,7 @@ $content = $content.Replace('%%SAP_CLIENT%%','THE_CLIENT')
 $content = $content.Replace('%%SAP_USER%%','THE_USER')
 $content = $content.Replace('%%SAP_PASSWORD%%','THE_PASSWORD')
 $content = $content.Replace('%%SAP_LANGUAGE%%','THE_LANGUAGE')
-[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_login_run.vbs', $content, [System.Text.Encoding]::Unicode)
+[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_login_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 Replace all `THE_*` placeholders with actual values from Step 2.

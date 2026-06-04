@@ -218,7 +218,7 @@ The check VBScript template is at `./references/sap_se37_check.vbs`.
 
 Write `{WORK_TEMP}\sap_se37_check_run.ps1`:
 ```powershell
-$content = Get-Content '<SKILL_DIR>\references\sap_se37_check.vbs' -Raw
+$content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_se37_check.vbs', [System.Text.Encoding]::UTF8)
 $content = $content -replace '%%FM_NAME%%','THE_FM_NAME'
 # Phase 3.5 session-attach plumbing.
 $sessionPath = ''
@@ -226,7 +226,7 @@ $content = $content -replace '%%SESSION_PATH%%', $sessionPath
 $content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-Set-Content '{WORK_TEMP}\sap_se37_check_run.vbs' $content -Encoding Unicode
+[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_se37_check_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 Replace `THE_FM_NAME` with the actual function module name (UPPERCASE) and `<SKILL_DIR>` with the absolute path to this skill directory.
@@ -494,13 +494,14 @@ $content = $content.Replace('%%SESSION_PATH%%',     $sessionPath)
 $content = $content.Replace('%%ATTACH_LIB_VBS%%',   '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs')
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp $workTemp
-[System.IO.File]::WriteAllText("$workTemp\sap_se37_update_run.vbs", $content, [System.Text.Encoding]::Unicode)
+[System.IO.File]::WriteAllText("$workTemp\sap_se37_update_run.vbs", $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host "VBS written: $workTemp\sap_se37_update_run.vbs"
 Write-Host 'Done'
 ```
 
-> **Important**: Use `[System.IO.File]::WriteAllText(..., Unicode)` (UTF-16
-> LE w/BOM). `Set-Content -Encoding Unicode` works too.
+> **Important**: Use `[System.IO.File]::WriteAllText(..., [System.Text.UnicodeEncoding]::new($false,$true))`
+> (UTF-16 LE w/BOM). Do NOT use `Set-Content -Encoding Unicode` — it can
+> double-encode the file on some PowerShell versions.
 
 Fill these placeholders before writing:
 
@@ -772,7 +773,7 @@ if ($exceptions.Count -gt 0) { $ifaceCode += Build-ExceptTabCode $exceptions }
 $ifaceCode += "Err.Clear : On Error GoTo 0`r`n"
 
 # ── 3. Fill template tokens and write VBS ───────────────────────
-$content = Get-Content "$skillDir\references\sap_se37_create.vbs" -Raw
+$content = [System.IO.File]::ReadAllText("$skillDir\references\sap_se37_create.vbs", [System.Text.Encoding]::UTF8)
 $content = $content -replace '%%FM_NAME%%',        $fmName
 $content = $content -replace '%%FUNC_GROUP%%',     $funcGroup
 $content = $content -replace '%%FM_SHORT_TEXT%%',  $shortText
@@ -788,7 +789,7 @@ $content = $content -replace '%%SESSION_PATH%%',   $sessionPath
 $content = $content -replace '%%ATTACH_LIB_VBS%%', '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp $workTemp
-Set-Content "$workTemp\sap_se37_create_run.vbs" $content -Encoding Unicode
+[System.IO.File]::WriteAllText("$workTemp\sap_se37_create_run.vbs", $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host "VBS written: $workTemp\sap_se37_create_run.vbs"
 Write-Host 'Done'
 ```
@@ -860,7 +861,7 @@ Write `{WORK_TEMP}\sap_se37_change_attrs_run.ps1`:
 ```powershell
 $skillDir = '<SKILL_DIR>'
 $tpl      = "$skillDir\references\sap_se37_change_attrs.vbs"
-$content  = Get-Content $tpl -Raw
+$content  = [System.IO.File]::ReadAllText($tpl, [System.Text.Encoding]::UTF8)
 $content  = $content.Replace('%%FM_NAME%%',         'THE_FM_NAME')
 $content  = $content.Replace('%%SHORT_TEXT%%',      'THE_SHORT_TEXT')
 $content  = $content.Replace('%%PROCESSING_TYPE%%', 'THE_PROCESSING_TYPE')
@@ -873,7 +874,7 @@ $content  = $content.Replace('%%SESSION_PATH%%',     $sessionPath)
 $content  = $content.Replace('%%ATTACH_LIB_VBS%%',   '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs')
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-Set-Content '{WORK_TEMP}\sap_se37_change_attrs_run.vbs' $content -Encoding Unicode
+[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_se37_change_attrs_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 Use `.Replace()` (literal) — short text may contain regex metacharacters.
@@ -976,7 +977,7 @@ Write `{WORK_TEMP}\sap_se37_reassign_fugr_run.ps1`:
 ```powershell
 $skillDir = '<SKILL_DIR>'
 $tpl      = "$skillDir\references\sap_se37_reassign_fugr.vbs"
-$content  = Get-Content $tpl -Raw
+$content  = [System.IO.File]::ReadAllText($tpl, [System.Text.Encoding]::UTF8)
 $content  = $content.Replace('%%FM_NAME%%',        'THE_FM_NAME')
 $content  = $content.Replace('%%NEW_FUNC_GROUP%%', 'THE_NEW_FUNC_GROUP')
 $content  = $content.Replace('%%TRANSPORT%%',      'THE_TRANSPORT')
@@ -987,7 +988,7 @@ $content  = $content.Replace('%%SESSION_PATH%%',     $sessionPath)
 $content  = $content.Replace('%%ATTACH_LIB_VBS%%',   '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs')
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-Set-Content '{WORK_TEMP}\sap_se37_reassign_fugr_run.vbs' $content -Encoding Unicode
+[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_se37_reassign_fugr_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 Replace `<SKILL_DIR>` and the `THE_*` placeholders.
@@ -1072,7 +1073,7 @@ Write `{WORK_TEMP}\sap_se37_delete_run.ps1`:
 ```powershell
 $skillDir = '<SKILL_DIR>'
 $tpl      = "$skillDir\references\sap_se37_delete.vbs"
-$content  = Get-Content $tpl -Raw
+$content  = [System.IO.File]::ReadAllText($tpl, [System.Text.Encoding]::UTF8)
 $content  = $content.Replace('%%FM_NAME%%',         'THE_FM_NAME')
 $content  = $content.Replace('%%TRANSPORT%%',       'THE_TRANSPORT')
 $content  = $content.Replace('%%SESSION_LOCK_VBS%%', '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_session_lock.vbs')
@@ -1081,7 +1082,7 @@ $content  = $content.Replace('%%SESSION_PATH%%',     $sessionPath)
 $content  = $content.Replace('%%ATTACH_LIB_VBS%%',   '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs')
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-Set-Content '{WORK_TEMP}\sap_se37_delete_run.vbs' $content -Encoding Unicode
+[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_se37_delete_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 Replace `<SKILL_DIR>` and the `THE_*` placeholders.
@@ -1193,7 +1194,7 @@ $enc = [System.Text.Encoding]::Unicode
 $text = $enc.GetString($bytes).TrimStart([char]0xFEFF)
 # Apply fixes — example: replace typo
 $text = $text -replace '(?i)bad_variable_name','correct_name'
-[System.IO.File]::WriteAllText('{WORK_TEMP}\fm_src_fixed.txt', $text, [System.Text.Encoding]::Unicode)
+[System.IO.File]::WriteAllText('{WORK_TEMP}\fm_src_fixed.txt', $text, [System.Text.UnicodeEncoding]::new($false, $true))
 ```
 
 Then run the **Step 5a update flow** with `%%ABAP_SOURCE_FILE%%` pointing to `{WORK_TEMP}\fm_src_fixed.txt`.
@@ -1215,7 +1216,7 @@ $outFile  = 'THE_OUTPUT_FILE'
 $skillDir = 'THE_SKILL_DIR'
 $workTemp = 'THE_WORK_TEMP'
 
-$content = Get-Content "$skillDir\references\sap_se37_check_and_download.vbs" -Raw
+$content = [System.IO.File]::ReadAllText("$skillDir\references\sap_se37_check_and_download.vbs", [System.Text.Encoding]::UTF8)
 $content = $content -replace '%%FM_NAME%%',     $fmName
 $content = $content -replace '%%OUTPUT_FILE%%', $outFile
 # Phase 3.5 session-attach plumbing.
@@ -1224,7 +1225,7 @@ $content = $content -replace '%%SESSION_PATH%%',   $sessionPath
 $content = $content -replace '%%ATTACH_LIB_VBS%%', '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp $workTemp
-Set-Content "$workTemp\sap_se37_check_and_download_run.vbs" $content -Encoding Unicode
+[System.IO.File]::WriteAllText("$workTemp\sap_se37_check_and_download_run.vbs", $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 
@@ -1304,7 +1305,7 @@ $text = $text -replace '(?i)bad_pattern', 'correct_replacement'
 
 **4. Write the fixed file:**
 ```powershell
-[System.IO.File]::WriteAllText('{WORK_TEMP}\<FM_NAME>_fixed.txt', $text, [System.Text.Encoding]::Unicode)
+[System.IO.File]::WriteAllText('{WORK_TEMP}\<FM_NAME>_fixed.txt', $text, [System.Text.UnicodeEncoding]::new($false, $true))
 ```
 
 Repeat until all errors identified in Step A are addressed, then proceed to Step C.

@@ -100,7 +100,7 @@ For a clean reference, see `plugins/sap-dev-core/skills/sap-se38/references/sap_
 Every SKILL.md PowerShell block that generates a runtime VBS must include the Phase 4.2 plumbing block immediately before the `Set-Content`/`WriteAllText` line:
 
 ```powershell
-$content = Get-Content '<SKILL_DIR>\references\sap_<skill>_<mode>.vbs' -Raw
+$content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_<skill>_<mode>.vbs', [System.Text.Encoding]::UTF8)
 $content = $content -replace '%%SOME_PARAM%%','THE_SOME_PARAM'
 # ... other parameter substitutions ...
 
@@ -111,7 +111,7 @@ $content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scr
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 
-Set-Content '{WORK_TEMP}\sap_<skill>_<mode>_run.vbs' $content -Encoding Unicode
+[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_<skill>_<mode>_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 ```
 
 - `$sessionPath = ''` is intentional default — the helper auto-resolves via `SAPDEV_SESSION_PATH` → sole-connection → refuse.

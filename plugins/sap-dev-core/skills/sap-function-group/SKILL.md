@@ -225,7 +225,7 @@ it via toolbar `btn[27]`, handling the Inactive Objects worklist popup
 Generate `{WORK_TEMP}\sap_function_group_gui_create_run.ps1`:
 
 ```powershell
-$content = Get-Content '<SKILL_DIR>\references\sap_function_group_gui_create.vbs' -Raw
+$content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_function_group_gui_create.vbs', [System.Text.Encoding]::UTF8)
 $content = $content -replace '%%FUGR_ID%%','THE_ID'
 $content = $content -replace '%%FUGR_DESC%%','THE_DESC'
 $content = $content -replace '%%PACKAGE%%','THE_PKG'
@@ -236,7 +236,7 @@ $content = $content -replace '%%SESSION_PATH%%', $sessionPath
 $content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_function_group_gui_create_run.vbs', $content, [System.Text.Encoding]::Unicode)
+[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_function_group_gui_create_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 
@@ -352,7 +352,7 @@ Template: `<SKILL_DIR>/references/sap_function_group_gui_delete.vbs`.
 Write `{WORK_TEMP}\sap_function_group_gui_delete_run.ps1`:
 
 ```powershell
-$content = Get-Content '<SKILL_DIR>\references\sap_function_group_gui_delete.vbs' -Raw
+$content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_function_group_gui_delete.vbs', [System.Text.Encoding]::UTF8)
 $content = $content -replace '%%FUGR_ID%%','THE_FG'
 $content = $content -replace '%%TRANSPORT%%','THE_TR'
 $content = $content -replace '%%SESSION_LOCK_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_session_lock.vbs'
@@ -362,7 +362,7 @@ $content = $content -replace '%%SESSION_PATH%%', $sessionPath
 $content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_function_group_gui_delete_run.vbs', $content, [System.Text.Encoding]::Unicode)
+[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_function_group_gui_delete_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 
@@ -566,7 +566,7 @@ GUI VBS scripts (Steps 3b, 3c) run with the standard `cscript`.
 ## Encoding
 
 - RFC PowerShell: UTF-8 (no BOM); NCo handles SAP unicode automatically.
-- GUI VBS: UTF-16 LE w/BOM (`Set-Content -Encoding Unicode`).
+- GUI VBS: UTF-16 LE w/BOM (`[System.IO.File]::WriteAllText(..., [System.Text.UnicodeEncoding]::new($false,$true))`).
 
 ---
 

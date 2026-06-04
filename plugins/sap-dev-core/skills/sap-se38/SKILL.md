@@ -203,7 +203,7 @@ The check VBScript template is at `./references/sap_se38_check.vbs`.
 
 Write `{WORK_TEMP}\sap_se38_check_run.ps1`:
 ```powershell
-$content = Get-Content '<SKILL_DIR>\references\sap_se38_check.vbs' -Raw
+$content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_se38_check.vbs', [System.Text.Encoding]::UTF8)
 $content = $content -replace '%%PROGRAM_NAME%%','THE_PROGRAM_NAME'
 # Phase 4.2 session-attach plumbing. SESSION_PATH empty -> attach lib falls
 # through to SAPDEV_SESSION_PATH (set below) -> sole-connection -> refuse.
@@ -213,7 +213,7 @@ $content = $content -replace '%%SESSION_PATH%%', $sessionPath
 $content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-Set-Content '{WORK_TEMP}\sap_se38_check_run.vbs' $content -Encoding Unicode
+[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_se38_check_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 Replace `THE_PROGRAM_NAME` with the actual program name (UPPERCASE) and `<SKILL_DIR>` with the absolute path to this skill directory.
@@ -293,7 +293,7 @@ for object →TR linkage, `E070-TRSTATUS` for TR modifiable state.
 
 Write `{WORK_TEMP}\sap_se38_update_run.ps1`:
 ```powershell
-$content = Get-Content '<SKILL_DIR>\references\sap_se38_update.vbs' -Raw
+$content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_se38_update.vbs', [System.Text.Encoding]::UTF8)
 $content = $content -replace '%%PROGRAM_NAME%%','THE_PROGRAM_NAME'
 # Program type: 'I' for an Include program (skips the F8 run-test verify, since
 # includes are NOT executable), otherwise empty/'1' for a normal report.
@@ -314,7 +314,7 @@ $content = $content -replace '%%POST_ACTIVATE_VERIFY_VBS%%','<SAP_DEV_CORE_SHARE
 $content = $content -replace '%%POST_ACTIVATE_VERIFY_PS1%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_se38_post_activate_verify.ps1'
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-Set-Content '{WORK_TEMP}\sap_se38_update_run.vbs' $content -Encoding Unicode
+[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_se38_update_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 Replace `THE_PROGRAM_NAME` (UPPERCASE), `THE_PROGRAM_TYPE` (`I` when updating an **Include** program — e.g. a function-exit `ZX…` include — so the verify skips the F8 run-test; otherwise empty or `1`), `THE_SOURCE_PATH` (absolute path with backslashes), `THE_PACKAGE` (SAP package or empty string), `THE_TRANSPORT` (transport number or empty string), `<SKILL_DIR>`, and `<SAP_DEV_CORE_SHARED_DIR>` (absolute path to `plugins/sap-dev-core/shared/`).
@@ -354,7 +354,7 @@ The create VBScript template is at `./references/sap_se38_create.vbs`.
 
 Write `{WORK_TEMP}\sap_se38_create_run.ps1`:
 ```powershell
-$content = Get-Content '<SKILL_DIR>\references\sap_se38_create.vbs' -Raw
+$content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_se38_create.vbs', [System.Text.Encoding]::UTF8)
 $content = $content -replace '%%PROGRAM_NAME%%','THE_PROGRAM_NAME'
 $content = $content -replace '%%PROGRAM_TYPE%%','THE_PROGRAM_TYPE'
 $content = $content -replace '%%PROGRAM_TITLE%%','THE_PROGRAM_TITLE'
@@ -374,7 +374,7 @@ $content = $content -replace '%%POST_ACTIVATE_VERIFY_VBS%%','<SAP_DEV_CORE_SHARE
 $content = $content -replace '%%POST_ACTIVATE_VERIFY_PS1%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_se38_post_activate_verify.ps1'
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-Set-Content '{WORK_TEMP}\sap_se38_create_run.vbs' $content -Encoding Unicode
+[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_se38_create_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 Replace all `THE_*` placeholders and `<SKILL_DIR>`. `THE_PACKAGE` and `THE_TRANSPORT` follow the same rules as Step 5a.
@@ -522,7 +522,7 @@ $content = $content.Replace('%%SESSION_PATH%%',   $sessionPath)
 $content = $content.Replace('%%ATTACH_LIB_VBS%%', '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs')
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_se38_textelm_run.vbs', $content, [System.Text.Encoding]::Unicode)
+[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_se38_textelm_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 Replace `THE_PROGRAM_NAME` (UPPERCASE), `THE_PACKAGE`, `THE_TRANSPORT`, and `<SKILL_DIR>`.
@@ -711,7 +711,7 @@ Write `{WORK_TEMP}\sap_se38_change_attrs_run.ps1`:
 ```powershell
 $skillDir = '<SKILL_DIR>'
 $tpl      = "$skillDir\references\sap_se38_change_attrs.vbs"
-$content  = Get-Content $tpl -Raw
+$content  = [System.IO.File]::ReadAllText($tpl, [System.Text.Encoding]::UTF8)
 $content  = $content.Replace('%%PROGRAM_NAME%%','THE_PROGRAM_NAME')
 $content  = $content.Replace('%%TITLE%%',       'THE_TITLE')
 $content  = $content.Replace('%%STATUS%%',      'THE_STATUS')
@@ -724,7 +724,7 @@ $content  = $content.Replace('%%SESSION_PATH%%',     $sessionPath)
 $content  = $content.Replace('%%ATTACH_LIB_VBS%%',   '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs')
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-Set-Content '{WORK_TEMP}\sap_se38_change_attrs_run.vbs' $content -Encoding Unicode
+[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_se38_change_attrs_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 Use `.Replace()` (literal) — title/status texts may contain regex
@@ -827,7 +827,7 @@ Write `{WORK_TEMP}\sap_se38_delete_run.ps1`:
 ```powershell
 $skillDir = '<SKILL_DIR>'
 $tpl      = "$skillDir\references\sap_se38_delete.vbs"
-$content  = Get-Content $tpl -Raw
+$content  = [System.IO.File]::ReadAllText($tpl, [System.Text.Encoding]::UTF8)
 $content  = $content.Replace('%%PROGRAM_NAME%%',    'THE_PROGRAM_NAME')
 $content  = $content.Replace('%%TRANSPORT%%',       'THE_TRANSPORT')
 $content  = $content.Replace('%%SESSION_LOCK_VBS%%', '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_session_lock.vbs')
@@ -836,7 +836,7 @@ $content  = $content.Replace('%%SESSION_PATH%%',     $sessionPath)
 $content  = $content.Replace('%%ATTACH_LIB_VBS%%',   '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs')
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-Set-Content '{WORK_TEMP}\sap_se38_delete_run.vbs' $content -Encoding Unicode
+[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_se38_delete_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 Replace `<SKILL_DIR>` and the `THE_*` placeholders.
@@ -978,7 +978,7 @@ $outFile  = 'THE_OUTPUT_FILE'
 $skillDir = 'THE_SKILL_DIR'
 $workTemp = 'THE_WORK_TEMP'
 
-$content = Get-Content "$skillDir\references\sap_se38_check_and_download.vbs" -Raw
+$content = [System.IO.File]::ReadAllText("$skillDir\references\sap_se38_check_and_download.vbs", [System.Text.Encoding]::UTF8)
 $content = $content -replace '%%PROGRAM_NAME%%', $pgmName
 $content = $content -replace '%%OUTPUT_FILE%%',  $outFile
 # Phase 3.5 session-attach plumbing.
@@ -987,7 +987,7 @@ $content = $content -replace '%%SESSION_PATH%%',   $sessionPath
 $content = $content -replace '%%ATTACH_LIB_VBS%%', '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp $workTemp
-Set-Content "$workTemp\sap_se38_check_and_download_run.vbs" $content -Encoding Unicode
+[System.IO.File]::WriteAllText("$workTemp\sap_se38_check_and_download_run.vbs", $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 
@@ -1085,7 +1085,7 @@ $bytes = [System.IO.File]::ReadAllBytes($srcFile)
 $text  = [System.Text.Encoding]::Unicode.GetString($bytes).TrimStart([char]0xFEFF)
 # Apply fixes — example:
 $text = $text -replace '(?i)bad_pattern', 'correct_replacement'
-[System.IO.File]::WriteAllText($fixedFile, $text, [System.Text.Encoding]::Unicode)
+[System.IO.File]::WriteAllText($fixedFile, $text, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host "Fixed file written: $fixedFile"
 ```
 Write this to a `.ps1` file and run it.

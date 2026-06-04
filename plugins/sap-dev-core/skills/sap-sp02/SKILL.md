@@ -115,7 +115,7 @@ Write `{WORK_TEMP}\sap_sp02_download_run.ps1`:
 
 ```powershell
 $skillDir = '<SKILL_DIR>'
-$content  = Get-Content "$skillDir\references\sap_sp02_download.vbs" -Raw
+$content  = [System.IO.File]::ReadAllText("$skillDir\references\sap_sp02_download.vbs", [System.Text.Encoding]::UTF8)
 $content  = $content.Replace('%%SPOOL_NUMBER%%',  'THE_SPOOL_NUMBER')
 $content  = $content.Replace('%%ROW_INDEX%%',     'THE_ROW_INDEX')      # empty if auto-scan
 $content  = $content.Replace('%%SPOOL_NUM_COL%%', 'THE_SPOOL_NUM_COL')  # empty for default 4
@@ -130,7 +130,7 @@ $content  = $content.Replace('%%SESSION_PATH%%',     $sessionPath)
 $content  = $content.Replace('%%ATTACH_LIB_VBS%%',   '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs')
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-Set-Content '{WORK_TEMP}\sap_sp02_download_run.vbs' $content -Encoding Unicode
+[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_sp02_download_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 

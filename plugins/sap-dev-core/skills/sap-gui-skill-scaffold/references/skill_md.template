@@ -91,7 +91,7 @@ if ($LASTEXITCODE -ne 0 -or -not $variantPath) {
     exit 1
 }
 
-$content = Get-Content $variantPath -Raw
+$content = [System.IO.File]::ReadAllText($variantPath, [System.Text.Encoding]::UTF8)
 foreach ($k in $paramsMap.Keys) {
     $content = $content.Replace("%%$k%%", $paramsMap[$k])
 }
@@ -105,7 +105,7 @@ $content = $content -replace '%%ATTACH_LIB_VBS%%', '<SAP_DEV_CORE_SHARED_DIR>\sc
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 
-Set-Content "$workTemp\{{SKILL_NAME}}_run.vbs" $content -Encoding Unicode
+[System.IO.File]::WriteAllText("$workTemp\{{SKILL_NAME}}_run.vbs", $content, [System.Text.UnicodeEncoding]::new($false, $true))
 
 C:/Windows/SysWOW64/cscript.exe //NoLogo "$workTemp\{{SKILL_NAME}}_run.vbs"
 ```
