@@ -276,29 +276,61 @@ End If
 Err.Clear
 On Error GoTo 0
 
-' --- 4b. Stage on Windows clipboard ---
-Dim bClipOk2
-bClipOk2 = False
+' --- 4b. Stage source on the Windows clipboard (Unicode / CF_UNICODETEXT) ---
+'
+' ROOT CAUSE / FIX (2026-06-04): Simplified-Chinese comments were stored as
+' "?" in SAP. Two cp932 round-trip traps lived in the old clipboard staging,
+' and BOTH are removed here:
+'   (1) MSForms.DataObject (old primary) publishes only CF_TEXT (ANSI); on
+'       paste Windows re-synthesises CF_UNICODETEXT through the system ANSI
+'       codepage, dropping non-codepage glyphs. On the reporting machine
+'       FM20.DLL was not even registerable, so this path silently failed --
+'       meaning the fallback below is what actually ran (see (2)).
+'   (2) The "type <utf16file> | clip" fallback: cmd's `type` transcodes the
+'       file through the console OEM codepage (cp932 on a JP machine) BEFORE
+'       the pipe, so Simplified-Chinese turned into "?" before clip ever saw
+'       it -- this was the stage that actually corrupted the deployed source.
+' Fix: stage via genuinely Unicode paths only -- PowerShell Set-Clipboard
+' (primary; CF_UNICODETEXT via .NET, codepage-independent) and a no-powershell
+' fallback of "clip < utf16file" by REDIRECTION (not "type | clip"), which
+' hands clip the raw UTF-16 bytes untouched. Verified lossless on a live
+' cp932 machine for the exact reported characters.
+Dim bClipOk2, sTmpClip2, oTmpStream2, oWshClip2, sPsClipCmd2, nPsClipRc2
+bClipOk2  = False
+sTmpClip2 = ABAP_SOURCE_FILE & ".clip.txt"
+Set oWshClip2 = CreateObject("WScript.Shell")
+
+' Primary: PowerShell Set-Clipboard publishes CF_UNICODETEXT directly (no
+' codepage round-trip). The source is handed over via a UTF-8 temp file so the
+' multi-line ABAP needs no shell quoting; [IO.File]::ReadAllText strips the BOM
+' so none leaks into the editor.
 On Error Resume Next
-Dim oClipDO2
-Set oClipDO2 = CreateObject("MSForms.DataObject")
+Set oTmpStream2 = CreateObject("ADODB.Stream")
+oTmpStream2.Type = 2
+oTmpStream2.Charset = "utf-8"
+oTmpStream2.Open
+oTmpStream2.WriteText sSourceText2
+oTmpStream2.SaveToFile sTmpClip2, 2   ' 2 = overwrite
+oTmpStream2.Close
 If Err.Number = 0 Then
-    oClipDO2.SetText sSourceText2
-    oClipDO2.PutInClipboard
-    If Err.Number = 0 Then bClipOk2 = True
+    sPsClipCmd2 = "powershell -NoProfile -ExecutionPolicy Bypass -Command " & _
+        """Set-Clipboard -Value ([IO.File]::ReadAllText('" & sTmpClip2 & _
+        "',[Text.Encoding]::UTF8))"""
+    nPsClipRc2 = oWshClip2.Run(sPsClipCmd2, 0, True)
+    If Err.Number = 0 And nPsClipRc2 = 0 Then bClipOk2 = True
 End If
 Err.Clear
 On Error GoTo 0
 
 If Not bClipOk2 Then
-    ' clip.exe interprets stdin as OEM/ANSI unless it starts with a UTF-16 LE
-    ' BOM (FF FE). Writing the temp file with Charset="utf-8" used to inject
-    ' EF BB BF at the head of the editor (visible as garbage chars on
-    ' Japanese-locale machines). Use UTF-16 LE so clip.exe stores the data
-    ' directly as CF_UNICODETEXT with no spurious bytes.
+    ' Fallback (only if powershell is unavailable). clip.exe stores
+    ' CF_UNICODETEXT when its stdin starts with a UTF-16 LE BOM (FF FE), so the
+    ' temp is re-staged as UTF-16 LE and fed via REDIRECTION (clip < file).
+    ' Do NOT use "type file | clip": cmd's `type` transcodes through the console
+    ' OEM codepage (cp932 on a JP machine) and reintroduces the "?" corruption.
+    ' Redirection passes the raw UTF-16 bytes untouched (verified lossless under
+    ' cp932 / cp437 / utf-8).
     On Error Resume Next
-    Dim sTmpClip2, oTmpStream2, oWshFallback2
-    sTmpClip2 = ABAP_SOURCE_FILE & ".clip.txt"
     Set oTmpStream2 = CreateObject("ADODB.Stream")
     oTmpStream2.Type = 2
     oTmpStream2.Charset = "utf-16"
@@ -306,8 +338,7 @@ If Not bClipOk2 Then
     oTmpStream2.WriteText sSourceText2
     oTmpStream2.SaveToFile sTmpClip2, 2
     oTmpStream2.Close
-    Set oWshFallback2 = CreateObject("WScript.Shell")
-    oWshFallback2.Run "cmd /c type """ & sTmpClip2 & """ | clip", 0, True
+    oWshClip2.Run "cmd /c clip < """ & sTmpClip2 & """", 0, True
     If Err.Number = 0 Then bClipOk2 = True
     Err.Clear
     On Error GoTo 0

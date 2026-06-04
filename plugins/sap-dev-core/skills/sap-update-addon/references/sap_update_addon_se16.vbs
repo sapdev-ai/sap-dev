@@ -175,6 +175,6 @@ Next
 
 WScript.Echo "========================================="
 WScript.Echo "SE16 maintenance completed for " & TABLE_NAME
-WScript.Echo "成功: " & lv_success & "  エラー: " & lv_error
+WScript.Echo ChrW(&H6210) & ChrW(&H529F) & ": " & lv_success & "  " & ChrW(&H30A8) & ChrW(&H30E9) & ChrW(&H30FC) & ": " & lv_error  ' 成功 / エラー (success / error) -- ChrW() keeps the labels intact regardless of the .vbs file encoding
 WScript.Echo "========================================="
 WScript.Echo "SUCCESS: SE16 maintenance completed."

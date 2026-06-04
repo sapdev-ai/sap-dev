@@ -1,4 +1,4 @@
-﻿' =============================================================================
+' =============================================================================
 ' sap_change_package_se38.vbs
 '   Change the package (TADIR-DEVCLASS) of a report/program/function-group
 '   main program via SE38 > Goto > Object Directory Entry.

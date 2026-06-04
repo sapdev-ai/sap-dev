@@ -351,8 +351,8 @@ End If
 ' scriptable from VBS via SAP Scripting once it is shown.
 '
 ' Working approach (verified on S/4HANA, AbapEditor.1):
-'   1. Stage source on the Windows clipboard (MSForms.DataObject; fall back
-'      to clip.exe via cmd).
+'   1. Stage source on the Windows clipboard via a Unicode (CF_UNICODETEXT)
+'      path: PowerShell Set-Clipboard, falling back to clip.exe + UTF-16 LE.
 '   2. AppActivate the SAP main window.
 '   3. SetFocus on the editor shell.
 '   4. SendKeys "^a" {DEL} "^v".
@@ -375,28 +375,61 @@ End If
 Err.Clear
 On Error GoTo 0
 
-' --- 6b. Stage on Windows clipboard ---
-Dim bClipOk
-bClipOk = False
+' --- 6b. Stage source on the Windows clipboard (Unicode / CF_UNICODETEXT) ---
+'
+' ROOT CAUSE / FIX (2026-06-04): Simplified-Chinese comments were stored as
+' "?" in SAP. Two cp932 round-trip traps lived in the old clipboard staging,
+' and BOTH are removed here:
+'   (1) MSForms.DataObject (old primary) publishes only CF_TEXT (ANSI); on
+'       paste Windows re-synthesises CF_UNICODETEXT through the system ANSI
+'       codepage, dropping non-codepage glyphs. On the reporting machine
+'       FM20.DLL was not even registerable, so this path silently failed --
+'       meaning the fallback below is what actually ran (see (2)).
+'   (2) The "type <utf16file> | clip" fallback: cmd's `type` transcodes the
+'       file through the console OEM codepage (cp932 on a JP machine) BEFORE
+'       the pipe, so Simplified-Chinese turned into "?" before clip ever saw
+'       it -- this was the stage that actually corrupted the deployed source.
+' Fix: stage via genuinely Unicode paths only -- PowerShell Set-Clipboard
+' (primary; CF_UNICODETEXT via .NET, codepage-independent) and a no-powershell
+' fallback of "clip < utf16file" by REDIRECTION (not "type | clip"), which
+' hands clip the raw UTF-16 bytes untouched. Verified lossless on a live
+' cp932 machine for the exact reported characters.
+Dim bClipOk, sTmpClip, oTmpStream, oWshClip, sPsClipCmd, nPsClipRc
+bClipOk  = False
+sTmpClip = ABAP_SOURCE_FILE & ".clip.txt"
+Set oWshClip = CreateObject("WScript.Shell")
+
+' Primary: PowerShell Set-Clipboard publishes CF_UNICODETEXT directly (no
+' codepage round-trip). The source is handed over via a UTF-8 temp file so the
+' multi-line ABAP needs no shell quoting; [IO.File]::ReadAllText strips the BOM
+' so none leaks into the editor.
 On Error Resume Next
-Dim oClipDO
-Set oClipDO = CreateObject("MSForms.DataObject")
+Set oTmpStream = CreateObject("ADODB.Stream")
+oTmpStream.Type = 2
+oTmpStream.Charset = "utf-8"
+oTmpStream.Open
+oTmpStream.WriteText sSourceText
+oTmpStream.SaveToFile sTmpClip, 2   ' 2 = overwrite
+oTmpStream.Close
 If Err.Number = 0 Then
-    oClipDO.SetText sSourceText
-    oClipDO.PutInClipboard
-    If Err.Number = 0 Then bClipOk = True
+    sPsClipCmd = "powershell -NoProfile -ExecutionPolicy Bypass -Command " & _
+        """Set-Clipboard -Value ([IO.File]::ReadAllText('" & sTmpClip & _
+        "',[Text.Encoding]::UTF8))"""
+    nPsClipRc = oWshClip.Run(sPsClipCmd, 0, True)
+    If Err.Number = 0 And nPsClipRc = 0 Then bClipOk = True
 End If
 Err.Clear
 On Error GoTo 0
 
 If Not bClipOk Then
-    ' clip.exe interprets stdin as OEM/ANSI unless it starts with a UTF-16 LE
-    ' BOM (FF FE). Use UTF-16 LE so clip stores CF_UNICODETEXT cleanly and
-    ' no spurious BOM bytes appear at the head of the editor on Japanese
-    ' (or other non-UTF-8) locale machines.
+    ' Fallback (only if powershell is unavailable). clip.exe stores
+    ' CF_UNICODETEXT when its stdin starts with a UTF-16 LE BOM (FF FE), so the
+    ' temp is re-staged as UTF-16 LE and fed via REDIRECTION (clip < file).
+    ' Do NOT use "type file | clip": cmd's `type` transcodes through the console
+    ' OEM codepage (cp932 on a JP machine) and reintroduces the "?" corruption.
+    ' Redirection passes the raw UTF-16 bytes untouched (verified lossless under
+    ' cp932 / cp437 / utf-8).
     On Error Resume Next
-    Dim sTmpClip, oTmpStream, oWshFallback
-    sTmpClip = ABAP_SOURCE_FILE & ".clip.txt"
     Set oTmpStream = CreateObject("ADODB.Stream")
     oTmpStream.Type = 2
     oTmpStream.Charset = "utf-16"
@@ -404,8 +437,7 @@ If Not bClipOk Then
     oTmpStream.WriteText sSourceText
     oTmpStream.SaveToFile sTmpClip, 2
     oTmpStream.Close
-    Set oWshFallback = CreateObject("WScript.Shell")
-    oWshFallback.Run "cmd /c type """ & sTmpClip & """ | clip", 0, True
+    oWshClip.Run "cmd /c clip < """ & sTmpClip & """", 0, True
     If Err.Number = 0 Then bClipOk = True
     Err.Clear
     On Error GoTo 0
