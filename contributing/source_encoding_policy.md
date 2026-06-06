@@ -18,6 +18,9 @@
 - **Do not bulk-convert the tree to UTF-16 LE BOM** (see "Why not UTF-16
   everywhere"). The one place UTF-16 LE is correct is a `.vbs` *generated at
   runtime* and fed straight to `cscript` (e.g. the login VBS).
+- **Deployment baseline = Windows PowerShell 5.1** (+ 32-bit `cscript`); **pwsh is not
+  required** and is never invoked by the skills. Operator background on shell vs console vs
+  terminal, `chcp`, and Windows Terminal: `docs/windows-shell-and-encoding-faq.md`.
 
 ## Why — the failure mode
 
@@ -118,6 +121,34 @@ the **logon language's** legacy codepage." A UTF-8 file under a ZH / JA logon is
   of logon language. Generated ABAP that uploads text should prefer this locale-independent
   form. (Properly an ABAP-codegen concern; recorded here so every encoding axis lives in one
   place.)
+
+### cscript output: console vs. redirected (refines the caveat above)
+
+`WScript.Echo` of a UTF-16 string takes **two different output paths**, and which one
+runs decides whether CJK survives — verified live (2026-06-06) on this CP932 box:
+
+| stdout is… | cscript path | `错` (U+9519, not in CP932) |
+|---|---|---|
+| **real console** (interactive) | `WriteConsoleW` — UTF-16 sent straight to the console, **no codepage** | **displays correctly** even at `chcp 932`, no `//U` needed (font permitting) |
+| **redirected** (pipe / file / any skill capture) | `WideCharToMultiByte(ACP=932)` | **lost → `?`**; in-932 chars emerge as Shift-JIS bytes that mojibake downstream |
+
+- `chcp` does **not** fix the redirected case — it sets the *console* CP, not the *ANSI*
+  CP cscript uses there (identical lossy bytes at `chcp 65001` and `chcp 932`).
+- cscript stdout has **only ANSI or UTF-16 (`//U`) — never UTF-8**; UTF-8 comes only from
+  writing a **file** (`ADODB.Stream`).
+
+**Consequence — mojibake is a *capture* problem, not a console problem.** Run a VBS
+interactively and CJK shows fine; the **skills always capture** cscript output, so they
+always hit the lossy ANSI branch. Hence keep `WScript.Echo` **ASCII** and return real CJK
+via a **UTF-8 file** (`ADODB.Stream`) or **RFC** (UTF-16 in .NET) — never trust captured
+`Echo`. (Supersedes the "doesn't honor 65001" note above: the *console* path is fine; the
+*capture* path is the lossy one.)
+
+**Source trap (verified):** a double-quoted CJK literal (`WScript.Echo "错"`) in a
+**BOM-less UTF-8** `.vbs` raises a *compile* error — "unterminated string constant" —
+because cscript reads the file as Shift-JIS and the char's last UTF-8 byte (`0x99`) is an
+SJIS *lead* byte that eats the closing `"`. Build runtime non-ASCII with **`ChrW(&H….)`**
+(pure-ASCII source) to avoid it.
 
 ## The policy (what to do)
 
