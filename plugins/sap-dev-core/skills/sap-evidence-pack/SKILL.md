@@ -30,8 +30,7 @@ Task: $ARGUMENTS
 
 This is the fourth delivery-assurance skill. It is the aggregator that makes the
 others' output credible — including, deliberately, by listing what is missing
-(`contributing/phase0_delivery_assurance_spec.md` §B, the "missing evidence"
-philosophy).
+(the "missing evidence" philosophy).
 
 ---
 

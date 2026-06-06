@@ -2,7 +2,7 @@
 # sap_finding_lib.ps1  -  Reconciled finding model for delivery-assurance skills
 #
 # Phase-0 foundation primitive #3 (model half; gate computation lives in
-# sap_gate_policy.ps1). See contributing/phase0_delivery_assurance_spec.md SecC.
+# sap_gate_policy.ps1).
 #
 # ONE severity / category / coverage / gate vocabulary that impact-analysis,
 # transport-readiness, ATC, and check-abap all map into. Two non-negotiables:

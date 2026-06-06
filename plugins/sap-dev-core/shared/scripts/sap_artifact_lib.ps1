@@ -1,8 +1,7 @@
 # =============================================================================
 # sap_artifact_lib.ps1  -  Artifact index for the delivery-assurance skills
 #
-# Phase-0 foundation primitive #2. See
-# contributing/phase0_delivery_assurance_spec.md  SecB.
+# Phase-0 foundation primitive #2.
 #
 # Every analytical skill (impact-analysis, transport-readiness, evidence-pack,
 # enhancement-advisor) REGISTERS each file it writes into one append-only

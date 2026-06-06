@@ -28,9 +28,8 @@ deliberate, separate `/sap-se01 release` step the user takes after a GO.
 Task: $ARGUMENTS
 
 This skill is the first of the **delivery-assurance** family and is built on the
-Phase-0 primitives (`contributing/phase0_delivery_assurance_spec.md`): the
-object resolver (TR → E071 inventory), the finding model + gate policy, and the
-artifact index.
+Phase-0 primitives: the object resolver (TR → E071 inventory), the finding model
++ gate policy, and the artifact index.
 
 ---
 

@@ -4,7 +4,6 @@
 # "If I change this object, what else might break?" - answered from SAP's
 # system-maintained CROSS-REFERENCE INDEX, never by parsing source (REPOSRC is
 # blocked) and never by driving the GUI where-used (slow, serial, reverse-only).
-# See contributing/phase0_delivery_assurance_spec.md  Appendix P1.
 #
 # Index tables read (all RFC_READ_TABLE-safe, narrow rows):
 #   D010TAB   program <-> table usage   (TABNAME, MASTER)        - both directions

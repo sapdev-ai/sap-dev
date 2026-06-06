@@ -2,8 +2,7 @@
 # sap_object_resolver.ps1  -  Canonical SAP object identity resolver (NCo 3.1)
 #
 # Phase-0 foundation for the delivery-assurance skills (impact-analysis,
-# transport-readiness, evidence-pack, enhancement-advisor). See
-# contributing/phase0_delivery_assurance_spec.md  SecA.
+# transport-readiness, evidence-pack, enhancement-advisor).
 #
 # Given a user token - with or without a leading KIND keyword - returns the
 # canonical object identity in the TADIR vocabulary:

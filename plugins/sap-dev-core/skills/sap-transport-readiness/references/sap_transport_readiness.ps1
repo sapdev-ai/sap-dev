@@ -11,7 +11,7 @@
 # /sap-run-abap-unit and passes their verdicts via -AtcVerdict / -UnitVerdict so
 # the engine folds them into ONE unified verdict.
 #
-# Reuses the Phase-0 primitives (contributing/phase0_delivery_assurance_spec.md):
+# Reuses the Phase-0 primitives:
 #   sap_object_resolver.ps1  (Resolve-SapObject, Read-SapTableRows, Test-SapObjectActive)
 #   sap_finding_lib.ps1      (New-SapFinding, Get-SapVerdict, Export-SapFindings*)
 #   sap_gate_policy.ps1      (Get-SapGatePolicy, Set-SapFindingGates)

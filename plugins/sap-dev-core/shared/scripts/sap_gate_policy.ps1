@@ -2,7 +2,7 @@
 # sap_gate_policy.ps1  -  Gate computation for the reconciled finding model
 #
 # Phase-0 foundation primitive #3 (policy half; the model is in
-# sap_finding_lib.ps1). See contributing/phase0_delivery_assurance_spec.md SecC.
+# sap_finding_lib.ps1).
 #
 # Turns a finding's INTRINSIC severity into a GATE decision (BLOCK | WARN | INFO)
 # using the customer brief's Quality bar (Sec6) - NOT a second policy store - plus

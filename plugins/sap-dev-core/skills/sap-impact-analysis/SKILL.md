@@ -28,8 +28,8 @@ cross-reference index — fast, RFC-only, both directions. You are read-only.
 Task: $ARGUMENTS
 
 This is the second delivery-assurance skill, built on the Phase-0 primitives and
-the Appendix P1 data-source strategy (`contributing/phase0_delivery_assurance_spec.md`):
-read the index tables, never the source, never the GUI where-used.
+the cross-reference-index data-source strategy: read the index tables, never the
+source, never the GUI where-used.
 
 ---
 
