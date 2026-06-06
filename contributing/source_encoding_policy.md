@@ -235,7 +235,21 @@ To clear a file's warning: replace the offending bytes with ASCII (or `ChrW()` /
 `[char]` for runtime chars), or — only if non-ASCII is genuinely required — add
 the appropriate BOM per the policy table.
 
-## Current debt snapshot (2026-06-04)
+## Current debt snapshot
+
+**2026-06-06 — Phase 1 (P2 typography cleanup) DONE; guard now `11 non-ASCII warning(s)`, build green.**
+The 122 "Bucket A" reference `.ps1`/`.vbs` (typographic-only non-ASCII, all in comments /
+diagnostics) were ASCII-swapped — `—`→`--`, `→`→`->`, `–`→`-`, `…`→`...`, `←`→`<-`, `≠`→`<>`;
+`§`/`∈` reworded. Verified: guard `133`→`11`, build green, all 82 `.ps1` parse-clean, no swap
+landed in executed code. The remaining **11 are accepted as permanent exceptions** — the
+glyph-in-comment files where the executed value is `ChrW()`-built and the comment keeps the
+localized glyph for the reader (a `.vbs` cannot be guard-cleared while keeping a glyph; see the
+exception note above). The accepted set:
+`sap_syntax_check_lib.vbs`, `sap_atc_check_run_status.vbs`, `sap_se11_check.vbs`,
+`sap_se24_update.vbs`, `sap_se37_create.vbs`, `sap_se37_update.vbs`, `sap_se38_create.vbs`,
+`sap_se38_update.vbs`, `sap_se91_create.vbs`, `sap_se91_update.vbs`, `sap_update_addon_se16.vbs`.
+
+### Prior baseline (2026-06-04)
 
 `node scripts/check-consistency.mjs` → `133 non-ASCII warning(s)`, build green.
 (The count is a **living metric** — it ticked to `134` mid-authoring when a
@@ -317,16 +331,28 @@ emergency.
   confirmed the only executable-position non-ASCII left is one pre-existing
   em-dash inside a `WScript.Echo` diagnostic. Both files remain on the warning
   list (glyph comments / em-dashes) — expected, per the glyph-in-comment trade-off.
-- **P2 — polish (bulk, manual):** replace cosmetic `—`→`--`, `→`→`->`, `…`→`...`
-  in diagnostics and generated TSV/Markdown text so customer consoles and output
-  files stop showing `â€"`. Comments can follow but are lowest value (never run).
-  Per CLAUDE.md Rule 2, edits are **manual** — no sed/awk batch rewrite (a blind
-  `—`→`--` pass would also corrupt the intentional JA literals).
-- **P3 — process:** once the tree is clean, promote the guard to a hard error to
-  catch regressions (the ratchet).
+- **P2 — DONE (2026-06-06):** replaced cosmetic `—`→`--`, `→`→`->`, `–`→`-`, `…`→`...`,
+  `←`→`<-`, `≠`→`<>` (and reworded `§`/`∈`) in comments + diagnostics + generated TSV/Markdown
+  across the 122 Bucket A files, dropping the guard `133`→`11`. Per CLAUDE.md Rule 2 the edits
+  were **manual** — Edit-tool `replace_all` per character per file, after a full review pass
+  confirming every typographic char sat in a comment or diagnostic string (no load-bearing
+  comparison) — no sed/awk batch rewrite (a blind `—`→`--` pass would also corrupt the
+  intentional JA literals). The 11 remaining glyph-in-comment files are **accepted as
+  permanent exceptions** (snapshot above), not transliterated.
+- **P3 — process (pending):** the only non-ASCII left is those 11 accepted exceptions. To
+  ratchet the guard to a hard error without going red on them, first add the 11 to a guard
+  allowlist (or BOM-exempt set), then flip `WARN`→`errors.push(...)` so any *new* non-ASCII
+  fails CI. Deferred — the 11 are intentionally retained.
 
 ## Decision log
 
+- **2026-06-06 — Accepted the 11 glyph-in-comment files as permanent guard exceptions.**
+  After Phase 1 cleared all typographic non-ASCII (`133`→`11`), the remaining 11 are the
+  `ChrW()`-safed localized-text files whose *comments* carry the glyph for the reader. Chose to
+  **keep the glyphs** (not transliterate to romaji/pinyin): they aid comprehension of the SAP
+  text being matched, the runtime strings are already ASCII, and a `.vbs` can't be guard-cleared
+  while keeping a glyph anyway. They stay informational `WARN`s by design; the ratchet (P3) must
+  allowlist them rather than expect zero.
 - **2026-06-04 — Rejected any *tree-wide* conversion to UTF-16 LE or UTF-8-with-BOM.**
   Evaluated on the back of a "we have to handle kanji / wrong-codepage trouble" concern.
   Conclusion: **keep ASCII-first**; UTF-8 BOM stays a *per-file* opt-in, never tree-wide.
