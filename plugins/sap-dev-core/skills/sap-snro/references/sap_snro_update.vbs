@@ -54,7 +54,7 @@ On Error Resume Next
 oSession.findById("wnd[0]/usr/btnCHANGE").press
 If Err.Number <> 0 Then
     Err.Clear
-    ' Some releases label the change button differently — fall back to F6
+    ' Some releases label the change button differently -- fall back to F6
     oSession.findById("wnd[0]").sendVKey 6
 End If
 On Error GoTo 0
@@ -93,7 +93,7 @@ If DOMLEN <> "" Then
     On Error Resume Next
     oSession.findById(sFc1 & "/txtTNRO-DOMLEN").Text = DOMLEN
     If Err.Number <> 0 Then
-        WScript.Echo "ERROR: Could not set TNRO-DOMLEN — " & Err.Description
+        WScript.Echo "ERROR: Could not set TNRO-DOMLEN -- " & Err.Description
         WScript.Quit 1
     End If
     On Error GoTo 0

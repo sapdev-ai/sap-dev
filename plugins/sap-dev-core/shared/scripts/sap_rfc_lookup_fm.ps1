@@ -50,7 +50,7 @@ $ErrorActionPreference = 'Continue'
 # (0xEF 0xBB 0xBF) which the downstream VBS reader (sap_check_fm.vbs) opens
 # as plain ASCII via Scripting.FileSystem.OpenTextFile(... TristateFalse).
 # Those three BOM bytes then get glued to the first column of the first
-# row of every cache file — turning "BAPI_MATERIAL_SAVEDATA" into a string
+# row of every cache file -- turning "BAPI_MATERIAL_SAVEDATA" into a string
 # that doesn't match fmIdxMap and silently dropping the first parameter
 # (typically HEADDATA on BAPI_*_SAVEDATA family). Bug surfaced 2026-05-11
 # during MaterialUpload_JA build.
@@ -191,7 +191,7 @@ if ($misses.Count -gt 0) {
         }
 
         # Write per-FM cache file (atomic-ish: write then move).
-        # No BOM — see header note; downstream VBS reads as plain ASCII.
+        # No BOM -- see header note; downstream VBS reads as plain ASCII.
         $cachePath = Join-Path $cacheBase ($fm + ".tsv")
         [System.IO.File]::WriteAllText($cachePath, $fmContent.ToString(), $Utf8NoBom)
     }
@@ -209,7 +209,7 @@ foreach ($fm in $requestedNames) {
         [void]$out.Append((Get-Content -Raw -LiteralPath $cachePath))
         $writtenFms += $fm
     } else {
-        # Cache file missing (RFC was unavailable AND no prior cache) — note it
+        # Cache file missing (RFC was unavailable AND no prior cache) -- note it
         $missingFms += $fm
         [void]$out.AppendLine("$fm`tUNAVAILABLE`t`t`t`t")
     }

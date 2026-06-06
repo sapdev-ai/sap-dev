@@ -14,7 +14,7 @@
 # profile carries a stable UUID 'id' generated once at first save, so edits
 # to a profile (server IP changes, etc.) don't break references.
 #
-# 4-step compare (Test-SapConnectionsEqual) — short-circuits on first match:
+# 4-step compare (Test-SapConnectionsEqual) -- short-circuits on first match:
 #   1. system_name == system_name AND client == client AND user == user.
 #      If any differ -> different. Necessary precondition for steps 2-4.
 #   2. Both 'logon_pad_entry' non-empty: equal -> SAME.   Else fall through.
@@ -121,7 +121,7 @@ function With-ConnectionStoreLock {
             $acquired = $mutex.WaitOne($script:SapConnStore_MutexTimeoutMs)
         } catch [System.Threading.AbandonedMutexException] {
             # A prior holder crashed before releasing. Continue, but treat
-            # the state as questionable — caller is responsible for re-reading.
+            # the state as questionable -- caller is responsible for re-reading.
             $acquired = $true
         }
         if (-not $acquired) {
@@ -185,7 +185,7 @@ function Read-SapConnectionStore {
                 if (-not $p.ContainsKey('software_components') -or $null -eq $p['software_components']) {
                     $p['software_components'] = @()
                 }
-                # dev_defaults — per-connection overrides for system-keyed settings
+                # dev_defaults -- per-connection overrides for system-keyed settings
                 # (sap_dev_transport_request / sap_dev_package / sap_dev_function_group).
                 # Coerce PSCustomObject -> hashtable so we can index/Update freely.
                 if (-not $p.ContainsKey('dev_defaults') -or $null -eq $p['dev_defaults']) {
@@ -236,7 +236,7 @@ function New-SapConnectionInfo {
         Version fields (gui_*, server_*) carry SAP GUI + server release
         info captured at login time. Used by sap-gui-skill-scaffold and
         sap_select_vbs_variant.ps1 for version-aware VBS variant selection.
-        Optional — left empty when RFC system info isn't available.
+        Optional -- left empty when RFC system info isn't available.
     #>
     [CmdletBinding()]
     param(
@@ -332,7 +332,7 @@ function Test-SapConnectionsEqual {
         [Parameter(Mandatory)] $B
     )
 
-    # Step 1 — precondition. SystemName mismatch only fails when BOTH sides know it.
+    # Step 1 -- precondition. SystemName mismatch only fails when BOTH sides know it.
     if ((_NotEmpty "$($A.system_name)") -and (_NotEmpty "$($B.system_name)") -and
         ("$($A.system_name)" -ne "$($B.system_name)")) {
         return $false
@@ -340,19 +340,19 @@ function Test-SapConnectionsEqual {
     if (("$($A.client)") -ne ("$($B.client)"))  { return $false }
     if (("$($A.user)")   -ne ("$($B.user)"))    { return $false }
 
-    # Step 2 — Logon pad entry.
+    # Step 2 -- Logon pad entry.
     if ((_NotEmpty "$($A.logon_pad_entry)") -and (_NotEmpty "$($B.logon_pad_entry)")) {
         if ("$($A.logon_pad_entry)" -eq "$($B.logon_pad_entry)") { return $true }
         # else fall through
     }
 
-    # Step 3 — MessageServer.
+    # Step 3 -- MessageServer.
     if ((_NotEmpty "$($A.message_server)") -and (_NotEmpty "$($B.message_server)")) {
         if ("$($A.message_server)" -eq "$($B.message_server)") { return $true }
         # else fall through
     }
 
-    # Step 4 — ApplicationServer + SystemNumber (pair).
+    # Step 4 -- ApplicationServer + SystemNumber (pair).
     if ((_NotEmpty "$($A.application_server)") -and (_NotEmpty "$($B.application_server)") -and
         (_NotEmpty "$($A.system_number)")      -and (_NotEmpty "$($B.system_number)")) {
         if ("$($A.application_server)" -eq "$($B.application_server)" -and
@@ -413,7 +413,7 @@ function Resolve-SapProfileHint {
         whitespace). This keeps descriptions containing `/` (e.g. "dev/test")
         from being mis-routed.
         Returns an array of matching profile objects (possibly empty, possibly
-        single, possibly many — callers decide what "many" means).
+        single, possibly many -- callers decide what "many" means).
     .OUTPUTS
         Array of profile pscustomobjects.
     #>
@@ -564,7 +564,7 @@ function New-SapConnectionAutoDescription {
 # the user-typed hint (if any), then the actual server hostname from the SAP
 # Logon Pad entry's SAPUILandscape.xml / saplogon.ini config. First DNS hit
 # wins; on total failure return the captured value with a flag so callers
-# can WARN (never block — SAP GUI still works).
+# can WARN (never block -- SAP GUI still works).
 
 function Test-SapHostResolvable {
     <#
@@ -660,7 +660,7 @@ function Get-SapLogonLandscapeEntries {
         Enumerate ALL SAP Logon Pad entries (direct + load-balanced) from
         SAPUILandscape.xml / SAPUILandscapeGlobal.xml / saplogon.ini.
     .DESCRIPTION
-        Returns a flat array of [pscustomobject] entries — each holds enough
+        Returns a flat array of [pscustomobject] entries -- each holds enough
         to pre-fill a new connection profile in /sap-login's ADD_NEEDED flow.
         Per-user XML wins over global XML wins over legacy INI; duplicate
         entry names (case-insensitive) are kept only on first hit.
@@ -732,7 +732,7 @@ function Get-SapLogonLandscapeEntries {
                 $msHost = $msMap[$msid].Host
             } else {
                 # Not recognisable as either direct or load-balanced; skip
-                # silently — the entry list isn't supposed to be exhaustive,
+                # silently -- the entry list isn't supposed to be exhaustive,
                 # just useful.
                 continue
             }
@@ -819,14 +819,14 @@ function Resolve-SapApplicationServer {
     .SYNOPSIS
         Reconcile the captured ApplicationServer with what the workstation can resolve.
     .DESCRIPTION
-        Three-step cascade — first DNS hit wins:
+        Three-step cascade -- first DNS hit wins:
           1. Captured value (Info.ApplicationServer) resolves          -> keep captured.
           2. User-typed hint resolves                                  -> use hint.
           3. SAPUILandscape.xml / saplogon.ini lookup for the logon-pad
              entry returns a server that resolves                     -> use that.
         On total failure, returns the captured value with Source=
         'captured_unresolvable' so the caller can WARN. Never throws;
-        never blocks GUI work — RFC degradation only.
+        never blocks GUI work -- RFC degradation only.
     .OUTPUTS
         Hashtable: @{
             Server     = 'hostname-to-save'
@@ -896,14 +896,14 @@ function Save-SapConnection {
     }
 
     if ($match) {
-        # Field-by-field merge — overwrite only when $Profile supplied a value.
+        # Field-by-field merge -- overwrite only when $Profile supplied a value.
         # Endpoint / language / password fields can shift across logins (e.g.,
         # load-balancer routes to a different app server), so we overwrite.
         foreach ($f in @('logon_pad_entry','language','password_dpapi','message_server',
                           'logon_group','application_server','system_number')) {
             if (_NotEmpty "$($Profile[$f])") { $match[$f] = "$($Profile[$f])" }
         }
-        # Version info — overwrite when supplied (refreshed on every login;
+        # Version info -- overwrite when supplied (refreshed on every login;
         # SAP patches change these between sessions).
         foreach ($v in @('gui_version_raw','server_kernel_release','server_release_family',
                           'server_release_marker','server_release_raw')) {
@@ -919,7 +919,7 @@ function Save-SapConnection {
         # identity. We only set them when previously empty (e.g., the profile
         # was migrated from legacy settings.json that didn't carry SystemName,
         # and the post-login capture now knows it). We do NOT overwrite an
-        # existing non-empty value — that would silently mutate identity.
+        # existing non-empty value -- that would silently mutate identity.
         foreach ($id in @('system_name','system_id')) {
             if (-not (_NotEmpty "$($match[$id])") -and (_NotEmpty "$($Profile[$id])")) {
                 $match[$id] = "$($Profile[$id])"
@@ -1147,7 +1147,7 @@ function _Read-SessionRegistry {
     .SYNOPSIS
         Read the broker's session_registry.json (Phase 4 location).
     .NOTES
-        Lightweight read — doesn't lock the broker mutex. The broker handles
+        Lightweight read -- doesn't lock the broker mutex. The broker handles
         its own write atomicity; readers see a consistent JSON document.
     #>
     param([string]$RuntimeDir = '')
@@ -1177,7 +1177,7 @@ function Get-SapCurrentSessionPath {
           3. If no AI-session pin: sole-connection fallback (only one
              connection block in the registry -> first session of it).
           4. Otherwise return empty string. Caller is responsible for handling
-             "ambiguous, must run /sap-login" — the attach lib's Strategy 4
+             "ambiguous, must run /sap-login" -- the attach lib's Strategy 4
              (sole connection) or Strategy 5 (refuse) covers downstream.
     .PARAMETER WorkTemp
         Path to {work_dir}\temp (mirrors broker's convention). Used only to
@@ -1220,7 +1220,7 @@ function Get-SapCurrentSessionPath {
         $target = $connBlocks | Where-Object { "$($_.connection_id)" -eq $pinnedConnId } | Select-Object -First 1
     }
     if (-not $target -and $connBlocks.Count -eq 1) {
-        # Sole-connection default: no pin, but only one connection — safe.
+        # Sole-connection default: no pin, but only one connection -- safe.
         $target = $connBlocks[0]
     }
     if (-not $target) { return '' }
@@ -1236,7 +1236,7 @@ function Get-SapCurrentSessionPath {
         $entry = $target.entries | Where-Object { "$($_.status)" -eq 'free' } | Select-Object -First 1
     }
     if (-not $entry) {
-        # Fall back to the first entry — anything alive on this connection.
+        # Fall back to the first entry -- anything alive on this connection.
         $entry = $target.entries | Select-Object -First 1
     }
     if (-not $entry) { return '' }
@@ -1258,7 +1258,7 @@ function Get-SapCurrentConnectionProfile {
              non-empty password_dpapi -> return that profile, emit INFO
              to stderr so the action is visible. Skip when -StrictMode is
              set (callers that must fail on ambiguity).
-        Returns $null when nothing resolves — caller decides what to do
+        Returns $null when nothing resolves -- caller decides what to do
         (skills using version info typically default to "no marker" and
         fall back to non-versioned VBS variants).
     .PARAMETER StrictMode
@@ -1301,7 +1301,7 @@ function Get-SapCurrentConnectionProfile {
     #   - no pin for this AI session,
     #   - no default profile set,
     #   - exactly one saved profile has a non-empty password_dpapi.
-    # That's the "single-system happy path" — user has saved a profile, hasn't
+    # That's the "single-system happy path" -- user has saved a profile, hasn't
     # bothered to mark it default, and now runs an RFC skill before /sap-login.
     # Better to proceed (with a visible INFO line) than fail opaquely.
     try {
@@ -1349,7 +1349,7 @@ function Format-SapBannerLine {
     .PARAMETER WorkTemp
         Optional override for the work temp dir (mirrors broker convention).
     .PARAMETER IncludeDevDefaults
-        Append the `| TR=… PKG=… FG=…` tail when dev_defaults are set.
+        Append the `| TR=... PKG=... FG=...` tail when dev_defaults are set.
         Defaults to $true.
     .PARAMETER NoCache
         Bypass the per-process cache and re-resolve. Set to $true after the
@@ -1409,7 +1409,7 @@ function Clear-SapBannerCache {
 # =============================================================================
 # Per-connection dev defaults (Phase 4.3)
 # -----------------------------------------------------------------------------
-# Some sap-dev settings are SAP-system-specific — most notably the transport
+# Some sap-dev settings are SAP-system-specific -- most notably the transport
 # request (TR numbers carry the SID prefix like S4DK..., so a TR resolved on
 # S4D is meaningless on S4H). Storing them in settings.local.json with a
 # single global slot causes silent contamination when a user runs Claude on
@@ -1424,7 +1424,7 @@ function Clear-SapBannerCache {
 # Write order : pinned-connection dev_defaults[<key>] (if pinned), else file
 #
 # `Get-SapSettingValue` (sap_settings_lib.ps1) checks this list and routes
-# through Get-SapCurrentDevDefault automatically — most callers don't need to
+# through Get-SapCurrentDevDefault automatically -- most callers don't need to
 # change.
 # =============================================================================
 
@@ -1432,10 +1432,10 @@ $script:SapPerConnectionDevKeys = @(
     'sap_dev_transport_request',     # Phase 4.3
     'sap_dev_package',               # Phase 4.3
     'sap_dev_function_group',        # Phase 4.3
-    'sap_dev_mode',                  # Phase 4.4 — GUI/RFC/BDC; system capability varies
-    'way_to_get_transport_request',  # Phase 4.4 — TR-workflow policy varies per project
-    'rule_of_tr_description',        # Phase 4.4 — naming-convention varies per customer
-    'tr_description_template'        # Phase 4.4 — coupled to rule_of_tr_description
+    'sap_dev_mode',                  # Phase 4.4 -- GUI/RFC/BDC; system capability varies
+    'way_to_get_transport_request',  # Phase 4.4 -- TR-workflow policy varies per project
+    'rule_of_tr_description',        # Phase 4.4 -- naming-convention varies per customer
+    'tr_description_template'        # Phase 4.4 -- coupled to rule_of_tr_description
 )
 
 function Get-SapPerConnectionDevKeys {
@@ -1449,7 +1449,7 @@ function Get-SapCurrentDevDefault {
         connection. Falls back to settings.local.json on miss, then empty.
     .PARAMETER Key
         One of sap_dev_transport_request / sap_dev_package /
-        sap_dev_function_group (or any other key — non-listed keys still
+        sap_dev_function_group (or any other key -- non-listed keys still
         work, they just won't have per-connection isolation by default).
     #>
     param([Parameter(Mandatory)][string]$Key)
@@ -1465,7 +1465,7 @@ function Get-SapCurrentDevDefault {
         }
         if ($null -ne $v -and "$v" -ne '') { return "$v" }
     }
-    # File-based fallback — read raw from merged settings WITHOUT re-entering
+    # File-based fallback -- read raw from merged settings WITHOUT re-entering
     # the per-conn path (avoid the Get-SapSettingValue<->Get-SapCurrentDevDefault
     # loop).
     if (Get-Command Get-SapSettings -ErrorAction SilentlyContinue) {
@@ -1566,7 +1566,7 @@ function Import-LegacyConnectionFromSettings {
     if (-not $any) { return $null }
 
     # We do NOT yet have system_name; it gets filled in post-login by the
-    # capture step. For migration we leave it blank — Test-SapConnectionsEqual
+    # capture step. For migration we leave it blank -- Test-SapConnectionsEqual
     # treats the migrated record as "unique" (no other connections yet) so
     # there's no risk of a false dedup.
     $profile = New-SapConnectionInfo `

@@ -144,7 +144,7 @@ If InStr(oSession.ActiveWindow.Id, "wnd[1]") > 0 Then
             If Err.Number = 0 Then
                 If Not (oMaintBtn Is Nothing) Then
                     WScript.Echo "INFO: Original-language popup detected (logon != MASTERLANG=" & _
-                                 oMasterLangFld.Text & ") — pressing 'Maint. in orig. lang.'."
+                                 oMasterLangFld.Text & ") -- pressing 'Maint. in orig. lang.'."
                     oMaintBtn.press
                     WScript.Sleep 1500
                 End If
@@ -174,9 +174,9 @@ On Error GoTo 0
 ' ------ 2b. Pre-save TR claim --------------------------------------------------
 ' Send Ctrl+S immediately after entering change mode to provoke any
 ' "Prompt for local Workbench request" popup. Outcomes:
-'   (a) wnd[1] with field ctxtKO008-TRKORR → fill SAP_TRANSPORT, Enter.
-'   (b) Other popup → Enter to dismiss.
-'   (c) No popup → object is local ($TMP) or already locked to a modifiable TR.
+'   (a) wnd[1] with field ctxtKO008-TRKORR -> fill SAP_TRANSPORT, Enter.
+'   (b) Other popup -> Enter to dismiss.
+'   (c) No popup -> object is local ($TMP) or already locked to a modifiable TR.
 ' If a TR popup appears but SAP_TRANSPORT is empty, abort.
 ' Diagnostics: TADIR-DEVCLASS, E071, E070-TRSTATUS.
 WScript.Echo "INFO: Pre-save (Ctrl+S) to check whether a TR popup appears..."
@@ -198,17 +198,17 @@ If InStr(oSession.ActiveWindow.Id, "wnd[1]") > 0 Then
             WScript.Quit 1
         End If
         oPreTR.Text = SAP_TRANSPORT
-        WScript.Echo "INFO: Pre-save TR popup detected — entering " & SAP_TRANSPORT & "."
+        WScript.Echo "INFO: Pre-save TR popup detected -- entering " & SAP_TRANSPORT & "."
         oSession.findById("wnd[1]").sendVKey VKEY_ENTER
         WScript.Sleep 1000
     Else
         Err.Clear
-        WScript.Echo "INFO: Pre-save popup (no TR field) — pressing Enter to dismiss."
+        WScript.Echo "INFO: Pre-save popup (no TR field) -- pressing Enter to dismiss."
         oSession.ActiveWindow.sendVKey VKEY_ENTER
         WScript.Sleep 800
     End If
 Else
-    WScript.Echo "INFO: No pre-save popup — object is local ($TMP) or already locked to a modifiable TR."
+    WScript.Echo "INFO: No pre-save popup -- object is local ($TMP) or already locked to a modifiable TR."
 End If
 Err.Clear
 On Error GoTo 0
@@ -371,13 +371,13 @@ If nRefCount > 0 Then
 
     ' Detect Currency/Quantity Fields tab column layout. Two layouts seen:
     '   Layout A (older):  [Short Desc, Field, DTEL, Type, RefTable, RefField]
-    '                      → REFTABLE at column 4, REFFIELD at column 5
+    '                      -> REFTABLE at column 4, REFFIELD at column 5
     '   Layout B (newer):  [Field, DTEL, Type, RefTable, RefField, Short Desc]
-    '                      → REFTABLE at column 3, REFFIELD at column 4
-    ' The DDIC field name is identical on both — only the column index
+    '                      -> REFTABLE at column 3, REFFIELD at column 4
+    ' The DDIC field name is identical on both -- only the column index
     ' differs. Probe column 4 first using the FIRST ref row; if absent,
     ' fall back to column 3. See sap_se11_table_create.vbs for the same
-    ' probe — kept symmetric.
+    ' probe -- kept symmetric.
     Dim nColRefTab : nColRefTab = 4
     Dim nColRefFld : nColRefFld = 5
     Dim nProbeRow : nProbeRow = arrRefRow(0)
@@ -391,13 +391,13 @@ If nRefCount > 0 Then
         If Err.Number = 0 And Not (oProbe Is Nothing) Then
             nColRefTab = 3
             nColRefFld = 4
-            WScript.Echo "INFO: Currency/Qty layout B detected — REFTABLE col 3, REFFIELD col 4 (Short Desc at end)."
+            WScript.Echo "INFO: Currency/Qty layout B detected -- REFTABLE col 3, REFFIELD col 4 (Short Desc at end)."
         Else
-            WScript.Echo "WARN: Could not probe Currency/Qty column layout — using default cols 4/5. Rows may not write."
+            WScript.Echo "WARN: Could not probe Currency/Qty column layout -- using default cols 4/5. Rows may not write."
         End If
         Err.Clear
     Else
-        WScript.Echo "INFO: Currency/Qty layout A detected — REFTABLE col 4, REFFIELD col 5 (Short Desc first)."
+        WScript.Echo "INFO: Currency/Qty layout A detected -- REFTABLE col 4, REFFIELD col 5 (Short Desc first)."
     End If
     On Error GoTo 0
 
@@ -565,7 +565,7 @@ If sFinalType = "E" Or sFinalType = "A" Then
             WScript.Echo "ACTIVATION_ERROR: " & sTopErr
         End If
     Else
-        WScript.Echo "INFO: Activation log could not be captured automatically — open SE11 and use Utilities > Activation Log."
+        WScript.Echo "INFO: Activation log could not be captured automatically -- open SE11 and use Utilities > Activation Log."
     End If
     WScript.Echo "FAILED: Table " & UCase(OBJECT_NAME) & " was NOT activated. See activation log above."
     WScript.Quit 1

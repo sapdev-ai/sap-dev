@@ -9,7 +9,7 @@
 #
 #   - Decryption requires the SAME Windows user account on the SAME
 #     machine that performed the encryption. A copied settings.json is
-#     useless on another machine — that's the desired property.
+#     useless on another machine -- that's the desired property.
 #   - No key management: Windows handles the key, rotated automatically
 #     under the user's profile.
 #   - Entropy parameter is unused in this v1 (no extra salt). Future
@@ -20,11 +20,11 @@
 #
 #     . "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_dpapi.ps1"
 #     $stored = Protect-SapSecret -Plaintext "MyP@ssw0rd"
-#     # → "dpapi:AQAAANCMnd8BFdERjHoAwE/Cl..."
+#     # -> "dpapi:AQAAANCMnd8BFdERjHoAwE/Cl..."
 #     $back   = Unprotect-SapSecret -StoredValue $stored
-#     # → "MyP@ssw0rd"
+#     # -> "MyP@ssw0rd"
 #
-# USAGE FROM A SKILL (CLI mode — single-shot invocation):
+# USAGE FROM A SKILL (CLI mode -- single-shot invocation):
 #
 #     powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_dpapi.ps1" `
 #         -Action protect -Value "MyP@ssw0rd"
@@ -74,7 +74,7 @@ function Protect-SapSecret {
     )
 
     if ([string]::IsNullOrEmpty($Plaintext)) {
-        # Empty input → empty output. No "dpapi:" prefix because there's
+        # Empty input -> empty output. No "dpapi:" prefix because there's
         # nothing to protect, and we don't want a stored "dpapi:" with
         # no payload to look like valid ciphertext to readers.
         return ""

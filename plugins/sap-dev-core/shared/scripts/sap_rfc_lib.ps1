@@ -118,7 +118,7 @@ function Connect-SapRfc {
     # Remember whether each endpoint slot came from the caller (explicit)
     # vs. was filled by the profile fallback below. Used after fallback to
     # decide direct-vs-load-balanced when the profile carries BOTH (which
-    # happens routinely for load-balanced logins — SAP GUI also reports
+    # happens routinely for load-balanced logins -- SAP GUI also reports
     # an internal-name application_server alongside the message_server).
     $explicitServer        = -not (_Needs $Server)
     $explicitMessageServer = -not (_Needs $MessageServer)
@@ -216,10 +216,10 @@ function Connect-SapRfc {
     #   * BOTH came from the profile fallback              -> prefer LOAD-BALANCED.
     #     SAP GUI captures both fields for load-balanced
     #     logins (Info.ApplicationServer returns whichever
-    #     physical instance the message server routed to —
+    #     physical instance the message server routed to --
     #     usually an internal name that won't DNS-resolve
     #     from the workstation). The user's *intent* is
-    #     load-balanced — that's what they typed. Picking
+    #     load-balanced -- that's what they typed. Picking
     #     direct silently downgrades to a routing that will
     #     fail on `hostname unknown`.
     $useDirect = -not [string]::IsNullOrWhiteSpace($Server)
@@ -239,10 +239,10 @@ function Connect-SapRfc {
             # Caller wanted load-balanced; profile happened to add application_server.
             $useDirect = $false
         } else {
-            # Both filled from profile fallback — load-balanced is the
+            # Both filled from profile fallback -- load-balanced is the
             # deliberate signal (user typed message_server at login time;
             # application_server is the post-routing internal name).
-            Write-Host "INFO: Connect-SapRfc: profile has both endpoints; preferring load-balanced (-MessageServer) — message_server is the user's deliberate choice, application_server is the post-routing internal name."
+            Write-Host "INFO: Connect-SapRfc: profile has both endpoints; preferring load-balanced (-MessageServer) -- message_server is the user's deliberate choice, application_server is the post-routing internal name."
             $useDirect = $false
         }
     }
@@ -266,7 +266,7 @@ function Connect-SapRfc {
     #   else {work_dir}\logs (default work_dir = C:\sap_dev_work)
     if (-not $script:_SapRfc_LogDirSet) {
         try {
-            # Settings read merges settings.json + settings.local.json — see
+            # Settings read merges settings.json + settings.local.json -- see
             # sap_settings_lib.ps1.
             $settingsLib = Join-Path (Split-Path -Parent $PSCommandPath) 'sap_settings_lib.ps1'
             if (Test-Path $settingsLib) { . $settingsLib }
@@ -281,7 +281,7 @@ function Connect-SapRfc {
             [System.IO.Directory]::SetCurrentDirectory($cfgLog)
             $script:_SapRfc_LogDirSet = $true
         } catch {
-            # Non-fatal — NCo will fall back to the original CWD if redirect fails.
+            # Non-fatal -- NCo will fall back to the original CWD if redirect fails.
         }
     }
 
@@ -355,7 +355,7 @@ function Disconnect-SapRfc {
 }
 
 # Append a FIELDS row (FIELDNAME=<name>) to an RFC_READ_TABLE function call.
-# NOTE: every NCo method call must be cast to [void] or piped to Out-Null —
+# NOTE: every NCo method call must be cast to [void] or piped to Out-Null --
 # IRfcStructure.SetValue() etc. return the structure (fluent API) and PS
 # captures the return value into the function's output pipeline, so callers
 # get an Object[] instead of the table they expected.
@@ -417,7 +417,7 @@ function New-RfcReadTable {
     )
     Assert-RfcReadTableAllowed -QueryTable $Table
     $fn = $Destination.Repository.CreateFunction("RFC_READ_TABLE")
-    # SetValue must be cast to [void] — NCo's IRfcFunction.SetValue returns
+    # SetValue must be cast to [void] -- NCo's IRfcFunction.SetValue returns
     # the function itself (fluent API), which PowerShell otherwise captures
     # into this function's output pipeline. That polluted return is what
     # caused the historic "$fn is an Object[]" cascade where callers ended
@@ -430,6 +430,6 @@ function New-RfcReadTable {
     # would unroll the function into N RfcParameter objects and the caller
     # would receive an Object[] of parameters instead of the function itself.
     # The unary `,` operator wraps the value in a single-element array which
-    # PS then unwraps back to the original object — preserving identity.
+    # PS then unwraps back to the original object -- preserving identity.
     return ,$fn
 }

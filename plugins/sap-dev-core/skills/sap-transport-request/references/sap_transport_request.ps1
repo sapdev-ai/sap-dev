@@ -55,13 +55,13 @@ if ($normalizedMode -eq "" -or $normalizedMode -notin @("GUI","RFC","BDC")) { $n
 
 $sTrkorr = $TR_INPUT.Trim()
 
-# Guardrail #1 — VERIFY under GUI mode. The /sap-transport-request SKILL.md
+# Guardrail #1 -- VERIFY under GUI mode. The /sap-transport-request SKILL.md
 # Step 1b GUI branch should route verification through `/sap-se16n` on
 # table `E070` (a pure GUI read). Reaching this PS1 with a TR candidate AND
-# mode=GUI means the SKILL.md dispatch was skipped — refuse loudly so the
+# mode=GUI means the SKILL.md dispatch was skipped -- refuse loudly so the
 # operator sees the issue instead of silently falling through to the RFC
 # verifier (which would work for users who happen to have NCo, but breaks
-# for pure-GUI environments — exactly what GUI mode is supposed to support).
+# for pure-GUI environments -- exactly what GUI mode is supposed to support).
 if ($sTrkorr -ne "" -and $normalizedMode -eq "GUI") {
     Write-Host "ERROR: TR verification via TR_READ_REQUEST (wrapper FM) refused under sap_dev_mode=GUI."
     Write-Host "       Expected dispatch: /sap-transport-request SKILL.md Step 1b -> GUI branch -> /sap-se16n TABLE=E070."
@@ -88,7 +88,7 @@ function Get-XmlLeafValue {
     # asXML for CS_REQUEST nests fields like <H><TRSTATUS>D</TRSTATUS>...</H>.
     # A single <H>...</H> block can match an element multiple times if
     # nested structures repeat the same name; for TR header fields the
-    # H-level instance is the first one. Regex is sufficient — no XML
+    # H-level instance is the first one. Regex is sufficient -- no XML
     # parser dependency, and CS_REQUEST never carries CDATA or attributes
     # on these leaf elements. Self-closing form <X/> is the asXML rendering
     # of an empty char element and resolves to "".
@@ -103,7 +103,7 @@ function Get-XmlLeafValue {
 function Get-TrStatusViaWrapper {
     param($Dest, [string]$Trkorr)
 
-    # asXML scalar payloads. Use a single line — the wrapper FM
+    # asXML scalar payloads. Use a single line -- the wrapper FM
     # concatenates chunks RESPECTING BLANKS, so any newline becomes part
     # of the payload and breaks CALL TRANSFORMATION id.
     $xmlTrkorr = '<?xml version="1.0" encoding="utf-16"?>' +
@@ -126,11 +126,11 @@ function Get-TrStatusViaWrapper {
         $tbl.SetValue("PTYPENAME", "TRKORR")
         $tbl.SetValue("PVALUE",    $xmlTrkorr)
 
-        # Row 2: IV_READ_E070 = 'X'  — without this flag, TR_READ_REQUEST
+        # Row 2: IV_READ_E070 = 'X'  -- without this flag, TR_READ_REQUEST
         # fills only CS_REQUEST-H-TRKORR and leaves the rest of H blank,
         # which we'd misread as "TR not found". With the flag, the FM
         # populates TRSTATUS / TRFUNCTION / AS4USER / AS4DATE / etc.
-        # PTYPENAME = XFELD (standard CHAR1 flag data element) — the
+        # PTYPENAME = XFELD (standard CHAR1 flag data element) -- the
         # wrapper does CREATE DATA lr_data TYPE (<ptypename>), which
         # needs a resolvable DDIC name; bare 'C' would fail (no length).
         $tbl.Append() | Out-Null
@@ -140,7 +140,7 @@ function Get-TrStatusViaWrapper {
         $tbl.SetValue("PTYPENAME", "XFELD")
         $tbl.SetValue("PVALUE",    $xmlFlagX)
 
-        # Row 3: CS_REQUEST (CHANGING, TRWBO_REQUEST) — empty payload,
+        # Row 3: CS_REQUEST (CHANGING, TRWBO_REQUEST) -- empty payload,
         # wrapper allocates a default-initialized structure for the FM to
         # populate, then serializes the result back as asXML.
         $tbl.Append() | Out-Null
@@ -158,7 +158,7 @@ function Get-TrStatusViaWrapper {
     } catch {
         # Z_GENERIC_RFC_WRAPPER_TBL raises DYNAMIC_CALL_FAILED if
         # TR_READ_REQUEST itself raises (e.g., TR doesn't exist on this
-        # system). Treat that as "TR not found" — TRSTATUS="".
+        # system). Treat that as "TR not found" -- TRSTATUS="".
         $msg = $_.Exception.Message
         if ($msg -match "DYNAMIC_CALL_FAILED" -or
             $msg -match "FM_NOT_FOUND" -or
@@ -184,10 +184,10 @@ function Get-TrStatusViaWrapper {
         }
     }
     if ($accum -eq "") {
-        # Wrapper succeeded but returned no payload — the FM populated an
+        # Wrapper succeeded but returned no payload -- the FM populated an
         # empty structure (TR doesn't exist) or the type couldn't be
         # resolved on the ABAP side (the wrapper emits a single
-        # placeholder row in that case — surfaces as accum="").
+        # placeholder row in that case -- surfaces as accum="").
         return ""
     }
 
@@ -223,10 +223,10 @@ if ($sTrkorr -ne "") {
 }
 
 # --- 3. Create new TR if needed ---------------------------------------------
-# Guardrail #2 — CREATE under GUI mode. The /sap-transport-request SKILL.md
+# Guardrail #2 -- CREATE under GUI mode. The /sap-transport-request SKILL.md
 # Step 1a Create Path GUI branch should route TR creation through
 # /sap-se01. If the skill driver routes an empty TR_INPUT here while
-# sap_dev_mode = GUI, that's a SKILL.md dispatch bug — refuse loudly so
+# sap_dev_mode = GUI, that's a SKILL.md dispatch bug -- refuse loudly so
 # the operator sees the issue instead of silently getting an RFC-created
 # TR with a different description format than /sap-se01 would produce.
 # $normalizedMode was set up-front next to Guardrail #1.

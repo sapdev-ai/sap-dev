@@ -284,7 +284,7 @@ If InStr(oSession.ActiveWindow.Id, "wnd[1]") > 0 Then
             If Err.Number = 0 Then
                 If Not (oMaintBtn Is Nothing) Then
                     WScript.Echo "INFO: Original-language popup detected (logon != MASTERLANG=" & _
-                                 oMasterLangFld.Text & ") — pressing 'Maint. in orig. lang.'."
+                                 oMasterLangFld.Text & ") -- pressing 'Maint. in orig. lang.'."
                     oMaintBtn.press
                     WScript.Sleep 1500
                 End If
@@ -313,9 +313,9 @@ On Error GoTo 0
 
 ' ------ 2b. Pre-save TR claim --------------------------------------------------
 ' Send Ctrl+S to provoke any "Prompt for local Workbench request" popup.
-' (a) wnd[1] with ctxtKO008-TRKORR → fill SAP_TRANSPORT, Enter.
-' (b) Other popup → Enter to dismiss.
-' (c) No popup → object is local ($TMP) or already locked to a modifiable TR.
+' (a) wnd[1] with ctxtKO008-TRKORR -> fill SAP_TRANSPORT, Enter.
+' (b) Other popup -> Enter to dismiss.
+' (c) No popup -> object is local ($TMP) or already locked to a modifiable TR.
 ' Diagnostics: TADIR-DEVCLASS, E071, E070-TRSTATUS.
 WScript.Echo "INFO: Pre-save (Ctrl+S) to check whether a TR popup appears..."
 On Error Resume Next
@@ -336,17 +336,17 @@ If InStr(oSession.ActiveWindow.Id, "wnd[1]") > 0 Then
             WScript.Quit 1
         End If
         oPreTR.Text = SAP_TRANSPORT
-        WScript.Echo "INFO: Pre-save TR popup detected — entering " & SAP_TRANSPORT & "."
+        WScript.Echo "INFO: Pre-save TR popup detected -- entering " & SAP_TRANSPORT & "."
         oSession.findById("wnd[1]").sendVKey VKEY_ENTER
         WScript.Sleep 1000
     Else
         Err.Clear
-        WScript.Echo "INFO: Pre-save popup (no TR field) — pressing Enter to dismiss."
+        WScript.Echo "INFO: Pre-save popup (no TR field) -- pressing Enter to dismiss."
         oSession.ActiveWindow.sendVKey VKEY_ENTER
         WScript.Sleep 800
     End If
 Else
-    WScript.Echo "INFO: No pre-save popup — object is local ($TMP) or already locked to a modifiable TR."
+    WScript.Echo "INFO: No pre-save popup -- object is local ($TMP) or already locked to a modifiable TR."
 End If
 Err.Clear
 On Error GoTo 0
@@ -517,7 +517,7 @@ If InStr(oSession.ActiveWindow.Id, "wnd[1]") > 0 Then
         oSession.findById("wnd[1]/tbar[0]/btn[0]").press
         WScript.Sleep 1000
     ElseIf SAP_PACKAGE <> "" And UCase(SAP_PACKAGE) <> "$TMP" And SAP_TRANSPORT = "" Then
-        ' Case 3: Package provided, no transport → create new transport
+        ' Case 3: Package provided, no transport -> create new transport
         WScript.Echo "INFO: Assigning to package " & SAP_PACKAGE & " (creating new transport)..."
         oSession.findById("wnd[1]/usr/ctxtKO007-L_DEVCLASS").Text = SAP_PACKAGE
         oSession.findById("wnd[1]").sendVKey VKEY_ENTER
@@ -530,7 +530,7 @@ If InStr(oSession.ActiveWindow.Id, "wnd[1]") > 0 Then
         oSession.findById("wnd[1]/tbar[0]/btn[0]").press
         WScript.Sleep 1000
     Else
-        ' Case 2: No package or $TMP → Local Object
+        ' Case 2: No package or $TMP -> Local Object
         WScript.Echo "INFO: Saving as local object ($TMP)..."
         oSession.findById("wnd[1]/tbar[0]/btn[7]").press
         WScript.Sleep 1000

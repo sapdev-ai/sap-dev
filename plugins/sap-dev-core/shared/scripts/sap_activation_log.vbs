@@ -8,12 +8,12 @@
 ' but the popup itself does not name the failing field or rule. The full
 ' detail is in the activation log (Utilities > Activation Log). Without that
 ' detail the operator has to manually re-open SE11, navigate the menu, and
-' read the log — losing the automation context. This helper captures the
+' read the log -- losing the automation context. This helper captures the
 ' log to a local file inline so the calling skill can echo the path and the
 ' top error message in its own output.
 '
 ' SCOPE: SE11 / DDIC ONLY. The "Utilities > Activation Log" menu is a DDIC-
-' worklist concept and does NOT exist in SE38, SE37, SE24, or SE91 — those
+' worklist concept and does NOT exist in SE38, SE37, SE24, or SE91 -- those
 ' transactions surface activation errors via the source-code editor's
 ' inline error markers + the status bar message text, captured by reading
 ' wnd[0]/sbar.Text directly (already done in those skills). Do not include
@@ -37,8 +37,8 @@
 '   End If
 '
 ' RECORDING REFERENCE: C:\Temp\Record_SE11_ActivateErrorLog_01.vbs (S/4HANA
-' 1909). The recording captured Utilities > Activation Log → Log > Save
-' Local File → DY_PATH / DY_FILENAME → Enter → Back twice. Menu indices
+' 1909). The recording captured Utilities > Activation Log -> Log > Save
+' Local File -> DY_PATH / DY_FILENAME -> Enter -> Back twice. Menu indices
 ' below are derived from that recording and from /sap-gui-record probes.
 '
 ' MENU INDICES (SE11/SE38/SE37/SE24 main screen, S/4HANA 1909):
@@ -51,15 +51,15 @@
 '
 ' If your release moves the menus, re-record on the target system and patch
 ' the indices below. Indices are language-stable per the
-' language_independence_rules.md contract — only the displayed labels
+' language_independence_rules.md contract -- only the displayed labels
 ' change across logon languages.
 '
 ' RETURN VALUE:
-'   "" (empty)  → Activation log could not be opened or saved (caller
+'   "" (empty)  -> Activation log could not be opened or saved (caller
 '                 should fall back to sbar.Text).
-'   "<path>"    → Absolute path of the saved local file.
+'   "<path>"    -> Absolute path of the saved local file.
 '
-' NEVER RAISES — every step is wrapped in On Error Resume Next so a missing
+' NEVER RAISES -- every step is wrapped in On Error Resume Next so a missing
 ' menu / changed layout degrades to "" rather than aborting the caller.
 ' =============================================================================
 
@@ -117,12 +117,12 @@ Function CaptureActivationLog(oSess, sObjectName, sOutDir, kEnter, kBack)
     End If
     WScript.Sleep 600
 
-    ' --- Step 4. Encoding-format popup (if it appears) — accept default. ----
+    ' --- Step 4. Encoding-format popup (if it appears) -- accept default. ----
     For attempt = 1 To 3
         wndId = ""
         wndId = oSess.ActiveWindow.Id
         If InStr(wndId, "wnd[1]") > 0 Then
-            ' Probe for DY_PATH — that is the destination dialog, not the
+            ' Probe for DY_PATH -- that is the destination dialog, not the
             ' encoding popup. If DY_PATH exists, break out to fill it.
             On Error Resume Next
             Dim hasDyPath : hasDyPath = False
@@ -131,7 +131,7 @@ Function CaptureActivationLog(oSess, sObjectName, sOutDir, kEnter, kBack)
             If Err.Number = 0 And Not (dyEl Is Nothing) Then hasDyPath = True
             Err.Clear
             If hasDyPath Then Exit For
-            ' Otherwise it is the format dialog — accept default with btn[0].
+            ' Otherwise it is the format dialog -- accept default with btn[0].
             oSess.findById("wnd[1]/tbar[0]/btn[0]").press
             WScript.Sleep 400
         Else
@@ -139,10 +139,10 @@ Function CaptureActivationLog(oSess, sObjectName, sOutDir, kEnter, kBack)
         End If
     Next
 
-    ' --- Step 5. Destination popup — fill DY_PATH + DY_FILENAME, Enter. -----
+    ' --- Step 5. Destination popup -- fill DY_PATH + DY_FILENAME, Enter. -----
     wndId = oSess.ActiveWindow.Id
     If InStr(wndId, "wnd[1]") = 0 Then
-        ' Destination dialog never appeared — abort and back out.
+        ' Destination dialog never appeared -- abort and back out.
         oSess.findById("wnd[0]/tbar[0]/btn[15]").press
         WScript.Sleep 300
         On Error GoTo 0
@@ -172,7 +172,7 @@ End Function
 ' so the caller can echo it without having to read the whole file. Returns
 ' "" if no recognisable error line is found. Treats lines starting with the
 ' SAP error icon literal "@5C@" or containing "(specify reference table" /
-' "was not activated" as candidates — these are the patterns observed in
+' "was not activated" as candidates -- these are the patterns observed in
 ' DDIC activation logs across S/4HANA 17xx-21xx.
 Function ExtractTopActivationError(sLogPath)
     ExtractTopActivationError = ""

@@ -32,7 +32,7 @@ $script:SapLogLevels   = @{ DEBUG = 10; INFO = 20; WARN = 30; ERROR = 40; OFF = 
 function Get-SapLogSettings {
     if ($null -ne $script:SapLogSettings) { return $script:SapLogSettings }
 
-    # Settings read merges settings.json + settings.local.json — see
+    # Settings read merges settings.json + settings.local.json -- see
     # sap_settings_lib.ps1. This script lives at
     # <root>\plugins\sap-dev-core\shared\scripts\sap_log_lib.ps1
     $settingsLib = Join-Path $PSScriptRoot 'sap_settings_lib.ps1'
@@ -100,7 +100,7 @@ function Get-SapLogSettings {
                 $cfg.RedactKeys = @($v.Split(',') | ForEach-Object { $_.Trim().ToLower() } | Where-Object { $_ })
             }
         } catch {
-            # Fall back to defaults silently — logging must never break a skill.
+            # Fall back to defaults silently -- logging must never break a skill.
             $cfg.Dir = 'C:\sap_dev_work\logs'
         }
     } else {
@@ -370,7 +370,7 @@ function Stop-SapLog {
     $endTime = Get-Date
 
     # Stale-run guard: a run whose start is older than the configured threshold
-    # almost certainly had its 'end' skipped when the work actually finished —
+    # almost certainly had its 'end' skipped when the work actually finished --
     # the per-skill state file was orphaned and is only being closed now by a
     # later invocation. Reporting that as the caller's requested SUCCESS would
     # stamp a bogus multi-day duration onto the run's START-date log file (the

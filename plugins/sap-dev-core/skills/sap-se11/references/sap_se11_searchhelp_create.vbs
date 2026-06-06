@@ -50,7 +50,7 @@ ExecuteGlobal CreateObject("Scripting.FileSystemObject") _
 
 ' UTF-8/16 BOM-detect text-encoding helper.
 ' Lets the OpenTextFile read below accept UTF-8 inputs from upstream tools
-' (sap-docs-extract, the Write tool, hand-authored TSVs) — full docstring
+' (sap-docs-extract, the Write tool, hand-authored TSVs) -- full docstring
 ' in sap_se11_table_create.vbs. Always returns a UTF-16 LE path so callers
 ' must open the result with mode -1.
 Function EnsureUnicodeFile(sSrcPath)
@@ -359,7 +359,7 @@ Else
     WScript.Echo "INFO: SAP status: " & sFinalMsg
 End If
 
-' Post-activate RFC verify (Phase 4.3 — mandatory per SKILL.md Step 5d).
+' Post-activate RFC verify (Phase 4.3 -- mandatory per SKILL.md Step 5d).
 PostActivateVerifyOrFail POST_ACTIVATE_VERIFY_PS1, "SEARCHHELP", OBJECT_NAME
 
 WScript.Echo "SUCCESS: Search help " & UCase(OBJECT_NAME) & " created and activated in SAP."

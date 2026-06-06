@@ -9,7 +9,7 @@
 # (parameter name + STRUCTURE TYPE name). That tells the generator
 # "CLIENTDATA is typed BAPI_MARA" but NOT what fields BAPI_MARA actually
 # exposes on this release. AI training knowledge of BAPI internals is
-# unreliable across S/4HANA releases — fields are added/removed/renamed.
+# unreliable across S/4HANA releases -- fields are added/removed/renamed.
 # This script closes that gap: feed it the unique TABNAMEs from
 # _fm_signatures.txt and it returns ground-truth field lists.
 #
@@ -20,7 +20,7 @@
 # TTL strategy:
 #   DDIC structures change rarely (SAP-shipped structures only on release
 #   upgrades, Z-namespace during dev). Single knob TTL_DAYS, default 30 for
-#   SAP-standard, 1 for Z*/Y* — mirrors the FM cache TTL policy.
+#   SAP-standard, 1 for Z*/Y* -- mirrors the FM cache TTL policy.
 #   Negative cache (struct not found) -> TTL_STD_DAYS.
 #
 # Run with **32-bit PowerShell**:
@@ -146,7 +146,7 @@ if ($misses.Count -gt 0) {
                 $dfies.CurrentIndex = $r
                 $fieldname = Get-FieldStr $dfies "FIELDNAME"
                 if ($fieldname -eq "") { continue }
-                # Skip ".INCLUDE" structural markers — those have empty FIELDNAME or special INTTYPE
+                # Skip ".INCLUDE" structural markers -- those have empty FIELDNAME or special INTTYPE
                 $position  = Get-FieldStr $dfies "POSITION"
                 $rollname  = Get-FieldStr $dfies "ROLLNAME"
                 $domname   = Get-FieldStr $dfies "DOMNAME"

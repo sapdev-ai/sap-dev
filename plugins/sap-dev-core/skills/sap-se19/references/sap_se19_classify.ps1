@@ -129,12 +129,12 @@ if ($classicImpl -or $newImpl) { $kind = 'IMPLEMENTATION' }
 # Honour caller expectation when both signals exist (a migrated def also has impls)
 if ($Expect -ne 'AUTO') { $kind = $Expect }
 
-# TYPE — restrict signals to the expected KIND so a migrated definition that
+# TYPE -- restrict signals to the expected KIND so a migrated definition that
 # also has implementations isn't reported AMBIGUOUS for an implementation lookup.
 $typeClassic = $false; $typeNew = $false
 switch ($kind) {
     # A *migrated* BAdI keeps a classic face (you can still create classic
-    # implementations of it — e.g. ZZMB_MIGO_BADI on the migrated MB_MIGO_BADI)
+    # implementations of it -- e.g. ZZMB_MIGO_BADI on the migrated MB_MIGO_BADI)
     # AND a new face (it has an enhancement spot). Per req #1 that genuinely-
     # dual case must surface as AMBIGUOUS so the skill asks the user.
     'DEFINITION' { $typeClassic = ($classicDef -or $migrated); $typeNew = ($newSpot -or $migrated -or ($newDefRef -and -not $classicDef)) }

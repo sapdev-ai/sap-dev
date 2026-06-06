@@ -9,7 +9,7 @@
 # an Allow rule, when the Security Module's Default Action is "Ask". While that
 # modal is up, the SAP GUI Scripting API is fully suspended, so a cscript-driven
 # skill goes blind and hangs. Skills that do SAP-GUI file IO should:
-#   1. precheck (this script) — if ALLOWED, no dialog will fire; proceed.
+#   1. precheck (this script) -- if ALLOWED, no dialog will fire; proceed.
 #   2. if NOT_COVERED, launch sap_gui_security_sidecar.ps1 as a background
 #      watcher BEFORE the file-IO action, so the dialog is auto-dismissed
 #      (ticking "Remember My Decision" persists a rule, so the NEXT precheck
@@ -35,7 +35,7 @@
 #
 # NOTE: a NOT_COVERED result is advisory, not a guarantee a dialog WILL appear;
 # and ALLOWED is best-effort (the action-code semantics are inferred). Treat the
-# background watcher as the actual safety net — see the rule doc.
+# background watcher as the actual safety net -- see the rule doc.
 # =============================================================================
 
 [CmdletBinding()]
@@ -104,5 +104,5 @@ foreach ($rule in $rules) {
     }
 }
 
-Write-Output "NOT_COVERED: no Allow rule for $Access on '$np' (system='$System' client='$Client' txn='$Transaction') — run the security watcher before the file IO"
+Write-Output "NOT_COVERED: no Allow rule for $Access on '$np' (system='$System' client='$Client' txn='$Transaction') -- run the security watcher before the file IO"
 exit 1

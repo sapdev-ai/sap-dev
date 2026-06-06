@@ -1,5 +1,5 @@
 # =============================================================================
-# sap_workdir_setup.ps1 — work_dir onboarding helper for /sap-login and
+# sap_workdir_setup.ps1 -- work_dir onboarding helper for /sap-login and
 # /sap-dev-init. Centralizes the probe / set / migrate logic so the skills'
 # Step 0 stays declarative. See shared/rules/work_dir_onboarding.md.
 # =============================================================================
@@ -76,7 +76,7 @@ try {
                 $copied += $name
             }
             Out-KV 'COPIED'  ($copied  -join ',')
-            Out-KV 'SKIPPED' ($skipped -join ',')   # already present at target — left as-is
+            Out-KV 'SKIPPED' ($skipped -join ',')   # already present at target -- left as-is
             Out-KV 'MISSING' ($missing -join ',')   # not present at source
             Out-KV 'FROM' $src
             Out-KV 'TO'   $dst

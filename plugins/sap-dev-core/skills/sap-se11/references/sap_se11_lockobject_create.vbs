@@ -51,7 +51,7 @@ ExecuteGlobal CreateObject("Scripting.FileSystemObject") _
 
 ' UTF-8/16 BOM-detect text-encoding helper.
 ' Lets the OpenTextFile read below accept UTF-8 inputs from upstream tools
-' (sap-docs-extract, the Write tool, hand-authored TSVs) — full docstring
+' (sap-docs-extract, the Write tool, hand-authored TSVs) -- full docstring
 ' in sap_se11_table_create.vbs. Always returns a UTF-16 LE path so callers
 ' must open the result with mode -1.
 Function EnsureUnicodeFile(sSrcPath)
@@ -185,7 +185,7 @@ oFile.Close
 WScript.Echo "INFO: Primary table: " & sPrimaryTable & ", Lock mode: " & sLockMode
 WScript.Echo "INFO: Secondary tables: " & iSecCount & ", Lock arguments: " & iArgCount
 
-' ------ 5. Tables tab — Fill primary table and lock mode --------------------
+' ------ 5. Tables tab -- Fill primary table and lock mode --------------------
 WScript.Echo "INFO: Setting primary table..."
 On Error Resume Next
 
@@ -250,7 +250,7 @@ End If
 Err.Clear
 On Error GoTo 0
 
-' ------ 7. Lock Arguments tab — Fill lock parameters -------------------------
+' ------ 7. Lock Arguments tab -- Fill lock parameters -------------------------
 If iArgCount > 0 Then
     WScript.Echo "INFO: Setting lock arguments..."
     On Error Resume Next
@@ -384,7 +384,7 @@ Else
     WScript.Echo "INFO: SAP status: " & sFinalMsg
 End If
 
-' Post-activate RFC verify (Phase 4.3 — mandatory per SKILL.md Step 5d).
+' Post-activate RFC verify (Phase 4.3 -- mandatory per SKILL.md Step 5d).
 PostActivateVerifyOrFail POST_ACTIVATE_VERIFY_PS1, "LOCKOBJECT", OBJECT_NAME
 
 WScript.Echo "SUCCESS: Lock object " & UCase(OBJECT_NAME) & " created and activated in SAP."

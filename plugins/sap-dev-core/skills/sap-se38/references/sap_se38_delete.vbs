@@ -123,7 +123,7 @@ For iPop = 1 To 8
 
     ' (a2) SAPLSETX "Different original and logon languages" popup.
     ' Fingerprint: ctxtRSETX-MASTERLANG present in the popup's usr area.
-    ' Pressing Enter does NOT dismiss this dialog — it just re-opens it,
+    ' Pressing Enter does NOT dismiss this dialog -- it just re-opens it,
     ' eventually tripping the iPop>8 cap and emitting a false SUCCESS.
     ' Click "Maint. in orig. lang." (btnPUSH1) which leaves TADIR-MASTERLANG
     ' unchanged and lets the delete flow continue.

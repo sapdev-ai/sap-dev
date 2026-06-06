@@ -213,13 +213,13 @@ Sub ForEachWindow(sCallbackName)
     End If
 
     ' Otherwise enumerate ALL top-level windows of the session
-    ' (oSes.Children gives every wnd[*] currently open — main + popups +
-    '  message windows — without us guessing an upper bound).
+    ' (oSes.Children gives every wnd[*] currently open -- main + popups +
+    '  message windows -- without us guessing an upper bound).
     Dim oWnd, sId, idx
     On Error Resume Next
     For Each oWnd In oSes.Children
         sId = oWnd.Id
-        ' sId looks like ".../wnd[N]" — extract N
+        ' sId looks like ".../wnd[N]" -- extract N
         idx = -1
         Dim p1, p2
         p1 = InStrRev(sId, "wnd[")
@@ -376,7 +376,7 @@ Sub DumpById(sId)
 End Sub
 
 ' =============================================================================
-' Property dump — common to type and id modes
+' Property dump -- common to type and id modes
 ' =============================================================================
 Sub DumpProperties(oCtrl, sIndent)
     Dim sType, sSub, sId
@@ -582,7 +582,7 @@ Function SafeProp(oCtrl, sName)
     On Error GoTo 0
 End Function
 
-' Reflective property fetch via VBScript Eval — we use an embedded
+' Reflective property fetch via VBScript Eval -- we use an embedded
 ' GetRef-style dispatch table for the small set of properties we touch.
 Function Eval2(o, sName)
     On Error Resume Next
@@ -623,6 +623,6 @@ Function Eval2(o, sName)
         Case "SystemName"       : Eval2 = o.SystemName
         Case "VerticalScrollbar" : Set Eval2 = o.VerticalScrollbar
         Case Else
-            ' Unknown property — leave Eval2 empty
+            ' Unknown property -- leave Eval2 empty
     End Select
 End Function

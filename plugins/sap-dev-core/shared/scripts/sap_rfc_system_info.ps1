@@ -8,7 +8,7 @@
 # shared/tables/sap_release_markers.tsv. Emits a JSON record to stdout
 # that sap_login_select.ps1 -Action finalize folds into the active
 # connection profile in {work_dir}\runtime\connections.json via
-# Save-SapConnection (Phase 4.2 — replaces the legacy pin file).
+# Save-SapConnection (Phase 4.2 -- replaces the legacy pin file).
 #
 # Usage:
 #   powershell -ExecutionPolicy Bypass -File sap_rfc_system_info.ps1 `
@@ -45,7 +45,7 @@ if (-not (Test-Path $markersFile)) {
 . "$thisDir\sap_rfc_lib.ps1"
 
 # ------------------------------------------------------------------------------
-# Step 1 — connect
+# Step 1 -- connect
 # ------------------------------------------------------------------------------
 $dest = Connect-SapRfc -Server   $Server `
                        -Sysnr    $Sysnr `
@@ -58,7 +58,7 @@ if (-not $dest) { exit 2 }
 
 try {
     # ---------------------------------------------------------------------------
-    # Step 2 — RFC_SYSTEM_INFO  (kernel, host, IP)
+    # Step 2 -- RFC_SYSTEM_INFO  (kernel, host, IP)
     # ---------------------------------------------------------------------------
     $sysInfoFn = $dest.Repository.CreateFunction('RFC_SYSTEM_INFO')
     $sysInfoFn.Invoke($dest)
@@ -74,10 +74,10 @@ try {
     $rfcOpSys      = "$($rfcSi.GetValue('RFCOPSYS'))".Trim()
 
     # ---------------------------------------------------------------------------
-    # Step 3 — CVERS  (software-component releases)
+    # Step 3 -- CVERS  (software-component releases)
     # ---------------------------------------------------------------------------
     # Track per-component lookup outcomes so the caller can distinguish
-    # "component not installed" (legitimately missing — e.g. S4CORE absent on
+    # "component not installed" (legitimately missing -- e.g. S4CORE absent on
     # ECC, SAP_APPL absent on S/4HANA) from "RFC call failed" (auth missing
     # on CVERS / S_TABU_DIS, RFC_READ_TABLE blocked by S_RFC, transient NCo
     # error). The old empty catch made these two outcomes indistinguishable
@@ -99,7 +99,7 @@ try {
                 # WA is the row content concatenated with the DELIMITER ('|')
                 # between fields, each space-padded to its declared width
                 # (CVERS: COMPONENT char30, RELEASE char10, EXTRELEASE char10).
-                # Split on the delimiter — simpler and correct than the
+                # Split on the delimiter -- simpler and correct than the
                 # previous off-by-one Substring math which left the '|'
                 # separator inside the release value ('|104' instead of '104'),
                 # causing the marker lookup to miss every S4CORE/SAP_BASIS row.
@@ -112,7 +112,7 @@ try {
                     release = $release
                 }
             }
-            # RowCount==0 is fine and silent — component genuinely not installed.
+            # RowCount==0 is fine and silent -- component genuinely not installed.
         } catch {
             # Surface the underlying error so the operator can tell the
             # difference between "CVERS auth missing" and "component absent".
@@ -131,7 +131,7 @@ try {
     }
 
     # ---------------------------------------------------------------------------
-    # Step 4 — resolve server_release_marker via the lookup table
+    # Step 4 -- resolve server_release_marker via the lookup table
     # ---------------------------------------------------------------------------
     $markers = @()
     foreach ($line in Get-Content $markersFile -Encoding UTF8) {
@@ -206,7 +206,7 @@ try {
     }
 
     # ---------------------------------------------------------------------------
-    # Step 5 — assemble the JSON record (server-side fields only -- GUI fields
+    # Step 5 -- assemble the JSON record (server-side fields only -- GUI fields
     # are merged in by the caller VBS that has access to oApp.MajorVersion etc.)
     # ---------------------------------------------------------------------------
     $componentList = @()

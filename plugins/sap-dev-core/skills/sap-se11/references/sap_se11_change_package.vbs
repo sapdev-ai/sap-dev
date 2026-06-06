@@ -169,7 +169,7 @@ If InStr(oSession.ActiveWindow.Id, "wnd[1]") > 0 Then
         oSession.findById("wnd[1]/tbar[0]/btn[0]").press
         WScript.Sleep 1000
     Else
-        ' No transport — create new request
+        ' No transport -- create new request
         WScript.Echo "INFO: Creating new transport request..."
         oSession.findById("wnd[1]/tbar[0]/btn[8]").press
         WScript.Sleep 1000

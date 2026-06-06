@@ -88,7 +88,7 @@ Dim g_localTypes
 Set g_localTypes = CreateObject("Scripting.Dictionary")
 g_localTypes.CompareMode = 1
 
-' Local TYPES → data-kind map (DK_TABLE / DK_STRUCTURE / DK_VARIABLE / ...).
+' Local TYPES -> data-kind map (DK_TABLE / DK_STRUCTURE / DK_VARIABLE / ...).
 ' Populated alongside g_localTypes so that variables typed by a local TYPE
 ' (e.g. `lt_x TYPE STANDARD TABLE OF ty_y` or `ls_x TYPE ty_struct`)
 ' can be re-classified from DK_VARIABLE to their true kind after the
@@ -344,7 +344,7 @@ Sub CheckMethodCallParams(codeLine, lineNum, className, methodName, startPos)
     If pEnd > 0 Then
         paramSection = Mid(codeLine, pStart + 1, pEnd - pStart - 1)
     Else
-        Exit Sub  ' Multi-line call — skip for now
+        Exit Sub  ' Multi-line call -- skip for now
     End If
 
     paramSection = Trim(paramSection)
@@ -359,7 +359,7 @@ Sub CheckMethodCallParams(codeLine, lineNum, className, methodName, startPos)
             ' skip
         ElseIf pi + 1 <= UBound(pTokens) Then
             If StripTrailing(pTokens(pi + 1)) = "=" Then
-                ' pt is a parameter name — check it exists
+                ' pt is a parameter name -- check it exists
                 Dim paramFound : paramFound = False
                 Dim pci
                 For pci = 1 To g_cmCount
@@ -593,7 +593,7 @@ Function ExtractWhereFields(tokens, startIdx, aliasMap, defaultTable)
             If wt = "AND" Or wt = "OR" Or wt = "NOT" Or wt = "(" Or wt = ")" Then
                 ' Skip logic keywords, stay in expectField
             ElseIf Left(wt, 1) = "'" Or Left(wt, 1) = "@" Then
-                ' Value literal or host var — skip
+                ' Value literal or host var -- skip
             Else
                 ' This is a field name
                 Dim ref : ref = ResolveFieldRef(wt, aliasMap, defaultTable)
@@ -686,11 +686,11 @@ Sub ParseSqlSelect(fullText, startLine)
             If Right(rawTok, 1) = "," Then commaCount = commaCount + 1
         ElseIf Left(ft, 1) = "@" Then
             ' Host variable / boolean literal projection (e.g. SELECT @abap_true,
-            ' SELECT @lv_const). Not a column of the SELECT FROM table — skip.
+            ' SELECT @lv_const). Not a column of the SELECT FROM table -- skip.
             idx = idx + 1
             If Right(rawTok, 1) = "," Then commaCount = commaCount + 1
         ElseIf InStr(ft, "(") > 0 Then
-            ' Aggregate function like COUNT(*) — skip field checking
+            ' Aggregate function like COUNT(*) -- skip field checking
             isStar = True
             idx = idx + 1
             fieldCountRaw = fieldCountRaw + 1
@@ -736,7 +736,7 @@ Sub ParseSqlSelect(fullText, startLine)
             If frt = "INNER" Or frt = "LEFT" Or frt = "RIGHT" Or frt = "CROSS" Or _
                frt = "JOIN" Or frt = "WHERE" Or frt = "INTO" Then
                 inOnClause = False
-                ' Don't increment — reprocess this token
+                ' Don't increment -- reprocess this token
             Else
                 idx = idx + 1
             End If
@@ -816,7 +816,7 @@ Sub ParseSqlUpdate(fullText, startLine)
     Set aliasMap = CreateObject("Scripting.Dictionary")
     aliasMap.CompareMode = 1
 
-    ' Find SET clause — extract fields before = signs
+    ' Find SET clause -- extract fields before = signs
     Dim setFields : setFields = ""
     Dim idx : idx = 2
     Dim inSet : inSet = False
@@ -830,7 +830,7 @@ Sub ParseSqlUpdate(fullText, startLine)
         ElseIf ut = "" Or ut = "." Then
             Exit Do
         ElseIf inSet Then
-            ' Check if next token is "=" — if so, current is a field
+            ' Check if next token is "=" -- if so, current is a field
             If idx + 1 <= UBound(tokens) Then
                 If StripTrailing(tokens(idx + 1)) = "=" Then
                     Dim ref2 : ref2 = tableName & "." & ut
@@ -878,10 +878,10 @@ Sub ParseSqlDelete(fullText, startLine)
     Else
         tableName = StripTrailing(tokens(idx))
         idx = idx + 1
-        ' Check for "FROM TABLE @itab" pattern (mass delete — no field check)
+        ' Check for "FROM TABLE @itab" pattern (mass delete -- no field check)
         If idx <= UBound(tokens) Then
             If StripTrailing(tokens(idx)) = "FROM" Then
-                ' DELETE table FROM TABLE @itab — no SQL fields to check
+                ' DELETE table FROM TABLE @itab -- no SQL fields to check
                 AddSql "DELETE", startLine, fullText, tableName, "", "", "", True
                 Exit Sub
             End If
@@ -1025,7 +1025,7 @@ Sub ParseDeclEntry(uTokens, lineNum, scope, declKW, paramDir)
     '             WITH DEFAULT KEY,
     '         lv_c TYPE c.
     ' On line 2, the chain handler calls ParseDeclEntry with first token
-    ' "WITH" — but WITH is a type-clause keyword, not a new variable.
+    ' "WITH" -- but WITH is a type-clause keyword, not a new variable.
     ' Without this guard the parser registers WITH as a variable and the
     ' downstream naming check flags it. Same logic applies to INITIAL SIZE,
     ' INHERITING FROM, READ-ONLY, etc.
@@ -1067,7 +1067,7 @@ Sub ProcessSourceLine(rawLine, lineNum)
     ' assignments lv_x = DATA(...), etc.). Without this scanner, the inline
     ' name has no AddDecl entry and downstream consumers flag it as an
     ' unknown / undeclared / naming violation.
-    ' Scan ALL lines (not just declaration lines) — inline DATA() can sit
+    ' Scan ALL lines (not just declaration lines) -- inline DATA() can sit
     ' inside any executable statement.
     On Error Resume Next
     Dim oReInline
@@ -1081,7 +1081,7 @@ Sub ProcessSourceLine(rawLine, lineNum)
         If mItem.SubMatches.Count >= 1 Then
             sInlineName = UCT(mItem.SubMatches(0))
             If sInlineName <> "" Then
-                ' Type is unknown for inline DATA() — emit empty so the type
+                ' Type is unknown for inline DATA() -- emit empty so the type
                 ' validator skips it rather than flagging a fake mismatch.
                 ' Mark with paramDir="INLINE_DATA" so the PHASE 5 naming
                 ' check can apply the lenient "any valid LOCAL prefix" rule
@@ -1281,7 +1281,7 @@ Sub ProcessSourceLine(rawLine, lineNum)
         End If
 
         ' For DATA/CLASS-DATA inside CLASS DEFINITION, fall through to
-        ' declaration handler below — scope override happens there.
+        ' declaration handler below -- scope override happens there.
         ' Skip other class-definition-only keywords
         If tok0 = "ALIASES" Or tok0 = "EVENTS" Or tok0 = "INTERFACES" Then Exit Sub
     End If
@@ -1418,7 +1418,7 @@ Sub ProcessSourceLine(rawLine, lineNum)
     Dim restLine : restLine = ""
 
     If Right(origTok0, 1) = ":" Then
-        ' Colon was attached to keyword (DATA:) — already stripped from tok0
+        ' Colon was attached to keyword (DATA:) -- already stripped from tok0
         hasColon = True
         restLine = Trim(Mid(Trim(rawLine), Len(origTok0) + 1))
     Else
@@ -1481,10 +1481,10 @@ For sqli = 1 To g_srcCount
     Dim sqlRaw : sqlRaw = g_srcLines(sqli)
     Dim sqlTrimmed : sqlTrimmed = Trim(sqlRaw)
 
-    ' Skip full comment lines — but allow them inside accumulating block
+    ' Skip full comment lines -- but allow them inside accumulating block
     If Left(sqlTrimmed, 1) = "*" Then
         If Not inSqlAccum Then
-            ' Not in accumulation — skip entirely
+            ' Not in accumulation -- skip entirely
         End If
     Else
         Dim sqlCodePart : sqlCodePart = StripInlineComment(sqlRaw)
@@ -1576,7 +1576,7 @@ If SAP_SERVER <> "" And DDIC_HELPER_PS1 <> "" Then
         If tRef <> "" Then
             Dim baseT : baseT = ExtractBaseType(tRef)
             If baseT <> "" Then
-                ' Skip <table>-<field> type-of syntax — these are valid
+                ' Skip <table>-<field> type-of syntax -- these are valid
                 ' ABAP but not type names; sending them to the DDIC
                 ' lookup pollutes the cache with UNKNOWN entries that
                 ' then drive false TYPE_NOT_FOUND findings downstream.
@@ -1672,7 +1672,7 @@ ElseIf SAP_SERVER <> "" Then
 End If
 
 ' Re-classify variables typed by LOCAL TYPES (runs regardless of RFC
-' connection — local TYPES are parsed offline). Without this pass, a
+' connection -- local TYPES are parsed offline). Without this pass, a
 ' variable like `lt_a TYPE tt_y` parses as DK_VARIABLE because
 ' GuessDataKind only sees the bare type name, not its definition; the
 ' naming check then looks up "LOCAL+VARIABLE" (prefix lv_) and produces
@@ -1711,8 +1711,8 @@ For ni = 1 To g_dCount
     ElseIf g_localTypes.Exists(UCT(nName)) Then
         ' Skip TYPES declarations. The naming rules table covers DATA
         ' declarations (variables) only. TYPES (table types, structure
-        ' types) use a separate convention — `tt_*` for table types,
-        ' `ty_*` for structure types — which is not in scope for this
+        ' types) use a separate convention -- `tt_*` for table types,
+        ' `ty_*` for structure types -- which is not in scope for this
         ' checker. Without this guard, a `TYPES: tt_rows TYPE STANDARD
         ' TABLE OF mara` is registered with DK_TABLE and the naming
         ' check incorrectly demands `gt_*` (the variable prefix).
@@ -1765,7 +1765,7 @@ For ni = 1 To g_dCount
                     End If
                 End If
             Next
-            If altMatch Then expPrefix = ""  ' skip issue — prefix valid for another PARAM kind
+            If altMatch Then expPrefix = ""  ' skip issue -- prefix valid for another PARAM kind
         End If
     End If
 
@@ -1775,7 +1775,7 @@ For ni = 1 To g_dCount
     ' genuinely don't know the runtime kind. Marker `paramDir =
     ' "INLINE_DATA"` is set in the inline-detection block above.
     ' Without this, `DATA(ls_row)` from `READ TABLE ... INTO DATA(ls_row)`
-    ' flags as "prefix ls_ expected lv_" — false positive observed
+    ' flags as "prefix ls_ expected lv_" -- false positive observed
     ' 2026-05-11 on ZMMRMAT030R01 lines 120-152 (LO_MAIN / LT_LOG / LS_LOG
     ' / LT_FIX / LT_ROWS / LS_ROW / LS_V / LS_B).
     If expPrefix <> "" And nScope = SC_LOCAL And nDir = "INLINE_DATA" Then
@@ -1791,12 +1791,12 @@ For ni = 1 To g_dCount
                     End If
                 End If
             Next
-            If inlineAltMatch Then expPrefix = ""  ' skip — prefix valid for another LOCAL kind
+            If inlineAltMatch Then expPrefix = ""  ' skip -- prefix valid for another LOCAL kind
         End If
     End If
 
     ' MEMBER scope alt-match: accept BOTH conventional ABAP prefixes for
-    ' class attributes — `g*` (g{v,s,t,c,o,r}_) and `m*` (m{v,s,t,c,o,r}_).
+    ' class attributes -- `g*` (g{v,s,t,c,o,r}_) and `m*` (m{v,s,t,c,o,r}_).
     ' The naming rules table ships with `g*` per the customer's preference
     ' ("Pattern B, use gt_*"), but generators that emit `m*` for local-class
     ' PRIVATE SECTION members (e.g. CLASS lcl_main DEFINITION ... PRIVATE
@@ -1819,7 +1819,7 @@ For ni = 1 To g_dCount
                 memberAlt = "g" & Mid(expPrefix, 2)
             End If
             If memberAlt <> "" And Left(lcMName, Len(memberAlt)) = memberAlt Then
-                expPrefix = ""  ' skip — alt convention is acceptable for MEMBER
+                expPrefix = ""  ' skip -- alt convention is acceptable for MEMBER
             End If
         End If
     End If
@@ -1878,11 +1878,11 @@ If sapConnected Then
                 ' fails because <table>-<field> is not a type name, so
                 ' the post-resolve check used to produce a false
                 ' TYPE_NOT_FOUND. The full check (does <table> exist?
-                ' does <field> exist on it?) would need a DD03L call —
+                ' does <field> exist on it?) would need a DD03L call --
                 ' tracked as a future enhancement. For now, accept the
                 ' syntax silently. Bug surfaced 2026-05-11.
                 If InStr(tvBase, "-") > 0 Then
-                    ' table-field syntax — skip TYPE_NOT_FOUND
+                    ' table-field syntax -- skip TYPE_NOT_FOUND
                 ElseIf Not g_builtinTypes.Exists(tvBase) And Not g_localTypes.Exists(tvBase) Then
                     If g_typeKind.Exists(tvBase) Then
                         If g_typeKind(tvBase) = TK_UNKNOWN Then

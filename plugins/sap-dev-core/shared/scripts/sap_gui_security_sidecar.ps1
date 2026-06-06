@@ -4,7 +4,7 @@
 # Why this script exists
 # ----------------------
 # When the SAP GUI Security dialog is modal, the SAP GUI Scripting COM API is
-# fully suspended — even `oSess.findById("wnd[0]")` returns nothing. So a VBS/
+# fully suspended -- even `oSess.findById("wnd[0]")` returns nothing. So a VBS/
 # cscript skill that triggered the file IO blocks, and cannot dismiss the
 # dialog itself. Detection + dismissal must happen at the OS level, in a
 # separate process that is not blocked by the modal.
@@ -16,19 +16,19 @@
 # consequences that broke earlier attempts:
 #   * It is an OWNED top-level window, so `FindWindow(null,"SAP GUI Security")`
 #     (which matches non-owned top-level windows) returns 0.
-#   * SAP GUI does NOT expose it through the standard UI Automation tree — a
+#   * SAP GUI does NOT expose it through the standard UI Automation tree -- a
 #     UIA descendant scan from the root finds zero checkboxes / no dialog.
 # `EnumWindows` (which DOES enumerate owned top-level windows) finds it, and
-# its child controls are real Win32 `Button`s — `&Remember my decision`,
-# `&Allow`, `&Deny`, `&Help` — enumerable via `EnumChildWindows` and
+# its child controls are real Win32 `Button`s -- `&Remember my decision`,
+# `&Allow`, `&Deny`, `&Help` -- enumerable via `EnumChildWindows` and
 # clickable via `SendMessage(BM_CLICK)` with no focus/foreground dependency.
 #
 # So this sidecar polls `EnumWindows` for a visible `#32770` window that is
-# the security dialog (caption matches /SAP GUI Security/i, OR — locale-proof —
+# the security dialog (caption matches /SAP GUI Security/i, OR -- locale-proof --
 # it has both an "Allow" and a "Deny" child button), then ticks the Remember
 # checkbox (BM_SETCHECK) and clicks Allow (BM_CLICK). Ticking Remember makes
 # SAP GUI persist an Allow rule into %APPDATA%\SAP\Common\saprules.xml LIVE
-# (no GUI restart) — so the next sap_gui_security_precheck.ps1 for that path
+# (no GUI restart) -- so the next sap_gui_security_precheck.ps1 for that path
 # returns ALLOWED and no dialog appears.
 #
 # Usage (run as a background process BEFORE the file-IO action; see

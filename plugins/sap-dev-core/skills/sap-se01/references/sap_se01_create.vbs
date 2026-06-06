@@ -17,7 +17,7 @@
 ' Stdout contract:
 '   INFO: AS4TEXT=<description>
 '   INFO: AS4USER=<sap user>
-'   INFO: TRKORR=<new transport request>          ← consumed by the skill
+'   INFO: TRKORR=<new transport request>          <- consumed by the skill
 '   INFO: TRFUNCTION=<K|W>
 '   DONE
 ' =============================================================================
@@ -49,7 +49,7 @@ oSess.findById("wnd[0]").sendVKey VKEY_ENTER
 WScript.Sleep 1000
 
 ' --- Lock the SAP session UI for the TR create critical section ---
-' (Create button press → request-type popup → description save) per Rule 7.
+' (Create button press -> request-type popup -> description save) per Rule 7.
 Dim wasLocked : wasLocked = TryLockSession(oSess)
 If wasLocked Then
     WScript.Echo "INFO: Session UI locked for the TR create critical section."
@@ -98,7 +98,7 @@ WScript.Echo "INFO: sbar [" & sbarType & "] " & sbarText
 WScript.Echo "INFO: AS4TEXT=" & DESCRIPTION
 WScript.Echo "INFO: AS4USER=" & oSess.Info.User
 
-' (Do NOT back out of SE01 here — `/nse16n` below navigates directly. Three
+' (Do NOT back out of SE01 here -- `/nse16n` below navigates directly. Three
 ' Back presses from SE01 main screen would log the user out and disconnect
 ' the scripting session.)
 

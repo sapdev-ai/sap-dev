@@ -13,10 +13,10 @@
 '                      e.g. "C:\sap_dev_work\temp\ZMYREPORT_from_sap.txt"
 '
 ' Output lines used by the SKILL.md PS1 wrapper:
-'   SYNTAX_ERRORS: N error(s) found:   — followed by  "  [T] Line N: ..." lines
-'   RESULT: SYNTAX_ERRORS              — end marker when errors exist
-'   RESULT: SYNTAX_OK                  — end marker when no errors
-'   ERROR: ...                         — fatal error (non-zero exit)
+'   SYNTAX_ERRORS: N error(s) found:   -- followed by  "  [T] Line N: ..." lines
+'   RESULT: SYNTAX_ERRORS              -- end marker when errors exist
+'   RESULT: SYNTAX_OK                  -- end marker when no errors
+'   ERROR: ...                         -- fatal error (non-zero exit)
 '
 ' Component IDs recorded from SAP GUI 7.60 on S/4HANA 1909 (S4D).
 ' =============================================================================
@@ -138,11 +138,11 @@ If Err.Number = 0 And Not (oSyntaxGrid Is Nothing) Then
             End If
         Next
     Else
-        WScript.Echo "INFO: Syntax check passed — no findings."
+        WScript.Echo "INFO: Syntax check passed -- no findings."
     End If
 Else
     Err.Clear
-    ' Grid not found — fall back to status bar
+    ' Grid not found -- fall back to status bar
     Dim sSyntaxMsg, sSyntaxType
     sSyntaxMsg  = oSession.findById("wnd[0]/sbar").Text
     sSyntaxType = oSession.findById("wnd[0]/sbar").MessageType
@@ -151,7 +151,7 @@ Else
         bSyntaxOK = False
         WScript.Echo "SYNTAX_ERRORS: Syntax check failed - " & sSyntaxMsg
     ElseIf sSyntaxMsg = "" Then
-        WScript.Echo "INFO: Syntax check — no findings (sbar empty, AbapEditor may swallow messages)."
+        WScript.Echo "INFO: Syntax check -- no findings (sbar empty, AbapEditor may swallow messages)."
     Else
         WScript.Echo "INFO: Syntax check passed."
     End If
@@ -159,7 +159,7 @@ End If
 On Error GoTo 0
 
 ' ------ 5. Navigate back to SE38 and download source ------------------------
-' Re-open in display mode — syntax check may have moved to error list view
+' Re-open in display mode -- syntax check may have moved to error list view
 WScript.Echo "INFO: Downloading source code..."
 On Error Resume Next
 oSession.StartTransaction "SE38"
@@ -192,7 +192,7 @@ Err.Clear
 Dim oFSO
 Set oFSO = CreateObject("Scripting.FileSystemObject")
 Dim oFile
-Set oFile = oFSO.CreateTextFile(OUTPUT_FILE, True, True)  ' Unicode = True → UTF-16 LE
+Set oFile = oFSO.CreateTextFile(OUTPUT_FILE, True, True)  ' Unicode = True -> UTF-16 LE
 
 Dim i
 For i = 0 To 9999

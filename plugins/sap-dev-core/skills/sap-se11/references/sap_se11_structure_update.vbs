@@ -115,7 +115,7 @@ If InStr(oSession.ActiveWindow.Id, "wnd[1]") > 0 Then
             If Err.Number = 0 Then
                 If Not (oMaintBtn Is Nothing) Then
                     WScript.Echo "INFO: Original-language popup detected (logon != MASTERLANG=" & _
-                                 oMasterLangFld.Text & ") — pressing 'Maint. in orig. lang.'."
+                                 oMasterLangFld.Text & ") -- pressing 'Maint. in orig. lang.'."
                     oMaintBtn.press
                     WScript.Sleep 1500
                 End If
@@ -136,9 +136,9 @@ On Error GoTo 0
 
 ' ------ 2b. Pre-save TR claim --------------------------------------------------
 ' Send Ctrl+S to provoke any "Prompt for local Workbench request" popup.
-' (a) wnd[1] with ctxtKO008-TRKORR → fill SAP_TRANSPORT, Enter.
-' (b) Other popup → Enter to dismiss.
-' (c) No popup → object is local ($TMP) or already locked to a modifiable TR.
+' (a) wnd[1] with ctxtKO008-TRKORR -> fill SAP_TRANSPORT, Enter.
+' (b) Other popup -> Enter to dismiss.
+' (c) No popup -> object is local ($TMP) or already locked to a modifiable TR.
 ' Diagnostics: TADIR-DEVCLASS, E071, E070-TRSTATUS.
 WScript.Echo "INFO: Pre-save (Ctrl+S) to check whether a TR popup appears..."
 On Error Resume Next
@@ -159,17 +159,17 @@ If InStr(oSession.ActiveWindow.Id, "wnd[1]") > 0 Then
             WScript.Quit 1
         End If
         oPreTR.Text = SAP_TRANSPORT
-        WScript.Echo "INFO: Pre-save TR popup detected — entering " & SAP_TRANSPORT & "."
+        WScript.Echo "INFO: Pre-save TR popup detected -- entering " & SAP_TRANSPORT & "."
         oSession.findById("wnd[1]").sendVKey VKEY_ENTER
         WScript.Sleep 1000
     Else
         Err.Clear
-        WScript.Echo "INFO: Pre-save popup (no TR field) — pressing Enter to dismiss."
+        WScript.Echo "INFO: Pre-save popup (no TR field) -- pressing Enter to dismiss."
         oSession.ActiveWindow.sendVKey VKEY_ENTER
         WScript.Sleep 800
     End If
 Else
-    WScript.Echo "INFO: No pre-save popup — object is local ($TMP) or already locked to a modifiable TR."
+    WScript.Echo "INFO: No pre-save popup -- object is local ($TMP) or already locked to a modifiable TR."
 End If
 Err.Clear
 On Error GoTo 0
@@ -225,7 +225,7 @@ End If
 
 ' Pre-validate: reject rows that supply DATATYPE without DATAELEMENT.
 ' DD03P-DATATYPE / -LENG / -DECIMALS columns of the structure components
-' grid are Changeable=False via SAP GUI Scripting — see structure_create
+' grid are Changeable=False via SAP GUI Scripting -- see structure_create
 ' for full diagnosis. Catch the unsupported shape before any GUI input.
 Dim oUVal, sULine, aUFlds, iURow, sUComp, sUDE, sUDT
 Set oUVal = oFSO.OpenTextFile(EnsureUnicodeFile(DEFINITION_FILE), 1, False, -1)
@@ -324,7 +324,7 @@ WScript.Echo "INFO: " & iAdded & " new components added."
 ' flow only works in the unsaved, un-validated edit state.
 On Error Resume Next
 Dim sFocusUpd
-' Hard-coded column 2 — matches the component-fill loop above which writes to ROLLNAME[2,r].
+' Hard-coded column 2 -- matches the component-fill loop above which writes to ROLLNAME[2,r].
 sFocusUpd = sGridBase & "/ctxtDD03P_D-ROLLNAME[2," & (iRow - 1) & "]"
 oSession.findById(sFocusUpd).SetFocus
 Err.Clear
@@ -408,8 +408,8 @@ oSession.findById("wnd[0]").sendVKey 27
 WScript.Sleep 3000
 
 ' Activation popup loop. Handles the chained-modals case the operator
-' showed 2026-05-11: Enhancement Category radio → "Warning during
-' activation — display log?" 3-button popup → optional info popup.
+' showed 2026-05-11: Enhancement Category radio -> "Warning during
+' activation -- display log?" 3-button popup -> optional info popup.
 ' See sap_se11_structure_create.vbs for the full per-popup rationale.
 Dim oSuPop2, oSuPop3, oSuPop1, oSuEhc, iSuPop
 For iSuPop = 1 To 6
@@ -427,7 +427,7 @@ For iSuPop = 1 To 6
         Err.Clear
     Else
         Err.Clear
-        ' (b) 3-button SPOP popup (Yes/No/Cancel) — usually "display
+        ' (b) 3-button SPOP popup (Yes/No/Cancel) -- usually "display
         '     activation log?". Press OPTION2 (No) to skip.
         Set oSuPop2 = Nothing
         Set oSuPop3 = Nothing

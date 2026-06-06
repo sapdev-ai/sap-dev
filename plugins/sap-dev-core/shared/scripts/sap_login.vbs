@@ -21,7 +21,7 @@
 '   %%SAP_PASSWORD%%             SAP password (blank = wait for manual login)
 '   %%SAP_LANGUAGE%%             Logon language
 '
-' Connection logic (in this order — first match wins):
+' Connection logic (in this order -- first match wins):
 '   1. Session already on the login screen -> reuse it.
 '   2. SAP_LOGON_DESC set -> OpenConnection(desc).
 '   3. SAP_MESSAGE_SERVER set and SAP_SERVER empty -> load-balanced connection
@@ -47,7 +47,7 @@ Const SAP_LANGUAGE      = "%%SAP_LANGUAGE%%"
 Const VKEY_ENTER        = 0
 
 ' Detect unsubstituted tokens. PowerShell .Replace() is global, so we build
-' the sentinel at runtime from Chr() codes — wrapper substitution cannot
+' the sentinel at runtime from Chr() codes -- wrapper substitution cannot
 ' touch a Chr-built string. Pattern lifted from sap_attach_lib.vbs.
 Dim UNSUB_DESC, UNSUB_SRV, UNSUB_MSRV, UNSUB_GRP, UNSUB_SID, UNSUB_SYSNAME
 UNSUB_DESC    = Chr(37) & Chr(37) & "SAP_LOGON_DESCRIPTION" & Chr(37) & Chr(37)
@@ -57,7 +57,7 @@ UNSUB_GRP     = Chr(37) & Chr(37) & "SAP_LOGON_GROUP" & Chr(37) & Chr(37)
 UNSUB_SID     = Chr(37) & Chr(37) & "SAP_SYSTEM_ID" & Chr(37) & Chr(37)
 UNSUB_SYSNAME = Chr(37) & Chr(37) & "SAP_SYSTEM_NAME" & Chr(37) & Chr(37)
 
-' Effective values — empty when the wrapper left the token unsubstituted.
+' Effective values -- empty when the wrapper left the token unsubstituted.
 Dim eDesc, eSrv, eMsrv, eGrp, eSid, eSysName
 eDesc    = SAP_LOGON_DESC
 eSrv     = SAP_SERVER
@@ -135,7 +135,7 @@ End If
 ' Build the GuiConnection.Description the target system would carry. SAP GUI
 ' sets this to either the SAP Logon Pad entry name (OpenConnection path) or
 ' the connection string (OpenConnectionByConnectionString path). We compute
-' both forms and accept either as a match — that way a connection opened
+' both forms and accept either as a match -- that way a connection opened
 ' previously via the OTHER path still hits the reuse fast path.
 Dim sExpectedDesc1, sExpectedDesc2, sExpectedDesc3
 sExpectedDesc1 = "" : sExpectedDesc2 = "" : sExpectedDesc3 = ""
@@ -198,7 +198,7 @@ For Each oCandidate In oApplication.Children
 
     If bSystemMatch Then
         ' Prefer a session at the login screen (we'll fill credentials below).
-        ' If none, take the first session — it's already logged in for THIS
+        ' If none, take the first session -- it's already logged in for THIS
         ' system, so the bOnLogin check in Step 4 will see "Already logged in".
         For Each oSessIter In oCandidate.Children
             Err.Clear

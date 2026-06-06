@@ -6,7 +6,7 @@
 ' Flow:
 '   1. Attach to existing SAP GUI session
 '   2. Open SE16N, enter table name
-'   3. Read PARAMS_FILE (tab-delimited spec — see below)
+'   3. Read PARAMS_FILE (tab-delimited spec -- see below)
 '   4. For each FILTER row: locate the field by FIELDNAME (loop the field
 '      selection table control, scrolling as needed) and set value(s).
 '      Single value -> ctxtGS_SELFIELDS-LOW
@@ -115,7 +115,7 @@ Do While Not oTS.AtEndOfStream
     ElseIf sMode = "FILTER" Then
         Dim parts : parts = Split(sLine, vbTab)
         ' Need at least field + op. Value column may be empty (e.g. "STRKORR EQ ''")
-        ' which is treated as a deliberate empty-string filter — useful for finding
+        ' which is treated as a deliberate empty-string filter -- useful for finding
         ' rows where a field is blank.
         If UBound(parts) >= 1 Then
             aFilters(nFilters, 0) = UCase(Trim(parts(0)))   ' field
@@ -182,7 +182,7 @@ For f = 0 To nFilters - 1
     ' field as an output column so the user can post-filter the result file.
     If Not IsRowEditable(vRow) Then
         WScript.Echo "WARN: Field " & fldName & " is not editable in SE16N for table " & _
-            TABLE_NAME & " (greyed-out row). Skipping this filter — apply it as a " & _
+            TABLE_NAME & " (greyed-out row). Skipping this filter -- apply it as a " & _
             "post-filter on the output file."
         EnsureSelectField fldName
     Else
@@ -646,7 +646,7 @@ End Function
 
 ' =============================================================================
 ' Helper: ensure a field name appears in aSelectFields. Used when a non-editable
-' filter is skipped — we add the field to the SELECT list so the user can
+' filter is skipped -- we add the field to the SELECT list so the user can
 ' post-filter the output file.
 ' =============================================================================
 Sub EnsureSelectField(byval fldName)

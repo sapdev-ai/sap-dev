@@ -6,7 +6,7 @@
 ' performs the deletion only.
 '
 ' Deletes the enhancement implementation + its BAdI implementation element.
-' The implementing CLASS is NOT removed by SE19 here (survives) — the skill
+' The implementing CLASS is NOT removed by SE19 here (survives) -- the skill
 ' offers class cleanup via /sap-se24 afterwards.
 '
 ' Flow: SE19 -> New BAdI edit -> Delete implementation (tbar[1]/btn[14])

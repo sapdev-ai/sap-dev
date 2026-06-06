@@ -215,7 +215,7 @@ WScript.Sleep 1500
 On Error Resume Next
 If InStr(oSession.ActiveWindow.Id, "wnd[1]") > 0 Then
     If SAP_PACKAGE <> "" And SAP_TRANSPORT <> "" Then
-        WScript.Echo "INFO: Transport dialog — assigning package and transport..."
+        WScript.Echo "INFO: Transport dialog -- assigning package and transport..."
         Dim oSavePkg
         Set oSavePkg = oSession.findById("wnd[1]/usr/ctxtSEUK-DEVCLASS")
         If Err.Number = 0 And Not (oSavePkg Is Nothing) Then

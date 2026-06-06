@@ -181,7 +181,7 @@ Function IsBlockEnd(rawLine)
     If u = "" Then IsBlockEnd = False : Exit Function
     If u = "." Then IsBlockEnd = True : Exit Function
     ' Lines with `=` (and not the type-comparison `=>` arrow) inside a
-    ' CALL FUNCTION block are parameter assignments, never block ends —
+    ' CALL FUNCTION block are parameter assignments, never block ends --
     ' even when the parameter name collides with an ABAP keyword like
     ' RETURN, MESSAGE, CHECK, EXIT, or DATA. The most common collision
     ' is `RETURN = ls_return` for BAPI standard return structures.
@@ -347,13 +347,13 @@ For li = 0 To lineCount - 1
                 End If
 
                 ' A trailing period on a parameter-assignment line is the
-                ' statement terminator for the entire CALL FUNCTION — close
+                ' statement terminator for the entire CALL FUNCTION -- close
                 ' the block here. Without this guard the parser kept
                 ' inBlock=True after lines like `et_return = lt_return.`
                 ' and mis-attributed the following DATA(...), IF, and
                 ' method-EXPORTING name= lines as bogus FM params. Bug
                 ' surfaced 2026-05-11 PM (third regression run, agent
-                ' a8a675bc31c82fdb5) on BAPI_MATERIAL_SAVEDATA — 6+ false
+                ' a8a675bc31c82fdb5) on BAPI_MATERIAL_SAVEDATA -- 6+ false
                 ' positives. IsBlockEnd above intentionally returns False
                 ' for lines containing `=` (to keep `RETURN = ls_return`
                 ' style assignments inside the block), so we close the
@@ -547,7 +547,7 @@ Do Until fmFr.AtEndOfStream
         If Left(fmLine, 3) = BOM_UTF8 Then fmLine = Mid(fmLine, 4)
         fmFirstLine = False
     End If
-    ' Cache files were concatenated in PHASE 2 — strip BOM mid-stream too
+    ' Cache files were concatenated in PHASE 2 -- strip BOM mid-stream too
     ' in case a cache file was written individually with BOM and pasted
     ' into the result.
     If Len(fmLine) >= 3 Then

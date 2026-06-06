@@ -32,7 +32,7 @@ ExecuteGlobal CreateObject("Scripting.FileSystemObject") _
 
 ' UTF-8/16 BOM-detect text-encoding helper.
 ' Lets the OpenTextFile read below accept UTF-8 inputs from upstream tools
-' (sap-docs-extract, the Write tool, hand-authored TSVs) — full docstring
+' (sap-docs-extract, the Write tool, hand-authored TSVs) -- full docstring
 ' in sap_se11_table_create.vbs. Always returns a UTF-16 LE path so callers
 ' must open the result with mode -1.
 Function EnsureUnicodeFile(sSrcPath)
@@ -100,7 +100,7 @@ If InStr(oSession.ActiveWindow.Id, "wnd[1]") > 0 Then
             If Err.Number = 0 Then
                 If Not (oMaintBtn Is Nothing) Then
                     WScript.Echo "INFO: Original-language popup detected (logon != MASTERLANG=" & _
-                                 oMasterLangFld.Text & ") — pressing 'Maint. in orig. lang.'."
+                                 oMasterLangFld.Text & ") -- pressing 'Maint. in orig. lang.'."
                     oMaintBtn.press
                     WScript.Sleep 1500
                 End If
@@ -113,9 +113,9 @@ On Error GoTo 0
 
 ' ------ 2b. Pre-save TR claim --------------------------------------------------
 ' Send Ctrl+S to provoke any "Prompt for local Workbench request" popup.
-' (a) wnd[1] with ctxtKO008-TRKORR → fill SAP_TRANSPORT, Enter.
-' (b) Other popup → Enter to dismiss.
-' (c) No popup → object is local ($TMP) or already locked to a modifiable TR.
+' (a) wnd[1] with ctxtKO008-TRKORR -> fill SAP_TRANSPORT, Enter.
+' (b) Other popup -> Enter to dismiss.
+' (c) No popup -> object is local ($TMP) or already locked to a modifiable TR.
 ' Diagnostics: TADIR-DEVCLASS, E071, E070-TRSTATUS.
 WScript.Echo "INFO: Pre-save (Ctrl+S) to check whether a TR popup appears..."
 On Error Resume Next
@@ -136,17 +136,17 @@ If InStr(oSession.ActiveWindow.Id, "wnd[1]") > 0 Then
             WScript.Quit 1
         End If
         oPreTR.Text = SAP_TRANSPORT
-        WScript.Echo "INFO: Pre-save TR popup detected — entering " & SAP_TRANSPORT & "."
+        WScript.Echo "INFO: Pre-save TR popup detected -- entering " & SAP_TRANSPORT & "."
         oSession.findById("wnd[1]").sendVKey VKEY_ENTER
         WScript.Sleep 1000
     Else
         Err.Clear
-        WScript.Echo "INFO: Pre-save popup (no TR field) — pressing Enter to dismiss."
+        WScript.Echo "INFO: Pre-save popup (no TR field) -- pressing Enter to dismiss."
         oSession.ActiveWindow.sendVKey VKEY_ENTER
         WScript.Sleep 800
     End If
 Else
-    WScript.Echo "INFO: No pre-save popup — object is local ($TMP) or already locked to a modifiable TR."
+    WScript.Echo "INFO: No pre-save popup -- object is local ($TMP) or already locked to a modifiable TR."
 End If
 Err.Clear
 On Error GoTo 0

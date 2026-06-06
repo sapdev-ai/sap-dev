@@ -1,7 +1,7 @@
 ' =============================================================================
 ' sap_sp02_download.vbs  -  Download an SAP spool request to a local text file
 '
-' Drives transaction SP02 (Output Controller — own spool requests):
+' Drives transaction SP02 (Output Controller -- own spool requests):
 '
 '   1. /nsp02                                   -> spool list
 '   2. Locate the row of %%SPOOL_NUMBER%% in the list (column scan)
@@ -162,14 +162,14 @@ If oSess.findById("wnd[0]/sbar").MessageType = "E" Then
     WScript.Quit 1
 End If
 
-' --- 5. Save (export) — application toolbar btn[48] ------------------------
+' --- 5. Save (export) -- application toolbar btn[48] ------------------------
 WScript.Echo "INFO: Pressing Save (tbar[1]/btn[48])..."
 On Error Resume Next
 oSess.findById("wnd[0]/tbar[1]/btn[48]").press
 WScript.Sleep 1500
 If Err.Number <> 0 Then
     WScript.Echo "ERROR: Could not press Save (tbar[1]/btn[48]): " & Err.Description
-    WScript.Echo "       Some SAP GUI versions place Save under the system toolbar — try tbar[0]/btn[11]."
+    WScript.Echo "       Some SAP GUI versions place Save under the system toolbar -- try tbar[0]/btn[11]."
     WScript.Quit 1
 End If
 Err.Clear
@@ -233,7 +233,7 @@ On Error GoTo 0
 
 WScript.Echo "INFO: SAP status: [" & sFinalType & "] " & sFinalMsg
 
-' Back to SP02 list, then to SAP Easy Access — keeps the operator's
+' Back to SP02 list, then to SAP Easy Access -- keeps the operator's
 ' session in a clean state.
 On Error Resume Next
 oSess.findById("wnd[0]").sendVKey VKEY_F3_BACK

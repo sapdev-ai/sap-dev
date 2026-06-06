@@ -33,7 +33,7 @@ $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\sap_settings_lib.ps1"
 . "$PSScriptRoot\sap_connection_lib.ps1"
 . "$PSScriptRoot\sap_rfc_lib.ps1"
-# sap_dpapi.ps1 is invoked as a subprocess (it has its own param block) — no dot-source.
+# sap_dpapi.ps1 is invoked as a subprocess (it has its own param block) -- no dot-source.
 
 $type = $ObjectType.ToUpperInvariant()
 $name = $ObjectName.ToUpperInvariant()
@@ -66,7 +66,7 @@ if (-not $profile) {
     exit 1
 }
 
-# RFC endpoint — direct (application_server + system_number).
+# RFC endpoint -- direct (application_server + system_number).
 # Load-balanced profiles (message_server) without app server set cannot
 # be RFC'd via Connect-SapRfc -Server in its current shape; surface a
 # clear error so the operator knows what to fix.
@@ -78,7 +78,7 @@ if ([string]::IsNullOrWhiteSpace($server) -or [string]::IsNullOrWhiteSpace($sysn
     exit 1
 }
 
-# Password — decrypt via sap_dpapi.ps1 (CLI mode). The profile carries either
+# Password -- decrypt via sap_dpapi.ps1 (CLI mode). The profile carries either
 # 'dpapi:<base64>' (preferred) or legacy plaintext; sap_dpapi pass-through
 # handles both.
 $pwdField = "$($profile.password_dpapi)"
@@ -92,7 +92,7 @@ $pwd = ''
 try {
     # Subprocess invoke so dpapi's param block doesn't clobber ours (per
     # feedback_dot_source_param_clobber memory). 32-bit not required for
-    # DPAPI itself — runs in whatever PS is current.
+    # DPAPI itself -- runs in whatever PS is current.
     $pwd = & "$PSScriptRoot\sap_dpapi.ps1" -Action unprotect -Value $pwdField 2>$null
     $pwd = "$pwd".Trim()
 } catch {

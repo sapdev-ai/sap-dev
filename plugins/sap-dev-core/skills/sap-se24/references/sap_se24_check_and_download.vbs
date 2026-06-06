@@ -13,10 +13,10 @@
 '                      e.g. "C:\sap_dev_work\temp\ZCL_HK_TEST001_from_sap.txt"
 '
 ' Output lines used by the SKILL.md PS1 wrapper:
-'   SYNTAX_ERRORS: N error(s) found:   — followed by  "  Line N: ..." lines
-'   RESULT: SYNTAX_ERRORS              — end marker when errors exist
-'   RESULT: SYNTAX_OK                  — end marker when no errors
-'   ERROR: ...                         — fatal error (non-zero exit)
+'   SYNTAX_ERRORS: N error(s) found:   -- followed by  "  Line N: ..." lines
+'   RESULT: SYNTAX_ERRORS              -- end marker when errors exist
+'   RESULT: SYNTAX_OK                  -- end marker when no errors
+'   ERROR: ...                         -- fatal error (non-zero exit)
 '
 ' Component IDs recorded from SAP GUI 7.60 on S/4HANA 1909 (S4D).
 ' =============================================================================
@@ -150,11 +150,11 @@ If Err.Number = 0 And Not (oSyntaxGrid Is Nothing) Then
             End If
         Next
     Else
-        WScript.Echo "INFO: Syntax check passed — no findings."
+        WScript.Echo "INFO: Syntax check passed -- no findings."
     End If
 Else
     Err.Clear
-    ' Grid not found — fall back to status bar
+    ' Grid not found -- fall back to status bar
     Dim sSyntaxMsg, sSyntaxType
     sSyntaxMsg  = oSession.findById("wnd[0]/sbar").Text
     sSyntaxType = oSession.findById("wnd[0]/sbar").MessageType
@@ -163,7 +163,7 @@ Else
         bSyntaxOK = False
         WScript.Echo "SYNTAX_ERRORS: Syntax check failed - " & sSyntaxMsg
     ElseIf sSyntaxMsg = "" Then
-        WScript.Echo "INFO: Syntax check — no findings (sbar empty, AbapEditor may swallow messages)."
+        WScript.Echo "INFO: Syntax check -- no findings (sbar empty, AbapEditor may swallow messages)."
     Else
         WScript.Echo "INFO: Syntax check passed."
     End If
@@ -193,7 +193,7 @@ End If
 Err.Clear
 On Error GoTo 0
 
-' Try Download menu — mirror of upload menu paths, index [1] instead of [0]
+' Try Download menu -- mirror of upload menu paths, index [1] instead of [0]
 Dim bDownloadMenuOK
 bDownloadMenuOK = False
 

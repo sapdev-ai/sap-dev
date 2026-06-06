@@ -5,7 +5,7 @@
 '   %%SET_ACTIVE%% = "X"  -> Activate   (toolbar btn[27], Ctrl+F3)
 '   %%SET_ACTIVE%% = ""   -> Deactivate (toolbar btn[28], Ctrl+F4)
 '
-' Reversible — the implementation object is NOT deleted.
+' Reversible -- the implementation object is NOT deleted.
 ' Flow: SE19 -> Classic BAdI edit -> Change -> Activate/Deactivate toolbar btn.
 ' Tokens: %%IMP_NAME%%  %%SET_ACTIVE%%  %%SESSION_PATH%%
 ' Probed S/4HANA 1909 (S4D) 2026-05-30.

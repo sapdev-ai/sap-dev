@@ -54,14 +54,14 @@ Err.Clear
 On Error GoTo 0
 
 If bPopup Then
-    ' Popup appeared → dialog does NOT exist
+    ' Popup appeared -> dialog does NOT exist
     WScript.Echo "INFO: Table " & UCase(TABLE_NAME) & " has no maintenance dialog."
     ' Press Cancel to go back
     oSession.findById("wnd[1]/usr/btnSPOP-OPTION_CAN").Press
     WScript.Sleep 500
     WScript.Echo "NOT_EXIST"
 Else
-    ' No popup → went to Generation Environment → dialog EXISTS
+    ' No popup -> went to Generation Environment -> dialog EXISTS
     If InStr(oSession.findById("wnd[0]").Text, "Generation Environment") > 0 Then
         WScript.Echo "INFO: Table " & UCase(TABLE_NAME) & " has an existing maintenance dialog."
         ' Navigate back to SE54 initial screen

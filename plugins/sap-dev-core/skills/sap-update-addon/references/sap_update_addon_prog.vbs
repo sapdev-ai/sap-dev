@@ -1,5 +1,5 @@
 ' =============================================================================
-' sap_update_addon_prog.vbs — Maintain add-on table via ZCMRUPDATE_ADDON_TABLE
+' sap_update_addon_prog.vbs -- Maintain add-on table via ZCMRUPDATE_ADDON_TABLE
 '
 ' Runs ZCMRUPDATE_ADDON_TABLE in SA38 with Upload mode.
 ' The program handles type conversion and MODIFY (upsert) internally.
@@ -42,10 +42,10 @@ If sScreen <> "1000" Then
 End If
 
 ' Upload mode is default (RB_UP already selected)
-' Fill table name (txtP_TABLE — GuiTextField for TABNAME type)
+' Fill table name (txtP_TABLE -- GuiTextField for TABNAME type)
 oSession.findById("wnd[0]/usr/txtP_TABLE").Text = TABLE_NAME
 
-' Fill file path (ctxtP_FILE — GuiCTextField)
+' Fill file path (ctxtP_FILE -- GuiCTextField)
 oSession.findById("wnd[0]/usr/ctxtP_FILE").Text = DATA_FILE
 
 ' Execute (F8)

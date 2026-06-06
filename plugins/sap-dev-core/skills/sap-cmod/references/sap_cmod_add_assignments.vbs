@@ -7,7 +7,7 @@
 ' assignments sub-object (radMODF-CHAK), opens the project in change mode
 ' (btnPAEND), then for each requested enhancement:
 '   * skips it if it is ALREADY assigned (scan EXITNAME rows by value), and
-'   * otherwise writes it into the FIRST EMPTY row — never a hardcoded index.
+'   * otherwise writes it into the FIRST EMPTY row -- never a hardcoded index.
 ' Then validates (Enter), saves, and handles the optional TR popup.
 '
 ' Tokens replaced at run time:
@@ -91,7 +91,7 @@ For k = 0 To UBound(arr)
             If RowText(i) = sEnh Then dup = True : Exit For
         Next
         If dup Then
-            WScript.Echo "INFO: " & sEnh & " already assigned — skipped."
+            WScript.Echo "INFO: " & sEnh & " already assigned -- skipped."
         Else
             ' Find first empty row.
             placed = -1
@@ -119,7 +119,7 @@ If added = 0 Then
     ReleaseSession oSession, wasLocked
     oSession.findById("wnd[0]/tbar[0]/okcd").Text = "/n"
     oSession.findById("wnd[0]").sendVKey VKEY_ENTER
-    WScript.Echo "SUCCESS: No change — enhancements already present on " & UCase(PROJECT_NAME) & "."
+    WScript.Echo "SUCCESS: No change -- enhancements already present on " & UCase(PROJECT_NAME) & "."
     WScript.Quit 0
 End If
 
@@ -177,5 +177,5 @@ End If
 oSession.findById("wnd[0]/tbar[0]/okcd").Text = "/n"
 oSession.findById("wnd[0]").sendVKey VKEY_ENTER
 
-WScript.Echo "SUCCESS: Added " & added & " enhancement(s) to " & UCase(PROJECT_NAME) & " (project now inactive — run activate to re-activate)."
+WScript.Echo "SUCCESS: Added " & added & " enhancement(s) to " & UCase(PROJECT_NAME) & " (project now inactive -- run activate to re-activate)."
 WScript.Quit 0

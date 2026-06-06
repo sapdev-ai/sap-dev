@@ -120,7 +120,7 @@ Function BuildSessionRecord(oConn, oSess, sPath, sPinReason)
     sysScreen     = oSess.Info.ScreenNumber
     On Error GoTo 0
 
-    ' MessageServer fallback — some SAP GUI builds leave it blank even on
+    ' MessageServer fallback -- some SAP GUI builds leave it blank even on
     ' load-balanced connections, but the GuiConnection.Description carries
     ' /M/<msgsrv>/G/<grp>/S/<sysid>.
     Dim sConnDesc : sConnDesc = ""

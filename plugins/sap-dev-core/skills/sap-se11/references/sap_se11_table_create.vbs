@@ -135,7 +135,7 @@ End If
 ' SAP GUI Scripting cannot fill the DD03P-DATATYPE / -LENG / -DECIMALS
 ' columns of the SE11 fields grid (Changeable=False on those columns,
 ' regardless of the row's REFTYPE combobox or "Component Type" toolbar
-' button). The table-fields .def format documents this — the only
+' button). The table-fields .def format documents this -- the only
 ' supported field shape is FIELDNAME / KEY / INITIAL / DATAELEMENT.
 ' Catch the unsupported shape here, before any GUI input.
 Dim oPVal, sPLine, aPFlds, iPRow, sPField, sPDE, sPDT
@@ -209,7 +209,7 @@ Else
 End If
 
 ' --- Drain the SAPLSETX original-language popup (and any other Information ---
-' modal) that SAP shows after Create when logon language ≠ object's master
+' modal) that SAP shows after Create when logon language <> object's master
 ' language. Without this, the subsequent findById on wnd[0] fails because
 ' the active window is the popup at wnd[1], description doesn't get filled,
 ' the Fields-tab grid writes also no-op against wnd[0], and SE11 saves a
@@ -224,7 +224,7 @@ For iSetx = 1 To 3
         Exit For
     End If
     If Right(sSetxId, 6) = "wnd[0]" Then Exit For
-    WScript.Echo "INFO: Post-Create popup " & iSetx & " at " & sSetxId & " (" & oSession.ActiveWindow.Text & ") — pressing Enter (accept default / logon language)."
+    WScript.Echo "INFO: Post-Create popup " & iSetx & " at " & sSetxId & " (" & oSession.ActiveWindow.Text & ") -- pressing Enter (accept default / logon language)."
     oSession.ActiveWindow.sendVKey VKEY_ENTER
     If Err.Number <> 0 Then Err.Clear
     WScript.Sleep 800
@@ -245,7 +245,7 @@ On Error GoTo 0
 WScript.Sleep 300
 
 ' Set delivery class and maintenance flag on Delivery and Maintenance tab.
-' The subscreen path varies by S/4HANA release — recorded on 1909 as
+' The subscreen path varies by S/4HANA release -- recorded on 1909 as
 ' SAPLSD41:2202 under tabpMAIN, but other builds expose tabpHEAD or move
 ' the fields to a different subscreen number (2201, 2203). Walk a
 ' candidate list and use the first one that accepts the write. If all
@@ -276,7 +276,7 @@ For iDb = 0 To UBound(deliveryBases)
     Err.Clear
 Next
 If Not bDeliverySet Then
-    WScript.Echo "WARNING: Could not set delivery class — none of the " & (UBound(deliveryBases) + 1) & " candidate subscreen paths matched."
+    WScript.Echo "WARNING: Could not set delivery class -- none of the " & (UBound(deliveryBases) + 1) & " candidate subscreen paths matched."
     WScript.Echo "         Table will activate with SAP default class (likely 'A'). Re-record the Delivery and Maintenance tab via /sap-gui-record."
 End If
 Err.Clear
@@ -418,11 +418,11 @@ If bHasRef Then
 
     ' Detect Currency/Quantity Fields tab column layout. Two layouts seen:
     '   Layout A (older):  [Short Desc, Field, DTEL, Type, RefTable, RefField]
-    '                      → REFTABLE at column 4, REFFIELD at column 5
+    '                      -> REFTABLE at column 4, REFFIELD at column 5
     '   Layout B (newer):  [Field, DTEL, Type, RefTable, RefField, Short Desc]
-    '                      → REFTABLE at column 3, REFFIELD at column 4
+    '                      -> REFTABLE at column 3, REFFIELD at column 4
     ' The DDIC field name (DD03P_D-REFTABLE / -REFFIELD) is identical on
-    ' both — only the column index differs. Probe column 4 first; if it
+    ' both -- only the column index differs. Probe column 4 first; if it
     ' doesn't exist, fall back to column 3.
     Dim nColRefTab : nColRefTab = 4
     Dim nColRefFld : nColRefFld = 5
@@ -436,16 +436,16 @@ If bHasRef Then
         If Err.Number = 0 And Not (oProbe Is Nothing) Then
             nColRefTab = 3
             nColRefFld = 4
-            WScript.Echo "INFO: Currency/Qty layout B detected — REFTABLE col 3, REFFIELD col 4 (Short Desc at end)."
+            WScript.Echo "INFO: Currency/Qty layout B detected -- REFTABLE col 3, REFFIELD col 4 (Short Desc at end)."
         Else
-            ' Neither column 4 nor 3 worked — table empty or layout unknown.
+            ' Neither column 4 nor 3 worked -- table empty or layout unknown.
             ' Keep the col-4/5 default; the per-row writes below are wrapped
             ' in On Error Resume Next so silent no-op is the failure mode.
-            WScript.Echo "WARN: Could not probe Currency/Qty column layout — using default cols 4/5. Rows may not write."
+            WScript.Echo "WARN: Could not probe Currency/Qty column layout -- using default cols 4/5. Rows may not write."
         End If
         Err.Clear
     Else
-        WScript.Echo "INFO: Currency/Qty layout A detected — REFTABLE col 4, REFFIELD col 5 (Short Desc first)."
+        WScript.Echo "INFO: Currency/Qty layout A detected -- REFTABLE col 4, REFFIELD col 5 (Short Desc first)."
     End If
     On Error GoTo 0
 
@@ -460,7 +460,7 @@ If bHasRef Then
         End If
     Next
 
-    ' Note: NO trailing sendVKey VKEY_ENTER here either — same reason as
+    ' Note: NO trailing sendVKey VKEY_ENTER here either -- same reason as
     ' the Fields tab above. Auto-validate would block the menu flow.
     WScript.Sleep 500
 End If
@@ -619,7 +619,7 @@ WScript.Sleep 2000
 ' Dismiss all activation popups. Each popup is classified by DDIC component
 ' IDs (locale-independent per language_independence_rules.md):
 '   (b) 3-button SPOP popup (OPTION1=Yes, OPTION2=No, OPTION3=Cancel):
-'       The "Warning during activation — display activation log?" popup is
+'       The "Warning during activation -- display activation log?" popup is
 '       the canonical case here. Press OPTION2 (No) to skip the log viewer
 '       and let activation finish. (Saying Yes opens a log sub-window that
 '       blocks the script; the log is still captured separately below if
@@ -676,7 +676,7 @@ If sFinalType = "E" Or sFinalType = "A" Then
     WScript.Echo "WARNING: Activation may have errors - " & sFinalMsg
     ' Capture the activation log so the operator sees the actual failing
     ' field/rule, not just "refer to log". CaptureActivationLog returns ""
-    ' on any failure (missing menu, changed layout, etc.) — fall back to
+    ' on any failure (missing menu, changed layout, etc.) -- fall back to
     ' the status-bar text in that case.
     Dim sLogPath, sTopErr
     sLogPath = CaptureActivationLog(oSession, OBJECT_NAME, "%%TEMP_DIR%%", _
@@ -688,7 +688,7 @@ If sFinalType = "E" Or sFinalType = "A" Then
             WScript.Echo "ACTIVATION_ERROR: " & sTopErr
         End If
     Else
-        WScript.Echo "INFO: Activation log could not be captured automatically — open SE11 and use Utilities > Activation Log."
+        WScript.Echo "INFO: Activation log could not be captured automatically -- open SE11 and use Utilities > Activation Log."
     End If
     WScript.Echo "FAILED: Table " & UCase(OBJECT_NAME) & " was NOT activated. See activation log above."
     WScript.Quit 1
@@ -696,7 +696,7 @@ Else
     WScript.Echo "INFO: SAP status: " & sFinalMsg
 End If
 
-' Post-activate RFC verify (Phase 4.3 — mandatory per SKILL.md Step 5d).
+' Post-activate RFC verify (Phase 4.3 -- mandatory per SKILL.md Step 5d).
 PostActivateVerifyOrFail POST_ACTIVATE_VERIFY_PS1, "TABLE", OBJECT_NAME
 
 WScript.Echo "SUCCESS: Table " & UCase(OBJECT_NAME) & " created and activated in SAP."

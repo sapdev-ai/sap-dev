@@ -41,7 +41,7 @@
 '   - LockSessionUI is session-scoped, not application-scoped. Other SAP
 '     sessions in the same SAP Logon remain interactive.
 '   - LockSessionUI does NOT prevent another application (Outlook toast,
-'     alt-tab, Windows notification) from stealing OS-level focus —
+'     alt-tab, Windows notification) from stealing OS-level focus --
 '     critical for SendKeys-based pastes. Pair with
 '     `shared/scripts/sap_gui_foreground_guard.ps1`, which uses the Win32
 '     `AttachThreadInput` trick to actually force SAP to OS foreground.
@@ -70,7 +70,7 @@ Function TryLockSession(sess)
         TryLockSession = True
     Else
         ' Most common cause: SAP GUI build that doesn't expose LockSessionUI
-        ' on the GuiSession interface. Continue without lock — the script is
+        ' on the GuiSession interface. Continue without lock -- the script is
         ' less defended against focus races but still functional.
         Err.Clear
     End If
@@ -78,7 +78,7 @@ Function TryLockSession(sess)
 End Function
 
 ' Best-effort unlock. No-op if wasLocked is False or sess is Nothing.
-' Idempotent — safe to call multiple times in cleanup paths.
+' Idempotent -- safe to call multiple times in cleanup paths.
 '
 ' BEFORE unlocking, this sweeps up to 5 chained modal popups from the active
 ' session window via sendVKey 12 (F12 / Cancel). This addresses Pitfall #2
@@ -87,13 +87,13 @@ End Function
 ' who can't interact with anything except that opaque modal. The sweep
 ' guarantees the user receives a clean main-window session.
 '
-' F12 (Cancel) is the safest dismissal key — it closes most popups WITHOUT
+' F12 (Cancel) is the safest dismissal key -- it closes most popups WITHOUT
 ' committing pending changes. If the script is on a success path the
 ' critical section already saved/activated what it needed; any leftover
 ' popup is informational. If the script is on an abort path, F12 keeps
 ' the user's prior state intact while clearing the modal.
 '
-' Localised text is echoed for diagnostics only (per Rule 4) — control
+' Localised text is echoed for diagnostics only (per Rule 4) -- control
 ' flow uses ActiveWindow.Id, not popup titles.
 Sub ReleaseSession(sess, wasLocked)
     If Not CBool(wasLocked) Then Exit Sub
@@ -111,13 +111,13 @@ Sub ReleaseSession(sess, wasLocked)
         ' Active window ending in "wnd[0]" = main window, no modal. Done.
         If Right(sActiveId, 6) = "wnd[0]" Then Exit For
 
-        ' Echo the popup title (localised text — diagnostic only).
+        ' Echo the popup title (localised text -- diagnostic only).
         sPopupText = sess.ActiveWindow.Text
         If Err.Number <> 0 Then
             sPopupText = "(text unreadable)"
             Err.Clear
         End If
-        WScript.Echo "WARN: Pre-unlock sweep " & iSweep & " — dismissing modal " & _
+        WScript.Echo "WARN: Pre-unlock sweep " & iSweep & " -- dismissing modal " & _
                      sActiveId & " (" & sPopupText & ")"
 
         sess.ActiveWindow.sendVKey 12   ' F12 = Cancel (safest)

@@ -3,7 +3,7 @@
 #
 # Used by the sap-cmod skill for the "check" / "status" / "assignments" /
 # "components" operations. Reads SAP-standard tables via RFC_READ_TABLE
-# (sap_rfc_lib.ps1) — pure SELECT, no writes (allowed under
+# (sap_rfc_lib.ps1) -- pure SELECT, no writes (allowed under
 # skill_operating_rules.md). If NCo / RFC is unavailable the skill falls
 # back to /sap-se16n.
 #
@@ -25,7 +25,7 @@
 #                RPY_FUNCTIONMODULE_READ_NEW's SOURCE table. Emits
 #                CUSTOMER_INCLUDE / INCLUDE_EXISTS / SE38_MODE. The include is
 #                named after the function POOL (+seq), NOT the FM, so it cannot
-#                be guessed — it is read from the source.
+#                be guessed -- it is read from the source.
 #   find-enhancement  Object -> owning SMOD enhancement, by component-name pattern
 #                (EXIT_SAP* FM / CI_* DDIC / ZX* include / SAPLX*+<Dynpro> screen).
 #                Confirms it is an enhancement component and resolves the
@@ -49,7 +49,7 @@ param(
     [string]$Dynpro      = '',   # screen number, for -Action find-enhancement (screen exits)
     [ValidateSet('check','status','assignments','components','exit-include','find-project','find-enhancement')]
     [string]$Action      = 'check',
-    # Connection params are optional — when blank, Connect-SapRfc resolves the
+    # Connection params are optional -- when blank, Connect-SapRfc resolves the
     # default profile from runtime/connections.json (DPAPI-decrypted password).
     [string]$Server   = '',
     [string]$Sysnr    = '',
@@ -124,7 +124,7 @@ try {
         'exit-include' {
             # Resolve the customer INCLUDE for a function-exit FM (TYP=E) by
             # reading the FM source. The include name follows the function
-            # POOL (e.g. XCN1 -> ZXCN1U21), NOT the FM name — it cannot be
+            # POOL (e.g. XCN1 -> ZXCN1U21), NOT the FM name -- it cannot be
             # guessed, it must be read from the source.
             $fn = $dest.Repository.CreateFunction("RPY_FUNCTIONMODULE_READ_NEW")
             $fn.SetValue("FUNCTIONNAME", $Fm)
@@ -262,13 +262,13 @@ try {
             Write-Output "DONE"
         }
 
-        default {   # 'check' — the full picture
+        default {   # 'check' -- the full picture
             $attr = Read-Tbl "MODATTR" "NAME = '$Project'" @("NAME","STATUS")
             if ($null -eq $attr) { Write-Output "ERROR: RFC_READ_TABLE failed on MODATTR"; exit 2 }
             if ($attr.Count -eq 0) {
                 Write-Output "EXISTS: NO"
                 # MODATTR header gone, but a TADIR directory entry can linger
-                # after a delete (orphan) — a fresh create would silently
+                # after a delete (orphan) -- a fresh create would silently
                 # re-attach to that stale package. Surface it.
                 $orph = Read-Tbl "TADIR" "PGMID = 'R3TR' AND OBJECT = 'CMOD' AND OBJ_NAME = '$Project'" @("DEVCLASS")
                 if ($orph -and $orph.Count -gt 0) { Write-Output ("TADIR_ORPHAN: " + ($orph[0].Split('|')[0]).Trim()) }

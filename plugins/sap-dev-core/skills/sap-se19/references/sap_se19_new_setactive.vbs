@@ -4,7 +4,7 @@
 '
 ' Toggles the "Implementation is active" runtime flag on the BAdI
 ' implementation element, then re-activates the enhancement implementation
-' object so the change takes effect. Reversible — the object is NOT deleted.
+' object so the change takes effect. Reversible -- the object is NOT deleted.
 '
 '   %%SET_ACTIVE%% = "X"  -> Activate   (runtime flag ON)
 '   %%SET_ACTIVE%% = ""   -> Deactivate (runtime flag OFF)

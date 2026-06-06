@@ -15,7 +15,7 @@
 ' Every command treats `oApp.Children` as a multi-element collection.
 ' INFO walks all connections. SPAWN/RESET/PROBE either receive a connection-
 ' qualified path (e.g. /app/con[1]/ses[2]) or a connection path (e.g.
-' /app/con[1]) — there is no implicit "first connection" fallback.
+' /app/con[1]) -- there is no implicit "first connection" fallback.
 '
 ' Commands (one or two argv args, output one line of JSON):
 '
@@ -347,7 +347,7 @@ Select Case sCmd
         Dim oCloseSes : Set oCloseSes = oApp.findById(sClosePath, False)
         On Error GoTo 0
         If oCloseSes Is Nothing Then
-            ' Already gone — treat as success (idempotent close).
+            ' Already gone -- treat as success (idempotent close).
             WScript.StdOut.WriteLine "{""ok"":true,""note"":""already_gone""}"
             WScript.Quit 0
         End If
@@ -365,7 +365,7 @@ Select Case sCmd
             WScript.StdOut.WriteLine "{""ok"":false,""error"":""connection not found: " & J(sCloseConPath) & """}"
             WScript.Quit 3
         End If
-        ' If this is the only session of the connection, fall back to /n —
+        ' If this is the only session of the connection, fall back to /n --
         ' SAP refuses to close the last session and the user typically wants
         ' the connection to stay alive for future tasks.
         If oCloseCon.Children.Count <= 1 Then

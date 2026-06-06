@@ -125,7 +125,7 @@ If Not (oEditor Is Nothing) Then
 End If
 
 ' Bring the SAP window to OS foreground BEFORE pasting from clipboard.
-' Same foreground-guard pattern as sap_se38_create.vbs — uses the
+' Same foreground-guard pattern as sap_se38_create.vbs -- uses the
 ' sap_gui_foreground_guard.ps1 sidecar (AttachThreadInput Win32 trick)
 ' instead of WshShell.AppActivate, which is unreliable on Windows 7+.
 Dim oWSh, sTitle
@@ -156,7 +156,7 @@ If nFgGuardRcSE51u <> 0 Then
     WScript.Quit 1
 End If
 
-' Belt-and-suspenders clear-then-paste — see sap_se38_create.vbs Step 6c.
+' Belt-and-suspenders clear-then-paste -- see sap_se38_create.vbs Step 6c.
 On Error Resume Next
 oSession.findById("wnd[0]").sendVKey 26
 WScript.Sleep 150

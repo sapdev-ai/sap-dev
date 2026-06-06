@@ -11,7 +11,7 @@
   left.def/right.def. Read-only. The DDIF/DD0xL fetch idioms are copied from the
   proven sap_rfc_lookup_ddic.ps1. Windows PowerShell 5.1-safe.
 
-  NOTE: sap_dpapi.ps1 is invoked as a subprocess (&), never dot-sourced — a
+  NOTE: sap_dpapi.ps1 is invoked as a subprocess (&), never dot-sourced -- a
   dot-sourced param() block would clobber this script's params.
 #>
 [CmdletBinding()]
@@ -74,7 +74,7 @@ function Read-RowVia($dest, $table, $where, $fields) {
 # Returns @( [pscustomobject]{ name; datatype; len; dec; pos } ) or $null if absent.
 # Scalar DDIC objects (DE/domain/table type) are modeled as a single "field"
 # keyed by the object name so the diff classifies datatype/length changes.
-# LANGU is fixed to 'E' — it only affects field TEXT, which we never read; the
+# LANGU is fixed to 'E' -- it only affects field TEXT, which we never read; the
 # structural attributes (name/datatype/length/decimals) are language-independent.
 function Get-DdicFields($dest, $name, $type) {
     switch ($type) {

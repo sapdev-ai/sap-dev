@@ -5,7 +5,7 @@
 # ----------------------
 # Skills that paste ABAP source via clipboard + SendKeys (sap-se38, sap-se37,
 # sap-se24, sap-se91) need the SAP GUI window to be the OS foreground window
-# at the instant SendKeys "^v" fires — otherwise the Ctrl+V lands in
+# at the instant SendKeys "^v" fires -- otherwise the Ctrl+V lands in
 # whatever other app has focus (Notepad, VS Code, browser, Outlook, ...).
 #
 # The skills already attempt:
@@ -193,7 +193,7 @@ while ((Get-Date) -lt $deadline) {
         Start-Sleep -Milliseconds 50
     }
 
-    # The AttachThreadInput dance — temporarily share input queue with the
+    # The AttachThreadInput dance -- temporarily share input queue with the
     # current foreground thread so SetForegroundWindow is no longer
     # suppressed by Windows' anti-focus-stealing logic.
     $fgPid = [uint32]0

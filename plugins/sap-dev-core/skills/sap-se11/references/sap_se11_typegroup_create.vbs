@@ -43,7 +43,7 @@ ExecuteGlobal CreateObject("Scripting.FileSystemObject") _
 
 ' UTF-8/16 BOM-detect text-encoding helper.
 ' Lets the OpenTextFile read below accept UTF-8 inputs from upstream tools
-' (sap-docs-extract, the Write tool, hand-authored TSVs) — full docstring
+' (sap-docs-extract, the Write tool, hand-authored TSVs) -- full docstring
 ' in sap_se11_table_create.vbs. Always returns a UTF-16 LE path so callers
 ' must open the result with mode -1.
 Function EnsureUnicodeFile(sSrcPath)
@@ -144,7 +144,7 @@ oFile.Close
 
 WScript.Echo "INFO: Read " & iLineCount & " source lines."
 
-' ------ 5. Upload source via clipboard (Utilities → Upload/Download) --------
+' ------ 5. Upload source via clipboard (Utilities -> Upload/Download) --------
 ' Type groups open in the ABAP source editor. Use clipboard to paste source.
 ' First, build the full source text
 Dim sFullSource, i
@@ -215,12 +215,12 @@ If Not (oEditor Is Nothing) And Err.Number = 0 Then
     End If
     Err.Clear
 Else
-    ' Fallback: Use Upload from local file (menu Utilities → More Utilities → Upload/Download → Upload)
+    ' Fallback: Use Upload from local file (menu Utilities -> More Utilities -> Upload/Download -> Upload)
     Err.Clear
     WScript.Echo "INFO: Using file upload approach..."
     
     ' Type pool source editor - try menu-based upload
-    ' Utilities menu → Upload from file
+    ' Utilities menu -> Upload from file
     oSession.findById("wnd[0]/mbar/menu[3]/menu[5]").select
     If Err.Number <> 0 Then
         Err.Clear
@@ -310,7 +310,7 @@ Else
     WScript.Echo "INFO: SAP status: " & sFinalMsg
 End If
 
-' Post-activate RFC verify (Phase 4.3 — mandatory per SKILL.md Step 5d).
+' Post-activate RFC verify (Phase 4.3 -- mandatory per SKILL.md Step 5d).
 PostActivateVerifyOrFail POST_ACTIVATE_VERIFY_PS1, "TYPEGROUP", OBJECT_NAME
 
 WScript.Echo "SUCCESS: Type group " & UCase(OBJECT_NAME) & " created and activated in SAP."

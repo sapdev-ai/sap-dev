@@ -47,14 +47,14 @@ WScript.Sleep 1500
 ' If it does not exist, the screen stays on the initial screen (title contains
 ' "Number Range Object") and the status bar contains "object ... does not exist"
 ' (or in some releases "is not yet defined"). Some releases instead pop up a
-' modal asking whether to create — we close it and report NOT_EXIST.
+' modal asking whether to create -- we close it and report NOT_EXIST.
 
 ' Detect possible "Create object?" popup
 On Error Resume Next
 Dim oPopup
 Set oPopup = oSession.findById("wnd[1]")
 If Err.Number = 0 And Not (oPopup Is Nothing) Then
-    WScript.Echo "INFO: Confirmation popup detected — closing (Cancel)."
+    WScript.Echo "INFO: Confirmation popup detected -- closing (Cancel)."
     ' Cancel the popup; we only want to check, not create.
     On Error Resume Next
     oSession.findById("wnd[1]/tbar[0]/btn[12]").press   ' Cancel (F12)
@@ -87,7 +87,7 @@ If InStr(LCase(sTitle), "display") > 0 Then
     WScript.Quit 0
 End If
 
-' Still on initial screen — check status bar
+' Still on initial screen -- check status bar
 WScript.Echo "INFO: Status: " & sStatus
 If InStr(LCase(sStatus), "does not exist") > 0 _
    Or InStr(LCase(sStatus), "not been defined") > 0 _

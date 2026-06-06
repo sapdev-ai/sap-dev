@@ -473,7 +473,7 @@ For iAct = 1 To 6
     Set ko007 = oSession.findById(sActWnd & "/usr/ctxtKO007-L_DEVCLASS")
     If Err.Number = 0 And Not (ko007 Is Nothing) Then
         ' Fill package + transport if non-local. The activate-time ODE dialog
-        ' does NOT inherit the values from the save-time ODE dialog — it
+        ' does NOT inherit the values from the save-time ODE dialog -- it
         ' opens with empty fields and sbar warns "Assign a package" if we
         ' just press Save. Re-fill explicitly.
         If SAP_PACKAGE <> "" And UCase(SAP_PACKAGE) <> "$TMP" Then
@@ -512,8 +512,8 @@ For iAct = 1 To 6
             Err.Clear
         Else
             Err.Clear
-            ' (c1) 3-button SPOP popup (Yes/No/Cancel) — most often the
-            '      "Warning during activation — display activation log?" popup.
+            ' (c1) 3-button SPOP popup (Yes/No/Cancel) -- most often the
+            '      "Warning during activation -- display activation log?" popup.
             '      Detect via btnSPOP-OPTION2 + btnSPOP-OPTION3 both present.
             '      Press OPTION2 (No) to SKIP the log viewer and continue
             '      activation. Answering Yes here opens a log sub-window that
@@ -533,7 +533,7 @@ For iAct = 1 To 6
                 Err.Clear
                 ' (c2) 2-button SPOP popup (e.g. "Check Structure: activate
                 '      inconsistent changes?"). Detect via btnSPOP-OPTION1 only
-                '      (no OPTION3). Press OPTION1 (Yes) — Enter alone does
+                '      (no OPTION3). Press OPTION1 (Yes) -- Enter alone does
                 '      nothing on these popups because no button has default
                 '      focus; sbar would show "Choose a valid function".
                 Dim oSpopYes : Set oSpopYes = Nothing
@@ -545,7 +545,7 @@ For iAct = 1 To 6
                     Err.Clear
                 Else
                     Err.Clear
-                    ' (d) Generic informational popup — Enter; if persistent, Cancel.
+                    ' (d) Generic informational popup -- Enter; if persistent, Cancel.
                     WScript.Echo "INFO:   -> unknown popup, sending Enter."
                     oSession.findById(sActWnd).sendVKey 0
                     WScript.Sleep 1000

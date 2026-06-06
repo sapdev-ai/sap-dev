@@ -25,7 +25,7 @@
 '   6. Back out to a clean SE-initial screen.
 '
 ' Tokens replaced at run time:
-'   %%TXN%%             SE11 / SE38 / SE37 / SE24 / SE91 — picks the right
+'   %%TXN%%             SE11 / SE38 / SE37 / SE24 / SE91 -- picks the right
 '                       initial screen + name-field component ID.
 '   %%OBJECT_TYPE%%     For TXN=SE11: TABLE / VIEW / DATAELEMENT / STRUCTURE /
 '                       TABLETYPE / TYPEGROUP / DOMAIN / SEARCHHELP /
@@ -43,7 +43,7 @@
 '
 ' Output (last line, parseable by the orchestrator):
 '   NOT_FOUND: <OBJECT_TYPE> <NAME> has no usages in the selected scope.
-'   FOUND_LIST: <OBJECT_TYPE> <NAME> has usages — list shown on screen
+'   FOUND_LIST: <OBJECT_TYPE> <NAME> has usages -- list shown on screen
 '                (no spool requested).
 '   SPOOL_CREATED: <SPOOL_NUM>  (use /sap-sp02 to download)
 '   ERROR: ...
@@ -188,7 +188,7 @@ On Error GoTo 0
 ' tbar[0]/btn[7] = Select All; tbar[0]/btn[0] = Continue.
 On Error Resume Next
 If InStr(oSess.ActiveWindow.Id, "wnd[1]") > 0 Then
-    WScript.Echo "INFO: Scope popup — Select All + Continue."
+    WScript.Echo "INFO: Scope popup -- Select All + Continue."
     oSess.findById("wnd[1]/tbar[0]/btn[7]").press
     WScript.Sleep 600
     oSess.findById("wnd[1]/tbar[0]/btn[0]").press
@@ -216,7 +216,7 @@ If InStr(sActive, "wnd[1]") > 0 Then
     Set oOpt = oSess.findById("wnd[1]/usr/btnSPOP-OPTION1")
     On Error GoTo 0
     If Not (oOpt Is Nothing) Then
-        WScript.Echo "INFO: 'No usages' popup — pressing OPTION1 to dismiss."
+        WScript.Echo "INFO: 'No usages' popup -- pressing OPTION1 to dismiss."
         oOpt.press
         WScript.Sleep 1200
         Dim sSb : sSb = "" : Dim sSt : sSt = ""
@@ -246,7 +246,7 @@ If Not bToSpool Then
     WScript.Echo "INFO: SAP status: [" & sSt2 & "] " & sSb2
     WScript.Echo "INFO: Where-Used list is on screen; TO_SPOOL=X not set, leaving the list visible."
     ReleaseSession oSess, wasLocked
-    WScript.Echo "FOUND_LIST: " & sType & " " & sName & " has usages — list shown on screen (no spool requested)."
+    WScript.Echo "FOUND_LIST: " & sType & " " & sName & " has usages -- list shown on screen (no spool requested)."
     WScript.Quit 0
 End If
 
@@ -266,7 +266,7 @@ On Error GoTo 0
 
 ' --- 7b. Print parameters dialog (SAPLSPRI 0600) --------------------------
 '
-' Set immediate-output flag to "" (do NOT print immediately — just create
+' Set immediate-output flag to "" (do NOT print immediately -- just create
 ' the spool request). Then press btn[13] to commit.
 On Error Resume Next
 If InStr(oSess.ActiveWindow.Id, "wnd[1]") > 0 Then

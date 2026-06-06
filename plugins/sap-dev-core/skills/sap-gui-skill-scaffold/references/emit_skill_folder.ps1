@@ -38,7 +38,7 @@ param(
     # forced from `constant` to `parameter` and gets a %%TOKEN%% derived from
     # the tail. Use when every probe happened to use the same value but you
     # know real users will want to vary it (the canonical example: package
-    # name when all your scenarios said "in <one-package>"). String[] —
+    # name when all your scenarios said "in <one-package>"). String[] --
     # match is case-insensitive and only against the field tail.
     [string[]] $ForceParam = @()
 )
@@ -127,7 +127,7 @@ $modeList = ($modes -join ', ')
 # the mode AND class == parameter. Same parameter across modes shares its token.
 #
 # PARAM_NN tokens (auto-numbered fallback when no DDIC field tail could be
-# derived from the target) are HIDDEN from user-visible lists — they carry
+# derived from the target) are HIDDEN from user-visible lists -- they carry
 # no semantic name, so exposing them in argument-hint or the dispatch table
 # tells the user nothing actionable. They still survive in the merge report
 # for diagnostic purposes, but the action-emit logic in the foreach loop
@@ -233,7 +233,7 @@ function Get-PopupHandler {
 function Get-WorklistMatchValue {
     param($probeActions)
     # Walk earlier actions in the same probe; pick the FIRST SET_TEXT whose
-    # target is a repo-object NAME-entry field — that's the name the
+    # target is a repo-object NAME-entry field -- that's the name the
     # inactive-objects worklist will display in its OBJ_NAME column.
     #
     # Two families are recognised (both are stable DDIC field names, so this
@@ -244,7 +244,7 @@ function Get-WorklistMatchValue {
     #     RS38L-NAME (FM), RS38M-PROGRAMM (program), SEOCLASS-CLSNAME /
     #     -CLSKEY (class/interface), RS38L-AREA (function group).
     # Without the second family, SE37/SE38/SE24 scaffolds fell back to the
-    # brittle absolute getAbsoluteRow(N) baked from the probe — which raised
+    # brittle absolute getAbsoluteRow(N) baked from the probe -- which raised
     # "invalid argument" whenever the worklist contents differed from probe
     # time (regression caught by the sap-se37-v02 autotest, 2026-05-22).
     foreach ($a in $probeActions) {
@@ -263,7 +263,7 @@ function Get-WorklistMatchValue {
 #
 # When N probes share the same mode label (e.g. all 12 SE11-domain probes
 # end up as `create-domain`), the old behaviour was "last probe written
-# wins" — Set-Content on the same VBS path silently overwrote earlier
+# wins" -- Set-Content on the same VBS path silently overwrote earlier
 # iterations. That made the canonical body whichever probe happened to
 # sort last (dict-order, not semantically). Result: probe_12 (INT4, no
 # DECIMALS field) won over probe_5 (DEC, has DECIMALS), and the DECIMALS
@@ -274,11 +274,11 @@ function Get-WorklistMatchValue {
 # one probe (typical of the warmup-scenario pattern: probe_1 may do
 # /nSE01 + /nSE21 prerequisite setup that no other probe in the group
 # does) are EXCLUDED from the score. So the winner is the probe that
-# best represents the SHARED flow of the mode — not the one with the
+# best represents the SHARED flow of the mode -- not the one with the
 # longest action list. For SE11-domain the warmup (probe_1) has many
 # unique SE01/SE21 targets and zero shared-unique targets above the
 # baseline; DEC/CURR/QUAN each have the shared baseline PLUS the
-# shared-extra DECIMALS target → they win.
+# shared-extra DECIMALS target -> they win.
 #
 # Tie-break: lowest action_count (least quirky / fewest popup-recovery
 # detours like the TIMS double-Enter).
@@ -375,8 +375,8 @@ foreach ($p in $report.probes) {
         $vbsActions.Add("' --- step $('{0:D2}' -f $a.step) | $($a.verb) | $($a.note)")
 
         # Find this action's touchpoint to know if its value is a parameter.
-        # SET_OKCD touchpoints are keyed by VALUE as well as (verb,target) — see
-        # merge_probes.ps1::Get-TouchpointKey — so the action-to-touchpoint
+        # SET_OKCD touchpoints are keyed by VALUE as well as (verb,target) -- see
+        # merge_probes.ps1::Get-TouchpointKey -- so the action-to-touchpoint
         # match must include the value, otherwise an unrelated `parameter`
         # entry for the same OK-code field could bind here.
         $vbsValue = "$($a.value)"
@@ -396,7 +396,7 @@ foreach ($p in $report.probes) {
         switch ($a.verb) {
             'SET_TEXT' {
                 # GuiComboBox (cmb* leaf, e.g. lock mode cmbENQMODE) has a
-                # READONLY .Text — select the entry via .Key instead.
+                # READONLY .Text -- select the entry via .Key instead.
                 $stLeaf = ($a.target -split '/')[-1]
                 if ($stLeaf -match '^cmb') {
                     $vbsActions.Add("oSess.findById(`"$($a.target)`").Key = `"$vbsValue`"")
@@ -404,13 +404,13 @@ foreach ($p in $report.probes) {
                 elseif ($vbsValue -match "`r|`n") {
                     # MULTI-LINE value (e.g. an ABAP source paste into the
                     # SE37/SE38 AbapEditor shell). A raw inline VBScript string
-                    # literal CANNOT span physical lines — emitting it directly
+                    # literal CANNOT span physical lines -- emitting it directly
                     # produces "unterminated string constant" at compile time
                     # (regression caught by the sap-se37-v02 autotest,
                     # 2026-05-22). Build the value as a vbCrLf-joined string and
                     # write it under On Error Resume Next: the AbapEditor
                     # GuiShell .Text is READ-ONLY in a headless/background
-                    # scripting session, so the assignment may fail — in which
+                    # scripting session, so the assignment may fail -- in which
                     # case we proceed on SAP's auto-generated template (which
                     # still syntax-checks / saves / activates) rather than
                     # aborting the whole replay.
@@ -533,9 +533,9 @@ foreach ($p in $report.probes) {
         #
         # Suppression rule (Bug #4 fix): suppress the auto-dismiss branch ONLY
         # when THIS PROBE itself saw the popup AND its next action targets
-        # wnd[1]/* (canonical popup-fill recorded by the probe — next step's
+        # wnd[1]/* (canonical popup-fill recorded by the probe -- next step's
         # findById handles it naturally). Suppressing based on next-action
-        # alone — without confirming this probe observed the popup — let
+        # alone -- without confirming this probe observed the popup -- let
         # cross-probe popup observations leak into the suppression decision,
         # producing the "popup-reminder fires before recovery" symptom seen
         # in the 2026-05-17 test run.
@@ -644,7 +644,7 @@ foreach ($mode in $modes) {
 }
 $dispatchTable = $dispatchLines -join "`r`n"
 
-# Param-hint for argument-hint. PARAM_NN tokens are hidden — see
+# Param-hint for argument-hint. PARAM_NN tokens are hidden -- see
 # Test-IsRealParamToken above for the rationale.
 $allParams = $report.touchpoints |
     Where-Object class -eq 'parameter' |
@@ -685,7 +685,7 @@ function Get-PopupRecoveryHint {
     switch ($sig) {
         'SAPLSTRD/100'         { return 'Fill `wnd[1]/usr/ctxtKO007-L_DEVCLASS` (package) then Save (Enter).' }
         'SAPLSTRD/300'         { return 'Fill `wnd[1]/usr/ctxtKO008-TRKORR` (transport) then Continue (Enter).' }
-        'SAPLSEWORKINGAREA/205'{ return 'Inactive Objects worklist — Deselect All (`tbar[0]/btn[21]`), then SELECT_ROW the target by OBJ_NAME, then Continue.' }
+        'SAPLSEWORKINGAREA/205'{ return 'Inactive Objects worklist -- Deselect All (`tbar[0]/btn[21]`), then SELECT_ROW the target by OBJ_NAME, then Continue.' }
         default                { return 'Default: dismiss with Continue (`wnd[1]/tbar[0]/btn[0]`). Review whether this is the right recovery for `' + $sig + '`.' }
     }
 }
@@ -768,7 +768,7 @@ $failureProbes = @($report.probes | Where-Object { $_.scenario_type -and $_.scen
 if ($failureProbes.Count -gt 0) {
     $failureModesLines.Add("## Failure Modes Handled")
     $failureModesLines.Add("")
-    $failureModesLines.Add("This skill was scaffolded with $($failureProbes.Count) expected-failure probe(s). Each mode below documents the observed end state of the corresponding failure scenario. Callers of this skill should expect these end states when invoking the matching mode; the VBS replays the probe's path through them, but the **recovery / error-classification logic in the caller is the human author's responsibility** — adjust the per-mode VBS popup branches and add ``If StatusBarType=`"E`"`` checks as needed.")
+    $failureModesLines.Add("This skill was scaffolded with $($failureProbes.Count) expected-failure probe(s). Each mode below documents the observed end state of the corresponding failure scenario. Callers of this skill should expect these end states when invoking the matching mode; the VBS replays the probe's path through them, but the **recovery / error-classification logic in the caller is the human author's responsibility** -- adjust the per-mode VBS popup branches and add ``If StatusBarType=`"E`"`` checks as needed.")
     $failureModesLines.Add("")
     foreach ($fp in $failureProbes) {
         $failureModesLines.Add("### Mode: ``$($fp.mode)`` (scenario_type=``$($fp.scenario_type)``)")
@@ -785,9 +785,9 @@ if ($failureProbes.Count -gt 0) {
             if ($null -ne $obs.completed_steps) { $failureModesLines.Add("- Completed steps before end: $($obs.completed_steps)") }
             if ($null -ne $obs.aborted)         { $failureModesLines.Add("- Probe aborted: $($obs.aborted)") }
         } else {
-            $failureModesLines.Add("- (no observed{} block — probe may pre-date end-of-run summary capture)")
+            $failureModesLines.Add("- (no observed{} block -- probe may pre-date end-of-run summary capture)")
         }
-        $failureModesLines.Add("- Caller advice: after running this mode, check the status-bar via the shared `StatusBarType` helper. ``E`` / ``A`` = the expected failure mode reproduced. ``S`` = unexpected — the probe's failure path may not have triggered this run.")
+        $failureModesLines.Add("- Caller advice: after running this mode, check the status-bar via the shared `StatusBarType` helper. ``E`` / ``A`` = the expected failure mode reproduced. ``S`` = unexpected -- the probe's failure path may not have triggered this run.")
         $failureModesLines.Add("")
     }
 }

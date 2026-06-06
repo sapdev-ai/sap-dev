@@ -143,7 +143,7 @@ WScript.Echo "STATUS_TYPE: " & sStatusType
 WScript.Echo "STATUS_TEXT: " & sStatusText
 
 ' ------ 7b. On failure, capture the activation log BEFORE backing out -------
-' We have to do this before pressing Shift+F3 (Exit) — once we leave the
+' We have to do this before pressing Shift+F3 (Exit) -- once we leave the
 ' object we lose the in-context "Utilities > Activation Log" entry.
 If sStatusType = "E" Or sStatusType = "A" Then
     Dim sLogPath, sTopErr
@@ -156,11 +156,11 @@ If sStatusType = "E" Or sStatusType = "A" Then
             WScript.Echo "ACTIVATION_ERROR: " & sTopErr
         End If
     Else
-        WScript.Echo "INFO: Activation log could not be captured automatically — open SE11 and use Utilities > Activation Log."
+        WScript.Echo "INFO: Activation log could not be captured automatically -- open SE11 and use Utilities > Activation Log."
     End If
 End If
 
-' ------ 8. Back out (twice — first leaves object, second returns to SE11 main)
+' ------ 8. Back out (twice -- first leaves object, second returns to SE11 main)
 On Error Resume Next
 oSess.findById("wnd[0]").sendVKey VKEY_SHIFT_F3_EXIT
 WScript.Sleep 500
@@ -193,12 +193,12 @@ Sub HandleWorklistPopup
     ' per language_independence_rules.md):
     '
     '   (a) Inactive-objects worklist: has wnd[N]/tbar[0]/btn[9] (Select All)
-    '       → press btn[9] + btn[0] to activate all listed objects.
+    '       -> press btn[9] + btn[0] to activate all listed objects.
     '
-    '   (b) "Warning during activation — display activation log?" popup:
+    '   (b) "Warning during activation -- display activation log?" popup:
     '       3 SPOP buttons (OPTION1=Yes, OPTION2=No, OPTION3=Cancel).
     '       Detect via btnSPOP-OPTION2 + btnSPOP-OPTION3 both existing.
-    '       Press OPTION2 (No) to skip the log viewer and continue —
+    '       Press OPTION2 (No) to skip the log viewer and continue --
     '       answering Yes opens a log sub-window and the deploy hangs
     '       waiting for the operator to close it. The activation log is
     '       still captured by sap_activation_log.vbs after this Sub
@@ -206,12 +206,12 @@ Sub HandleWorklistPopup
     '       failure diagnostic by saying No here.
     '
     '   (c) Generic SPOP 2-button popup (OPTION1 + OPTION2, no OPTION3):
-    '       Press OPTION1 (Yes) — the affirmative action for
+    '       Press OPTION1 (Yes) -- the affirmative action for
     '       "activate inconsistent changes?" / "save before activation?"
     '       style prompts.
     '
     '   (d) Information / single-action popup (no SPOP-OPTION buttons):
-    '       Send VKey 0 (ENTER) — universal OK / Continue key.
+    '       Send VKey 0 (ENTER) -- universal OK / Continue key.
     '
     ' Refined 2026-05-11 after the operator screenshots showed
     ' "Warning during activation" popups at wnd[3]/wnd[4] during

@@ -30,11 +30,11 @@ try {
     $fn.SetValue("FUNCTIONNAME", $FM_NAME)
     $fn.Invoke($g_dest)
 } catch {
-    Write-Host "ERROR: RPY_FUNCTIONMODULE_READ_NEW failed for $FM_NAME — function module may not exist: $($_.Exception.Message)"
+    Write-Host "ERROR: RPY_FUNCTIONMODULE_READ_NEW failed for $FM_NAME -- function module may not exist: $($_.Exception.Message)"
     exit 1
 }
 
-# Defensive field reader — RPY_FUNCTIONMODULE_READ_NEW row metadata varies
+# Defensive field reader -- RPY_FUNCTIONMODULE_READ_NEW row metadata varies
 # across releases and FMs. Some rows do not expose OPTIONAL, TYPES, DBFIELD,
 # DBSTRUCT, TABNAME, or TYPEDEF, and a bare GetString throws a hard NCo
 # error ("Element X of container metadata unknown") that aborts the loop.

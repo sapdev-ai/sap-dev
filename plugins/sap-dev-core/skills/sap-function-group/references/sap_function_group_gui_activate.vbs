@@ -14,7 +14,7 @@
 '   DONE FUGR=<ID>
 '   ERROR: <message>
 '
-' Recorded from SAP S/4HANA 1909 (S4D) — Record_SE37_03_ActiveteFUGR.vbs.
+' Recorded from SAP S/4HANA 1909 (S4D) -- Record_SE37_03_ActiveteFUGR.vbs.
 ' =============================================================================
 
 Option Explicit
@@ -69,7 +69,7 @@ WScript.Sleep 1500
 ' (Enter) is sufficient.
 On Error Resume Next
 If InStr(oSess.ActiveWindow.Id, "wnd[1]") > 0 Then
-    WScript.Echo "INFO: Info popup detected — pressing Continue."
+    WScript.Echo "INFO: Info popup detected -- pressing Continue."
     oSess.findById("wnd[1]/tbar[0]/btn[5]").press
     If Err.Number <> 0 Then
         Err.Clear
@@ -96,7 +96,7 @@ WScript.Sleep 2500
 ' Buttons: btn[9] Select All, btn[0] Continue
 On Error Resume Next
 If InStr(oSess.ActiveWindow.Id, "wnd[1]") > 0 Then
-    WScript.Echo "INFO: Inactive Objects list — selecting all and continuing."
+    WScript.Echo "INFO: Inactive Objects list -- selecting all and continuing."
     oSess.findById("wnd[1]/tbar[0]/btn[9]").press
     WScript.Sleep 400
     oSess.findById("wnd[1]/tbar[0]/btn[0]").press
@@ -108,7 +108,7 @@ On Error GoTo 0
 ' --- Activation errors popup (wnd[2]) ---------------------------------------
 On Error Resume Next
 If InStr(oSess.ActiveWindow.Id, "wnd[2]") > 0 Then
-    WScript.Echo "WARNING: Activation errors popup — pressing Activate anyway."
+    WScript.Echo "WARNING: Activation errors popup -- pressing Activate anyway."
     oSess.findById("wnd[2]/usr/btnSPOP-VAROPTION1").press
     If Err.Number <> 0 Then
         Err.Clear
@@ -132,7 +132,7 @@ On Error Resume Next
 oSess.findById("wnd[0]/tbar[0]/btn[15]").press
 WScript.Sleep 300
 If InStr(oSess.ActiveWindow.Id, "wnd[1]") > 0 Then
-    ' "Object was changed but not saved" — answer No to discard
+    ' "Object was changed but not saved" -- answer No to discard
     oSess.findById("wnd[1]/usr/btnSPOP-OPTION2").press
     If Err.Number <> 0 Then
         Err.Clear

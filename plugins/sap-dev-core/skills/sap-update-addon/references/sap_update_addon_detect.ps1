@@ -1,9 +1,9 @@
 # =============================================================================
 # sap_update_addon_detect.ps1  -  Detect best method to maintain an add-on table
 #
-# 1. SM30 — does a maintenance view exist? (SAP GUI scripting via COM)
-# 2. RFC  — DD02L-MAINFLAG = 'X'?
-# 3. RFC  — does ZCMRUPDATE_ADDON_TABLE exist in TRDIR?
+# 1. SM30 -- does a maintenance view exist? (SAP GUI scripting via COM)
+# 2. RFC  -- DD02L-MAINFLAG = 'X'?
+# 3. RFC  -- does ZCMRUPDATE_ADDON_TABLE exist in TRDIR?
 #
 # Run with **32-bit PowerShell**.
 #

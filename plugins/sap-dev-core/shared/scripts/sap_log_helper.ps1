@@ -74,7 +74,7 @@ switch ($Action) {
         # never called. Close that orphan as ABANDONED now (it writes to its own
         # start-date log file) so a later 'end' can't silently close it as a
         # bogus SUCCESS. Skip probe state files that intentionally persist a
-        # summary (observed/scenario_type) — the 'end' action keeps those on
+        # summary (observed/scenario_type) -- the 'end' action keeps those on
         # purpose for the scaffolder and they were already closed.
         if (Test-Path -LiteralPath $StateFile) {
             try {

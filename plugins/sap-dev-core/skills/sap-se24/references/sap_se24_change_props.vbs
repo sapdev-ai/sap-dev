@@ -92,7 +92,7 @@ On Error GoTo 0
 
 ' --- Lock the SAP session UI for the class properties change + save critical section ---
 ' Per Rule 7: LockSessionUI blocks user input races inside SAP. No OS-level
-' foreground guard needed — this flow only edits Properties dialog fields
+' foreground guard needed -- this flow only edits Properties dialog fields
 ' via the Scripting API (no clipboard, no SendKeys). Released after save.
 Dim wasLocked : wasLocked = TryLockSession(oSession)
 If wasLocked Then

@@ -55,7 +55,7 @@ For Each oConnection In oApplication.Children
         Set oLoginCheck = oSession.findById("wnd[0]/usr/txtRSYST-MANDT")
 
         If Err.Number <> 0 Or oLoginCheck Is Nothing Then
-            ' Not on login screen — this session is authenticated
+            ' Not on login screen -- this session is authenticated
             Err.Clear
             Set oSessInfo = oSession.Info
             WScript.Echo "STATUS: LOGGED_IN"
@@ -67,7 +67,7 @@ For Each oConnection In oApplication.Children
             WScript.Echo "CODEPAGE: " & oSessInfo.Codepage
             WScript.Quit 0
         Else
-            ' On login screen — connection exists but not authenticated
+            ' On login screen -- connection exists but not authenticated
             Err.Clear
             bFoundLoginScreen = True
             sLoginDesc = oConnection.Description

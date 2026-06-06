@@ -67,7 +67,7 @@ On Error GoTo 0
 
 ' --- Lock the SAP session UI for the FM attribute change + save critical section ---
 ' Per Rule 7: LockSessionUI blocks user input races inside SAP. No OS-level
-' foreground guard needed — this flow only sets attribute fields via the
+' foreground guard needed -- this flow only sets attribute fields via the
 ' Scripting API (no clipboard, no SendKeys). Released after save.
 Dim wasLocked : wasLocked = TryLockSession(oSession)
 If wasLocked Then
@@ -179,7 +179,7 @@ If NEW_PROC_TYPE <> "" Then
     ' SetFocus before .select to ensure the radio gets keyboard focus and the
     ' field-change event fires. Without SetFocus, on S/4HANA 1909 the radio
     ' visually flips in the UI but the underlying field-change event does
-    ' NOT fire — Ctrl+S then saves the FM with TFDIR.FMODE unchanged from
+    ' NOT fire -- Ctrl+S then saves the FM with TFDIR.FMODE unchanged from
     ' its prior value (typically blank = Regular). Observed 2026-05-12:
     ' change_attrs reported "SUCCESS: Attributes updated" and sbar showed
     ' "Saved", but TFDIR.FMODE remained blank and the FM still rejected
@@ -334,7 +334,7 @@ If LCase(sBarType) = "e" Or LCase(sBarType) = "a" Then
 End If
 
 ' ------ 7. Activate when PROCESSING_TYPE was changed -----------------------
-' Save alone does NOT flush TFDIR.FMODE on S/4HANA 1909 — the new processing
+' Save alone does NOT flush TFDIR.FMODE on S/4HANA 1909 -- the new processing
 ' type is held in the inactive workspace until activation, and remote-RFC
 ' callers still see the OLD FMODE value via RPY_FUNCTIONMODULE_READ_NEW /
 ' direct TFDIR query. Without Activate, the change_attrs flow reports

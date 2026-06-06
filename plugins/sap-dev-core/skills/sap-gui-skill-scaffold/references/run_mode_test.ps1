@@ -10,10 +10,10 @@
 # end-state (status-bar MessageType, popup-left-open, screen identity) into a
 # machine-readable result.json so the loop can classify pass/fail.
 #
-# This does NOT validate the outcome — it only runs and observes. Pass/fail
+# This does NOT validate the outcome -- it only runs and observes. Pass/fail
 # classification is the loop's job (verify_create_object.ps1 + Step 5.5b prose).
 #
-# MUST run under 32-bit PowerShell? No — this script only shells out to 32-bit
+# MUST run under 32-bit PowerShell? No -- this script only shells out to 32-bit
 # cscript (SAP GUI Scripting COM) and to sap_gui_probe_dump.ps1 (which itself
 # uses 32-bit cscript). It can run under either host.
 #
@@ -29,7 +29,7 @@
 #
 # Output: writes <OutputDir>\result.json and <OutputDir>\end_state.txt.
 # Last stdout line: "RESULT: exit=<rc> popup=<bool> msgType=<X> -> <result.json>".
-# ALWAYS exits 0 — a failed mode is data, not a script error.
+# ALWAYS exits 0 -- a failed mode is data, not a script error.
 # =============================================================================
 
 [CmdletBinding()]

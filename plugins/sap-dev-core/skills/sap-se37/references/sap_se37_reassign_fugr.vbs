@@ -69,7 +69,7 @@ On Error GoTo 0
 
 ' --- Lock the SAP session UI for the FM reassign + reactivate critical section ---
 ' Per Rule 7: LockSessionUI blocks user input races inside SAP. No OS-level
-' foreground guard needed — this flow only fills the Reassign dialog fields
+' foreground guard needed -- this flow only fills the Reassign dialog fields
 ' and presses buttons via the Scripting API (no clipboard, no SendKeys).
 ' Released after reactivation.
 Dim wasLocked : wasLocked = TryLockSession(oSession)

@@ -136,10 +136,10 @@ Else
     ' --- Drain any follow-up popups (e.g. "Create Task" / sub-task confirmation) ---
     ' On freshly-created TRs, SAP shows a Create-Task popup right after the
     ' TR-assignment popup, asking whether to create a sub-task under the
-    ' current user. The default action is "Yes" → press Enter (btn[0] /
+    ' current user. The default action is "Yes" -> press Enter (btn[0] /
     ' VKEY 0). If we don't accept it here, session_lock's pre-unlock
     ' F12-sweep will cancel it, leaving the package linked to the TR
-    ' header but without the task — which fails downstream object
+    ' header but without the task -- which fails downstream object
     ' registration on this build. Drain up to 3 chained popups; each
     ' Enter accepts whatever default SAP proposes.
     Dim iDrain, sDrainId
@@ -151,7 +151,7 @@ Else
             Exit For
         End If
         If Right(sDrainId, 6) = "wnd[0]" Then Exit For
-        WScript.Echo "INFO: Post-TR popup " & iDrain & " at " & sDrainId & " — pressing Enter (accept default)."
+        WScript.Echo "INFO: Post-TR popup " & iDrain & " at " & sDrainId & " -- pressing Enter (accept default)."
         oSession.ActiveWindow.sendVKey 0   ' Enter / Continue / Yes
         If Err.Number <> 0 Then Err.Clear
         WScript.Sleep 1000

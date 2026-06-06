@@ -6,7 +6,7 @@
 ' (element) bound to a BAdI definition, the implementing class (empty shell),
 ' assigns package + transport (or Local Object), then activates.
 '
-' The implementing-class METHOD SOURCE is NOT deployed here — the sap-se19
+' The implementing-class METHOD SOURCE is NOT deployed here -- the sap-se19
 ' skill delegates that to /sap-se24 (class operations belong to SE24).
 '
 ' Probed live against S/4HANA 1909 (S4D), SAP GUI 7.60, EN logon, 2026-05-30.

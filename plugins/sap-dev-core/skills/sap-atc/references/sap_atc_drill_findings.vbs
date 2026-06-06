@@ -7,7 +7,7 @@
 '   /sap-atc Stage 4 (sap_atc_get_results.vbs) reads aggregated P1/P2/P3
 '   counts from the OUTER Manage Results grid (Program=SAPLSATC_AC_UI_ADMIN_I
 '   ScreenNumber=100). When the gate FAILS, the operator still doesn't know
-'   WHICH finding(s) blocked them — the check ID, source line, and message
+'   WHICH finding(s) blocked them -- the check ID, source line, and message
 '   text live one screen deeper, behind a doubleClick on the run-series row.
 '   This script drills there and exports the findings grid as TSV.
 '
@@ -29,16 +29,16 @@
 '
 ' Column-ID lookup
 ' ----------------
-' Logical → technical column names vary by SAP_BASIS release. The script
+' Logical -> technical column names vary by SAP_BASIS release. The script
 ' resolves each logical column via GridView.ColumnOrder membership (the
 ' authoritative list of column technical names on the shell), NOT by
-' probing GetCellValue — SAP's GridView silently returns "" for any
+' probing GetCellValue -- SAP's GridView silently returns "" for any
 ' unknown column name without raising, which made the prior probe-based
 ' approach lock in the first candidate and produce rows of empty cells.
 '
 ' S/4HANA 1909 actuals (confirmed 2026-05-11): PRIORITY / CHECK_TITLE /
 ' MESSAGE_TITLE / OBJ_NAME / OBJ_TYPE. There is NO line-number column on
-' the outer findings grid in 1909 — source line lives one drill deeper.
+' the outer findings grid in 1909 -- source line lives one drill deeper.
 ' The TSV emits a LINE column for forward-compat with releases that DO
 ' expose it; on 1909 it is always blank.
 '
@@ -90,7 +90,7 @@ End If
 Err.Clear
 On Error GoTo 0
 
-' Selection screen → grid (same pattern as sap_atc_get_results.vbs)
+' Selection screen -> grid (same pattern as sap_atc_get_results.vbs)
 On Error Resume Next
 Dim sScrNum : sScrNum = CStr(oSess.Info.ScreenNumber)
 On Error GoTo 0
@@ -143,7 +143,7 @@ If foundRow < 0 Then
     WScript.Quit 1
 End If
 
-WScript.Echo "INFO: Outer row " & foundRow & " for series " & UCase(RUN_SERIES_NAME) & " — drilling in."
+WScript.Echo "INFO: Outer row " & foundRow & " for series " & UCase(RUN_SERIES_NAME) & " -- drilling in."
 
 ' --- Drill: doubleClick on the run-series cell -> screen 201 -----------
 Dim wasLocked : wasLocked = TryLockSession(oSess)
@@ -211,7 +211,7 @@ WScript.Echo "FINDING_COUNT: " & findingRows
 ' Columns we want to capture, with fallbacks for column-ID variation across
 ' SAP_BASIS releases. The grid exposes columns by technical name; we resolve
 ' each logical column by membership test against the grid's actual
-' ColumnOrder array — NOT by probing GetCellValue (SAP's GridView silently
+' ColumnOrder array -- NOT by probing GetCellValue (SAP's GridView silently
 ' returns "" for any unknown column name without raising, so the prior
 ' "first that doesn't raise" probe locked in the first candidate every
 ' time and produced rows of empty cells).
@@ -219,7 +219,7 @@ WScript.Echo "FINDING_COUNT: " & findingRows
 ' Candidate order matters: list the release we've actually observed FIRST,
 ' fallbacks after. S/4HANA 1909 actuals confirmed 2026-05-11 via
 ' ZMMRMAT032R01 ATC run: PRIORITY / CHECK_TITLE / MESSAGE_TITLE / OBJ_NAME
-' / OBJ_TYPE. LINE has no equivalent on the OUTER findings grid on 1909 —
+' / OBJ_TYPE. LINE has no equivalent on the OUTER findings grid on 1909 --
 ' source line lives one drill deeper (doubleClick on the finding row opens
 ' a source-context view); we leave LINE blank when no match is found
 ' rather than emitting a misleading column.
@@ -248,7 +248,7 @@ If IsArray(aColOrder) Then
     Next
     WScript.Echo "INFO: Findings grid columns (" & (UBound(aColOrder) + 1) & "): " & Join(aColOrder, ", ")
 Else
-    WScript.Echo "WARN: GridView.ColumnOrder not available — falling back to GetCellValue probe."
+    WScript.Echo "WARN: GridView.ColumnOrder not available -- falling back to GetCellValue probe."
 End If
 
 ' Resolve canonical column names. Prefer ColumnOrder membership; fall back
@@ -282,7 +282,7 @@ For ci = 0 To UBound(wantedCols)
         End If
     Next
     If canonicalCol(ci) = "" Then
-        WScript.Echo "INFO: No matching grid column found for logical '" & colHeaders(ci) & "' — that field will be blank in the TSV."
+        WScript.Echo "INFO: No matching grid column found for logical '" & colHeaders(ci) & "' -- that field will be blank in the TSV."
     End If
 Next
 

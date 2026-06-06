@@ -145,11 +145,11 @@ End If
 ' wrapper). Same foreground-guard pattern as sap_se38_create.vbs:
 '   1. If iconified, .Restore (an iconified window can't take foreground).
 '   2. .Maximize unconditionally (helps with stacked windows).
-'   3. Run sap_gui_foreground_guard.ps1 — uses the AttachThreadInput Win32
+'   3. Run sap_gui_foreground_guard.ps1 -- uses the AttachThreadInput Win32
 '      trick to bypass Windows 7+'s SetForegroundWindow suppression.
 '      WshShell.AppActivate (previously used here in a retry loop) is
 '      unreliable: it returns success while Windows just flashes the
-'      taskbar button, leaving SAP behind — SendKeys then lands in
+'      taskbar button, leaving SAP behind -- SendKeys then lands in
 '      Notepad / VS Code / browser. Bug surfaced 2026-05-11.
 Dim oWSh, sTitle
 Set oWSh = CreateObject("WScript.Shell")
@@ -179,11 +179,11 @@ If nFgGuardRcSE51 <> 0 Then
     WScript.Quit 1
 End If
 
-' Belt-and-suspenders clear-then-paste — see sap_se38_create.vbs Step 6c
+' Belt-and-suspenders clear-then-paste -- see sap_se38_create.vbs Step 6c
 ' for the full incident-driven rationale. SendKeys "^a" alone is unreliable
 ' in the SAP screen editor (Ctrl+A may be rebound to a function code).
 ' Layers: SAP-side sendVKey 26, then Windows ^{HOME} + ^+{END}, then ^a as
-' fallback, then ^v (which replaces the selected text — no explicit {DEL}
+' fallback, then ^v (which replaces the selected text -- no explicit {DEL}
 ' needed in this editor variant).
 On Error Resume Next
 oSession.findById("wnd[0]").sendVKey 26
@@ -239,7 +239,7 @@ On Error Resume Next
 oSession.findById("wnd[0]/tbar[1]/btn[27]").press
 WScript.Sleep 3000
 
-' Handle "Inactive Objects" list popup — confirm with Enter to activate all
+' Handle "Inactive Objects" list popup -- confirm with Enter to activate all
 If InStr(oSession.ActiveWindow.Id, "wnd[1]") > 0 Then
     Log "INFO: Inactive objects list - confirming activation..."
     oSession.findById("wnd[1]").sendVKey VKEY_ENTER

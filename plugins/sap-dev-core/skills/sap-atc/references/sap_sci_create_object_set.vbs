@@ -6,8 +6,8 @@
 ' a CI loop can reuse the same set under a stable name. This script:
 '
 '   1. /nSCI                                                  -> SCI initial
-'   2. btnSCI_DYNP-OBJS_GL                                    -> toggle Local→Global
-'      (REQUIRED — ATC Run Series binding only consumes Global object sets.
+'   2. btnSCI_DYNP-OBJS_GL                                    -> toggle Local->Global
+'      (REQUIRED -- ATC Run Series binding only consumes Global object sets.
 '      A Local set saves successfully but Stage 2's Save raises a hidden
 '      "Save inconsistent data" warning that silently invalidates the run.)
 '   3. ctxtSCI_DYNP-OBJS = %%OBJECT_SET_NAME%% + btnOBJS_CREAT
@@ -23,14 +23,14 @@
 ' Tokens:
 '   %%OBJECT_SET_NAME%%   Z* customer-namespace identifier (e.g. ZGATESET003).
 '                         Must already be 26 chars or less. The SCI initial
-'                         screen also accepts existing set names — we trust
+'                         screen also accepts existing set names -- we trust
 '                         the operator: re-running with the same name will
 '                         either reopen for editing or fail loudly per the
 '                         SAP system's existing-object policy.
 '   %%OBJECT_TYPE%%       PROGRAM (verified) | CLASS | FM | FUGR | INTERFACE.
 '                         For non-PROGRAM types the field IDs follow the same
 '                         pattern (txtSO_<TYPE>-LOW) but were not in the
-'                         recording — re-record on first failure.
+'                         recording -- re-record on first failure.
 '   %%OBJECT_NAME%%       The repository object name (UPPERCASE), e.g.
 '                         ZMMRMAT017R01 or ZCL_HK_TEST001.
 '   %%SESSION_LOCK_VBS%%  Path to sap_session_lock.vbs.
@@ -127,25 +127,25 @@ WScript.Sleep 1500
 
 ' --- 2. Ensure Object Set scope is GLOBAL ---------------------------------
 ' On the SCI initial screen there's a small icon button next to the Object
-' Set name field — `btnSCI_DYNP-OBJS_GL` — that toggles between Local and
+' Set name field -- `btnSCI_DYNP-OBJS_GL` -- that toggles between Local and
 ' Global scope. ATC Run Series binding ONLY consumes Global object sets;
 ' a Local set saves successfully, but the subsequent ATC run-series Save
 ' raises a hidden "Save inconsistent data" warning that silently invalidates
 ' the run series.
 '
 ' The toggle's STATE persists across SCI invocations within a session, so
-' an unconditional press is non-idempotent — it can flip Global→Local on
+' an unconditional press is non-idempotent -- it can flip Global->Local on
 ' a session whose previous run already toggled to Global. The fix is to
 ' READ the button's state first and press only if currently Local.
 '
 ' State detection uses IconName (language-independent per Rule 7):
-'   F_USRM  → Local   (icon resembles a user/private folder)
-'   USEGRO  → Global  (icon resembles a user group)
+'   F_USRM  -> Local   (icon resembles a user/private folder)
+'   USEGRO  -> Global  (icon resembles a user group)
 '   Tooltip is also distinct ("Local" / "Global") but is translated, so
-'   we use it for diagnostic output only — never as a branching key.
+'   we use it for diagnostic output only -- never as a branching key.
 '
 ' Captured live on S/4HANA 1909 via probe_sci_toggle.vbs (2026-05-10):
-' three presses produced F_USRM → USEGRO → F_USRM IconName cycle, with
+' three presses produced F_USRM -> USEGRO -> F_USRM IconName cycle, with
 ' Tooltip switching in lockstep. Both states were Changeable=True.
 WScript.Echo "INFO: Reading current SCI Object Set scope from btnSCI_DYNP-OBJS_GL..."
 Dim sToggleIcon, sToggleTip, bAlreadyGlobal
@@ -276,7 +276,7 @@ oSess.findById("wnd[0]").sendVKey VKEY_F11_SAVE
 WScript.Sleep 1500
 On Error GoTo 0
 
-' Confirmation popup (Save dialog) — press Continue (btn[0]).
+' Confirmation popup (Save dialog) -- press Continue (btn[0]).
 On Error Resume Next
 If InStr(oSess.ActiveWindow.Id, "wnd[1]") > 0 Then
     oSess.findById("wnd[1]/tbar[0]/btn[0]").press
@@ -293,7 +293,7 @@ On Error GoTo 0
 
 ReleaseSession oSess, wasLocked
 
-' Back to SCI initial screen — leave operator in a clean state.
+' Back to SCI initial screen -- leave operator in a clean state.
 On Error Resume Next
 oSess.findById("wnd[0]").sendVKey VKEY_F3_BACK
 WScript.Sleep 500

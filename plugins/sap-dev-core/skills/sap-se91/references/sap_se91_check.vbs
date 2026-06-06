@@ -45,7 +45,7 @@ WScript.Sleep 2000
 ' Language-independent detection (per language_independence_rules.md):
 ' the SE91 initial screen has a name input field at
 ' wnd[0]/usr/ctxtRSDAG-ARBGB. If that ID still resolves after pressing
-' Display, we did NOT navigate into the editor → class does not exist.
+' Display, we did NOT navigate into the editor -> class does not exist.
 ' (Title-text branching on "Initial" was English-only and produced
 ' false-positive EXIST for nonexistent classes under JA logon.)
 Dim bStillOnInitial, oInitProbe

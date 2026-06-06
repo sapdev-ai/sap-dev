@@ -420,7 +420,7 @@ Else
     WScript.Echo "INFO: SAP status: " & sFinalMsg
 End If
 
-' Post-activate RFC verify (Phase 4.3 — mandatory per SKILL.md Step 5d).
+' Post-activate RFC verify (Phase 4.3 -- mandatory per SKILL.md Step 5d).
 PostActivateVerifyOrFail POST_ACTIVATE_VERIFY_PS1, "TABLETYPE", OBJECT_NAME
 
 WScript.Echo "SUCCESS: Table type " & UCase(OBJECT_NAME) & " created and activated in SAP."

@@ -29,7 +29,7 @@
 #     replaces the 'I' with 'A' on successful activate).
 #   - During a failed activate attempt, both rows can briefly coexist:
 #     STATE='A' (the old code that's still active) + STATE='I' (the newly-
-#     saved-but-rejected version). The 'I' row is the failure signal — we
+#     saved-but-rejected version). The 'I' row is the failure signal -- we
 #     fail-closed regardless of whether 'A' also exists.
 #
 # Callers should fail-closed on INACTIVE / MISSING, soft-warn on ERROR.

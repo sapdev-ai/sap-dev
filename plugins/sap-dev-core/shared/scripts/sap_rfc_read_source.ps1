@@ -73,14 +73,14 @@ function _RfcRowExists($dest, $table, $where, $keyField) {
         $d = $fn.GetTable("DATA")
         return ([int]$d.RowCount -gt 0)
     } catch {
-        # If the probe itself errors, don't block — let the RPY read decide.
+        # If the probe itself errors, don't block -- let the RPY read decide.
         return $true
     }
 }
 
 function _InvokeRpyProgramRead($dest, $progName, $withIncludes) {
     # Returns @{ Lines = List[string]; Includes = List[string] }. May throw
-    # (RfcException) on a parameter/table-name mismatch — caller classifies.
+    # (RfcException) on a parameter/table-name mismatch -- caller classifies.
     $fn = $dest.Repository.CreateFunction("RPY_PROGRAM_READ")
     [void]$fn.SetValue("PROGRAM_NAME", $progName)
     [void]$fn.SetValue("WITH_INCLUDELIST", $(if ($withIncludes) { 'X' } else { ' ' }))
@@ -109,7 +109,7 @@ function _ReadFmSource($dest, $fmName) {
     # An FM's body lives in include  L<funcgroup>U<TFDIR-INCLUDE>.  Resolve the
     # function pool (TFDIR-PNAME = 'SAPL'<fg>) + include number from TFDIR, then
     # read that include via RPY_PROGRAM_READ. Returns @{ Lines = List[string] }.
-    # (RPY_FUNCTIONMODULE_READ_NEW does NOT return source on read — verified S4D.)
+    # (RPY_FUNCTIONMODULE_READ_NEW does NOT return source on read -- verified S4D.)
     $pname = ''; $incno = ''
     try {
         $fn = New-RfcReadTable -Destination $dest -Table 'TFDIR'

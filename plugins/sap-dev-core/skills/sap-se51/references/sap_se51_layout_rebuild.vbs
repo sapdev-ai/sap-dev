@@ -25,7 +25,7 @@
 ' PLACEMENT MODEL (probe-verified)
 ' --------------------------------
 '  * An element lands at the CURSOR cell. The create-dialog's FELD-LINE /
-'    FELD-COLN fields are advisory and are REJECTED for I/O fields (err 613) —
+'    FELD-COLN fields are advisory and are REJECTED for I/O fields (err 613) --
 '    do NOT rely on them for positioning.
 '  * Work-area cells txt[col,row] exist ONLY at element boundaries, not at every
 '    column. txt[0,row] always exists; arbitrary columns (txt[9,row]) usually do
@@ -37,19 +37,19 @@
 '  * Hence per line: (1) Text label at txt[0,row]; (2) re-scan the row for the
 '    new gap cell; (3) focus it and create the I/O field.
 '
-' PREREQUISITE — graphical editor must be OFF
+' PREREQUISITE -- graphical editor must be OFF
 ' -------------------------------------------
 ' Only the alphanumeric editor (program SAPMSSY0, dynpro 120) is scriptable.
 ' Turn OFF SE51 > Utilities > Settings > "Graphical Layout Editor" (per-user).
 ' This script aborts NOT_ALPHANUMERIC if the graphical canvas opens instead.
 '
-' SAFETY — all-or-nothing
+' SAFETY -- all-or-nothing
 ' -----------------------
 ' The screen is Saved+Activated ONLY if every planned element was created.
 ' On any shortfall the script backs out WITHOUT saving, leaving the live screen
 ' exactly as it was before the run.
 '
-' WARNING — a rebuild RECREATES EVERY ELEMENT from the line spec. Any element on
+' WARNING -- a rebuild RECREATES EVERY ELEMENT from the line spec. Any element on
 ' the screen that you do NOT list is dropped. List the screen's existing fields
 ' too if they must be preserved (the calling skill should read the current
 ' element list first and confirm with the user what to keep).
@@ -62,7 +62,7 @@
 '   %%LINESPEC_FILE%%  Tab-delimited line spec file (UTF-8)
 '   %%LOG_FILE%%       Path for the run log
 '
-' Line-spec file format — one "label + input" line per row, TAB-separated,
+' Line-spec file format -- one "label + input" line per row, TAB-separated,
 ' '#' lines ignored. Lines are placed on dynpro rows starting at START_ROW
 ' (default 2), one dynpro row apart:
 '   LABEL <TAB> FIELDNAME <TAB> FIELDLEN
@@ -168,7 +168,7 @@ Err.Clear
 On Error GoTo 0
 
 If oSession.Info.Program <> "SAPMSSY0" Then
-    L "ERROR: NOT_ALPHANUMERIC — graphical Layout Editor opened (program=" & _
+    L "ERROR: NOT_ALPHANUMERIC -- graphical Layout Editor opened (program=" & _
       oSession.Info.Program & "). Turn OFF SE51 > Utilities > Settings >"
     L "       'Graphical Layout Editor' for this user, then re-run."
     oLog.Close : WScript.Quit 1
@@ -226,7 +226,7 @@ Next
 
 L "INFO: created " & created & " of " & planned & " elements."
 If created < planned Then
-    L "ERROR: not all elements created — backing out WITHOUT saving (live screen unchanged)."
+    L "ERROR: not all elements created -- backing out WITHOUT saving (live screen unchanged)."
     BackOutNoSave
     oLog.Close : WScript.Quit 1
 End If
@@ -266,7 +266,7 @@ sType = oSession.findById("wnd[0]/sbar").MessageType
 On Error GoTo 0
 L "INFO: status bar [" & sType & "] " & sMsg
 If sType = "E" Or sType = "A" Then
-    L "ERROR: activation reported an error — " & sMsg
+    L "ERROR: activation reported an error -- " & sMsg
     oLog.Close : WScript.Quit 1
 End If
 
@@ -275,7 +275,7 @@ oLog.Close
 WScript.Quit 0
 
 ' ===========================================================================
-' MakeLine — Text label (col 0) + I/O field in the gap cell to its right.
+' MakeLine -- Text label (col 0) + I/O field in the gap cell to its right.
 Sub MakeLine(sFieldName, sLabel, sLen, nRow)
     If Not OpenCreate(0, "wnd[0]/usr/txt[0," & nRow & "]") Then
         L "WARNING: label dialog never opened on row " & nRow
@@ -430,7 +430,7 @@ Sub SavePopups(sPhase)
             Set oDev = oSession.findById(AW & "/usr/ctxtTADIR-DEVCLASS")
             If Err.Number = 0 And Not (oDev Is Nothing) Then
                 If Trim(oDev.Text) = "" And SAP_PACKAGE <> "" Then oDev.Text = SAP_PACKAGE
-                L "INFO: " & sPhase & " Object Directory Entry — package=" & oDev.Text
+                L "INFO: " & sPhase & " Object Directory Entry -- package=" & oDev.Text
                 Err.Clear
                 PressCont AW
             Else

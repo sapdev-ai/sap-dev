@@ -22,7 +22,7 @@
 ' need predictable on-disk behaviour and don't want the helper to guess
 ' a "similar" radio on a release where the name differs.
 '
-'   R_FINAL      -> "Cannot Be Enhanced"             (DEFAULT — empty input)
+'   R_FINAL      -> "Cannot Be Enhanced"             (DEFAULT -- empty input)
 '   R_FLAT       -> "Can be enhanced (char-like or numeric)"
 '   R_CHARONLY   -> "Can be enhanced (character-like)"
 '   R_DEEP       -> "Can Be Enhanced (Deep)"
@@ -65,7 +65,7 @@
 '
 ' DD02L.EXCLASS encoding (SAP-internal, post-save persistence layer)
 ' -------------------------------------------------------------------
-' NOTE: UI position order ≠ DD02L.EXCLASS code. After save, the chosen
+' NOTE: UI position order <> DD02L.EXCLASS code. After save, the chosen
 ' radio is persisted into DD02L.EXCLASS with these codes:
 '
 '   " " (blank / "0")  Not classified            (R_NOCLASS)
@@ -215,7 +215,7 @@ End Function
 ' Returns one of:
 '   "R_FINAL", "R_FLAT", "R_CHARONLY", "R_DEEP", "R_NOCLASS"      (direct mode)
 '   "NOT_EXTENSIBLE", "FLAT", "FLAT_NUMERIC", "DEEP", "NOT_CLASSIFIED" (category mode)
-'   (or any other "R_*" string the caller passes verbatim — direct mode)
+'   (or any other "R_*" string the caller passes verbatim -- direct mode)
 '
 ' Unrecognized non-R_ tokens are coerced to R_FINAL (direct mode) with a
 ' WARN, so a typoed argument still gives the safe behaviour.
@@ -302,7 +302,7 @@ Function GetCategoryMapping(sCat)
             cands = Array("R_CHARONLY", "R_FLAT_NUMERIC", "R_C", "R_CHAR", "R_CH")
         Case "NOT_EXTENSIBLE"
             pos = 3
-            ' R_FINAL is the verified S/4HANA 1909 name (2026-05-11) — SAP's
+            ' R_FINAL is the verified S/4HANA 1909 name (2026-05-11) -- SAP's
             ' internal name for "the structure is FINAL / cannot be
             ' extended further". The R_NOT_EXTENSIBLE / R_NONE / R_NICHT /
             ' R_NO_EXT entries are older-release fallbacks.
@@ -688,7 +688,7 @@ End Function
 ' Find a menu / submenu child by .Text matching any label in the list.
 '
 ' Matching is lenient: both candidate and haystack are normalized first
-' (see NormalizeMenuLabel) and the comparison is bidirectional InStr —
+' (see NormalizeMenuLabel) and the comparison is bidirectional InStr --
 ' "extras" matches "&Extras", "Extras(&E)", "Extras...", "  Extras  ".
 ' Returns Nothing on no match.
 Function FindMenuByLabels(oParent, aLabels)

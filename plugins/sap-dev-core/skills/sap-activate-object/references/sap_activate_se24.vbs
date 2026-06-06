@@ -97,7 +97,7 @@ WScript.Quit 0
 
 
 Sub HandleWorklistPopup
-    ' Top-down z-order sweep — see sap_activate_se11.vbs for the full rationale.
+    ' Top-down z-order sweep -- see sap_activate_se11.vbs for the full rationale.
     ' SAP can stack multiple modals after Activate (e.g. wnd[2] error popup ON
     ' TOP of wnd[1] worklist on S/4HANA 1909); checking only ActiveWindow ==
     ' wnd[1] misses the higher-numbered window. Iterate wnd[9]..wnd[1]

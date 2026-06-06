@@ -6,18 +6,18 @@
 ' the parallel sidecar (sap_gui_security_sidecar.ps1) can auto-click "Allow"
 ' with the "Remember My Decision" checkbox ticked. After this single warmup,
 ' SAP GUI itself persists the trust decision for the work_dir path in its
-' own (version-specific) config — so subsequent skill runs (SE38 source
+' own (version-specific) config -- so subsequent skill runs (SE38 source
 ' upload, SE11 activation log save, SE16N download, etc.) never see the
 ' dialog.
 '
 ' Why warmup + sidecar in two processes (and why the sidecar is PowerShell, not VBS)
 ' ----------------------------------------------------------------------------------
 ' VBS is single-threaded. `oWnd.Hardcopy` blocks waiting for the security
-' dialog to be dismissed, so the same script cannot poll and click Allow —
+' dialog to be dismissed, so the same script cannot poll and click Allow --
 ' that would deadlock.
 '
 ' Worse, when the security dialog is modal, the SAP GUI Scripting COM API
-' is FULLY SUSPENDED — even a separate cscript process attached to the same
+' is FULLY SUSPENDED -- even a separate cscript process attached to the same
 ' SAP GUI session cannot see wnd[0] / wnd[1] / etc. (Confirmed empirically
 ' 2026-05: tree dump while dialog is on screen returns nothing.)
 '

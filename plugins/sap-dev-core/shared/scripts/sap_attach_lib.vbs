@@ -19,7 +19,7 @@
 ' ----------
 '
 '   Function AttachSapSession(sHint) As GuiSession
-'     sHint   — optional path hint, e.g. "/app/con[0]/ses[1]". Empty
+'     sHint   -- optional path hint, e.g. "/app/con[0]/ses[1]". Empty
 '               string or the unsubstituted token literal both mean
 '               "no hint; fall through".
 '
@@ -29,7 +29,7 @@
 '          resolves. Set by skill wrappers using Get-SapCurrentSessionPath
 '          to point at the AI-session's currently pinned SAP session.
 '       3. Sole-connection / sole-session safe default.
-'       4. Refuse loud — multiple connections with no pin.
+'       4. Refuse loud -- multiple connections with no pin.
 '
 '     Phase 4.2 removed the legacy "SAPDEV_PIN_FILE -> read JSON for
 '     session_path" strategy. Skill wrappers now compute the path in
@@ -58,7 +58,7 @@
 ' caller a different session. Skills that don't care still work because
 ' the legacy default is preserved as the final fallback.
 '
-' This helper does NOT participate in the broker's claim lifecycle —
+' This helper does NOT participate in the broker's claim lifecycle --
 ' that's a separate concern handled by the skill wrapper (PowerShell)
 ' calling `sap_session_broker.ps1 -Action acquire/release`. The helper
 ' is just the attach primitive.
@@ -149,7 +149,7 @@ Function AttachSapSession(sHint)
             Set AttachSapSession = oSes2
             Exit Function
         End If
-        ' Env var that didn't resolve — also a hard error. Same reasoning
+        ' Env var that didn't resolve -- also a hard error. Same reasoning
         ' as strategy 1: silent retargeting is worse than failing loud.
         WScript.Echo "ERROR: SAPDEV_SESSION_PATH points to a session that doesn't resolve: " & sEnv
         WScript.Quit 2
@@ -174,7 +174,7 @@ Function AttachSapSession(sHint)
         WScript.Quit 2
     End If
 
-    ' --- Strategy 4: refuse — multiple connections + no hint ----------------
+    ' --- Strategy 4: refuse -- multiple connections + no hint ----------------
     WScript.Echo "ERROR: " & oApp.Children.Count & " SAP connections attached; cannot pick one safely. Run /sap-login to pin a connection, or set $env:SAPDEV_SESSION_PATH explicitly."
     WScript.Quit 2
 End Function

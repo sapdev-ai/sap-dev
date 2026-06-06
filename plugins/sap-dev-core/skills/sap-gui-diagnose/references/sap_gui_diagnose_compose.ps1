@@ -87,7 +87,7 @@ $base = $ordered[0]
 
 # Compute bounding rectangle in the same coordinate system the windows report.
 # If ScreenLeft/Top is -1 (unreadable), fall back to (0,0) and assume each
-# window starts at the canvas origin — produces a usable but stacked image.
+# window starts at the canvas origin -- produces a usable but stacked image.
 $minLeft = ($ordered | Measure-Object -Property Left -Minimum).Minimum
 $minTop  = ($ordered | Measure-Object -Property Top  -Minimum).Minimum
 if ($minLeft -lt 0) { $minLeft = 0 }

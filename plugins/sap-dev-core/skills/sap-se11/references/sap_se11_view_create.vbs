@@ -55,7 +55,7 @@ ExecuteGlobal CreateObject("Scripting.FileSystemObject") _
 
 ' UTF-8/16 BOM-detect text-encoding helper.
 ' Lets the OpenTextFile read below accept UTF-8 inputs from upstream tools
-' (sap-docs-extract, the Write tool, hand-authored TSVs) — full docstring
+' (sap-docs-extract, the Write tool, hand-authored TSVs) -- full docstring
 ' in sap_se11_table_create.vbs. Always returns a UTF-16 LE path so callers
 ' must open the result with mode -1.
 Function EnsureUnicodeFile(sSrcPath)
@@ -211,7 +211,7 @@ oFile.Close
 
 WScript.Echo "INFO: Parsed " & iTableCount & " tables, " & iJoinCount & " joins, " & iFieldCount & " view fields."
 
-' ------ 6. Tables tab — Add base tables -------------------------------------
+' ------ 6. Tables tab -- Add base tables -------------------------------------
 WScript.Echo "INFO: Adding base tables..."
 On Error Resume Next
 oSession.findById("wnd[0]/usr/tabsTABSTRIP_DD26/tabpTABLES").select
@@ -305,7 +305,7 @@ If iJoinCount > 0 Then
     On Error GoTo 0
 End If
 
-' ------ 8. View Fields tab — Add fields to the view -------------------------
+' ------ 8. View Fields tab -- Add fields to the view -------------------------
 If iFieldCount > 0 Then
     WScript.Echo "INFO: Adding view fields..."
     On Error Resume Next
@@ -525,7 +525,7 @@ Else
     WScript.Echo "INFO: SAP status: " & sFinalMsg
 End If
 
-' Post-activate RFC verify (Phase 4.3 — mandatory per SKILL.md Step 5d).
+' Post-activate RFC verify (Phase 4.3 -- mandatory per SKILL.md Step 5d).
 PostActivateVerifyOrFail POST_ACTIVATE_VERIFY_PS1, "VIEW", OBJECT_NAME
 
 WScript.Echo "SUCCESS: View " & UCase(OBJECT_NAME) & " created and activated in SAP."

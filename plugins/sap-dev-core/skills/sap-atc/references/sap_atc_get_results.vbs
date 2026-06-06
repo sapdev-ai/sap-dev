@@ -84,7 +84,7 @@ Dim sScrNum2 : sScrNum2 = CStr(oSess.Info.ScreenNumber)
 On Error GoTo 0
 WScript.Echo "INFO: After tree node 14 doubleClick: Program=" & sScrPgm2 & " Screen=" & sScrNum2
 If sScrNum2 = "1000" Then
-    ' Pre-fill the Run Series Name (ctxtS_RUNSR-LOW) — narrows results to
+    ' Pre-fill the Run Series Name (ctxtS_RUNSR-LOW) -- narrows results to
     ' our target run regardless of the default date filter. The field
     ' name S_RUNSR maps to "Run Series" select-option on this admin UI.
     On Error Resume Next
@@ -92,7 +92,7 @@ If sScrNum2 = "1000" Then
     If Err.Number = 0 Then
         WScript.Echo "INFO: Pre-filled S_RUNSR-LOW=" & UCase(RUN_SERIES_NAME) & " on selection screen."
     Else
-        WScript.Echo "WARN: Could not pre-fill S_RUNSR-LOW: " & Err.Description & " — relying on date filter."
+        WScript.Echo "WARN: Could not pre-fill S_RUNSR-LOW: " & Err.Description & " -- relying on date filter."
         Err.Clear
     End If
     On Error GoTo 0
@@ -195,10 +195,10 @@ WScript.Echo "PRIORITY_COUNTS: P1=" & p1 & " P2=" & p2 & " P3=" & p3
 ' The Manage Results grid's ALV toolbar exposes button id "&MB_EXPORT" as
 ' a dropdown. Selecting context menu item "&PC" opens the standard SAP
 ' "Save list in file..." popup (SAPLSPO5:0150 format radios), then a
-' SAPLSGRA save dialog with ctxtDY_PATH / ctxtDY_FILENAME — the same
+' SAPLSGRA save dialog with ctxtDY_PATH / ctxtDY_FILENAME -- the same
 ' idiom /sap-sp02 uses. Verified live on S/4HANA 1909.
 '
-' Drill-in is NOT needed for the download — the user's screenshot showed
+' Drill-in is NOT needed for the download -- the user's screenshot showed
 ' the download notification while still on the outer grid.
 Dim wasLocked : wasLocked = TryLockSession(oSess)
 
@@ -228,7 +228,7 @@ oGrid.selectContextMenuItem "&PC"
 WScript.Sleep 1500
 
 ' wnd[1] is now "Save list in file..." with format radios. Pick
-' Unconverted (index 0) — same as /sap-sp02 default.
+' Unconverted (index 0) -- same as /sap-sp02 default.
 If InStr(oSess.ActiveWindow.Id, "wnd[1]") > 0 Then
     Dim oOpt : Set oOpt = Nothing
     Set oOpt = oSess.findById("wnd[1]/usr/subSUBSCREEN_STEPLOOP:SAPLSPO5:0150/sub:SAPLSPO5:0150/radSPOPLI-SELFLAG[1,0]")
@@ -254,7 +254,7 @@ If InStr(oSess.ActiveWindow.Id, "wnd[1]") > 0 Then
             oSess.findById("wnd[1]/usr/ctxtDY_FILENAME").caretPosition = Len(sFile)
             oSess.findById("wnd[1]").sendVKey 0
             WScript.Sleep 1500
-            ' Possible "replace existing?" follow-up — Enter again.
+            ' Possible "replace existing?" follow-up -- Enter again.
             If InStr(oSess.ActiveWindow.Id, "wnd[1]") > 0 Then
                 oSess.findById("wnd[1]").sendVKey 0
                 WScript.Sleep 800

@@ -11,7 +11,7 @@
 # system + client + transaction + dynpro_name + dynpro_num. For a report run
 # via SE38/SA38 that calls GUI_UPLOAD/GUI_DOWNLOAD, dynpro_name is the PROGRAM
 # NAME (e.g. ZMMRMAT040R01) and dynpro_num is its screen (1000). So every newly
-# generated program produces a brand-new context and trips a fresh dialog — a
+# generated program produces a brand-new context and trips a fresh dialog -- a
 # narrow Remember rule can never pre-cover the NEXT program. Worse, the Hardcopy
 # warmup only ever does a WRITE, so it only persists 'w' rules; a GUI_UPLOAD is
 # a READ ('r') and stays uncovered.
@@ -19,14 +19,14 @@
 # The only thing that scales is a BROAD rule: a <directories> (prefix) rule with
 # EMPTY context fields (empty = "any", exactly like the always-empty <network>
 # field SAP writes) and combined permissions (e.g. 'rw'). The dialog mechanism
-# cannot produce such a rule — it must be written directly. This script writes
+# cannot produce such a rule -- it must be written directly. This script writes
 # it in SAP's native serialization (forward-slash paths, rule-level + context-
 # level <permissions> and <action>, action 0 = Allow), mirroring the structure
 # of the working rules SAP itself emits.
 #
 # Safety
 # ------
-#   * MINIMAL textual insert before the final </rules> — the rest of the file is
+#   * MINIMAL textual insert before the final </rules> -- the rest of the file is
 #     preserved byte-for-byte (no [xml] reformat that could change SAP's exact
 #     serialization).
 #   * Writes UTF-8 WITHOUT BOM (SAP writes it BOM-less; a BOM can break parsing).

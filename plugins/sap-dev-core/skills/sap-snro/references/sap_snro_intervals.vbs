@@ -135,7 +135,7 @@ On Error Resume Next
 oSession.findById("wnd[0]/tbar[1]/btn[16]").press
 If Err.Number <> 0 Then
     Err.Clear
-    oSession.findById("wnd[0]").sendVKey 6   ' F6 — Change Intervals
+    oSession.findById("wnd[0]").sendVKey 6   ' F6 -- Change Intervals
 End If
 On Error GoTo 0
 WScript.Sleep 1500
@@ -160,7 +160,7 @@ For i = 0 To iCnt - 1
     oSession.findById("wnd[0]/tbar[1]/btn[6]").press
     If Err.Number <> 0 Then
         Err.Clear
-        oSession.findById("wnd[0]").sendVKey 1   ' Shift+F1 — Insert interval
+        oSession.findById("wnd[0]").sendVKey 1   ' Shift+F1 -- Insert interval
     End If
     On Error GoTo 0
     WScript.Sleep 1000
@@ -180,9 +180,9 @@ For i = 0 To iCnt - 1
     If Err.Number <> 0 Then
         Err.Clear
         ' Fallback: insert directly into the interval table on the main screen
-        ' (some SNUM releases inline-edit instead of a popup). Skip — recommend
+        ' (some SNUM releases inline-edit instead of a popup). Skip -- recommend
         ' running /sap-gui-object-details to discover ids.
-        WScript.Echo "WARNING: Insert popup field ids not found — release may differ. Try /sap-gui-object-details."
+        WScript.Echo "WARNING: Insert popup field ids not found -- release may differ. Try /sap-gui-object-details."
     End If
     On Error GoTo 0
 

@@ -6,7 +6,7 @@
 ' domain, sets definition properties from a tab-delimited definition file,
 ' saves, checks, and activates.
 '
-' Fixed values are NOT handled here — use domain_update to add fixed values.
+' Fixed values are NOT handled here -- use domain_update to add fixed values.
 '
 ' Tokens replaced at run time:
 '   %%OBJECT_NAME%%          Domain name           e.g. "ZDOM_STATUS"
@@ -396,7 +396,7 @@ If InStr(oSession.ActiveWindow.Id, "wnd[1]") > 0 Then
         oSession.findById("wnd[1]/tbar[0]/btn[0]").press
         WScript.Sleep 1000
     ElseIf SAP_PACKAGE <> "" And UCase(SAP_PACKAGE) <> "$TMP" And SAP_TRANSPORT = "" Then
-        ' Case 3: Package provided, no transport → create new transport
+        ' Case 3: Package provided, no transport -> create new transport
         WScript.Echo "INFO: Assigning to package " & SAP_PACKAGE & " (creating new transport)..."
         oSession.findById("wnd[1]/usr/ctxtKO007-L_DEVCLASS").Text = SAP_PACKAGE
         oSession.findById("wnd[1]").sendVKey VKEY_ENTER
@@ -409,7 +409,7 @@ If InStr(oSession.ActiveWindow.Id, "wnd[1]") > 0 Then
         oSession.findById("wnd[1]/tbar[0]/btn[0]").press
         WScript.Sleep 1000
     Else
-        ' Case 2: No package or $TMP → Local Object
+        ' Case 2: No package or $TMP -> Local Object
         WScript.Echo "INFO: Saving as local object ($TMP)..."
         oSession.findById("wnd[1]/tbar[0]/btn[7]").press
         WScript.Sleep 1000
@@ -469,7 +469,7 @@ On Error GoTo 0
 
 If sFinalType = "E" Or sFinalType = "A" Then
     ' Phase 4.3: promote from WARNING to ERROR. Activation reported a
-    ' hard error via sbar MessageType — the half-deploy was the original
+    ' hard error via sbar MessageType -- the half-deploy was the original
     ' silent-failure case.
     WScript.Echo "ERROR: Activation reported sbar Type=" & sFinalType & " - " & sFinalMsg
     WScript.Quit 1

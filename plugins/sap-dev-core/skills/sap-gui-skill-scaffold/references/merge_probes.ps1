@@ -160,7 +160,7 @@ for ($i = 0; $i -lt $ProbeFolders.Count; $i++) {
 # Special case: SET_OKCD has the same target path (wnd[0]/tbar[0]/okcd) at
 # every position in the flow, so keying by (verb, target) alone collapses
 # `/nSE11` (entry navigation), intermediate `/nSE21` etc., and `/n` (cleanup)
-# into a single bucket — which then looks like a parameter with one varying
+# into a single bucket -- which then looks like a parameter with one varying
 # value, and the emit step bakes ONE value at multiple positions where
 # different values were intended. Include the value in the key for SET_OKCD
 # so each distinct transaction code becomes its own touchpoint and the
@@ -284,7 +284,7 @@ foreach ($k in ($touchpoints.Keys | Sort-Object)) {
 #
 # The per-step sidecar (when present) provides program+screen identity of
 # the popup; we copy those into the popup record so the emit step can
-# pick a smart handler (SAPLSTRD/100 → fill L_DEVCLASS; SAPLSTRD/300 →
+# pick a smart handler (SAPLSTRD/100 -> fill L_DEVCLASS; SAPLSTRD/300 ->
 # fill TRKORR; etc.) instead of the generic default-Continue.
 # ------------------------------------------------------------------------------
 $popups = @()

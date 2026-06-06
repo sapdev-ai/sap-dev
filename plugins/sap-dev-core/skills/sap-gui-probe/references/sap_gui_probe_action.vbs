@@ -177,7 +177,7 @@ Select Case sVerb
                 sSTType = oST.Type : If Err.Number <> 0 Then sSTType = "" : Err.Clear
                 Err.Clear
                 If sSTType = "GuiComboBox" Then
-                    ' GuiComboBox.Text is READONLY — select an entry by its .Key
+                    ' GuiComboBox.Text is READONLY -- select an entry by its .Key
                     ' (e.g. lock mode cmbENQMODE: Key 'E'=Write, 'S'=Shared).
                     oST.Key = sValue
                     If Err.Number <> 0 Then sErr = "set (combobox .Key) failed: " & Err.Description
@@ -339,13 +339,13 @@ If nSleep > 0 Then WScript.Sleep nSleep
 '
 ' Captured on BOTH success (sErr="") and failure (sErr<>"") paths so the
 ' downstream merge step sees state at the failure point too. All reads
-' guarded with On Error Resume Next — a missing property must never
+' guarded with On Error Resume Next -- a missing property must never
 ' break the probe loop.
 '
 ' File naming: input path is "<dir>\step_NN_action.json"; output is
 ' "<dir>\step_NN_post.json" (same dir, suffix swap). Skips silently if
 ' the input name doesn't follow the convention (e.g. cleanup actions
-' like step_00_reset.json or step_99_action.json — we still try the
+' like step_00_reset.json or step_99_action.json -- we still try the
 ' suffix swap so even those get a sidecar).
 Dim sPostMsgType, sPostSbarText, sPostScreenProg, sPostScreenTxn, sPostScreenNum
 Dim bPostPopup, sPostPopupProg, sPostPopupScrn
@@ -410,7 +410,7 @@ If mStep.Count > 0 Then sStepNum = mStep(0).SubMatches(0)
 ' Compose JSON record. `step` is the numeric step extracted from the
 ' filename (e.g. step_07_action.json -> 7) or `null` when the filename
 ' doesn't match the convention.
-' CRITICAL: must strip leading zeros — emitting "08" or "09" as a raw JSON
+' CRITICAL: must strip leading zeros -- emitting "08" or "09" as a raw JSON
 ' number is treated by strict parsers (including PowerShell 5.1's
 ' ConvertFrom-Json) as INVALID OCTAL ("Input string '08' is not a valid
 ' number"). Round-trip through CInt to drop the leading zeros.

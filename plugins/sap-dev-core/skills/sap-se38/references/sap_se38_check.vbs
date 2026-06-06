@@ -91,7 +91,7 @@ If sCount = "" Then
        InStr(sSbarMsg, "0 entries") > 0 Then
         sCount = "0"
     ElseIf InStr(LCase(sSbarMsg), "entries") > 0 Then
-        ' Some message like "1 entries selected" — program exists
+        ' Some message like "1 entries selected" -- program exists
         sCount = "1"
     End If
 End If
@@ -102,10 +102,10 @@ If sCount = "" Then
     sProgName = oSession.Info.Program
     If Err.Number <> 0 Then sProgName = "" : Err.Clear
     If sProgName <> "" And sProgName <> "SAPLSE16N" Then
-        ' Navigated away from SE16N → likely viewing data → program exists
+        ' Navigated away from SE16N -> likely viewing data -> program exists
         sCount = "1"
     ElseIf oSession.Info.ScreenNumber = 200 Then
-        ' Screen 200 = data browser output → program exists
+        ' Screen 200 = data browser output -> program exists
         sCount = "1"
     Else
         sCount = "0"

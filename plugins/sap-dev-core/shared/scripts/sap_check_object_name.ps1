@@ -98,7 +98,7 @@ if (-not $rules.ContainsKey($key)) {
 $rule = $rules[$key]
 $pattern = $rule.Pattern
 
-# 4. Match — case-insensitive (SAP names are case-insensitive on the wire,
+# 4. Match -- case-insensitive (SAP names are case-insensitive on the wire,
 #    upper-cased server-side). Anchored patterns assume upper-case in the rules.
 if ($ObjectName.ToUpper() -match $pattern) {
     Write-Output "OK $ObjectType $ObjectName"

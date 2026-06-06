@@ -2,17 +2,17 @@
 # sap_session_broker.ps1
 # -----------------------------------------------------------------------------
 # Cross-process broker for SAP GUI session ownership. Multi-connection aware
-# from Phase 3.5 onwards — the registry tracks every attached SAP connection
+# from Phase 3.5 onwards -- the registry tracks every attached SAP connection
 # (different SID, different client, different user logon) separately, and
 # every acquire call must specify which connection it wants (or use the
 # single-connection auto-resolve).
 #
-# Contract — what the broker promises:
+# Contract -- what the broker promises:
 #   * Mutual exclusion: at any instant, at most one task_id holds a "claimed"
 #     entry for any given session path.
 #   * Reactive cleanup: every acquire/release call drops entries that no
 #     longer reflect reality (session window closed, owner process died,
-#     TTL expired, user logged out — the latter detected per-connection
+#     TTL expired, user logged out -- the latter detected per-connection
 #     via SystemSessionId change).
 #   * Spawn-on-demand: if no free session exists on the target connection,
 #     the broker spawns one via /oSESSION_MANAGER (the only OK-code reliably
@@ -21,7 +21,7 @@
 #     /app/con[0] path. The acquire-time resolution refuses to default
 #     across connections when ambiguous.
 #
-# Contract — what the broker does NOT promise (by design):
+# Contract -- what the broker does NOT promise (by design):
 #   * Path stability across re-acquires. SAP's (path, SessionNumber) tuple
 #     is recyclable on this kernel, so we cannot prove "today's path is
 #     yesterday's session". Callers that need continuity hold the claim
@@ -34,11 +34,11 @@
 #
 # Cross-process locking: a Windows named mutex `SapDevSessionBroker_v2`
 # (bumped from v1 because the registry schema is incompatible with the
-# pre-3.5 shape — a v1 broker and a v2 broker MUST NOT both run; v2
+# pre-3.5 shape -- a v1 broker and a v2 broker MUST NOT both run; v2
 # rejects v1's flat-entries registry by recognising the missing
 # `connections` field and rebuilding fresh).
 #
-# Usage — see shared/rules/sap_session_broker.md for the full contract.
+# Usage -- see shared/rules/sap_session_broker.md for the full contract.
 # =============================================================================
 
 [CmdletBinding()]
@@ -53,7 +53,7 @@ param(
 
     # Optional override for the directory holding session_registry.json.
     # Default: $(Split-Path $WorkTemp -Parent)\runtime  (i.e. sibling of
-    # {work_dir}\temp). This keeps existing callers working — they all
+    # {work_dir}\temp). This keeps existing callers working -- they all
     # pass `-WorkTemp {work_dir}\temp` and the registry now auto-relocates
     # to {work_dir}\runtime\session_registry.json. Callers that want a
     # custom location pass -WorkRuntime explicitly.
@@ -66,18 +66,18 @@ param(
     [int]    $OwnerPid     = 0,
 
     # Connection-targeting filters (acquire). Resolution order:
-    #   1. -SessionPath /app/con[N]/ses[M]   — explicit; derives connection.
-    #   2. -ConnectionPath /app/con[N]       — pick this connection.
-    #   3. -SystemName + -Client + -User     — find matching connection by
+    #   1. -SessionPath /app/con[N]/ses[M]   -- explicit; derives connection.
+    #   2. -ConnectionPath /app/con[N]       -- pick this connection.
+    #   3. -SystemName + -Client + -User     -- find matching connection by
     #                                          GuiSession.Info tuple.
-    #   4. -PinFile <path>                   — read pin file; honour its
+    #   4. -PinFile <path>                   -- read pin file; honour its
     #                                          session_path if non-empty,
     #                                          else its (system,client,user).
-    #   5. AI-session pin                    — ai_sessions[$AiSessionId]
+    #   5. AI-session pin                    -- ai_sessions[$AiSessionId]
     #                                          .connection_id -> match a live
     #                                          connection with same id.
-    #   6. Exactly 1 connection attached     — silent default.
-    #   7. Else                              — DENIED: ambiguous.
+    #   6. Exactly 1 connection attached     -- silent default.
+    #   7. Else                              -- DENIED: ambiguous.
     [string] $SessionPath    = '',
     [string] $ConnectionPath = '',
     [string] $SystemName     = '',
@@ -143,7 +143,7 @@ if (-not (Test-Path $WorkTemp)) {
 # conversation converge on the same id; parallel conversations diverge.
 if ([string]::IsNullOrWhiteSpace($AiSessionId)) {
     try { $AiSessionId = Get-SapAiSessionId -RuntimeDir $WorkRuntime }
-    catch { $AiSessionId = '' }   # non-fatal — actions that need it will fail loud later
+    catch { $AiSessionId = '' }   # non-fatal -- actions that need it will fail loud later
 }
 
 # Per-invocation cache for SAP state.
@@ -190,7 +190,7 @@ function Read-Registry {
             Move-Item -Path $script:LegacyRegistryFile -Destination $registryPath -ErrorAction Stop
             Write-Host "INFO: migrated session_registry.json from $($script:LegacyRegistryFile) to $registryPath"
         } catch {
-            # Couldn't move — keep using the new path (empty) and let the
+            # Couldn't move -- keep using the new path (empty) and let the
             # next discover rebuild from live state.
             Write-Host "WARN: could not migrate legacy session_registry.json: $($_.Exception.Message)"
         }
@@ -285,7 +285,7 @@ function Write-Registry {
 }
 
 # Persist the registry if Sweep-StaleEntries dropped anything. Callers that
-# Sweep then exit early (e.g. release → NOT_FOUND, acquire → DENIED) MUST
+# Sweep then exit early (e.g. release -> NOT_FOUND, acquire -> DENIED) MUST
 # invoke this before returning, otherwise the sweep's in-memory drops are
 # lost and stale claims "come back from the dead" on the next read. The
 # happy paths already call Write-Registry directly, so this helper is for
@@ -420,7 +420,7 @@ function Close-SapSession {
         Close a session via the COM helper. Returns $true on success or
         when the session is already gone (idempotent). The COM helper
         falls back to /n when the target is the only session of its
-        connection — that's still reported as ok.
+        connection -- that's still reported as ok.
     #>
     param([string] $Path)
     $result = Invoke-ComHelper -Args @('CLOSE', $Path)
@@ -468,7 +468,7 @@ function Is-ProcessAlive {
 }
 
 # ===========================================================================
-# Sweep — drops entries that no longer reflect reality.
+# Sweep -- drops entries that no longer reflect reality.
 # Walks every connection block, dropping per-connection entries that:
 #   (a) point to a non-existent session
 #   (b) belong to a dead owner PID (only when owner_pid > 0)
@@ -482,7 +482,7 @@ function Sweep-StaleEntries {
 
     $state = Get-SapState
     if (-not $state) {
-        # SAP unreachable — leave the registry alone; the next call retries.
+        # SAP unreachable -- leave the registry alone; the next call retries.
         return 0
     }
 
@@ -625,7 +625,7 @@ function Resolve-TargetConnection {
         return @{ error = "-ConnectionPath $ConnectionPath not attached"; via = 'connection_path' }
     }
 
-    # (3) (System, Client, User) tuple — any non-empty subset filters.
+    # (3) (System, Client, User) tuple -- any non-empty subset filters.
     if ($SystemName -ne '' -or $Client -ne '' -or $User -ne '') {
         $c = Find-SapConnection -SystemName $SystemName -Client $Client -User $User
         if ($c) { return @{ connection_path = "$($c.connection_path)"; via = 'tuple' } }
@@ -636,7 +636,7 @@ function Resolve-TargetConnection {
     if ($PinFile -ne '') {
         $pin = Read-Pin -PinPath $PinFile
         if ($pin) {
-            # 4a — pin has a session_path; derive connection.
+            # 4a -- pin has a session_path; derive connection.
             $pinSp = "$($pin.session_path)"
             if ($pinSp -match '^(/app/con\[\d+\])/ses\[\d+\]$') {
                 $con = $matches[1]
@@ -645,7 +645,7 @@ function Resolve-TargetConnection {
                     return @{ connection_path = "$($c.connection_path)"; session_path = $pinSp; via = 'pin_session_path' }
                 }
             }
-            # 4b — pin has (system, client, user); match by tuple.
+            # 4b -- pin has (system, client, user); match by tuple.
             $sys  = "$($pin.system_name)"
             $clt  = "$($pin.client)"
             $usr  = "$($pin.user)"
@@ -681,7 +681,7 @@ function Invoke-List {
 }
 
 # ===========================================================================
-# Action: discover — walk every connection; register new sessions.
+# Action: discover -- walk every connection; register new sessions.
 # ===========================================================================
 
 function Invoke-Discover {
@@ -868,7 +868,7 @@ function Invoke-Acquire {
         # Locate (or create) the registry block for this connection.
         $cb = $reg.connections | Where-Object { $_.connection_path -eq $targetCon } | Select-Object -First 1
         if (-not $cb) {
-            # The connection exists in SAP but not yet in our registry —
+            # The connection exists in SAP but not yet in our registry --
             # discover would normally create it. Inline the registration here.
             $liveCon = $null
             $state = Get-SapState
@@ -976,7 +976,7 @@ function Invoke-Acquire {
         $chosen.status         = 'claimed'
         $chosen.claim_time     = (Get-Date).ToString('yyyy-MM-ddTHH:mm:ss')
         $chosen.ttl_seconds    = $TtlSeconds
-        # Clear any prior stuck-screen marker — the session is back at Easy
+        # Clear any prior stuck-screen marker -- the session is back at Easy
         # Access by now (we verified above).
         $chosen.stuck_program  = ''
         $chosen.stuck_screen   = ''
@@ -1006,7 +1006,7 @@ function Invoke-Acquire {
 }
 
 # ===========================================================================
-# Action: release — find claim by task_id across all connections.
+# Action: release -- find claim by task_id across all connections.
 # ===========================================================================
 
 function Invoke-Release {
@@ -1028,16 +1028,16 @@ function Invoke-Release {
             Persist-IfSwept -Registry $reg -Swept $swept
             # Distinguish "task_id was here but the reactive cleanup just
             # dropped it" from "never seen this task_id". The first case
-            # is the common scaffolder pattern — long-running parallel
+            # is the common scaffolder pattern -- long-running parallel
             # batches hit the default 600s TTL between acquire and release.
             # Both outcomes are idempotent (the SAP-side state is whatever
             # the sweep left), but the message is the caller's only signal
             # to know whether their bookkeeping was honored or expired.
-            # Exit code stays 0 — release remains non-fatal-by-design.
+            # Exit code stays 0 -- release remains non-fatal-by-design.
             if ($swept -gt 0) {
-                $script:Result = "NOT_FOUND: task=$TaskId (entry was here but dropped by reactive cleanup before this release fired — likely ttl_expired or session_closed; raise -TtlSeconds on acquire if batches are long-running)"
+                $script:Result = "NOT_FOUND: task=$TaskId (entry was here but dropped by reactive cleanup before this release fired -- likely ttl_expired or session_closed; raise -TtlSeconds on acquire if batches are long-running)"
             } else {
-                $script:Result = "NOT_FOUND: task=$TaskId (no matching claim in registry — already released, or never acquired with this task_id)"
+                $script:Result = "NOT_FOUND: task=$TaskId (no matching claim in registry -- already released, or never acquired with this task_id)"
             }
             return
         }
@@ -1057,7 +1057,7 @@ function Invoke-Release {
         }
 
         if ($closeIt) {
-            # Drop the entry entirely — the session is gone (or about to be).
+            # Drop the entry entirely -- the session is gone (or about to be).
             $matched.block.entries = @($matched.block.entries | Where-Object { $_.path -ne $entry.path })
             $script:Result = "RELEASED: path=$($entry.path) connection=$($matched.block.connection_path) closed=true"
         } else {
@@ -1078,7 +1078,7 @@ function Invoke-Release {
 }
 
 # ===========================================================================
-# Action: stuck — record Program / ScreenNumber on a still-claimed entry.
+# Action: stuck -- record Program / ScreenNumber on a still-claimed entry.
 # Used by skills that fail mid-flow to leave a breadcrumb so the next
 # acquire from the same task_id knows the session is NOT at Easy Access.
 # Does NOT release the claim; the skill calls release separately when ready.
@@ -1109,7 +1109,7 @@ function Invoke-Stuck {
 }
 
 # ===========================================================================
-# Action: set-connection-id — associate a live connection_path with a
+# Action: set-connection-id -- associate a live connection_path with a
 # profile UUID. Called once by sap_login_select.ps1 post-login.
 # ===========================================================================
 
@@ -1165,7 +1165,7 @@ function Invoke-SetConnectionId {
 }
 
 # ===========================================================================
-# Action: pin — write ai_sessions[$AiSessionId] = { connection_id = ... }.
+# Action: pin -- write ai_sessions[$AiSessionId] = { connection_id = ... }.
 # When this changes the pin to a different connection AND ALSO existing
 # claims for this AI session live on the old connection, releases them.
 # ===========================================================================
@@ -1229,7 +1229,7 @@ function Invoke-Pin {
 }
 
 # ===========================================================================
-# Action: unpin — drop ai_sessions[$AiSessionId]. Does NOT release claims;
+# Action: unpin -- drop ai_sessions[$AiSessionId]. Does NOT release claims;
 # call release separately if needed.
 # ===========================================================================
 

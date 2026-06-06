@@ -1,17 +1,17 @@
 ' =============================================================================
-' SAP SE38 – Update Text Elements (Selection Texts + Text Symbols) for Report Programs
+' SAP SE38 - Update Text Elements (Selection Texts + Text Symbols) for Report Programs
 ' Template for sap-se38 skill (SAP GUI Scripting, VBScript)
 ' =============================================================================
 ' Placeholders:
-'   %%PROGRAM_NAME%%    – ABAP program name (UPPERCASE)
-'   %%SELECTION_TEXTS%% – Pipe-delimited list: PARAM_NAME=Text|PARAM_NAME=Text|...
+'   %%PROGRAM_NAME%%    - ABAP program name (UPPERCASE)
+'   %%SELECTION_TEXTS%% - Pipe-delimited list: PARAM_NAME=Text|PARAM_NAME=Text|...
 '       Example: P_BUKRS=Company Code|P_WERKS=Plant|P_FILE=File path
-'   %%TEXT_SYMBOLS%%    – Pipe-delimited list: NNN=Text|NNN=Text|...
+'   %%TEXT_SYMBOLS%%    - Pipe-delimited list: NNN=Text|NNN=Text|...
 '       Example: 001=Selection|002=Result Output|T01=Seq
 '       Symbol IDs are 3-character codes (digits or letters); SAP T100A
 '       stores them as CHAR3.
-'   %%PACKAGE%%         – Package (blank = local)
-'   %%TRANSPORT%%       – Transport request (blank = local)
+'   %%PACKAGE%%         - Package (blank = local)
+'   %%TRANSPORT%%       - Transport request (blank = local)
 ' =============================================================================
 Option Explicit
 
@@ -32,13 +32,13 @@ ExecuteGlobal CreateObject("Scripting.FileSystemObject") _
     .OpenTextFile("%%ATTACH_LIB_VBS%%", 1).ReadAll()
 
 ' =============================================================================
-' Helper Subs — popup handlers shared by initial Change entry AND re-entry
+' Helper Subs -- popup handlers shared by initial Change entry AND re-entry
 ' (for re-activation pass). Both flows can hit the same SAPLSETX original-
 ' language popup and the same KO008-TRKORR Workbench-request popup.
 ' =============================================================================
 ' VBScript pitfall: a Dim'd-but-unassigned object var is Empty, NOT Nothing.
 ' If findById() errors under On Error Resume Next, the Set leaves the var as
-' Empty — and `Empty Is Nothing` raises "Object required". Every helper below
+' Empty -- and `Empty Is Nothing` raises "Object required". Every helper below
 ' explicitly inits its locals to Nothing before any findById call.
 
 Sub HandleOrigLangPopup(oSess)
@@ -82,7 +82,7 @@ Sub HandleTrPopupIfAny(oSess, sTr)
 End Sub
 
 ' Verify we are on the text-elements editor screen (tabsTX_TABSTR_CONTROL
-' exists in usr area). Returns True / False — caller decides whether to
+' exists in usr area). Returns True / False -- caller decides whether to
 ' abort. Used after pressing btnCHAP from the SE38 initial screen.
 Function OnTextElementsEditor(oSess)
     Dim oTabStripCheck
@@ -305,7 +305,7 @@ WScript.Sleep 1000
 WScript.Echo "INFO: Matched " & nMatched & " of " & nTextCount & " selection texts."
 
 ' ---- Switch to Text Symbols tab and apply NNN=text entries ----
-' Same TEXTPOOL — saving once persists both Selection Texts AND Text Symbols.
+' Same TEXTPOOL -- saving once persists both Selection Texts AND Text Symbols.
 ' Tab IDs vary by SAP release; try common candidates.
 Dim aSymbols, nSymbolCount, aSymIds(), aSymTexts()
 nSymbolCount = 0
@@ -354,8 +354,8 @@ If nSymbolCount > 0 Then
 
     If bSymTabSet Then
         ' Text Symbols table base. Sub-screens vary by SAP release:
-        '   SAPLSETXP:1210/tblSAPLSETXPTSYMBOL  -> S/4HANA 1909 (verified) — columns INUM / ITEX132
-        '   SAPLSETXP:1320/tblSAPLSETXPTEXTSYM  -> older release  — columns STEXTI / STEXTT
+        '   SAPLSETXP:1210/tblSAPLSETXPTSYMBOL  -> S/4HANA 1909 (verified) -- columns INUM / ITEX132
+        '   SAPLSETXP:1320/tblSAPLSETXPTEXTSYM  -> older release  -- columns STEXTI / STEXTT
         '   SAPLSETXP:1330/tblSAPLSETXPTEXTSYM  -> alt
         '   SAPLSETXP:1320/tblSAPLSETXPSYMBOL   -> alt
         Dim symBaseCands : symBaseCands = Array( _
@@ -432,7 +432,7 @@ If nSymbolCount > 0 Then
                                 On Error GoTo 0
                                 Exit For
                             ElseIf UCase(sExisting) = UCase(aSymIds(iSym)) Then
-                                ' Existing row with this id — overwrite text only
+                                ' Existing row with this id -- overwrite text only
                                 On Error Resume Next
                                 oSession.findById(sSymBase & "/" & sSymTextCol & "[1," & nSymRow & "]").Text = aSymTexts(iSym)
                                 If Err.Number = 0 Then
@@ -449,7 +449,7 @@ If nSymbolCount > 0 Then
                         nSymScroll = nSymScroll + nSymVisible
                     Next
                     If Not bPlaced Then
-                        WScript.Echo "WARN: Could not place symbol " & aSymIds(iSym) & " — table full or scroll exhausted."
+                        WScript.Echo "WARN: Could not place symbol " & aSymIds(iSym) & " -- table full or scroll exhausted."
                     End If
                 End If
             Next
@@ -535,11 +535,11 @@ WScript.Sleep 2000
 Err.Clear
 On Error GoTo 0
 
-' Re-entry can trigger the same popups as first entry — handle them here too.
+' Re-entry can trigger the same popups as first entry -- handle them here too.
 Call HandleOrigLangPopup(oSession)
 Call HandleTrPopupIfAny(oSession, TRANSPORT_VAL)
 
-' Verify before selecting the tab — if we're not on the editor, abort cleanly
+' Verify before selecting the tab -- if we're not on the editor, abort cleanly
 ' rather than activating the wrong object.
 If Not OnTextElementsEditor(oSession) Then
     WScript.Echo "ERROR: Re-entry to text-elements editor failed before activation."
@@ -575,7 +575,7 @@ If Not (oActW1 Is Nothing) Then
     On Error GoTo 0
     WScript.Echo "INFO: Activation popup: " & sActWnd1
     ' Check if it has a tab strip (SAPLSEWORKINGAREA "Inactive Objects" dialog)
-    ' Note: must reset oTabStrip to Nothing first — findById that fails leaves the
+    ' Note: must reset oTabStrip to Nothing first -- findById that fails leaves the
     ' variable with its previous value and Err.Number cannot be trusted on Set lines.
     Dim oTabStrip
     Set oTabStrip = Nothing
@@ -583,14 +583,14 @@ If Not (oActW1 Is Nothing) Then
     Set oTabStrip = oSession.findById("wnd[1]/usr/tabsACT_TAB_STRIP")
     On Error GoTo 0
     If Not (oTabStrip Is Nothing) Then
-        ' "Inactive Objects" dialog — press Enter to activate all
-        WScript.Echo "INFO: Inactive Objects worklist — pressing Enter to activate."
+        ' "Inactive Objects" dialog -- press Enter to activate all
+        WScript.Echo "INFO: Inactive Objects worklist -- pressing Enter to activate."
         On Error Resume Next
         oSession.findById("wnd[1]").sendVKey 0
         WScript.Sleep 5000
         On Error GoTo 0
     Else
-        ' May be SAPLSPO1 or simple confirmation — try Select All + Enter, fall back to Enter
+        ' May be SAPLSPO1 or simple confirmation -- try Select All + Enter, fall back to Enter
         On Error Resume Next
         oSession.findById("wnd[1]").sendVKey 9   ' F9 Select All
         WScript.Sleep 500

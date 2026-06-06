@@ -306,6 +306,6 @@ If bSyntaxOK Then
     WScript.Echo "SUCCESS: Local test classes uploaded and activated for " & UCase(CLASS_NAME) & "."
     WScript.Quit 0
 Else
-    WScript.Echo "ERROR: Syntax errors in the uploaded test classes (see above) — fix and retry."
+    WScript.Echo "ERROR: Syntax errors in the uploaded test classes (see above) -- fix and retry."
     WScript.Quit 1
 End If

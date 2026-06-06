@@ -17,14 +17,14 @@
 # major+minor concatenation (e.g. 77 for 7.7, 80 for 8.0).
 #
 # Scoring (highest wins, then lexicographic on filename):
-#   exact (server, gui)              → 100
-#   server-only match                → 50
-#   kernel-fallback OR-alternative   → 25  (when pin marker is e.g.
+#   exact (server, gui)              -> 100
+#   server-only match                -> 50
+#   kernel-fallback OR-alternative   -> 25  (when pin marker is e.g.
 #                                           "S4HANA_1909_OR_NW754" and the
 #                                           VBS is tagged with either
 #                                           constituent, e.g. "S4HANA_1909")
-#   gui-only match                   → 10
-#   default (no tag)                 → 1
+#   gui-only match                   -> 10
+#   default (no tag)                 -> 1
 #
 # The OR-alternative branch lets variant authors tag files with the canonical
 # release marker (S4HANA_1909) and still have them picked when the user's
@@ -161,7 +161,7 @@ function Get-Score {
     # the pin holds a kernel-fallback compound marker like S4HANA_1909_OR_NW754
     # we accept the compound itself AND each underlying alternative
     # (S4HANA_1909, NW754) at a reduced score. A precise pin like
-    # "S4HANA_1909" alone is not split — it has only one acceptable form.
+    # "S4HANA_1909" alone is not split -- it has only one acceptable form.
     $serverAlternatives = @($server)
     if ($server -and $server -match '_OR_') {
         $serverAlternatives += ($server -split '_OR_') | Where-Object { $_ }

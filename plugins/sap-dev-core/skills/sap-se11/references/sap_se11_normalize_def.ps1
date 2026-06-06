@@ -9,20 +9,20 @@
 # it occasionally emits the two-character escape `\t` (backslash + 't')
 # instead of a real TAB. The Write tool passes the bytes through verbatim,
 # the VBS sees a single-column line, and the resulting DDIC object is
-# silently corrupted (empty data elements, types, lengths) — the GUI status
+# silently corrupted (empty data elements, types, lengths) -- the GUI status
 # bar still reports SUCCESS, but the live table is unusable.
 #
 # This helper is run between Step 2 (write definition file) and Step 3
 # (login + execute). It:
 #
 #   * Detects zero TAB chars combined with the literal escape sequences
-#     `\t`, `\n`, or `\r` — strong signal of LLM-escape-leak corruption.
+#     `\t`, `\n`, or `\r` -- strong signal of LLM-escape-leak corruption.
 #   * Auto-repairs by replacing `\t` -> chr(9), `\n` -> chr(10),
 #     `\r` -> chr(13) and rewriting the file IN PLACE (UTF-8, no BOM).
 #   * Emits a single `WARNING: ...` line per fix so the operator sees
 #     exactly what was repaired.
 #   * Aborts with `ERROR: ...` if the file has multiple data lines but
-#     contains zero TAB bytes AND zero recoverable escape sequences —
+#     contains zero TAB bytes AND zero recoverable escape sequences --
 #     that means the upstream agent produced content the skill cannot
 #     parse, and we refuse to feed it to SAP.
 #
@@ -51,7 +51,7 @@ if (-not (Test-Path -LiteralPath $path)) {
     exit 1
 }
 
-# TYPEGROUP is raw ABAP, not TSV — skip validation.
+# TYPEGROUP is raw ABAP, not TSV -- skip validation.
 if ($type -eq "TYPEGROUP") {
     Write-Output "SKIPPED:typegroup-is-raw-abap"
     exit 0
@@ -81,7 +81,7 @@ while ($linesAll.Length -gt 0 -and $linesAll[$linesAll.Length - 1] -eq "") {
 }
 $lineCount = $linesAll.Length
 
-# Single-line files are header-only — pass through, the VBS will fail loudly
+# Single-line files are header-only -- pass through, the VBS will fail loudly
 # in a way that is easier to debug than a silent half-deploy.
 if ($lineCount -le 1) {
     Write-Output "SKIPPED:single-line-file"
@@ -99,10 +99,10 @@ if ($tabCount -gt 0 -and $litTab -eq 0 -and $litLF -eq 0 -and $litCR -eq 0) {
     exit 0
 }
 
-# Common case 2: file has zero real TABs but contains literal '\t' escapes —
+# Common case 2: file has zero real TABs but contains literal '\t' escapes --
 # textbook LLM-escape-leak corruption. Auto-repair.
 if ($tabCount -eq 0 -and $litTab -gt 0) {
-    Write-Output "WARNING: Detected $litTab literal '\t' sequences and zero TAB bytes — auto-converting to real TABs."
+    Write-Output "WARNING: Detected $litTab literal '\t' sequences and zero TAB bytes -- auto-converting to real TABs."
     $text = $text -replace '\\t', "`t"
     if ($litLF -gt 0) {
         Write-Output "WARNING: Also auto-converting $litLF literal '\n' sequences to LF."
@@ -113,7 +113,7 @@ if ($tabCount -eq 0 -and $litTab -gt 0) {
         $text = $text -replace '\\r', "`r"
     }
 
-    # Write back as UTF-8 (no BOM) — the VBS EnsureUnicodeFile helper handles it.
+    # Write back as UTF-8 (no BOM) -- the VBS EnsureUnicodeFile helper handles it.
     $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
     [System.IO.File]::WriteAllText($path, $text, $utf8NoBom)
 
@@ -127,7 +127,7 @@ if ($tabCount -eq 0 -and $litTab -gt 0) {
 # came from an LLM. Repair the literal escapes; warn loudly so the operator
 # can sanity-check the live result.
 if ($litTab -gt 0 -or $litLF -gt 0 -or $litCR -gt 0) {
-    Write-Output "WARNING: Mixed content — $tabCount real TABs plus $litTab '\t' / $litLF '\n' / $litCR '\r' literal escapes. Auto-converting literals; review the deployed object."
+    Write-Output "WARNING: Mixed content -- $tabCount real TABs plus $litTab '\t' / $litLF '\n' / $litCR '\r' literal escapes. Auto-converting literals; review the deployed object."
     if ($litTab -gt 0) { $text = $text -replace '\\t', "`t" }
     if ($litLF  -gt 0) { $text = $text -replace '\\n', "`n" }
     if ($litCR  -gt 0) { $text = $text -replace '\\r', "`r" }

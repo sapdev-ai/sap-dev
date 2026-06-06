@@ -153,7 +153,7 @@ If InStr(oSession.ActiveWindow.Id, "wnd[1]") > 0 Then
         WScript.Sleep 1500
     Else
         Err.Clear
-        WScript.Echo "INFO: Unrecognised popup on Delete — pressing Enter."
+        WScript.Echo "INFO: Unrecognised popup on Delete -- pressing Enter."
         oSession.findById("wnd[1]").sendVKey VKEY_ENTER
         WScript.Sleep 1500
     End If

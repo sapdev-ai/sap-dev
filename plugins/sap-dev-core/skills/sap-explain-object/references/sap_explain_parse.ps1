@@ -53,7 +53,7 @@ $tcode   = Get-Cap1 "CALL\s+TRANSACTION\s+'([A-Z0-9_/]+)'"    $IC | Select-Objec
 # Reads: SELECT is DB-only (internal reads use READ TABLE / LOOP AT).
 $reads = Get-Cap1 '\bSELECT\b[\s\S]*?\bFROM\s+([A-Z0-9_/]+)' $IC
 # Writes: anchored to statement start and matched only in DB-specific Open-SQL
-# forms, so internal-table statements are excluded by construction —
+# forms, so internal-table statements are excluded by construction --
 # INSERT .. INTO TABLE, APPEND, COLLECT, MODIFY TABLE, MODIFY itab .. (TRANSPORTING|INDEX),
 # DELETE itab (WHERE|INDEX), DELETE TABLE, DELETE ADJACENT DUPLICATES. UPDATE has
 # no internal-table variant. Not detected: obsolete header-line short forms

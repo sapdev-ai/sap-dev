@@ -1,5 +1,5 @@
 ' =============================================================================
-' sap_update_addon_sm30.vbs — Maintain add-on table records via SM30
+' sap_update_addon_sm30.vbs -- Maintain add-on table records via SM30
 '
 ' Opens SM30 in Maintain mode, reads a TAB-delimited data file, and
 ' inserts/updates/deletes records using the generated maintenance dialog.
@@ -49,7 +49,7 @@ WScript.Echo "INFO: SM30 screen after open: " & sScr
 ' Handle transport request popup (press Customizing request button / Ctrl+Enter / Enter)
 On Error Resume Next
 If CStr(oSession.Info.ScreenNumber) = "101" Or CStr(oSession.Info.ScreenNumber) = "500" Then
-    ' Transport request dialog — press Ctrl+Enter / Continue
+    ' Transport request dialog -- press Ctrl+Enter / Continue
     oSession.findById("wnd[1]").sendVKey 0
     WScript.Sleep 500
 End If
@@ -100,7 +100,7 @@ If UCase(OPERATION) = "INSERT" Or UCase(OPERATION) = "UPDATE" Then
         oSession.findById("wnd[0]/tbar[1]/btn[14]").Press  ' New Entries
         WScript.Sleep 500
         If Err.Number <> 0 Then
-            ' Try alternative — menu Edit > New Entries
+            ' Try alternative -- menu Edit > New Entries
             Err.Clear
             oSession.findById("wnd[0]/mbar/menu[1]/menu[4]").Select
             WScript.Sleep 500
@@ -126,7 +126,7 @@ If UCase(OPERATION) = "INSERT" Or UCase(OPERATION) = "UPDATE" Then
                 sFldVal = ""
             End If
 
-            ' Skip MANDT — auto-filled by SAP
+            ' Skip MANDT -- auto-filled by SAP
             If sFldName = "MANDT" Or sFldName = "CLIENT" Then
                 ' skip
             Else
@@ -162,7 +162,7 @@ If UCase(OPERATION) = "INSERT" Or UCase(OPERATION) = "UPDATE" Then
     Next
 
 ElseIf UCase(OPERATION) = "DELETE" Then
-    WScript.Echo "INFO: DELETE via SM30 — selecting matching rows..."
+    WScript.Echo "INFO: DELETE via SM30 -- selecting matching rows..."
     ' For DELETE, we need to find and mark the matching rows in the existing view
     ' This is complex as it depends on the maintenance dialog layout
     ' Simple approach: iterate visible rows and match key fields

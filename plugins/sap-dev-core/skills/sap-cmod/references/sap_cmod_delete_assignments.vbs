@@ -90,7 +90,7 @@ For k = 0 To UBound(arr)
             If RowText(i) = sEnh Then hit = i : Exit For
         Next
         If hit = -1 Then
-            WScript.Echo "WARN: " & sEnh & " not found among current assignments — skipped."
+            WScript.Echo "WARN: " & sEnh & " not found among current assignments -- skipped."
         Else
             oSession.findById(RowId(hit)).setFocus
             WScript.Echo "INFO: Deleting " & sEnh & " (row " & hit & ")..."
@@ -106,7 +106,7 @@ If removed = 0 Then
     ReleaseSession oSession, wasLocked
     oSession.findById("wnd[0]/tbar[0]/okcd").Text = "/n"
     oSession.findById("wnd[0]").sendVKey VKEY_ENTER
-    WScript.Echo "SUCCESS: No change — none of the requested enhancements were assigned to " & UCase(PROJECT_NAME) & "."
+    WScript.Echo "SUCCESS: No change -- none of the requested enhancements were assigned to " & UCase(PROJECT_NAME) & "."
     WScript.Quit 0
 End If
 
@@ -154,5 +154,5 @@ End If
 oSession.findById("wnd[0]/tbar[0]/okcd").Text = "/n"
 oSession.findById("wnd[0]").sendVKey VKEY_ENTER
 
-WScript.Echo "SUCCESS: Removed " & removed & " enhancement(s) from " & UCase(PROJECT_NAME) & " (project now inactive — run activate to re-activate)."
+WScript.Echo "SUCCESS: Removed " & removed & " enhancement(s) from " & UCase(PROJECT_NAME) & " (project now inactive -- run activate to re-activate)."
 WScript.Quit 0

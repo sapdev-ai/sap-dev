@@ -15,15 +15,15 @@
 ' reach its widgets. SE51's element-list grid is read-only for placement (empty
 ' rows are Changeable=False; FELD-LINE / FELD-COLN are not editable). The only
 ' reliable scripted placement path is the classic ALPHANUMERIC Screen Painter
-' (program SAPMSSY0, dynpro 120) driven through Edit > Create Element — exactly
+' (program SAPMSSY0, dynpro 120) driven through Edit > Create Element -- exactly
 ' what the SAP recorder produces.
 '
-' PREREQUISITE — graphical editor must be OFF
+' PREREQUISITE -- graphical editor must be OFF
 ' -------------------------------------------
 ' The alphanumeric editor only appears when the user's SE51 setting
 ' "Graphical Layout Editor" is DISABLED (Utilities > Settings, per-user). When
 ' ON, the Change button opens the graphical canvas and this script aborts with
-' NOT_ALPHANUMERIC. Detection is by program name (SAPMSSY0) — language-neutral.
+' NOT_ALPHANUMERIC. Detection is by program name (SAPMSSY0) -- language-neutral.
 '
 ' Tokens replaced at run time:
 '   %%PROGRAM_NAME%%   Program / function pool   e.g. "ZHKTESTSE51001"
@@ -33,7 +33,7 @@
 '   %%ELEMENT_FILE%%   Path to a tab-delimited element definition file (UTF-8)
 '   %%LOG_FILE%%       Path for the run log
 '
-' Element file format — one element per line, TAB-separated, '#' lines ignored:
+' Element file format -- one element per line, TAB-separated, '#' lines ignored:
 '   TYPE <TAB> NAME <TAB> TEXT <TAB> LENGTH <TAB> LINE <TAB> COLUMN
 '     TYPE   = TEXT | IO | CHECKBOX | PUSHBUTTON | RADIO   (case-insensitive)
 '     NAME   = element / field name (for IO: a program or DDIC field, e.g.
@@ -161,7 +161,7 @@ On Error GoTo 0
 
 ' ------ 3a. Confirm ALPHANUMERIC Screen Painter (program SAPMSSY0) -----------
 If oSession.Info.Program <> "SAPMSSY0" Then
-    L "ERROR: NOT_ALPHANUMERIC — the Change button opened the graphical Layout"
+    L "ERROR: NOT_ALPHANUMERIC -- the Change button opened the graphical Layout"
     L "       Editor (program=" & oSession.Info.Program & "), which cannot be"
     L "       scripted. Turn OFF SE51 > Utilities > Settings > 'Graphical Layout"
     L "       Editor' for this user, then re-run. (Per-user setting.)"
@@ -187,7 +187,7 @@ For i = 0 To nEl - 1
     Dim mi
     mi = CreateMenuIndex(sType)
     If mi < 0 Then
-        L "WARNING: unknown element TYPE '" & sType & "' on row " & (i + 1) & " — skipped."
+        L "WARNING: unknown element TYPE '" & sType & "' on row " & (i + 1) & " -- skipped."
     Else
         If AddOneElement(mi, sType, sName, sText, sLen, sLine, sCol) Then
             added = added + 1
@@ -240,7 +240,7 @@ On Error GoTo 0
 L "INFO: status bar [" & sType2 & "] " & sMsg
 
 If sType2 = "E" Or sType2 = "A" Then
-    L "ERROR: activation reported an error — " & sMsg
+    L "ERROR: activation reported an error -- " & sMsg
     oLog.Close : WScript.Quit 1
 End If
 
@@ -249,7 +249,7 @@ oLog.Close
 WScript.Quit 0
 
 ' ===========================================================================
-' AddOneElement — place cursor, open the create dialog, fill it, transfer.
+' AddOneElement -- place cursor, open the create dialog, fill it, transfer.
 ' ===========================================================================
 Function AddOneElement(nMenuIdx, sType, sName, sText, sLen, sLine, sCol)
     AddOneElement = False
@@ -263,11 +263,11 @@ Function AddOneElement(nMenuIdx, sType, sName, sText, sLen, sLine, sCol)
     '      requested cell first, then fall back to the always-present txt[0,row]
     '      anchor on the same line.
     '  (b) After a previous element's Transfer the editor needs a beat to settle
-    '      its cursor/menu state — the menu select can otherwise no-op. We retry
+    '      its cursor/menu state -- the menu select can otherwise no-op. We retry
     '      the focus+menu up to 3 times until wnd[1] appears.
     ' NOTE on positioning: the element lands at the CURSOR cell. The dialog's
     ' FELD-LINE / FELD-COLN fields are advisory and are rejected for I/O fields
-    ' (err 613) — do not rely on them. For precise "label + input" layouts use
+    ' (err 613) -- do not rely on them. For precise "label + input" layouts use
     ' the sap_se51_layout_rebuild.vbs reference (gap-cell discovery).
     Dim cell, anchor, attempt
     cell   = "wnd[0]/usr/txt[" & sCol & "," & sLine & "]"
@@ -277,7 +277,7 @@ Function AddOneElement(nMenuIdx, sType, sName, sText, sLen, sLine, sCol)
         oSession.findById(cell).setFocus
         oSession.findById(cell).caretPosition = 0
         If Err.Number <> 0 Then
-            ' requested cell doesn't exist — fall back to the column-0 anchor
+            ' requested cell doesn't exist -- fall back to the column-0 anchor
             Err.Clear
             oSession.findById(anchor).setFocus
             oSession.findById(anchor).caretPosition = 0
@@ -294,7 +294,7 @@ Function AddOneElement(nMenuIdx, sType, sName, sText, sLen, sLine, sCol)
         On Error GoTo 0
 
         If InStr(oSession.ActiveWindow.Id, "wnd[1]") > 0 Then Exit For
-        L "INFO: create-element dialog not open yet for '" & sName & "' (attempt " & attempt & "/3) — retrying."
+        L "INFO: create-element dialog not open yet for '" & sName & "' (attempt " & attempt & "/3) -- retrying."
         WScript.Sleep 500
     Next
 
@@ -315,7 +315,7 @@ Function AddOneElement(nMenuIdx, sType, sName, sText, sLen, sLine, sCol)
     Err.Clear
     On Error GoTo 0
 
-    ' Refresh/validate (btn[0]) then Transfer/place (btn[5]) — per the recorder.
+    ' Refresh/validate (btn[0]) then Transfer/place (btn[5]) -- per the recorder.
     On Error Resume Next
     oSession.findById("wnd[1]/tbar[0]/btn[0]").press
     WScript.Sleep 600
@@ -329,7 +329,7 @@ Function AddOneElement(nMenuIdx, sType, sName, sText, sLen, sLine, sCol)
     ' residual validation popup (e.g. position occupied) leaves wnd[1] open
     If InStr(oSession.ActiveWindow.Id, "wnd[1]") > 0 Then
         L "WARNING: '" & sName & "' left a popup open: " & oSession.findById("wnd[1]").Text & _
-          " — cancelling (F12)."
+          " -- cancelling (F12)."
         On Error Resume Next
         oSession.ActiveWindow.sendVKey VKEY_F12
         WScript.Sleep 500
@@ -344,11 +344,11 @@ Function AddOneElement(nMenuIdx, sType, sName, sText, sLen, sLine, sCol)
 End Function
 
 ' ===========================================================================
-' HandleSavePopups — walk the dialog chain SAP raises on first Save / Activate
+' HandleSavePopups -- walk the dialog chain SAP raises on first Save / Activate
 ' of a transportable screen (recorded live on S/4HANA 1909):
-'   1. "Create Object Directory Entry" (SAPLSTRD/300) — package field
+'   1. "Create Object Directory Entry" (SAPLSTRD/300) -- package field
 '      ctxtTADIR-DEVCLASS normally PREFILLED; Continue = tbar[0]/btn[8].
-'   2. "Prompt for transportable change request" (SAPLSTRD/300) — fill
+'   2. "Prompt for transportable change request" (SAPLSTRD/300) -- fill
 '      ctxtKO008-TRKORR with SAP_TRANSPORT; Continue = tbar[0]/btn[8].
 ' Each dialog is dispatched by the DDIC field it exposes (language-neutral).
 ' Aborts if a TR is required but SAP_TRANSPORT is empty.
@@ -361,7 +361,7 @@ Sub HandleSavePopups(sPhase)
         Dim AW
         AW = oSession.ActiveWindow.Id
 
-        ' (a) transport-request prompt — KO008-TRKORR present
+        ' (a) transport-request prompt -- KO008-TRKORR present
         Dim oTR
         Set oTR = Nothing
         Set oTR = oSession.findById(AW & "/usr/ctxtKO008-TRKORR")
@@ -372,23 +372,23 @@ Sub HandleSavePopups(sPhase)
                 oLog.Close : WScript.Quit 1
             End If
             If Trim(oTR.Text) = "" Then oTR.Text = SAP_TRANSPORT
-            L "INFO: " & sPhase & " TR prompt — entering " & SAP_TRANSPORT & "."
+            L "INFO: " & sPhase & " TR prompt -- entering " & SAP_TRANSPORT & "."
             Err.Clear
             PressContinue AW
         Else
             Err.Clear
-            ' (b) Create Object Directory Entry — TADIR-DEVCLASS present
+            ' (b) Create Object Directory Entry -- TADIR-DEVCLASS present
             Dim oDev
             Set oDev = Nothing
             Set oDev = oSession.findById(AW & "/usr/ctxtTADIR-DEVCLASS")
             If Err.Number = 0 And Not (oDev Is Nothing) Then
                 If Trim(oDev.Text) = "" And SAP_PACKAGE <> "" Then oDev.Text = SAP_PACKAGE
-                L "INFO: " & sPhase & " Object Directory Entry — package=" & oDev.Text & "."
+                L "INFO: " & sPhase & " Object Directory Entry -- package=" & oDev.Text & "."
                 Err.Clear
                 PressContinue AW
             Else
                 Err.Clear
-                L "INFO: " & sPhase & " popup '" & oSession.findById(AW).Text & "' — Continue/Enter."
+                L "INFO: " & sPhase & " popup '" & oSession.findById(AW).Text & "' -- Continue/Enter."
                 PressContinue AW
             End If
         End If

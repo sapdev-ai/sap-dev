@@ -5,13 +5,13 @@
 # catch offline, by consulting the live-SAP signature caches that sap-gen-abap
 # populates at Step 1.5e (_struct_signatures.txt) and 1.5b' (_authz_signatures.txt):
 #
-#   A) STRUCT field references — every `<var>-<field>` in the source where
+#   A) STRUCT field references -- every `<var>-<field>` in the source where
 #      <var> is declared `TYPE <some_struct>` is checked against the cached
 #      field list for <some_struct>. Catches the BAPI_MARA-style trap
 #      (LS_CLIENTDATA-GROSS_WT does not exist on this S/4HANA build) BEFORE
 #      the source goes to SE38 and surfaces 9 syntax errors at upload time.
 #
-#   B) AUTHORITY-CHECK shape — every `AUTHORITY-CHECK OBJECT '<X>' ID ...`
+#   B) AUTHORITY-CHECK shape -- every `AUTHORITY-CHECK OBJECT '<X>' ID ...`
 #      block is checked against the cached SU21 field list for <X>. Catches
 #      SLIN's "Wrong number of authorization fields" Priority 2 storm BEFORE
 #      ATC runs post-deploy.
@@ -26,7 +26,7 @@
 #   Line<TAB>Severity<TAB>Class<TAB>Variable<TAB>Type<TAB>Reason<TAB>FixAdvice
 #
 # When a signature cache file is missing or empty, the corresponding check is
-# silently skipped — this validator is purely additive over the existing
+# silently skipped -- this validator is purely additive over the existing
 # offline checks. Run AFTER sap_check_abap.vbs, before deploy.
 # =============================================================================
 
@@ -66,12 +66,12 @@ function Add-Finding($lineNum, $severity, $class, $varName, $typ, $reason, $fix)
     $results.Add("$lineNum`t$severity`t$class`t$varName`t$typ`t$reason`t$fix")
 }
 
-# ---- Build DATA-var → type map (only top-level DATA declarations) ----------
+# ---- Build DATA-var -> type map (only top-level DATA declarations) ----------
 # Supported shapes:
 #   DATA lv_x TYPE bapi_mara.
 #   DATA lt_x TYPE STANDARD TABLE OF bapi_mara WITH ...
 #   DATA ls_x TYPE <struct>.
-#   DATA(lv_x) = ...  (inline — type unknown without RFC, skip)
+#   DATA(lv_x) = ...  (inline -- type unknown without RFC, skip)
 $varToType = @{}
 foreach ($l in $lines) {
     if ($l.Code -eq "") { continue }
@@ -115,10 +115,10 @@ if ($STRUCT_SIG_FILE -ne "" -and (Test-Path $STRUCT_SIG_FILE)) {
         }
         [void]$structFields[$tab].Add($fld)
     }
-    Write-Host ("INFO: Struct cache loaded — " + $structFields.Count + " struct(s) with field lists, " +
+    Write-Host ("INFO: Struct cache loaded -- " + $structFields.Count + " struct(s) with field lists, " +
                 $structNotFound.Count + " NOT_FOUND.")
 } else {
-    Write-Host "INFO: Struct cache absent — skipping struct field validation."
+    Write-Host "INFO: Struct cache absent -- skipping struct field validation."
 }
 
 # ---- A) Struct field reference validation -----------------------------------
@@ -149,12 +149,12 @@ if ($structFields.Count -gt 0 -or $structNotFound.Count -gt 0) {
                 $nStructErrors++
                 Add-Finding $l.N "ERROR" "STRUCT_TYPE_MISSING" $vname $typ `
                     "Type $typ does not exist on the target SAP system (per _struct_signatures.txt NOT_FOUND)." `
-                    "Check spec / FM signature — may be a typo or release-removed structure."
+                    "Check spec / FM signature -- may be a typo or release-removed structure."
                 continue
             }
 
             if (-not $structFields.ContainsKey($typ)) {
-                # Type wasn't in the cache. Could be: (a) cache was generated against a different FM list and this struct wasn't included, (b) the type is a primitive / local ABAP type. Either way we can't validate — skip silently.
+                # Type wasn't in the cache. Could be: (a) cache was generated against a different FM list and this struct wasn't included, (b) the type is a primitive / local ABAP type. Either way we can't validate -- skip silently.
                 continue
             }
 
@@ -163,7 +163,7 @@ if ($structFields.Count -gt 0 -or $structNotFound.Count -gt 0) {
                 $nStructErrors++
                 Add-Finding $l.N "ERROR" "STRUCT_FIELD_MISSING" "$vname-$field" $typ `
                     "Field $field does not exist on $typ (per live DDIF_FIELDINFO_GET in _struct_signatures.txt)." `
-                    "Verify the field name against SE11 $typ, or route the value via the correct BAPI parameter (e.g. marmdata for MARM-resident fields per rule §22)."
+                    "Verify the field name against SE11 $typ, or route the value via the correct BAPI parameter (e.g. marmdata for MARM-resident fields per rule 22)."
             }
         }
     }
@@ -197,10 +197,10 @@ if ($AUTHZ_SIG_FILE -ne "" -and (Test-Path $AUTHZ_SIG_FILE)) {
         }
         [void]$authzFields[$obj].Add($fld)
     }
-    Write-Host ("INFO: AUTHX cache loaded — " + $authzFields.Count + " object(s), " +
+    Write-Host ("INFO: AUTHX cache loaded -- " + $authzFields.Count + " object(s), " +
                 $authzNotFound.Count + " NOT_FOUND.")
 } else {
-    Write-Host "INFO: AUTHX cache absent — skipping AUTHORITY-CHECK shape validation."
+    Write-Host "INFO: AUTHX cache absent -- skipping AUTHORITY-CHECK shape validation."
 }
 
 # ---- B) AUTHORITY-CHECK shape validation -----------------------------------
@@ -255,7 +255,7 @@ if ($authzFields.Count -gt 0 -or $authzNotFound.Count -gt 0) {
                     "Add ID clauses for every SU21 field (use DUMMY for unused). Source has: [$srcList]."
                 continue
             }
-            # Field-name check (order-independent — SLIN doesn't require order)
+            # Field-name check (order-independent -- SLIN doesn't require order)
             $missingFields = @()
             foreach ($lf in $live) { if ($sourceFields -notcontains $lf) { $missingFields += $lf } }
             $extraFields = @()

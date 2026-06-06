@@ -7,7 +7,7 @@
 ' Removes the classic BAdI implementation (SXC_* + SXCI). Up to two SAPLSPO1
 ' Yes/No confirmation popups are answered Yes to complete the deletion.
 '
-' NOTE (verified): SE19 does NOT reliably remove the implementing class — it
+' NOTE (verified): SE19 does NOT reliably remove the implementing class -- it
 ' survives in SEOCLASS even after the second confirmation. The sap-se19 skill
 ' therefore cleans the class afterwards via /sap-se24 (Rule #4), the same as
 ' for New BAdIs. Do not assume this script deletes the class.
@@ -48,13 +48,13 @@ oSession.findById("wnd[0]/usr/ctxtRSEXSCRN-IMP_NAME").Text = UCase(IMP_NAME)
 oSession.findById("wnd[0]/tbar[1]/btn[14]").Press   ' Delete implementation (Shift+F2)
 WScript.Sleep 2000
 
-' Popup 1 — confirm delete implementation -> Yes
+' Popup 1 -- confirm delete implementation -> Yes
 If CtrlExists("wnd[1]/usr/btnBUTTON_1") Then
     oSession.findById("wnd[1]/usr/btnBUTTON_1").Press
     WScript.Sleep 2000
 End If
 
-' Popup 2 — second confirmation (also Yes) to complete the deletion
+' Popup 2 -- second confirmation (also Yes) to complete the deletion
 If CtrlExists("wnd[1]/usr/btnBUTTON_1") Then
     oSession.findById("wnd[1]/usr/btnBUTTON_1").Press
     WScript.Sleep 2000

@@ -16,7 +16,7 @@
 #                        needs to be checked.
 #   %%STRUCT_SIG_FILE%%  Path to _struct_signatures.txt (from sap_rfc_lookup_struct.ps1)
 #   %%RESULT_FILE%%      Path to check_result_*.txt (will be created with header
-#                        if absent; rows appended otherwise — same TSV format
+#                        if absent; rows appended otherwise -- same TSV format
 #                        the calling SKILL.md already uses).
 #   %%STARTING_NO%%      First sequence number to use for "No" column
 #                        (caller passes the count of existing rows + 1).
@@ -27,11 +27,11 @@
 #
 # Behavior:
 #   table NOT_FOUND in cache         -> ERROR "Table <T> does not exist on target SAP"
-#   table found, field empty         -> (skip — table-only check, no field to validate)
-#   table found, field exists        -> (skip — no finding)
+#   table found, field empty         -> (skip -- table-only check, no field to validate)
+#   table found, field exists        -> (skip -- no finding)
 #   table found, field absent        -> ERROR "Field <F> does not exist on table <T>"
-#   table UNAVAILABLE                -> WARNING "Cannot validate <T>.<F> — RFC unavailable"
-#   table not in cache at all        -> (skip — unknown, caller should have run lookup first)
+#   table UNAVAILABLE                -> WARNING "Cannot validate <T>.<F> -- RFC unavailable"
+#   table not in cache at all        -> (skip -- unknown, caller should have run lookup first)
 #
 # Exit code: 0 always (additive checker; failures are emitted as findings,
 # not as exit codes).
@@ -50,7 +50,7 @@ if (-not (Test-Path $REQUEST_FILE)) {
     exit 0
 }
 if (-not (Test-Path $STRUCT_SIG_FILE) -or (Get-Item $STRUCT_SIG_FILE).Length -eq 0) {
-    Write-Host "INFO: Struct cache file absent or empty — skipping spec-ref validation."
+    Write-Host "INFO: Struct cache file absent or empty -- skipping spec-ref validation."
     exit 0
 }
 
@@ -72,7 +72,7 @@ foreach ($row in Get-Content -LiteralPath $STRUCT_SIG_FILE) {
     }
     [void]$structFields[$tab].Add($fld)
 }
-Write-Host ("INFO: Struct cache — " + $structFields.Count + " table(s) with field lists, " +
+Write-Host ("INFO: Struct cache -- " + $structFields.Count + " table(s) with field lists, " +
             $structNotFound.Count + " NOT_FOUND, " + $structUnavailable.Count + " UNAVAILABLE.")
 
 # ---- Walk the request list --------------------------------------------------
@@ -97,12 +97,12 @@ foreach ($row in Get-Content -LiteralPath $REQUEST_FILE) {
         continue
     }
     if ($structUnavailable.ContainsKey($tab)) {
-        $results.Add("$n`t$cat`t$loc`tCannot validate $tab.$fld — RFC unavailable when the signature cache was populated.`tWarning`tOpen")
+        $results.Add("$n`t$cat`t$loc`tCannot validate $tab.$fld -- RFC unavailable when the signature cache was populated.`tWarning`tOpen")
         $n++
         continue
     }
     if (-not $structFields.ContainsKey($tab)) {
-        # Table not in cache — caller didn't request a lookup for it. Skip.
+        # Table not in cache -- caller didn't request a lookup for it. Skip.
         continue
     }
 

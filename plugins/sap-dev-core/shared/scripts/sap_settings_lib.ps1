@@ -1,9 +1,9 @@
 # =============================================================================
-# sap_settings_lib.ps1 — settings.json + settings.local.json merge helper.
+# sap_settings_lib.ps1 -- settings.json + settings.local.json merge helper.
 # =============================================================================
 # Two-file model:
-#   settings.json         — TRACKED, schema + descriptions + defaults
-#   settings.local.json   — GITIGNORED, per-developer values that override
+#   settings.json         -- TRACKED, schema + descriptions + defaults
+#   settings.local.json   -- GITIGNORED, per-developer values that override
 #
 # Read path  : merge per-key on the .value field, precedence (highest first):
 #              env var SAPDEV_AI_WORK_DIR (work_dir only)
@@ -135,7 +135,7 @@ function Get-SapSettings {
                         $main.userConfig.$key.value = $localEntry.value
                     }
                 } else {
-                    # Key only in local — pass through as-is so the caller still sees it.
+                    # Key only in local -- pass through as-is so the caller still sees it.
                     $main.userConfig | Add-Member -NotePropertyName $key -NotePropertyValue $localEntry -Force
                 }
             }
@@ -152,13 +152,13 @@ function Get-SapSettingValue {
         [string] $Default = ''
     )
     # work_dir is the bootstrap pointer (it locates userconfig.json), so resolve
-    # it via the dedicated bootstrap path — honors $env:SAPDEV_AI_WORK_DIR and
+    # it via the dedicated bootstrap path -- honors $env:SAPDEV_AI_WORK_DIR and
     # never recurses through userconfig.json.
     if ($Key -eq 'work_dir') { return Get-SapWorkDirBootstrap }
     # Per-connection isolation (Phase 4.3): for SAP-system-specific keys
     # (TR / package / function group) the source of truth is the pinned
     # connection's dev_defaults block in connections.json, not the global
-    # settings.local.json. This is the read-side routing — Get-SapCurrentDevDefault
+    # settings.local.json. This is the read-side routing -- Get-SapCurrentDevDefault
     # handles its own file-based fallback so this remains safe even when
     # sap_connection_lib.ps1 isn't loaded (caller gets the file value).
     if (Get-Command Get-SapPerConnectionDevKeys -ErrorAction SilentlyContinue) {
@@ -169,7 +169,7 @@ function Get-SapSettingValue {
                     $vv = Get-SapCurrentDevDefault -Key $Key
                     if (-not [string]::IsNullOrWhiteSpace("$vv")) { return "$vv" }
                 } catch {
-                    # Per-conn lookup failed (no pin / no store) — fall through
+                    # Per-conn lookup failed (no pin / no store) -- fall through
                     # to the file-based read below.
                 }
                 # Per-conn returned empty -> fall through to global default.
@@ -197,7 +197,7 @@ function Set-SapUserSetting {
         Phase 4.4: per-connection routing. When $Key is in the
         SapPerConnectionDevKeys list (TR / package / function group /
         mode / TR-workflow keys), the write is delegated to
-        Set-SapCurrentDevDefault — which targets the pinned connection's
+        Set-SapCurrentDevDefault -- which targets the pinned connection's
         dev_defaults block in connections.json, falling back to
         settings.local.json only when no profile is pinned. This stops
         cross-system contamination (e.g. saving an S4D-prefixed TR value

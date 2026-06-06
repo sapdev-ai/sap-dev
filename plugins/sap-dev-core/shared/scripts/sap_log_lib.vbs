@@ -209,7 +209,7 @@ Function LogJsonEscape(s)
 
     ' Escape any non-ASCII character to \uXXXX. This lets the appender write
     ' via FSO ForAppending (mode 8) at the local codepage without corrupting
-    ' Japanese / Chinese / Korean / German content — the on-disk bytes for
+    ' Japanese / Chinese / Korean / German content -- the on-disk bytes for
     ' \uXXXX are 7-bit ASCII and survive any codepage round-trip. JSON spec
     ' explicitly allows \uXXXX for any character. The PS appender continues
     ' to write raw UTF-8 bytes; readers parse both forms identically.
@@ -226,7 +226,7 @@ Function LogJsonEscape(s)
             hx = Right("0000" & Hex(code), 4)
             buf = buf & "\u" & hx
         Else
-            ' Non-ASCII >= 127 — emit \uXXXX so the bytes on disk are pure ASCII.
+            ' Non-ASCII >= 127 -- emit \uXXXX so the bytes on disk are pure ASCII.
             hx = Right("0000" & Hex(code), 4)
             buf = buf & "\u" & hx
         End If

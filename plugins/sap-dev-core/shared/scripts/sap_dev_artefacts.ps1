@@ -4,10 +4,10 @@
 # Queries the SAP system for every artefact `/sap-dev-init` is responsible
 # for and emits one parseable line per artefact. Used by:
 #
-#   /sap-dev-status   — read-only report ("is my dev env healthy?")
-#   /sap-dev-clean    — pre-flight before destructive cleanup ("what's
+#   /sap-dev-status   -- read-only report ("is my dev env healthy?")
+#   /sap-dev-clean    -- pre-flight before destructive cleanup ("what's
 #                       actually here?")
-#   /sap-dev-init     — idempotency check before re-creating
+#   /sap-dev-init     -- idempotency check before re-creating
 #
 # Tokens replaced at run time:
 #   %%SAP_SERVER%%   %%SAP_SYSNR%%   %%SAP_CLIENT%%
@@ -24,7 +24,7 @@
 # Output format (one line per artefact):
 #   ARTEFACT: <NAME> | KIND: <TR|PKG|FG|FM|STRUCT|TT|PGM> | STATE: <state> | DETAIL: <free text>
 #
-#   <state> ∈ ACTIVE | INACTIVE | MISSING | MODIFIABLE | RELEASED |
+#   <state> in ACTIVE | INACTIVE | MISSING | MODIFIABLE | RELEASED |
 #             EMPTY | NON_EMPTY | NOT_CONFIGURED | ERROR
 #
 # Summary line (last line, parseable):
@@ -86,14 +86,14 @@ function Q-RfcReadTable($table, $where, $cols) {
     # Comma operator forces array return semantics. Without it, PowerShell
     # unrolls an empty `@()` to `$null` on return, making 0-row RFC results
     # indistinguishable from RFC failures (catch returns $null explicitly).
-    # Callers rely on `$null -eq $rows` → ERROR vs `$rows.Count -eq 0` →
+    # Callers rely on `$null -eq $rows` -> ERROR vs `$rows.Count -eq 0` ->
     # MISSING. The wrapper is unrolled by the caller's assignment so a
     # non-empty array still arrives intact.
     return ,$rows
 }
 
 # ---------------------------------------------------------------------------
-# 1. Transport request — E070
+# 1. Transport request -- E070
 # ---------------------------------------------------------------------------
 if ([string]::IsNullOrWhiteSpace($tr)) {
     Emit "(none)" "TR" "NOT_CONFIGURED" "sap_dev_transport_request is blank"
@@ -123,7 +123,7 @@ if ([string]::IsNullOrWhiteSpace($tr)) {
 }
 
 # ---------------------------------------------------------------------------
-# 2. Package — TDEVC
+# 2. Package -- TDEVC
 # ---------------------------------------------------------------------------
 if ([string]::IsNullOrWhiteSpace($pkg)) {
     Emit "(none)" "PKG" "NOT_CONFIGURED" "sap_dev_package is blank"
@@ -149,7 +149,7 @@ if ([string]::IsNullOrWhiteSpace($pkg)) {
 }
 
 # ---------------------------------------------------------------------------
-# 3. Function group — TLIBG + PROGDIR for SAPL<FG>
+# 3. Function group -- TLIBG + PROGDIR for SAPL<FG>
 # ---------------------------------------------------------------------------
 if ([string]::IsNullOrWhiteSpace($fugr)) {
     Emit "(none)" "FG" "NOT_CONFIGURED" "sap_dev_function_group is blank"
@@ -175,9 +175,9 @@ if ([string]::IsNullOrWhiteSpace($fugr)) {
 }
 
 # ---------------------------------------------------------------------------
-# 4. Wrapper FM — TFDIR (existence + Remote-Enabled flag FMODE='R')
+# 4. Wrapper FM -- TFDIR (existence + Remote-Enabled flag FMODE='R')
 # ---------------------------------------------------------------------------
-# FMODE = 'R' means Remote-Enabled Module — mandatory for this wrapper
+# FMODE = 'R' means Remote-Enabled Module -- mandatory for this wrapper
 # because the only consumer is NCo 3.1 (PowerShell, sap_rfc_wrapper_fm.ps1).
 # An FM created via SE37 starts as 'Regular Function Module' (FMODE blank)
 # and stays that way unless /sap-dev-init Step 7b runs /sap-se37 change_attrs
@@ -188,7 +188,7 @@ if ($null -eq $rows) {
     Emit $wrapperFm "FM" "ERROR" "RFC_READ_TABLE on TFDIR failed"
     $gaps++
 } elseif ($rows.Count -eq 0) {
-    Emit $wrapperFm "FM" "MISSING" "no TFDIR row — run /sap-dev-init"
+    Emit $wrapperFm "FM" "MISSING" "no TFDIR row -- run /sap-dev-init"
     $gaps++
 } else {
     # Row format from RFC_READ_TABLE with DELIMITER='|':
@@ -201,48 +201,48 @@ if ($null -eq $rows) {
     if ($fmodeOk) {
         Emit $wrapperFm "FM" "ACTIVE" "TFDIR ok, FMODE=R (Remote-Enabled)"
     } else {
-        Emit $wrapperFm "FM" "INACTIVE" "TFDIR ok but FMODE != 'R' (Regular FM) — run /sap-dev-init Step 7b to set Remote-Enabled"
+        Emit $wrapperFm "FM" "INACTIVE" "TFDIR ok but FMODE != 'R' (Regular FM) -- run /sap-dev-init Step 7b to set Remote-Enabled"
         $gaps++
     }
 }
 
 # ---------------------------------------------------------------------------
-# 5. Wrapper structure — DD02L AS4LOCAL='A'
+# 5. Wrapper structure -- DD02L AS4LOCAL='A'
 # ---------------------------------------------------------------------------
 $rows = Q-RfcReadTable "DD02L" "TABNAME = '$structName' AND AS4LOCAL = 'A'" @("TABNAME","TABCLASS")
 if ($null -eq $rows) {
     Emit $structName "STRUCT" "ERROR" "RFC_READ_TABLE on DD02L failed"
     $gaps++
 } elseif ($rows.Count -eq 0) {
-    Emit $structName "STRUCT" "MISSING" "no active DD02L row — run /sap-dev-init"
+    Emit $structName "STRUCT" "MISSING" "no active DD02L row -- run /sap-dev-init"
     $gaps++
 } else {
     Emit $structName "STRUCT" "ACTIVE" "DD02L AS4LOCAL=A"
 }
 
 # ---------------------------------------------------------------------------
-# 6. Wrapper table type — DD40L AS4LOCAL='A'
+# 6. Wrapper table type -- DD40L AS4LOCAL='A'
 # ---------------------------------------------------------------------------
 $rows = Q-RfcReadTable "DD40L" "TYPENAME = '$ttName' AND AS4LOCAL = 'A'" @("TYPENAME")
 if ($null -eq $rows) {
     Emit $ttName "TT" "ERROR" "RFC_READ_TABLE on DD40L failed"
     $gaps++
 } elseif ($rows.Count -eq 0) {
-    Emit $ttName "TT" "MISSING" "no active DD40L row — run /sap-dev-init"
+    Emit $ttName "TT" "MISSING" "no active DD40L row -- run /sap-dev-init"
     $gaps++
 } else {
     Emit $ttName "TT" "ACTIVE" "DD40L AS4LOCAL=A"
 }
 
 # ---------------------------------------------------------------------------
-# 7. Utility program — PROGDIR STATE='A'
+# 7. Utility program -- PROGDIR STATE='A'
 # ---------------------------------------------------------------------------
 $rows = Q-RfcReadTable "PROGDIR" "NAME = '$utilPgm' AND STATE = 'A'" @("NAME","STATE")
 if ($null -eq $rows) {
     Emit $utilPgm "PGM" "ERROR" "RFC_READ_TABLE on PROGDIR failed"
     $gaps++
 } elseif ($rows.Count -eq 0) {
-    Emit $utilPgm "PGM" "MISSING" "no active PROGDIR row — run /sap-dev-init"
+    Emit $utilPgm "PGM" "MISSING" "no active PROGDIR row -- run /sap-dev-init"
     $gaps++
 } else {
     Emit $utilPgm "PGM" "ACTIVE" "PROGDIR.STATE=A"

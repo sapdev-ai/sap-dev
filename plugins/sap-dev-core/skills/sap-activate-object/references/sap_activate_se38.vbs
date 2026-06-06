@@ -13,7 +13,7 @@
 '        - tbar[0]/btn[9] = Select All
 '        - tbar[0]/btn[0] = Continue
 '      The popup is filtered by the locality (transportable vs local) of the
-'      triggering object — SAP shows only objects of the same locality.
+'      triggering object -- SAP shows only objects of the same locality.
 '   5. Read sbar; expect "Object(s) activated" (S/I-type).
 '   6. F3 back (btn[15] = Shift+F3 / Cancel back to clean state).
 '
@@ -109,7 +109,7 @@ WScript.Quit 0
 
 ' ============================================================================
 ' Helper: handle stacked modal popups after Activate.
-' Top-down z-order sweep — see sap_activate_se11.vbs for the full rationale.
+' Top-down z-order sweep -- see sap_activate_se11.vbs for the full rationale.
 ' SAP can stack multiple modals (e.g. wnd[2] error popup ON TOP of wnd[1]
 ' worklist on S/4HANA 1909); checking only ActiveWindow == wnd[1] misses
 ' the higher-numbered window. Iterate wnd[9]..wnd[1] top-down so blocking

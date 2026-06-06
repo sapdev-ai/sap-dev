@@ -74,7 +74,7 @@ End If
 Err.Clear
 On Error GoTo 0
 
-' If we are now in display of an existing NRO, abort — caller must use Update.
+' If we are now in display of an existing NRO, abort -- caller must use Update.
 Dim sTitle
 sTitle = oSession.findById("wnd[0]").Text
 If InStr(LCase(sTitle), "display") > 0 Or InStr(LCase(sTitle), "change") > 0 Then
@@ -117,7 +117,7 @@ WScript.Echo "INFO: Filling domain (length): " & DOMLEN
 On Error Resume Next
 oSession.findById(sFc1 & "/txtTNRO-DOMLEN").Text = DOMLEN
 If Err.Number <> 0 Then
-    WScript.Echo "ERROR: Could not set TNRO-DOMLEN at " & sFc1 & "/txtTNRO-DOMLEN — " & Err.Description
+    WScript.Echo "ERROR: Could not set TNRO-DOMLEN at " & sFc1 & "/txtTNRO-DOMLEN -- " & Err.Description
     WScript.Quit 1
 End If
 On Error GoTo 0
@@ -129,7 +129,7 @@ If PERCENTAGE <> "" Then
     oSession.findById(sFc1 & "/txtTNRO-PERCENTAGE").Text = PERCENTAGE
     If Err.Number <> 0 Then
         Err.Clear
-        WScript.Echo "WARNING: Could not set TNRO-PERCENTAGE — leaving default."
+        WScript.Echo "WARNING: Could not set TNRO-PERCENTAGE -- leaving default."
     End If
     On Error GoTo 0
     WScript.Sleep 200
@@ -140,7 +140,7 @@ oSession.findById("wnd[0]").sendVKey VKEY_ENTER
 WScript.Sleep 800
 
 ' Visit FC2 / FC3 tabs to mimic recorded sequence (some releases require this
-' so that all tabs are initialised before save). Best-effort — ignore if a tab
+' so that all tabs are initialised before save). Best-effort -- ignore if a tab
 ' is not present in this release.
 On Error Resume Next
 oSession.findById("wnd[0]/usr/tabsNUMMERNKREIS/tabpNUMMERNKREIS_FC2").select
@@ -187,7 +187,7 @@ If InStr(oSession.ActiveWindow.Id, "wnd[1]") > 0 Then
             On Error GoTo 0
         End If
     Else
-        WScript.Echo "INFO: Package/transport dialog — pressing Local Object ($TMP)..."
+        WScript.Echo "INFO: Package/transport dialog -- pressing Local Object ($TMP)..."
         oSession.findById("wnd[1]/tbar[0]/btn[7]").press
         WScript.Sleep 1500
     End If

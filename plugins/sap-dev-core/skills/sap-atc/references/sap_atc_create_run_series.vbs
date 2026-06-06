@@ -3,7 +3,7 @@
 '
 ' Drives transaction /nATC, navigates to tree node "12" (Schedule Runs / Manage
 ' Series), creates a new Run Series bound to a previously-created SCI Object
-' Set, configures it, saves, and triggers EXECUTE_SERIE. The run is async —
+' Set, configures it, saves, and triggers EXECUTE_SERIE. The run is async --
 ' Stage 3 (sap_atc_check_run_status.vbs) polls for completion.
 '
 ' Flow per C:\Temp\Record_ATC_CreateRunSeries_01.vbs (S/4HANA 1909):
@@ -21,7 +21,7 @@
 '        (optional) check-variant field = %%CHECK_VARIANT%% when supplied
 '        Enter, Save (btn[11])
 '   6. Find the new row in the result grid by APP_CONFIG_NAME column (NAME
-'      on older releases — multi-candidate lookup), select it,
+'      on older releases -- multi-candidate lookup), select it,
 '      pressToolbarButton "EXECUTE_SERIE", confirm via tbar[1]/btn[8].
 '
 ' Tokens:
@@ -48,7 +48,7 @@
 '   SUCCESS: Run series <NAME> scheduled (object set <SET>).
 '   ERROR: ...
 '
-' After SUCCESS, the run is async — call sap_atc_check_run_status.vbs in a
+' After SUCCESS, the run is async -- call sap_atc_check_run_status.vbs in a
 ' polling loop until State = COMPLETED.
 ' =============================================================================
 
@@ -318,7 +318,7 @@ On Error GoTo 0
 
 ' --- 5b. Diagnose any post-Save popup BEFORE walking the grid ----------------
 ' Save can raise a modal at wnd[1] (most commonly "Save inconsistent data"
-' when the underlying SCI Object Set is Local-only — ATC Run Series binding
+' when the underlying SCI Object Set is Local-only -- ATC Run Series binding
 ' requires a Global set). If we don't detect this, the subsequent grid
 ' lookup runs against a frozen / wrong screen, the column match silently
 ' falls through to the last-row heuristic, and EXECUTE_SERIE selects the
@@ -362,7 +362,7 @@ On Error GoTo 0
 
 ' Try common column-id candidates for the Run Series name column. The Run
 ' Series management grid actually exposes it as APP_CONFIG_NAME on
-' S/4HANA 1909 (verified — same column id as the Run Monitor grid in
+' S/4HANA 1909 (verified -- same column id as the Run Monitor grid in
 ' sap_atc_check_run_status.vbs). Older releases may use NAME or
 ' RUN_SERIES_NAME. The lookup must mirror the multi-candidate approach so
 ' the row match doesn't silently fall through to the last-row heuristic
@@ -386,7 +386,7 @@ For ci = 0 To UBound(seriesCols)
         sCellTry = UCase(Trim(oGrid.GetCellValue(r, sCol)))
         If Err.Number <> 0 Then
             Err.Clear
-            Exit For   ' column id doesn't exist on this grid — try next candidate
+            Exit For   ' column id doesn't exist on this grid -- try next candidate
         End If
         On Error GoTo 0
         If sCellTry = UCase(Trim(RUN_SERIES_NAME)) Then
@@ -428,7 +428,7 @@ If Err.Number <> 0 Then
 End If
 Err.Clear
 
-' Recording also presses tbar[1]/btn[8] after EXECUTE_SERIE — likely the
+' Recording also presses tbar[1]/btn[8] after EXECUTE_SERIE -- likely the
 ' "Confirm execution" button. If a popup appeared, drive it; if not,
 ' send F8 from the main window as the recording does.
 If InStr(oSess.ActiveWindow.Id, "wnd[1]") > 0 Then

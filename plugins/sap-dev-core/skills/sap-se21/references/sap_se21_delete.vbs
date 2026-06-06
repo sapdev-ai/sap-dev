@@ -12,7 +12,7 @@
 '        btnBUTTON_1                 (recorded popup style)
 '        fallback: btnSPOP-OPTION1   (Yes/No SPOP)
 '        fallback: sendVKey 0        (Enter)
-'   7. Optional follow-on popups (TR prompt, dependents) — handled by a
+'   7. Optional follow-on popups (TR prompt, dependents) -- handled by a
 '      generic active-window walker.
 '   8. Verify deletion: re-fill the name, press btnDISPLAY again. SAP must
 '      stay on the SE21 initial screen with an error / info sbar message
@@ -34,7 +34,7 @@
 '   ERROR:   ...
 '
 ' IMPORTANT: This skill assumes the operator has confirmed the deletion
-' BEFORE the VBS is launched. The VBS itself does NOT prompt — confirmation
+' BEFORE the VBS is launched. The VBS itself does NOT prompt -- confirmation
 ' is the orchestrator's responsibility (see SKILL.md Step 8).
 ' =============================================================================
 
@@ -106,7 +106,7 @@ On Error GoTo 0
 ' SE21 deletion shows a confirmation popup with btnBUTTON_1 (recorded
 ' style). Some package configurations chain a TR-prompt popup
 ' (ctxtKO008-TRKORR) or a "delete subpackage / contents" popup. We loop
-' on the active window — each iteration:
+' on the active window -- each iteration:
 '
 '   (a) if the popup carries ctxtKO008-TRKORR -> fill TR or abort
 '   (b) try btnBUTTON_1 (recorded confirmation style)
@@ -213,7 +213,7 @@ ReleaseSession oSess, wasLocked
 If wasLocked Then WScript.Echo "INFO: Session UI lock released."
 
 ' Decide: if the package-name field is still present on the initial
-' screen, we did NOT navigate into the editor — so the package is gone.
+' screen, we did NOT navigate into the editor -- so the package is gone.
 On Error Resume Next
 Dim oNameField : Set oNameField = Nothing
 Set oNameField = oSess.findById("wnd[0]/usr/ctxtPBENSCREEN-PACKNAME")

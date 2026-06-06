@@ -2,7 +2,7 @@
 ' sap_se19_classic_create.vbs  -  Create a CLASSIC BAdI implementation via SE19.
 '
 ' The implementing class is AUTO-NAMED by SAP (ZCL_IM_<impl-name minus leading
-' Z/Y>) and created on save — classic BAdIs do not take a class-name argument.
+' Z/Y>) and created on save -- classic BAdIs do not take a class-name argument.
 ' The class method source is deployed afterwards via /sap-se24 (skill delegates).
 '
 ' Flow: SE19 -> create section -> Classic BAdI -> enter definition -> Create

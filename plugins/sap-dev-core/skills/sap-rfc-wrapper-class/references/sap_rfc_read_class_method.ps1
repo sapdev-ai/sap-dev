@@ -2,7 +2,7 @@
 # sap_rfc_read_class_method.ps1  -  Read ABAP class method interface via NCo
 #
 # Reads SEOSUBCODF (parameter type defs) and SEOSUBCO (subcomponent list)
-# via RFC_READ_TABLE. SEOPARAM is a DDIC structure, not a transparent table —
+# via RFC_READ_TABLE. SEOPARAM is a DDIC structure, not a transparent table --
 # don't query it.
 #
 # Output (one line per parameter):
@@ -68,7 +68,7 @@ try {
 try {
     $d = Read-Tab "SEOCOMPODF" @("MTDDECLTYP") "CLSNAME = '$CLS' AND CMPNAME = '$MTH'"
     if ($d.RowCount -eq 0) {
-        Write-Host "ERROR: Method $MTH not found in class $CLS (SEOCOMPODF). May be a source-based class — fall back to RTTI helper FM."
+        Write-Host "ERROR: Method $MTH not found in class $CLS (SEOCOMPODF). May be a source-based class -- fall back to RTTI helper FM."
         exit 1
     }
     $d.CurrentIndex = 0
