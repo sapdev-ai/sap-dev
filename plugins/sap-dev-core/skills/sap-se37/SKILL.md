@@ -777,7 +777,10 @@ $ifaceCode += "Err.Clear : On Error GoTo 0`r`n"
 $content = [System.IO.File]::ReadAllText("$skillDir\references\sap_se37_create.vbs", [System.Text.Encoding]::UTF8)
 $content = $content -replace '%%FM_NAME%%',        $fmName
 $content = $content -replace '%%FUNC_GROUP%%',     $funcGroup
-$content = $content -replace '%%FM_SHORT_TEXT%%',  $shortText
+# Short text from a UTF-8 (no-BOM) file when present (never a PS literal -> avoids
+# cp932 mojibake of non-ASCII short text on PS 5.1); literal .Replace + VBS-quote escape.
+if (Test-Path "$workTemp\se37_short_text.txt") { $shortText = ([System.IO.File]::ReadAllText("$workTemp\se37_short_text.txt", [System.Text.Encoding]::UTF8)).Trim() }
+$content = $content.Replace('%%FM_SHORT_TEXT%%', $shortText.Replace('"','""'))
 $content = $content -replace '%%ABAP_SOURCE_FILE%%', $fmFilePath
 $content = $content -replace '%%PACKAGE%%',        $package
 $content = $content -replace '%%TRANSPORT%%',      $transport
@@ -801,7 +804,7 @@ Fill these placeholders before writing:
 |---|---|
 | `THE_SOURCE_PATH` | Absolute path to FM source file (e.g. `C:\Temp\Z_HKFM_TEST006.txt`) |
 | `THE_FUNC_GROUP` | Function group (ask user if not in source) |
-| `THE_SHORT_TEXT` | FM short description (ask user if not in source) |
+| `THE_SHORT_TEXT` | FM short description (ask user if not in source). For non-ASCII (ZH/JA), write it to `{WORK_TEMP}\se37_short_text.txt` (UTF-8, no BOM) via the Write tool — the generator reads that file instead of the literal to avoid cp932 mojibake. |
 | `THE_PACKAGE` | SAP package — blank for local $TMP |
 | `THE_TRANSPORT` | Transport request — blank for local |
 | `THE_SKILL_DIR` | Absolute path to this skill directory |
@@ -858,13 +861,22 @@ run the VBS with no values (it will exit `DONE: NO_CHANGE`).
 
 ### Generate the filled-in VBScript
 
+**Short-text encoding (mandatory for non-ASCII).** Write the new short text to
+`{WORK_TEMP}\se37_short_text.txt` as **UTF-8 (no BOM)** via the Write tool -- never
+embed a ZH/JA/non-ASCII short text as a PowerShell literal (a BOM-less `.ps1` is
+read as the system ANSI codepage by PS 5.1 -> cp932 mojibake; cf. the se38 title
+fix). Leave the file absent/empty to leave the short text unchanged.
+
 Write `{WORK_TEMP}\sap_se37_change_attrs_run.ps1`:
 ```powershell
 $skillDir = '<SKILL_DIR>'
 $tpl      = "$skillDir\references\sap_se37_change_attrs.vbs"
 $content  = [System.IO.File]::ReadAllText($tpl, [System.Text.Encoding]::UTF8)
 $content  = $content.Replace('%%FM_NAME%%',         'THE_FM_NAME')
-$content  = $content.Replace('%%SHORT_TEXT%%',      'THE_SHORT_TEXT')
+# Short text: read from a UTF-8 (no-BOM) file so a non-ASCII short text is NEVER a
+# PS literal (BOM-less .ps1 -> system ANSI / cp932 mojibake on PS 5.1; cf. se38 title).
+$stxt     = if (Test-Path '{WORK_TEMP}\se37_short_text.txt') { ([System.IO.File]::ReadAllText('{WORK_TEMP}\se37_short_text.txt', [System.Text.Encoding]::UTF8)).Trim() } else { '' }
+$content  = $content.Replace('%%SHORT_TEXT%%', $stxt.Replace('"','""'))
 $content  = $content.Replace('%%PROCESSING_TYPE%%', 'THE_PROCESSING_TYPE')
 $content  = $content.Replace('%%UPDATE_KIND%%',     'THE_UPDATE_KIND')
 $content  = $content.Replace('%%TRANSPORT%%',       'THE_TRANSPORT')

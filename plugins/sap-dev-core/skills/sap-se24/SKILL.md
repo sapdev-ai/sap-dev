@@ -12,11 +12,14 @@ description: |
   runs a syntax check (Ctrl+F2), downloads the source, fixes all errors,
   re-uploads, and activates the class (Ctrl+F3).
   Also supports change-properties mode: when the user asks to change a
-  class's Description, Program Status, Category, or other Properties-dialog
-  fields, opens SE24 in Display, opens the Properties dialog (Goto >
-  Properties), toggles to change mode, updates the supplied fields, then
-  Continues + Saves. Handles the conditional original-language popup and
-  the post-save Workbench-request popup per `/sap-transport-request`.
+  class's Description, Program Status, or Category, opens the class in SE24
+  CHANGE mode, opens the Properties dialog (Goto > Properties), toggles the
+  dialog to change, updates the supplied fields, Continues, then Saves and
+  Activates so the change persists. If the class opens in the form-based
+  Class Builder it normalises the view to source-based for the edit and
+  restores the prior setting afterward. Handles the conditional original-
+  language popup and the post-save/activate Workbench-request popup per
+  `/sap-transport-request`.
   Also supports delete mode: when the user asks to delete a class or
   interface (e.g. "delete class <X>", "drop class <X>", "remove
   interface <X>"), navigates to SE24, fills the class-name field,
@@ -504,13 +507,34 @@ source. Examples:
 
 The change-properties VBScript template is at `./references/sap_se24_change_props.vbs`.
 
+> **FIXED 2026-06-07 (re-recorded + live-verified on S/4HANA 2022, RFC-confirmed
+> in `SEOCLASSTX`).** The previous version opened the class in **Display** then
+> toggled the dialog — that left the field unresolvable on 1909 and unreachable
+> on 2022. The rewrite mirrors `/sap-se38` + `/sap-se37` change-attrs: open the
+> class in **CHANGE mode first** (so it is locked for edit), then Goto >
+> Properties; the dialog still opens display-only so the VBS presses the
+> Display↔Change toggle (`btn[25]`) and **re-resolves** the field afterwards —
+> with the class already locked the toggle succeeds. Then real Save (VKey 11) +
+> best-effort Activate (VKey 27).
+>
+> **Per-class view is handled automatically.** Editable class properties live
+> only in the **source-based** Class Builder (`SAPLSEO_CLASS_EDITOR`/400) — its
+> Goto > Properties dialog. The **form-based** tool (`SAPLSEOD`/2000) shows the
+> Properties tab read-only and has no Goto > Properties. So when a class opens
+> form-based, the VBS normalises the global view setting
+> (`chkRSEUMOD-NEW_EDITOR` in Utilities > Settings > Class Builder) to
+> source-based for the operation and **restores the prior setting on every exit
+> path**. Full investigation:
+> `temp/testReport/sap_se24_change_props_fix_20260607.md` (and the original
+> diagnosis in `MaterialUpload_CN_v57_full_20260607.md` Finding 1e).
+
 ### Collect Inputs
 
 | Token | Description | Allowed values | Empty? |
 |---|---|---|---|
 | `%%CLASS_NAME%%` | Class name (UPPERCASE) | `ZCL_IM_ZHK_PO_001` | required |
 | `%%DESCRIPTION%%` | New description (max 60 chars) | any text | empty = leave unchanged |
-| `%%STATUS%%` | `VSEOCLASS-RSTAT` code | `P`=SAP Standard Production, `K`=Customer Production, `S`=System, `T`=Test, `X`=SAP Example | empty = leave unchanged |
+| `%%STATUS%%` | `VSEOCLASS-RSTAT` code | `P`=SAP Standard Production, `K`=Customer Production, `S`=System, `T`=Test (the live S/4HANA 2022 dropdown offers exactly P/K/S/T; an invalid key fails loudly) | empty = leave unchanged |
 | `%%CATEGORY%%` | `VSEOCLASS-CLSCATEG` code | `0`=General object type (other codes per SE24 dropdown) | empty = leave unchanged |
 | `%%TRANSPORT%%` | TR for the post-save TR popup | TR number | empty when local (`$TMP`) or already locked to a modifiable TR |
 
@@ -525,13 +549,29 @@ the VBS with no values (it will exit `DONE: NO_CHANGE`).
 
 ### Generate the filled-in VBScript
 
+**Description encoding (do this first):** the description may contain non-ASCII
+(JA/ZH) and/or `"`. Write it to a UTF-8 (no-BOM) file rather than hard-coding it
+in the `.ps1` — Windows PowerShell 5.1 reads a BOM-less `.ps1` as ANSI, so a
+literal non-ASCII description in the script would mojibake. The generator reads
+it back as UTF-8 and doubles any `"` for the VBS string literal:
+
+```powershell
+[System.IO.File]::WriteAllText('{WORK_TEMP}\se24_desc.txt', 'THE_DESCRIPTION', (New-Object System.Text.UTF8Encoding $false))
+```
+(If `DESCRIPTION` is empty, write an empty file or skip — the generator treats a
+missing file as empty.)
+
 Write `{WORK_TEMP}\sap_se24_change_props_run.ps1`:
 ```powershell
 $skillDir = '<SKILL_DIR>'
 $tpl      = "$skillDir\references\sap_se24_change_props.vbs"
 $content  = [System.IO.File]::ReadAllText($tpl, [System.Text.Encoding]::UTF8)
+# Description: read UTF-8 file, escape VBS quotes ("->"") so non-ASCII + quotes survive.
+$descFile = '{WORK_TEMP}\se24_desc.txt'
+$desc     = if (Test-Path $descFile) { [System.IO.File]::ReadAllText($descFile, [System.Text.Encoding]::UTF8) } else { '' }
+$desc     = $desc.Replace('"','""')
 $content  = $content.Replace('%%CLASS_NAME%%',  'THE_CLASS_NAME')
-$content  = $content.Replace('%%DESCRIPTION%%', 'THE_DESCRIPTION')
+$content  = $content.Replace('%%DESCRIPTION%%', $desc)
 $content  = $content.Replace('%%STATUS%%',      'THE_STATUS')
 $content  = $content.Replace('%%CATEGORY%%',    'THE_CATEGORY')
 $content  = $content.Replace('%%TRANSPORT%%',   'THE_TRANSPORT')
@@ -545,9 +585,11 @@ $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 [System.IO.File]::WriteAllText('{WORK_TEMP}\sap_se24_change_props_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
-Use `.Replace()` (literal) — description text may contain regex
-metacharacters (e.g. colons, dots). Replace `<SKILL_DIR>` and the
-`THE_*` placeholders.
+Use `.Replace()` (literal) for `STATUS`/`CATEGORY`/`TRANSPORT` — description text
+may contain regex metacharacters (e.g. colons, dots), which is why every
+substitution above is `.Replace`, not `-replace`. Replace `<SKILL_DIR>` and the
+remaining `THE_*` placeholders (`THE_STATUS`/`THE_CATEGORY`/`THE_TRANSPORT`
+blank when unused).
 
 Run:
 ```bash
@@ -562,41 +604,57 @@ cscript //NoLogo {WORK_TEMP}\sap_se24_change_props_run.vbs
 
 ### Behaviour Notes
 
-- The Properties dialog is opened by SE24 main menu **Goto > Properties**
-  (`wnd[0]/mbar/menu[2]/menu[2]`). It opens as a modal `wnd[1]` rendered
-  by program `SAPLSEO_CLASS_EDITOR` subscreen 0152.
-- After the dialog opens, it is initially in **display** mode. The VBS
-  presses `wnd[1]/tbar[0]/btn[25]` (Display↔Change toggle) to enable
-  editing of fields.
+- **Open in CHANGE mode first.** The VBS opens the class via
+  `btnPUSH_CHANGE` (not Display) so the class is locked for edit before
+  the dialog is touched — this is what makes the dialog toggle + field
+  re-resolve reliable (the root cause of the old false/abort failures).
+- **View normalisation.** Editable properties live only in the
+  **source-based** editor (`SAPLSEO_CLASS_EDITOR`/400) via Goto >
+  Properties. If the class opens **form-based** (`SAPLSEOD`/2000 — its
+  Properties tab is read-only and there is no Goto > Properties), the
+  VBS flips the global setting `chkRSEUMOD-NEW_EDITOR` (Utilities >
+  Settings > Class Builder tab `tabp0250`, checkbox name
+  `RSEUMOD-NEW_EDITOR`) to source-based, re-opens in change, and
+  **restores the prior setting on every exit path** (`RestoreView`).
+- **Properties dialog** = `Goto > Properties` (`wnd[0]/mbar/menu[2]/menu[2]`
+  in the source-based change editor). It opens as a modal `wnd[1]`
+  (subscreen `SAPLSEO_CLASS_EDITOR:0152`) in **display** mode, so the VBS
+  presses the Display↔Change toggle `wnd[1]/tbar[0]/btn[25]` and then
+  **re-resolves** the description field (the handle can go stale across
+  the toggle).
 - **Original-language popup is conditional.** SAPLSETX
   (`*/usr/ctxtRSETX-MASTERLANG`) only appears when the logon language
-  differs from `MASTERLANG`. The VBS checks both `wnd[2]` and `wnd[1]`
-  for the popup (the layer it appears on varies by SAP version) and
-  presses `btnPUSH1` ("Maint. in orig. lang.") so MASTERLANG is
-  preserved. If logon language matches, this popup is silently skipped.
-- **Field IDs (subscreen `SAPLSEO_CLASS_EDITOR:0152` under wnd[1]/usr/subDY_0500-SUBSCR):**
+  differs from `MASTERLANG`. `HandleOrigLangPopup` presses `btnPUSH1`
+  ("Maint. in orig. lang.") so MASTERLANG is preserved; skipped when the
+  languages match.
+- **Field resolution (subscreen `…:SAPLSEO_CLASS_EDITOR:0152` under
+  `wnd[1]/usr/subDY_0500-SUBSCR`):** the **Description** GuiTextField
+  (`VSEOCLASS-DESCRIPT`) is found by name; the **Status / Category**
+  GuiComboBoxes are resolved by **deriving** their path from the
+  description field's container (`<container>/cmbVSEOCLASS-RSTAT`,
+  `…/cmbVSEOCLASS-CLSCATEG`). This is deliberate — a name-walk reliably
+  returns the textfield id but intermittently yields an empty id for
+  combo boxes on the tested kernel, so combos use the derived path
+  (also release-tolerant: the prefix comes from the live `descId`).
   | Field | ID |
   |---|---|
-  | Description | `txtVSEOCLASS-DESCRIPT` |
-  | Program Status | `cmbVSEOCLASS-RSTAT` (set via `.Key`) |
-  | Category | `cmbVSEOCLASS-CLSCATEG` (set via `.Key`) |
+  | Description | `…/txtVSEOCLASS-DESCRIPT` (`.Text`) |
+  | Program Status | `…/cmbVSEOCLASS-RSTAT` (`.Key`) |
+  | Category | `…/cmbVSEOCLASS-CLSCATEG` (`.Key`) |
   | Continue | `wnd[1]/tbar[0]/btn[0]` |
-  | Toggle Display↔Change | `wnd[1]/tbar[0]/btn[25]` |
-  | Cancel dialog | `wnd[1]` `sendVKey 12` |
-- **Save.** After Continue closes the dialog, the VBS sends Ctrl+S
-  (`sendVKey 11`) on `wnd[0]` to commit the change.
-- **Post-save TR popup.** If SAP prompts via
-  `wnd[1]/usr/ctxtKO008-TRKORR`, the VBS fills `%%TRANSPORT%%` and
-  presses Enter. If the popup appears but `%%TRANSPORT%%` is empty, the
-  VBS aborts with `ERROR: SAP prompted for a transport request but
-  TRANSPORT is empty` — resolve a TR via `/sap-transport-request` and
-  re-run.
-- **Lock-error popup.** If the class is locked by another modifiable
-  task, SAP shows an Error popup (`txtMESSTXT1`/`txtMESSTXT2`
-  containing `locked`). The VBS detects this and exits 1 with
-  `ERROR: SAP popup [Error] …`.
-- **No-change path.** If all of DESCRIPTION / STATUS / CATEGORY are
-  empty, the VBS cancels the dialog and exits 0 with `DONE: NO_CHANGE`.
+  | Toggle Display↔Change | `wnd[1]/tbar[0]/btn[25]` (Ctrl+F1) |
+- **Save + Activate.** After Continue closes the dialog, the VBS sends
+  Save (VKey 11) — which persists the change in `SEOCLASSTX` — then
+  best-effort Activate (VKey 27) to sync the active version. Save errors
+  (sbar `E`/`A`) abort; activation issues only WARN (the change is
+  already saved).
+- **Popup draining (`DrainPopups`).** After Save/Activate the VBS drains
+  up to N modal popups: a TR popup (`ctxtKO008-TRKORR`) is filled with
+  `%%TRANSPORT%%` (aborts if SAP prompts and TRANSPORT is empty); the
+  inactive-objects worklist + info popups get Enter; a `locked` Error
+  popup aborts with `ERROR: SAP popup …`.
+- **No-change path.** If all of DESCRIPTION / STATUS / CATEGORY are empty
+  the VBS exits 0 with `DONE: NO_CHANGE` **without opening SAP**.
 
 ### Outputs
 

@@ -240,11 +240,19 @@ if ($bNeedCreate -and $normalizedMode -eq "GUI") {
     exit 1
 }
 
-# CTS_API_CREATE_CHANGE_REQUEST has two parameter-name conventions:
-#   * Modern (S/4HANA 1909+): DESCRIPTION + CATEGORY (W=Workbench, K=Customizing).
-#     Verified empirically on S/4HANA 1909 (2026-05-10): the legacy names
-#     REQUEST_TEXT / REQUEST_TYPE produce a "field unknown" error.
-#   * Legacy: REQUEST_TEXT + REQUEST_TYPE (K=Workbench, W=Customizing).
+# CTS_API_CREATE_CHANGE_REQUEST has two parameter-name conventions; BOTH use the
+# standard E070-TRFUNCTION request-class codes: K = Workbench, W = Customizing.
+#   * Modern (S/4HANA 1909+): DESCRIPTION + CATEGORY. Pass CATEGORY="K" for a
+#     Workbench request. Verified empirically on S/4HANA 1909 (2026-06-07):
+#     CATEGORY="K" -> E070-TRFUNCTION=K (Workbench); CATEGORY="W" -> TRFUNCTION=W
+#     (Customizing). (The legacy REQUEST_TEXT/REQUEST_TYPE names raise
+#     "field unknown" on this release.)
+#   * Legacy: REQUEST_TEXT + REQUEST_TYPE. Pass REQUEST_TYPE="K" for Workbench.
+# Both variants below pass "K" so the RFC path creates a WORKBENCH request (was
+# wrongly "W" -> a Customizing request that cannot hold Workbench objects, so every
+# deploy looped on the SAPLSTRD transport prompt; fixed 2026-06-07). CTS_API creates
+# the request header only (no task); SAP auto-creates the development task on first
+# object assignment, so a task-less Workbench request is fully usable (verified).
 # Try the modern names first, fall back to legacy on RfcInvalidParameterException.
 if ($bNeedCreate) {
     Write-Host "INFO: Creating new workbench transport request (sap_dev_mode=$normalizedMode)..."
@@ -252,7 +260,7 @@ if ($bNeedCreate) {
     $sCreateError = ""
 
     foreach ($variant in @(
-        @{ Desc = "DESCRIPTION";  Cat = "CATEGORY";     CatVal = "W" },
+        @{ Desc = "DESCRIPTION";  Cat = "CATEGORY";     CatVal = "K" },
         @{ Desc = "REQUEST_TEXT"; Cat = "REQUEST_TYPE"; CatVal = "K" }
     )) {
         try {
