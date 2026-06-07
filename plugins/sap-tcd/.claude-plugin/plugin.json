@@ -1,6 +1,6 @@
 {
   "name": "sap-tcd",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "description": "SAP transaction automation for business processes: Business Partner (BP), Material Master (MM01), and Sales Order (VA01) management",
   "author": {
     "name": "KexiHe",

@@ -4,7 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.6.2] — 2026-06-07
+
 ### Added
+
+- **Code-comment language specification.** `/sap-gen-abap` now writes source-code
+  comments in the configured language (EN / JA / ZH — driven by the customer brief
+  / SAP logon language), so generated ABAP is commented in the operator's language.
+  Specified in `abap_code_quality_rules.md` + the customer brief template.
 
 - **frequently_errors feedback loop** — a team-shareable, curated catalog of
   recurring FM / class-method / codegen mistakes + remedies that closes the
@@ -39,6 +46,35 @@ All notable changes to this project will be documented in this file.
   - New settings `frequently_errors_enabled` / `frequently_errors_autorecord`
     / `frequently_errors_inject_status`; contract doc
     `shared/rules/frequently_errors.md`.
+
+### Fixed
+
+- **Transport-request RFC create built a Customizing request instead of Workbench.**
+  The RFC/BDC create path in `sap_transport_request.ps1`
+  (`CTS_API_CREATE_CHANGE_REQUEST`) passed `CATEGORY="W"` on the belief that
+  W=Workbench, but that value maps straight to `E070-TRFUNCTION`, where
+  **K=Workbench, W=Customizing**. The result was a Customizing request — which
+  cannot hold Workbench objects, so every deploy looped on the SAPLSTRD transport
+  prompt. Changed to `CATEGORY="K"` and corrected the inverted comment. Verified
+  live on S/4HANA 1909: `CATEGORY="K"` → `E070-TRFUNCTION=K`, and SAP auto-creates
+  the development task on first object assignment (a task-less Workbench request is
+  fully usable). Latent until now because prior releases only exercised the GUI
+  `/sap-se01` create path (`sap_dev_mode=GUI`), not the RFC path.
+
+- **SE38 attribute changes are now persisted.** `sap_se38_change_attrs.vbs` set the
+  title via the Goto→Attributes dialog and reported success, but the change never
+  reached the DB (Save was disabled on the initial screen). Reworked to the
+  source-editor path (open in change mode → Goto→Attributes → Save → Activate).
+
+- **SE38 program title no longer stored as cp932 mojibake.** The title had flowed
+  through a PowerShell source literal in a BOM-less `.ps1` (read as system ANSI
+  under Windows PowerShell 5.1). Routed via a UTF-8 file (`[IO.File]::ReadAllText`
+  UTF8), keeping the generator ASCII-only; non-ASCII titles (e.g. Chinese) now
+  store clean.
+
+- **SE24 / SE37 change-attribute robustness.** SE24 properties-change reworked for
+  S/4HANA source-based Class Builder compatibility; SE37 short text routed via a
+  UTF-8 file (same cp932 class as the SE38 title fix).
 
 ## [0.6.1] — 2026-06-04
 
