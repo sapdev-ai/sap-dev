@@ -700,6 +700,72 @@ SELECTION-SCREEN END OF BLOCK b1.
 
 **Severity:** ERROR (P2) — blocks deployment because activation will fail.
 
+## 26. Comment language — default to the SAP logon language
+
+Generated ABAP **comments** — inline (`" …`), block / header banners
+(`*&---…`, method headers), and the per-block explanation comments derived
+from the spec supplement — default to the **SAP logon language** of the
+active development session (the language the developer logged on with: `ZH`
+→ Chinese, `JA` → Japanese, `EN` → English, …). This is the
+`MODE_COMMENT_LANG` flag, resolved in this precedence (first hit wins):
+
+1. An explicit user instruction for this run (e.g. "comment in English").
+2. The customer brief's **Comments language** line (§6) when it names a
+   language. A per-location value ("JA inline, EN headers") is honoured as
+   written. A blank/absent line is NOT a specification → fall through.
+3. **Default — the SAP logon language** of the active session, resolved
+   from the pinned connection profile's `language` (`connections.json`) /
+   `userConfig.sap_language` / `Info.Language`. If none resolves, `EN`.
+
+Rationale: comments are **developer-facing** — the engineer reading and
+maintaining the code logged on in their working language, so comments should
+match it by default. This is deliberately distinct from §21 (selection texts
+/ text symbols), which are **end-user-facing UI text** and MUST follow the
+*spec's* natural language — do not conflate the two. Identifiers, keywords,
+and literals stay ASCII / code-standard regardless; only the human-readable
+comment text is localized. The one-line generation-mode header comment
+(§9 / Step 0a) is itself written in `MODE_COMMENT_LANG`.
+
+## 27. Wire every spec-mapped FM / method item end-to-end — even optional ones
+
+When the spec maps a source item (a file-mapping row, an interface
+parameter, a DDIC `table.field`, an explicit call parameter) to something
+that feeds a **function module, BAPI, or method call**, the generator MUST
+carry it all the way through to the call — *read it AND assign it* into the
+corresponding formal parameter / structure component (and, for BAPIs, set
+the matching `…X` change-structure flag and append to the correct table
+parameter). This holds **even when the item is marked optional** (`〇` /
+`○` / "optional" / conditional): optional means *guard the assignment*
+(`IF is_row-<f> IS NOT INITIAL. … ENDIF.`), NOT *skip the mapping*.
+
+**No "dead reads".** Parsing a field into a staging structure
+(`ls_raw-<f> = value_at( … )`) and then never using it is a defect — the
+field silently never reaches the FM/method, so the data is lost while the
+program looks complete. Every staging-struct field that has a SAP-table /
+parameter target in the spec MUST have a corresponding write into a call.
+
+Per FM / BAPI / method the program calls:
+
+1. Build the set of spec items mapped to that call (file-map rows whose
+   `SAP_TABLE`/`SAP_FIELD` resolve to one of its parameters; interface
+   inputs; explicit parameters).
+2. Emit the assignment into the correct parameter — using Step 1.5 (FM
+   params) + Step 1.5e (struct fields) to place it correctly (e.g.
+   weight/volume → `marmdata`/`marmdatax`, not the flat client structure;
+   see §22) and to type it correctly (§24). Set the BAPI `…X` flag.
+3. Guard optional items with `IS NOT INITIAL`; never drop them.
+4. If a mapped item genuinely cannot be placed (no matching parameter on
+   any of the call's structures/tables even after Step 1.5e), emit an
+   explicit `" TODO:` comment naming the item — NEVER a silent drop (§22).
+
+This generalises §22 (right *place*) and §24 (right *type*) into a
+**completeness** contract: don't forget to wire the item *anywhere at all*.
+The 2026-06-07 MaterialUpload `*57` build read `brgew/ntgew/gewei/volum/
+voleh` into its staging structure but never assigned them to
+`BAPI_MATERIAL_SAVEDATA` (no `marmdata`/`marmdatax` table, no client-data
+weight fields), so all five optional file columns were silently lost — the
+exact failure mode this rule forbids.
+
 ---
 
 ## How a SKILL.md uses this file

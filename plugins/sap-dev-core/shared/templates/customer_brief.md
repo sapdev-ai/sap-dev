@@ -94,6 +94,7 @@ Even just the AUTHORITY-CHECK objects relevant to this functional area is huge.
 | OOP scaffolds acceptable for new programs? | `yes` / `prefer FORM routines` |
 | Change document logging required for persistence? | `yes` / `no` |
 | Maximum method length (lines)? | `50` (default) / `100` / no limit |
+| Comments language? | blank = **SAP logon language** (default) / `EN` / `JA` / `ZH` / per-location (e.g. "JA inline, EN headers"). Drives `MODE_COMMENT_LANG` (rule §26). Applies to code comments only — end-user UI text follows the spec language. |
 
 ---
 
