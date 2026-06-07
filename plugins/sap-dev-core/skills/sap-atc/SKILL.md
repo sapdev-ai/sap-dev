@@ -73,6 +73,7 @@ Final PASS / FAIL emitted with the findings.tsv path when available.
 | `<SKILL_DIR>/references/sap_atc_check_run_status.vbs` | 3 | Read run state from the Monitor (read-only; safe to call in a poll loop) |
 | `<SKILL_DIR>/references/sap_atc_get_results.vbs` | 4 | Pull P1/P2/P3 counts + try to save the result TXT (outer grid only — summary level) |
 | `<SKILL_DIR>/references/sap_atc_drill_findings.vbs` | 4b | (Optional) Drill into the run-series row → export per-finding ALV as TSV. Run when gate FAILS or `--drill` is passed. |
+| `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_error_hints.ps1` | 6c | frequently_errors recorder. `-Action record -Source ATC -FindingsFile <...>.findings.tsv` captures FM/METHOD-attributable findings to the team store as CANDIDATEs. Best-effort; never changes the gate verdict. |
 
 ---
 
@@ -439,6 +440,30 @@ because the screen 201 layout shifted on a newer SAP_BASIS release):
 - Suggest re-recording via `/sap-gui-record` against the result-display
   screen, then updating the `findingPaths` fallback list in
   `sap_atc_drill_findings.vbs`.
+
+### 6c — Record FM/METHOD findings to frequently_errors (best-effort)
+
+When Stage 4b produced a `<save-to>.findings.tsv`, feed it to the team
+frequently_errors store. The recorder keeps **only findings it can attribute
+to a specific FM or class METHOD** (by matching a known object token in the
+finding's `MSG_TEXT` / `CHECK_TITLE` / `CHECK_ID`, or — when the deployed
+source path is supplied and the finding carries a `LINE` — the enclosing
+call). Program-level findings with no FM/method are **skipped** (they are not
+what this store is for). Attributed findings upsert as `CANDIDATE` rows under
+`{custom_url}\frequently_errors\<OBJECT>.tsv` (TEAM-SHARED, not a MEMORY file)
+with `SEVERITY=ATC_P<n>` and `ERROR_CLASS=ATC_<CHECK_ID>`.
+
+Best-effort — never changes the gate verdict. **Skip** when
+`frequently_errors_enabled` / `frequently_errors_autorecord` is `false`, or
+when Stage 4b did not run.
+
+```bash
+powershell -NoProfile -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_error_hints.ps1" -Action record -Source ATC -CustomUrl "{custom_url}" -FindingsFile "<save-to>.findings.tsv" -SourceFile "<DEPLOYED_ABAP_PATH-if-known>" -Program "<OBJECT_NAME>"
+```
+
+`-SourceFile` is optional but improves attribution when the source the run
+checked is on disk (e.g. straight after `/sap-gen-abap` + deploy). Report
+`STATUS: RECORDED added=<n> updated=<n> skipped=<n>` as an INFO note.
 
 ---
 

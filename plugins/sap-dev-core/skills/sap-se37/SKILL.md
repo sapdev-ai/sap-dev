@@ -47,6 +47,7 @@ Task: $ARGUMENTS
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/tr_resolution.md` | TR resolution flow — this skill delegates to `/sap-transport-request` (Step 1b) |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/language_independence_rules.md` | GUI-scripting language independence — identify by component ID + DDIC field name, status-bar checks via `MessageType` codes (S/W/E/I/A), VKey instead of menu-text, no branching on `.Text`/`.Tooltip`/window titles |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/abap_code_quality_rules.md` | ABAP code-quality rules — deployed FM source must follow modern syntax, OOP scaffolds, no literal MESSAGE strings, perf-band-appropriate SQL. Run `/sap-check-abap` and `/sap-check-fm` before deploy when the source isn't generator-emitted. |
+| `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_error_hints.ps1` | frequently_errors recorder. The Final step feeds deploy syntax/activation errors (`-Action record -Source SE37 -RawOutputFile ...`) so FM/METHOD-related failures are captured to the team store. Best-effort; never changes the verdict. |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/sap_gui_security_handling.md` | SAP GUI Security dialog handling — the **source upload** (Step 5a, via Utilities > Upload — reads the file from disk, no clipboard) and the check-and-fix **FM source download** (Step A) are both SAP-GUI-side file IO, so either can raise the modal "SAP GUI Security" dialog (which suspends the Scripting API and hangs cscript). Pre-check + OS-level watcher wrap each of those file-IO steps. |
 | `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_gui_security_precheck.ps1` | Read-only allow-list pre-check (`saprules.xml`) — `ALLOWED` (exit 0) / `NOT_COVERED` (exit 1). Used by Step A before the source download. |
 | `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_gui_security_sidecar.ps1` | OS-level (Win32) watcher that auto-dismisses the SAP GUI Security dialog (ticks Remember + clicks Allow). Launched as a background process before the Step A download. |
@@ -1359,6 +1360,25 @@ powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_
 ```
 
 Suggested `<CLASS>`: `SE37_FAILED`, `SE37_INACTIVE`, `SE37_LOCKED`, `TR_RESOLUTION_FAILED`, `GUI_TIMEOUT`.
+
+### Record FM/METHOD errors to frequently_errors (best-effort)
+
+On a syntax/activation failure where a source file was deployed, feed the
+errors to the team frequently_errors store. The recorder attributes each
+error to the enclosing `CALL FUNCTION '<FM>'` / class method **called inside
+the FM body** (by source line number) and upserts a `CANDIDATE` row under
+`{custom_url}\frequently_errors\<OBJECT>.tsv` (TEAM-SHARED, not a MEMORY
+file). Best-effort — never changes the deploy verdict. **Skip** when
+`frequently_errors_enabled` / `frequently_errors_autorecord` is `false` or no
+source was deployed.
+
+1. Write the captured VBS stdout (the per-finding `... Line N: <text>` lines)
+   to `{WORK_TEMP}\se37_output.txt`.
+2. Run:
+   ```bash
+   powershell -NoProfile -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_error_hints.ps1" -Action record -Source SE37 -CustomUrl "{custom_url}" -SourceFile "<DEPLOYED_ABAP_PATH>" -RawOutputFile "{WORK_TEMP}\se37_output.txt" -Program "<FM_NAME>"
+   ```
+   Report `STATUS: RECORDED ...` as INFO. Non-zero exit is non-fatal.
 
 ---
 

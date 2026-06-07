@@ -44,6 +44,7 @@ Task: $ARGUMENTS
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/abap_code_quality_rules.md` | ABAP code-quality rules — deployed program source must follow modern syntax, OOP scaffolds, no literal MESSAGE strings, perf-band-appropriate SQL. Run `/sap-check-abap` before deploy when the source isn't generator-emitted. |
 | `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_log_lib.ps1` | Structured logger. Driven via the shared `sap_log_helper.ps1` wrapper that persists `run_id` between skill steps. |
 | `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_log_helper.ps1` | Shared start/step/end wrapper around `sap_log_lib.ps1`. Persists run state to `{WORK_TEMP}\sap_se38_run.json` so this skill's discrete bash blocks share one logical run. Logging is best-effort and never breaks the skill. |
+| `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_error_hints.ps1` | frequently_errors recorder. Step 6b feeds deploy syntax/activation errors (`-Action record -Source SE38 -RawOutputFile ...`) so FM/METHOD-related failures are captured to the team store. Best-effort; never changes the verdict. |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/sap_gui_security_handling.md` | SAP GUI Security dialog handling — the check-and-fix **source download** (Step A) is SAP-GUI-side file IO, so it can raise the modal "SAP GUI Security" dialog (which suspends the Scripting API and hangs cscript). Pre-check + OS-level watcher wrap that download. |
 | `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_gui_security_precheck.ps1` | Read-only allow-list pre-check (`saprules.xml`) — `ALLOWED` (exit 0) / `NOT_COVERED` (exit 1). Used by Step A before the source download. |
 | `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_gui_security_sidecar.ps1` | OS-level (Win32) watcher that auto-dismisses the SAP GUI Security dialog (ticks Remember + clicks Allow). Launched as a background process before the Step A download. |
@@ -958,6 +959,31 @@ Log the FAILED end record (pick `ErrorClass` from the matched row, e.g.
 ```bash
 powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_se38_run.json" -Status FAILED -ExitCode 1 -ErrorClass <CLASS> -ErrorMsg "<one-line message from script output>"
 ```
+
+### Step 6b — Record FM/METHOD errors to frequently_errors (best-effort)
+
+When the failure is a syntax/activation error **and** a source file was
+deployed, feed the errors to the team frequently_errors store so the next
+generation avoids them. The recorder attributes each error to the enclosing
+`CALL FUNCTION '<FM>'` / class method **by source line number** (locale-
+independent) and upserts a `CANDIDATE` row under
+`{custom_url}\frequently_errors\<OBJECT>.tsv` — a TEAM-SHARED file, **not** a
+MEMORY file. Errors it can't tie to a FM/method go to `_UNATTRIBUTED.tsv`.
+
+This is best-effort and MUST NOT change the deploy verdict. **Skip** when
+`userConfig.frequently_errors_enabled` or `frequently_errors_autorecord` is
+`false`, or when no source file was deployed (fix-mode without source / delete
+/ attribute-change).
+
+1. Write the captured VBS stdout (the `[ERROR] Line N: <text>` lines you
+   already see) verbatim to `{WORK_TEMP}\se38_output.txt`.
+2. Run (CANDIDATE rows do not influence generation until `/sap-error-kb`
+   promotes them):
+   ```bash
+   powershell -NoProfile -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_error_hints.ps1" -Action record -Source SE38 -CustomUrl "{custom_url}" -SourceFile "<DEPLOYED_ABAP_PATH>" -RawOutputFile "{WORK_TEMP}\se38_output.txt" -Program "<PROGRAM_NAME>"
+   ```
+   Parse `STATUS: RECORDED added=<n> updated=<n> skipped=<n>`; report it as
+   an INFO note. A non-zero exit here is non-fatal — log and continue.
 
 ---
 

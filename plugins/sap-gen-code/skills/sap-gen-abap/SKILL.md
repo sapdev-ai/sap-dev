@@ -26,6 +26,9 @@ Task: $ARGUMENTS
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/abap_code_quality_rules.md` | **Mandatory ABAP code-quality rules** — release-aware modern syntax, OOP scaffolds, exception classes, performance gates, authz hooks, ABAP Unit, dependency + traceability emission |
 | `<SAP_DEV_CORE_SHARED_DIR>/templates/customer_brief.md` | One-page Project Profile read at Step 0a; drives release / OOP / perf decisions |
 | `<SAP_DEV_CORE_SHARED_DIR>/tables/abap_naming_rules.tsv` | Variable naming prefixes (overridable via `{custom_url}`) |
+| `<SAP_DEV_CORE_SHARED_DIR>/tables/frequently_errors.tsv` | **TIER-3 seed of the frequently_errors loop** — curated FM / class-method / codegen traps + remedies. Read (merged with `{custom_url}` tiers) at Step 1.5f. |
+| `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_error_hints.ps1` | CLI for the frequently_errors loop. `-Action resolve` (Step 1.5f read path) merges the 3 tiers for the spec's FMs/methods/auth-objects and writes `{work_folder}\_error_hints.txt`. OFFLINE. |
+| `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_error_hints_lib.ps1` | Engine dot-sourced by `sap_error_hints.ps1` (3-tier merge, dedup, attribution, upsert). |
 | `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_log_helper.ps1` | Shared start/step/end wrapper around `sap_log_lib.ps1`. State file: `{WORK_TEMP}\sap_gen_abap_run.json`. Logging is best-effort. |
 
 ---
@@ -524,6 +527,76 @@ When matching a spec source field to a struct target field, prefer:
 
 The audit copy at `_struct_signatures.txt` stays in the work folder for
 debugging.
+
+---
+
+## Step 1.5f — Load frequently_errors Hints (always, OFFLINE)
+
+**Purpose:** FM signatures + struct field lists tell the generator the
+*shape* of each call. They do NOT tell it the *traps* — the recurring
+mistakes a human (or this generator) made before on the same FM / class
+method / auth object, and the remedy that fixed them. This step loads a
+curated, TEAM-SHAREABLE catalog of those traps and injects it into Step 2.
+
+Unlike Step 1.5 / 1.5e this is **OFFLINE** (pure file merge, no RFC) — run
+it even when `fm_cache_enabled=false` or RFC is unavailable.
+
+Skip only when `userConfig.frequently_errors_enabled` is `false`.
+
+### 1.5f.a — Collect the objects this spec references
+
+Union, de-duplicate, uppercase:
+1. Every FM in `{WORK_TEMP}\fm_request.txt` (from 1.5a) — or, if 1.5 was
+   skipped, every `CALL FUNCTION '<FM>'` and `BAPI_*` / `RFC_*` mention in
+   `_process.txt`.
+2. Every global class / interface referenced as `CL_*=>`, `ZCL_*=>`,
+   `IF_*=>`, `<obj>->meth(` in `_process.txt` / `_interface.txt`.
+3. Every auth object in `{WORK_TEMP}\authz_request.txt` (from 1.5b').
+
+Write them comma-joined (or one per line to a file). Empty list is fine —
+the resolver still returns the general statement-level (`OBJECT_NAME=*`)
+and AUTHZ rules.
+
+### 1.5f.b — Resolve the 3-tier hint set
+
+Template at `<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_error_hints.ps1`.
+
+```bash
+powershell -NoProfile -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_error_hints.ps1" -Action resolve -Objects "<COMMA_LIST>" -CustomUrl "{custom_url}" -SharedTablesDir "<SAP_DEV_CORE_SHARED_DIR>\tables" -ResultFile "{work_folder}\_error_hints.txt" -InjectStatuses "<STATUS>"
+```
+
+- `<STATUS>` = `userConfig.frequently_errors_inject_status` (default
+  `CONFIRMED`; set to `ALL` to also inject not-yet-curated `CANDIDATE`
+  rows). Auto-recorded errors land as `CANDIDATE` and do NOT influence
+  generation until a human promotes them (see `/sap-error-kb`).
+- Precedence (highest wins on conflict; union otherwise; `MUTE` suppresses):
+  `{custom_url}\frequently_errors.tsv` > `{custom_url}\frequently_errors\<OBJECT>.tsv`
+  > `<shared>\tables\frequently_errors.tsv`.
+
+This is OFFLINE — no `%%SAP_*%%` / RFC tokens.
+
+### 1.5f.c — Inject hints into Step 2 context
+
+Read `{work_folder}\_error_hints.txt` (TSV). Columns:
+
+```
+OBJECT_TYPE  OBJECT_NAME  CONTEXT  ERROR_CLASS  RELEASE  WRONG_PATTERN  CORRECT_PATTERN  SEVERITY  RULE_REF  NOTE
+```
+
+When generating each `CALL FUNCTION`, functional-method call, BAPI
+structure assignment, `AUTHORITY-CHECK`, or `MESSAGE`, scan this file for
+rows whose `OBJECT_NAME` matches the object being emitted (or `*` for
+statement-level rules):
+
+- **Treat `WRONG_PATTERN` as forbidden** — never emit it.
+- **Emit `CORRECT_PATTERN` instead** — it is the load-bearing remedy.
+- Honour `RELEASE`: a `7.52`-tagged trap applies when the customer brief's
+  ABAP release is 7.52 (skip on newer kernels where it is not an error).
+- These hints are advisory CONTEXT — the live RFC signatures from Step 1.5 /
+  1.5e remain authoritative for *interfaces*; frequently_errors covers the
+  *traps* those signatures cannot express.
+
+The audit copy at `_error_hints.txt` stays in the work folder for debugging.
 
 ---
 
@@ -1089,6 +1162,12 @@ P1/P2/P3 if left unchecked.
    for the mismatched call. The most-hit cases: `GUI_UPLOAD FILENAME`,
    `GUI_DOWNLOAD FILENAME`, anything typed `STRING` receiving a fixed-
    length char actual.)
+9. **Every known trap in `_error_hints.txt` (Step 1.5f) is avoided.** For
+   each FM / class method / auth object you emitted, scan the loaded hints
+   for a matching `WRONG_PATTERN` and confirm the generated code uses the
+   `CORRECT_PATTERN` instead (honouring the row's `RELEASE`). These are
+   real, previously-observed deploy/ATC failures — leaving one in re-creates
+   a finding the team already paid for once.
 and re-walk. Do not ship the file with any unchecked box — the
 post-deploy ATC gate (`/sap-atc`) will fail at `MAX_PRIORITY=2` for
 findings #1, #2, #8; warn for #3-#6.

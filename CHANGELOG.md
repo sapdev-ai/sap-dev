@@ -4,6 +4,42 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **frequently_errors feedback loop** — a team-shareable, curated catalog of
+  recurring FM / class-method / codegen mistakes + remedies that closes the
+  generate → deploy → check loop on `sap-gen-abap`. Complements the FM/struct/
+  authz *signature* caches (which give a call's *shape*) by capturing the
+  *traps* signatures cannot express. New skill count **77 → 78**.
+  - **3-tier store** (precedence: highest wins on conflict, union otherwise,
+    `MUTE` suppresses): `{custom_url}\frequently_errors.tsv` (hand-authored
+    override) > `{custom_url}\frequently_errors\<OBJECT>.tsv` (per-object,
+    auto-recorded + curated) > `shared/tables/frequently_errors.tsv` (plugin
+    seed). System-agnostic and team-shareable via `custom_url` (NOT MEMORY
+    files).
+  - **Seed** `shared/tables/frequently_errors.tsv` — 17 CONFIRMED traps mined
+    from real MaterialUpload builds (BAPI_MATERIAL_SAVEDATA explicit-MATNR /
+    marmdata weight-volume / inline-`DATA()`-on-7.52; GUI_UPLOAD/DOWNLOAD
+    FILENAME=STRING; CL_GUI_FRONTEND_SERVICES file_open_dialog; literal
+    MESSAGE; M_MATE_MAR/M_MATE_WRK authz fields; text-symbol; REPOSRC dump),
+    cross-referenced to `abap_code_quality_rules.md` §14/§22/§24.
+  - **Engine + CLI** `shared/scripts/sap_error_hints_lib.ps1` (+ `sap_error_hints.ps1`
+    CLI: `resolve` / `record` / `curate`). READ path = `sap-gen-abap` **Step
+    1.5f** (OFFLINE 3-tier merge → `_error_hints.txt`, injected at Step 2,
+    new ATC-checklist item #9). WRITE path = `sap-se38`/`se37`/`se24` (Step 6b
+    / Final) + `sap-atc` (Step 6c) auto-record on failure as `CANDIDATE`,
+    attributing each error to its FM/METHOD **by source line number**
+    (locale-independent) with an `_UNATTRIBUTED` fallback. Verified on
+    Windows PowerShell 5.1 + pwsh 7 (21/21 offline assertions).
+  - **Curation skill** `/sap-error-kb` (`list` / `promote` / `mute` / `show`) —
+    only `CONFIRMED` rows reach generation by default
+    (`frequently_errors_inject_status`); auto-records stay `CANDIDATE` until a
+    human adds the remedy and promotes, so documented `sap-check` false
+    positives can't silently poison the generator.
+  - New settings `frequently_errors_enabled` / `frequently_errors_autorecord`
+    / `frequently_errors_inject_status`; contract doc
+    `shared/rules/frequently_errors.md`.
+
 ## [0.6.1] — 2026-06-04
 
 ### Fixed

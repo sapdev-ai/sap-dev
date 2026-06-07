@@ -85,6 +85,21 @@
                                                    "sensitive":  false,
                                                    "value":  ""
                                                },
+                       "frequently_errors_enabled":  {
+                                                         "description":  "Master switch for the frequently_errors loop (curated FM/method/codegen traps). When true, sap-gen-abap Step 1.5f loads hints and deploy/ATC skills auto-record new FM/METHOD errors. Allowed values: 'true' / 'false'. Default: 'true'.",
+                                                         "sensitive":  false,
+                                                         "value":  ""
+                                                     },
+                       "frequently_errors_autorecord":  {
+                                                            "description":  "Whether sap-se38/se37/se24 and sap-atc auto-record FM/METHOD-related errors to {custom_url}\\frequently_errors\\<OBJECT>.tsv as CANDIDATE rows. Best-effort; never changes a deploy/ATC verdict. Allowed values: 'true' / 'false'. Default: 'true'.",
+                                                            "sensitive":  false,
+                                                            "value":  ""
+                                                        },
+                       "frequently_errors_inject_status":  {
+                                                               "description":  "Which frequently_errors statuses sap-gen-abap injects into generation. 'CONFIRMED' (default) = only human-curated rows; 'ALL' = also inject not-yet-reviewed CANDIDATE rows (faster feedback, higher noise). Curate via /sap-error-kb. The store lives at {custom_url}\\frequently_errors -- point custom_url at a shared drive / git repo to share it across a team.",
+                                                               "sensitive":  false,
+                                                               "value":  ""
+                                                           },
                        "log_enabled":  {
                                            "description":  "Master switch for skill logging. Allowed values: 'true' / 'false'. Default: 'true'.",
                                            "sensitive":  false,

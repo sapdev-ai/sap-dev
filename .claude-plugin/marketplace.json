@@ -12,7 +12,7 @@
     "version": "0.6.1",
     "last_updated": "2026-06-04",
     "total_plugins": 4,
-    "total_skills": 77,
+    "total_skills": 78,
     "categories": [
       "tooling"
     ]
@@ -37,6 +37,7 @@
         "./skills/sap-doctor",
         "./skills/sap-document-object",
         "./skills/sap-enhancement-advisor",
+        "./skills/sap-error-kb",
         "./skills/sap-evidence-pack",
         "./skills/sap-explain-object",
         "./skills/sap-fix-incident",
