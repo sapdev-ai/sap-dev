@@ -13,7 +13,7 @@ description: |
   Checks existing sessions first; reuses the active connection when it
   matches the saved default.
   Prerequisites: SAP GUI installed, SAP GUI Scripting enabled (client + server).
-argument-hint: "[--list | --add | --switch <id> | --set-default <id> | --delete <id>]"
+argument-hint: "[--lang <CODE>] [--force] [--list | --add | --switch <id> | --set-default <id> | --delete <id>]"
 ---
 
 # SAP GUI Login Skill
@@ -42,6 +42,7 @@ Task: $ARGUMENTS
 | `sap-dev-core/shared/tables/sap_release_markers.tsv` | *(none — read by sap_rfc_system_info.ps1)* | (component, release range) → canonical marker lookup. |
 | `<SKILL_DIR>/sap_login_select.ps1` | *(none — direct invoke)* | **Selection driver**. Actions: `init`, `decide`, `list`, `set-default`, `switch`, `delete`, `finalize`, `check`, `landscape-entries`. Emits structured signals (`RESOLVED:`, `ATTACH_ACTIVE:`, `CONNECT_PROFILE:`, `PICK_NEEDED:`, `ADD_NEEDED:`, `SUCCESS:`, `AMBIGUOUS:`, `CONTINUE_TO_STEP1:`, `LANDSCAPE:`). |
 | `<SKILL_DIR>/references/sap_login_capture_active_session.vbs` | *(none — static)* | GUI-side capture. Phase-4 fields: `system_name`, `client`, `user`, `language`, `application_server`, `system_number`, `message_server`, `logon_group`, `program`, `screen_number`, plus GUI version. Emits flat JSON or `MULTI:<array>`. |
+| `<SKILL_DIR>/references/sap_close_connection.vbs` | *(none — static)* | Closes a SAP GUI connection by path (`/app/con[N]`, or a session path reduced to its connection). Used by **Step 0.9** to drop an active connection whose logon language differs from the requested one, so the login flow can reopen it fresh in the requested language. Verifies via connection-count decrease (renumber-proof). Emits `CLOSED: <path>` / `ERROR: <text>`. |
 
 ---
 
@@ -134,6 +135,32 @@ powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_
 
 ---
 
+## Step 0.6 — Detect Requested Login Language (default mode)
+
+Inspect `$ARGUMENTS` for an explicitly-requested logon language and capture two
+values used by the rest of the skill:
+
+- **`{REQUESTED_LANG}`** — the language the user asked to log on in, or empty
+  when they didn't specify one. Recognise:
+  - an explicit flag: `--lang <CODE>` / `--language <CODE>`, or
+  - natural language: "log in in Japanese", "use EN", "logon language ZH", etc.
+
+  Normalise the answer to a SAP language token (a 1-char SAP key like `E`/`J`/`1`
+  or a 2-char ISO code like `EN`/`JA`/`ZH` are both fine — the driver
+  canonicalises EN==E=="English" etc. via `Test-SapLanguageEqual`). If the user
+  gave no language, leave `{REQUESTED_LANG}` **empty** — the skill then behaves
+  exactly as before (no language gate, reuse the active session as-is).
+
+- **`{FORCE_RELOGIN}`** — `true` if the user passed `--force` (or said "force" /
+  "don't ask" / "without confirmation"), else `false`. Controls whether Step 0.9
+  asks before closing a mismatched connection.
+
+`{REQUESTED_LANG}` is threaded into **Step 0.8** (`-RequestedLanguage`) and, when
+set, becomes the logon language in **Step 3** (overriding a profile's stored
+language for this run).
+
+---
+
 ## Step 0.7 — Bootstrap (AI session + Migration)
 
 Resolves this conversation's AI-session id (automatic — see "AI-Session
@@ -159,9 +186,13 @@ Stdout signals:
 
 Run the selection driver to pick the target connection. Re-invoke with the
 appropriate `-PickProfileId` / `-PickConnectionPath` after each user choice.
+Pass `-RequestedLanguage "{REQUESTED_LANG}"` (from Step 0.6) on **every**
+`decide` invocation — including the re-invocations after a picker — so the
+language gate also applies to a connection the user picks. Omit it (or pass
+empty) when no language was requested.
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SKILL_DIR>\sap_login_select.ps1" -Action decide -WorkTemp "{WORK_TEMP}"
+powershell -ExecutionPolicy Bypass -File "<SKILL_DIR>\sap_login_select.ps1" -Action decide -WorkTemp "{WORK_TEMP}" -RequestedLanguage "{REQUESTED_LANG}"
 ```
 
 Interpret the **last** structured stdout line:
@@ -173,6 +204,68 @@ Interpret the **last** structured stdout line:
 | `CONNECT_PROFILE: id=<I> description='<D>' source=<S>` | Pick is a saved profile. | Look up the profile in `connections.json` (`sap_connection_lib.ps1`), decrypt password (DPAPI), and proceed to Step 3 (Generate Login VBS) with the profile's fields. |
 | `PICK_NEEDED: <json>` | User must choose. | Parse `options[]` (each has `kind=active|profile`, `description`, `system_name`, `client`, `user`, `endpoint_summary`, `is_default`). Present via `AskUserQuestion`. Re-invoke `sap_login_select.ps1 -Action decide -PickProfileId <id>` OR `-PickConnectionPath <path>`. |
 | `ADD_NEEDED:` | No active connections, no saved profiles. | Prompt the user for a new connection (logon-pad entry, OR app server + system number, OR message server + logon group + system id) plus client/user/password/language. Proceed to Step 3 with the supplied values. After login succeeds, Step 6.5 saves it as a new profile. |
+| `RELOGIN_LANG_MISMATCH: <json>` | An active connection matches the target on identity, but its logon language differs from `{REQUESTED_LANG}`. | Handle per **Step 0.9 — Language-mismatch re-login** below (confirm → close → re-login in the requested language). Only ever emitted when `{REQUESTED_LANG}` is non-empty. |
+
+---
+
+## Step 0.9 — Language-mismatch Re-login (only after `RELOGIN_LANG_MISMATCH`)
+
+Step 0.8 emits this signal only when a language was requested (Step 0.6) **and**
+an active connection that would otherwise be reused is logged on in a different
+language. Parse the JSON payload — key fields: `connection_path`,
+`active_language`, `requested_language`, `connection_id` (the saved-profile
+UUID, or empty for an ad-hoc connection with no saved profile), `description`,
+plus the endpoint fields (`system_name`, `client`, `user`, `application_server`,
+`system_number`, `message_server`, `logon_group`, `system_id`,
+`logon_pad_entry`).
+
+### Step 0.9a — Confirm (skipped when `{FORCE_RELOGIN}` is true)
+
+Closing a connection drops **all** of its sessions; unsaved work in them is
+lost. Unless `{FORCE_RELOGIN}` is true, ask the user via `AskUserQuestion`:
+
+> The connection `<description>` (`<system_name>/<client>/<user>`) is currently
+> logged on in **`<active_language>`**, but you asked for
+> **`<requested_language>`**. Close it (losing any unsaved work in its sessions)
+> and log back on in `<requested_language>`?
+>
+> - **Close and re-login** — proceed with Step 0.9b.
+> - **Keep current session** — skip the re-login; attach to the existing session
+>   as-is (jump to Step 6 with `connection_path` + `/ses[0]`). The session keeps
+>   its current language.
+
+If `{FORCE_RELOGIN}` is true, skip the prompt and proceed straight to Step 0.9b.
+
+### Step 0.9b — Close the connection
+
+```bash
+C:/Windows/SysWOW64/cscript.exe //NoLogo "<SKILL_DIR>\references\sap_close_connection.vbs" "<connection_path>"
+```
+
+Expect `CLOSED: <connection_path>` on the last line. On `ERROR:` (e.g. a logoff
+confirmation popup blocked the close), show the output and stop — do **not**
+proceed to re-login against a half-closed connection.
+
+### Step 0.9c — Re-login in the requested language
+
+Now log in fresh, using `{REQUESTED_LANG}` as the logon language:
+
+- **`connection_id` non-empty** (a saved profile exists): load + decrypt it per
+  **Step 2a**, then run **Step 3** with the profile's endpoint fields and
+  `THE_LANGUAGE = {REQUESTED_LANG}` (override the profile's stored language).
+- **`connection_id` empty** (ad-hoc connection, no saved profile): use the
+  endpoint fields from the JSON payload directly in **Step 3**, set
+  `THE_LANGUAGE = {REQUESTED_LANG}`, and prompt the user for the **password**
+  (it was never stored). After a successful login, Step 6.5 saves it as a new
+  profile.
+
+Then continue to **Step 6** (capture) and **Step 6.5** (finalize) as normal.
+
+> **Caveat — duplicate connections to the same system.** Step 0.9b closes only
+> the one `connection_path` reported. If the user has a *second* connection / tab
+> still open to the same `system_name`/`client`/`user`, the login VBS's
+> identity-based reuse (Step 3) may attach to that one and skip the language
+> change. Close those too (re-run `/sap-login --lang <CODE>`) if it happens.
 
 ---
 
@@ -190,7 +283,7 @@ then into `sap-dev-core\shared`.
 
 | STATUS line | Meaning | Action |
 |---|---|---|
-| `STATUS: LOGGED_IN` | Authenticated session found | Report session info (SYSTEM, CLIENT, USER, LANGUAGE, CODEPAGE from output). **Done — skip Steps 2-5.** |
+| `STATUS: LOGGED_IN` | Authenticated session found | Report session info (SYSTEM, CLIENT, USER, LANGUAGE, CODEPAGE from output). If `{REQUESTED_LANG}` (Step 0.6) is set **and** differs from the reported `LANGUAGE`, treat it as a language mismatch — go to **Step 0.9** (confirm → close → re-login) instead of finishing. Otherwise **Done — skip Steps 2-5.** |
 | `STATUS: LOGIN_SCREEN` | Connection exists, needs authentication | Proceed to Step 2. The login VBS will reuse this session. |
 | `STATUS: NO_SESSION` | SAP GUI running, no sessions | Proceed to Step 2 |
 | `STATUS: NO_GUI` | SAP GUI / SAP Logon not running | Proceed to Step 2. The login VBS will start SAP Logon. |
@@ -353,6 +446,7 @@ Token-fill rules (the VBS picks among three connection methods):
 - For **direct** profiles: set `THE_SERVER` + `THE_SYSNR`; leave logon_desc/msrv/grp/sid empty.
 - For **load-balanced** profiles: set `THE_MSG_SERVER` + `THE_LOGON_GROUP` (blank → VBS uses " ") + `THE_SYSTEM_ID`; leave logon_desc/server/sysnr empty.
 - `THE_SYSTEM_NAME` is **always** the profile's `system_name` (SID — e.g. `S4D`, `S4H`). Used by the VBS reuse-loop's identity match — independent of which of the three endpoint methods is chosen. Leave empty for legacy profiles with no SID; the VBS falls back to Client+User matching.
+- `THE_LANGUAGE` is **`{REQUESTED_LANG}`** when the user requested a language (Step 0.6) — it overrides the profile's stored `language` for this login. Otherwise use the profile's `language` (CONNECT_PROFILE) or the value the user typed (ADD flow). This is what makes the Step 0.9 re-login actually land in the requested language.
 
 If a field is unused in the chosen method, substitute the empty string `""`.
 

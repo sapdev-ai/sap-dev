@@ -93,10 +93,16 @@ param(
     [string]$CapturedJson        = '',   # raw JSON from capture VBS (one-line)
     [string]$NewLogonDescription = '',   # user-supplied label, optional
     [string]$NewPasswordDpapi    = '',   # ciphertext from sap_dpapi.ps1, optional
-    [string]$UserAppServerHint   = ''    # hostname the user typed in Step 2b ADD flow,
+    [string]$UserAppServerHint   = '',   # hostname the user typed in Step 2b ADD flow,
                                          # optional. Used by Resolve-SapApplicationServer
                                          # when the captured Info.ApplicationServer is
                                          # an internal name that doesn't DNS-resolve.
+
+    # decide-mode: the logon language the user explicitly asked for this run
+    # (empty = no preference). When non-empty, decide compares it against the
+    # language of any active connection it would otherwise reuse and emits
+    # RELOGIN_LANG_MISMATCH instead of ATTACH_ACTIVE / RESOLVED when they differ.
+    [string]$RequestedLanguage   = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -117,6 +123,7 @@ $script:_ParamCapturedJson        = $CapturedJson
 $script:_ParamNewLogonDescription = $NewLogonDescription
 $script:_ParamNewPasswordDpapi    = $NewPasswordDpapi
 $script:_ParamUserAppServerHint   = $UserAppServerHint
+$script:_ParamRequestedLanguage   = $RequestedLanguage
 
 # ---------------------------------------------------------------------------
 # Resolve shared paths.
@@ -138,6 +145,7 @@ $CapturedJson        = $script:_ParamCapturedJson
 $NewLogonDescription = $script:_ParamNewLogonDescription
 $NewPasswordDpapi    = $script:_ParamNewPasswordDpapi
 $UserAppServerHint   = $script:_ParamUserAppServerHint
+$RequestedLanguage   = $script:_ParamRequestedLanguage
 
 if ([string]::IsNullOrWhiteSpace($WorkTemp)) {
     $WorkTemp = Join-Path (Get-SapWorkDir) 'temp'
@@ -240,6 +248,46 @@ function Match-ActiveToProfile {
     return $null
 }
 
+# ---------------------------------------------------------------------------
+# Requested-language gate (decide). When the user asked to log on in a
+# specific language ($RequestedLanguage non-empty), an active connection may
+# match on identity (system/client/user/endpoint) yet be logged on in a
+# DIFFERENT language. Language is fixed at logon, so reusing that session
+# would silently ignore the request. These helpers detect the mismatch and
+# emit a RELOGIN_LANG_MISMATCH signal carrying everything the SKILL.md needs
+# to close the connection and re-login (profile id when known, else the live
+# connection's own endpoint fields for the ad-hoc / no-profile case).
+# ---------------------------------------------------------------------------
+function Test-RequestedLanguageMatch {
+    param($ActiveConn)
+    # $true = no relogin needed (no request, or languages already match).
+    if ([string]::IsNullOrWhiteSpace($RequestedLanguage)) { return $true }
+    return (Test-SapLanguageEqual -A "$($ActiveConn.language)" -B $RequestedLanguage)
+}
+
+function Emit-ReloginMismatch {
+    param($ActiveConn, $MatchedProfile, [string]$Reason)
+    $obj = [ordered]@{
+        connection_path    = "$($ActiveConn.connection_path)"
+        active_language    = "$($ActiveConn.language)"
+        requested_language = "$RequestedLanguage"
+        connection_id      = if ($MatchedProfile) { "$($MatchedProfile.id)" } else { '' }
+        description        = if ($MatchedProfile) { "$($MatchedProfile.description)" } else { "$($ActiveConn.description)" }
+        system_name        = "$($ActiveConn.system_name)"
+        client             = "$($ActiveConn.client)"
+        user               = "$($ActiveConn.user)"
+        application_server = "$($ActiveConn.application_server)"
+        system_number      = "$($ActiveConn.system_number)"
+        message_server     = "$($ActiveConn.message_server)"
+        logon_group        = "$($ActiveConn.logon_group)"
+        system_id          = "$($ActiveConn.system_id)"
+        logon_pad_entry    = if ($MatchedProfile) { "$($MatchedProfile.logon_pad_entry)" } else { "$($ActiveConn.description)" }
+        source             = "$Reason"
+    }
+    $json = $obj | ConvertTo-Json -Depth 6 -Compress
+    Write-Host ("RELOGIN_LANG_MISMATCH: " + $json)
+}
+
 # =============================================================================
 # Action: init  -- bootstrap ai_session_id + migrate legacy settings.
 # =============================================================================
@@ -337,6 +385,10 @@ function Invoke-Decide {
         foreach ($a in $activeConns) {
             $match = Match-ActiveToProfile -ActiveConn $a -Profiles @($p)
             if ($match) {
+                if (-not (Test-RequestedLanguageMatch -ActiveConn $a)) {
+                    Emit-ReloginMismatch -ActiveConn $a -MatchedProfile $p -Reason 'pick_profile'
+                    return
+                }
                 Write-Host "ATTACH_ACTIVE: path=$($a.connection_path)/ses[0] connection_path=$($a.connection_path) connection_id=$($p.id) description='$($p.description)'"
                 return
             }
@@ -348,6 +400,10 @@ function Invoke-Decide {
         $a = $activeConns | Where-Object { $_.connection_path -eq $PickConnectionPath } | Select-Object -First 1
         if (-not $a) { Write-Host "ERROR: active connection $PickConnectionPath not found"; exit 1 }
         $match = Match-ActiveToProfile -ActiveConn $a -Profiles $store.connections
+        if (-not (Test-RequestedLanguageMatch -ActiveConn $a)) {
+            Emit-ReloginMismatch -ActiveConn $a -MatchedProfile $match -Reason 'pick_connection'
+            return
+        }
         $descEff = if ($match) { $match.description } else { $a.description }
         Write-Host "ATTACH_ACTIVE: path=$($a.connection_path)/ses[0] connection_path=$($a.connection_path) description='$descEff'"
         return
@@ -361,6 +417,10 @@ function Invoke-Decide {
             foreach ($a in $activeConns) {
                 $match = Match-ActiveToProfile -ActiveConn $a -Profiles @($pinnedProfile)
                 if ($match) {
+                    if (-not (Test-RequestedLanguageMatch -ActiveConn $a)) {
+                        Emit-ReloginMismatch -ActiveConn $a -MatchedProfile $pinnedProfile -Reason 'pin'
+                        return
+                    }
                     Write-Host "RESOLVED: path=$($a.connection_path)/ses[0] connection_path=$($a.connection_path) connection_id=$($pinnedProfile.id) description='$($pinnedProfile.description)' source=pin"
                     return
                 }
@@ -396,6 +456,10 @@ function Invoke-Decide {
         if ($defP) {
             $matchDefault = Test-SapConnectionsEqual -A (ConvertTo-IdentityHash $a) -B (ConvertTo-IdentityHash $defP)
             if ($matchDefault) {
+                if (-not (Test-RequestedLanguageMatch -ActiveConn $a)) {
+                    Emit-ReloginMismatch -ActiveConn $a -MatchedProfile $defP -Reason 'default_match'
+                    return
+                }
                 Write-Host "ATTACH_ACTIVE: path=$($a.connection_path)/ses[0] connection_path=$($a.connection_path) connection_id=$($defP.id) description='$($defP.description)' source=default_match"
                 return
             }

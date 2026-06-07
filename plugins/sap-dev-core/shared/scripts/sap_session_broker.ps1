@@ -10,10 +10,14 @@
 # Contract -- what the broker promises:
 #   * Mutual exclusion: at any instant, at most one task_id holds a "claimed"
 #     entry for any given session path.
-#   * Reactive cleanup: every acquire/release call drops entries that no
-#     longer reflect reality (session window closed, owner process died,
-#     TTL expired, user logged out -- the latter detected per-connection
-#     via SystemSessionId change).
+#   * Reactive cleanup + identity reconciliation: every acquire/release/
+#     discover/gc call mirrors live SAP identity onto each connection block
+#     (live is source of truth) and drops entries that no longer reflect
+#     reality (session window closed, owner process died, TTL expired,
+#     relogin). A reused /app/con[N] slot now hosting a DIFFERENT system is
+#     detected by the (system,client,user) identity tuple -- NOT by
+#     SystemSessionId, which on the kernels we run is per-workstation, not
+#     per-logon, and stays identical across an A->B swap on one slot.
 #   * Spawn-on-demand: if no free session exists on the target connection,
 #     the broker spawns one via /oSESSION_MANAGER (the only OK-code reliably
 #     honoured on the S/4HANA 1909 kernel 754 build verified during design).
@@ -323,6 +327,26 @@ function Get-SapState {
         copy thereafter.
     #>
     if ($null -ne $script:CachedInfo) { return $script:CachedInfo }
+    # Test seam: SAPDEV_BROKER_FAKE_INFO lets an offline regression test feed a
+    # canned INFO payload (a file path or inline JSON, same shape the COM
+    # helper emits) so the identity-reconciliation logic can be exercised
+    # without a live SAP GUI. Never set in production.
+    if (-not [string]::IsNullOrWhiteSpace($env:SAPDEV_BROKER_FAKE_INFO)) {
+        try {
+            $fakeRaw = if (Test-Path -LiteralPath $env:SAPDEV_BROKER_FAKE_INFO) {
+                Get-Content -LiteralPath $env:SAPDEV_BROKER_FAKE_INFO -Raw -Encoding UTF8
+            } else { $env:SAPDEV_BROKER_FAKE_INFO }
+            $obj = $fakeRaw | ConvertFrom-Json
+            $h = @{}
+            foreach ($p in $obj.PSObject.Properties) { $h[$p.Name] = $p.Value }
+            if (-not $h.ContainsKey('ok')) { $h['ok'] = $true }
+            $script:CachedInfo = $h
+            return $h
+        } catch {
+            $script:CachedInfo = $null
+            return $null
+        }
+    }
     $info = Invoke-ComHelper -Args @('INFO')
     if (-not $info.ok) { $script:CachedInfo = $null; return $null }
     $script:CachedInfo = $info
@@ -468,13 +492,64 @@ function Is-ProcessAlive {
 }
 
 # ===========================================================================
-# Sweep -- drops entries that no longer reflect reality.
-# Walks every connection block, dropping per-connection entries that:
-#   (a) point to a non-existent session
-#   (b) belong to a dead owner PID (only when owner_pid > 0)
-#   (c) have a TTL-expired claim
-#   (d) belong to a connection whose SystemSessionId changed (entire
-#       connection block dropped if logon_id mismatched).
+# Identity reconciliation helpers
+# ---------------------------------------------------------------------------
+# The live SAP state is the SOURCE OF TRUTH for every field the COM helper
+# reads from GuiSessionInfo (system_name / client / user / language /
+# description / logon_id + the endpoint quintet). A /app/con[N] slot is
+# recyclable -- the user can close system A's connection and open system B in
+# the same slot -- so the persisted block must follow the live identity, not
+# stick to whatever was first written. The ONLY field the broker (not SAP)
+# owns is connection_id (a profile UUID assigned by set-connection-id); these
+# helpers never touch it.
+# ===========================================================================
+
+# Stable, case-insensitive identity key for a connection: the (system, client,
+# user) tuple that uniquely names a logged-on system. Used to detect when a
+# slot now hosts a DIFFERENT system -- logon_id (SystemSessionId) cannot, since
+# on the kernels we run (S/4HANA 1909, 754) it is per-workstation, not per-
+# logon, and stays byte-identical across an A->B system swap on one slot.
+function Get-IdentityKey {
+    param($Src)
+    return (("$($Src.system_name)").Trim().ToUpperInvariant() + '|' +
+            ("$($Src.client)").Trim().ToUpperInvariant()      + '|' +
+            ("$($Src.user)").Trim().ToUpperInvariant())
+}
+
+# Mirror the live SAP-read identity/metadata fields onto a registry block.
+# -Full overwrites every field verbatim (used when the slot now hosts a
+# DIFFERENT system -- take the live identity wholesale, including any
+# legitimately-empty endpoint fields). Without -Full, each field is refreshed
+# only when the live value is non-empty, so a transient empty read (e.g. a
+# session still sitting on the SAPMSYST logon screen, whose Info struct has no
+# SystemName yet) cannot wipe good stored data, while a relogin in a different
+# language is still picked up. $Live may be a hashtable (the sweep's live
+# lookup) or a PSCustomObject (discover's parsed INFO) -- both index the same.
+function Copy-LiveIdentityToBlock {
+    param([hashtable] $Block, $Live, [switch] $Full)
+    $fields = @('system_name','client','user','language','description',
+                'logon_id','message_server','logon_group','system_id',
+                'application_server','system_number')
+    foreach ($f in $fields) {
+        $v = "$($Live.$f)"
+        if ($Full -or $v -ne '') { $Block[$f] = $v }
+    }
+}
+
+# ===========================================================================
+# Sweep -- reconciles each connection block against live SAP state, then
+# drops entries that no longer reflect reality.
+# First, per connection block: mirror the live identity/metadata onto the
+# block (live is source of truth). If the slot now hosts a DIFFERENT system
+# (identity tuple changed), take the live identity wholesale and clear the
+# stale connection_id. If a relogin is detected (tuple changed, OR logon_id
+# rotated, OR language changed -- any of which closes the prior sessions),
+# drop ALL of that connection's entries so they re-discover fresh.
+# Then, per surviving entry, drop it when it:
+#   (a) points to a non-existent session
+#   (b) belongs to a dead owner PID (only when owner_pid > 0)
+#   (c) has a TTL-expired claim
+# A connection whose connection_path no longer resolves is dropped whole.
 # ===========================================================================
 
 function Sweep-StaleEntries {
@@ -486,14 +561,26 @@ function Sweep-StaleEntries {
         return 0
     }
 
-    # Build a lookup of current live state by connection_path.
+    # Build a lookup of current live state by connection_path. Capture the
+    # FULL identity/metadata set (not just logon_id) so the reconciliation
+    # below can mirror live values onto the registry block.
     $live = @{}
     foreach ($c in $state.connections) {
         $sessionMap = @{}
         foreach ($s in $c.sessions) { $sessionMap["$($s.path)"] = $true }
         $live["$($c.connection_path)"] = @{
-            logon_id   = "$($c.logon_id)"
-            sessions   = $sessionMap
+            system_name        = "$($c.system_name)"
+            client             = "$($c.client)"
+            user               = "$($c.user)"
+            language           = "$($c.language)"
+            description        = "$($c.description)"
+            logon_id           = "$($c.logon_id)"
+            message_server     = "$($c.message_server)"
+            logon_group        = "$($c.logon_group)"
+            system_id          = "$($c.system_id)"
+            application_server = "$($c.application_server)"
+            system_number      = "$($c.system_number)"
+            sessions           = $sessionMap
         }
     }
 
@@ -517,24 +604,56 @@ function Sweep-StaleEntries {
 
         $liveConn = $live[$conPath]
 
-        # Logon ID changed (user logged out + back in on the same SAP Logon slot)?
-        if ("$($conBlock.logon_id)" -ne '' -and
-            $liveConn.logon_id -ne '' -and
-            "$($conBlock.logon_id)" -ne $liveConn.logon_id) {
+        # --- Identity reconciliation -----------------------------------------
+        # Detect whether this slot now hosts a different logon than the block
+        # records. logon_id (SystemSessionId) alone is NOT enough: on the
+        # kernels we run it is per-workstation, not per-logon, so it stays
+        # identical across an A->B system swap on one /app/con[N] slot. Compare
+        # the real identity tuple (system/client/user) as the primary signal,
+        # and treat a rotated logon_id or a changed language as relogin signals
+        # too (any of which closes the prior sessions).
+        $storedKnown  = ("$($conBlock.system_name)" -ne '')
+        $liveKnown    = ("$($liveConn.system_name)" -ne '' -and
+                         "$($liveConn.client)"      -ne '' -and
+                         "$($liveConn.user)"        -ne '')
+        $tupleChanged = $storedKnown -and $liveKnown -and
+                        ((Get-IdentityKey $conBlock) -ne (Get-IdentityKey $liveConn))
+        $loginRotated = ("$($conBlock.logon_id)" -ne '' -and "$($liveConn.logon_id)" -ne '' -and
+                         "$($conBlock.logon_id)" -ne "$($liveConn.logon_id)")
+        $langChanged  = ("$($conBlock.language)" -ne '' -and "$($liveConn.language)" -ne '' -and
+                         "$($conBlock.language)" -ne "$($liveConn.language)")
+
+        if ($tupleChanged) {
+            # Different system on the slot: take the live identity wholesale
+            # and drop the now-invalid profile association. The next login
+            # finalize re-assigns connection_id via set-connection-id.
+            $reason = "system_changed (was $(Get-IdentityKey $conBlock) -> $(Get-IdentityKey $liveConn))"
+            Copy-LiveIdentityToBlock -Block $conBlock -Live $liveConn -Full
+            $conBlock.connection_id = ''
+        } else {
+            # Same (or not-yet-known) system: refresh non-empty live values so
+            # a relogin in a different language is reflected, without letting a
+            # transient empty read wipe good data. connection_id is preserved.
+            $reason = if ($loginRotated)     { "logon_changed (was $($conBlock.logon_id))" }
+                      elseif ($langChanged)  { "language_changed (was $($conBlock.language) -> $($liveConn.language))" }
+                      else                   { '' }
+            Copy-LiveIdentityToBlock -Block $conBlock -Live $liveConn
+        }
+
+        # A changed identity / logon / language means the previous sessions are
+        # gone (relogin closes them) even when SAP recycles the same
+        # /app/con[N]/ses[M] paths. Drop ALL of this connection's entries so
+        # they are re-discovered fresh against the new logon.
+        if ($tupleChanged -or $loginRotated -or $langChanged) {
             if ($VerboseDrops) {
                 foreach ($e in $conBlock.entries) {
-                    Write-Host "DROP: $($e.path)  task=$($e.task_id)  reason=logon_changed (was $($conBlock.logon_id))"
+                    Write-Host "DROP: $($e.path)  task=$($e.task_id)  reason=$reason"
                 }
             }
             $dropped += $conBlock.entries.Count
-            # Keep the connection block but reset metadata + entries.
-            $conBlock.logon_id = $liveConn.logon_id
-            $conBlock.entries  = @()
+            $conBlock.entries = @()
             $survivingConnections += $conBlock
             continue
-        }
-        if ("$($conBlock.logon_id)" -eq '' -and $liveConn.logon_id -ne '') {
-            $conBlock.logon_id = $liveConn.logon_id
         }
 
         # Per-entry sweep.
@@ -727,20 +846,17 @@ function Invoke-Discover {
             }
             $cb = $byCon[$cp]
 
-            # Refresh per-connection metadata. Identity fields are sticky
-            # (don't overwrite once set) since the live state can race with
-            # an explicit set-connection-id call from sap_login_select.ps1.
-            if (-not $cb.system_name)        { $cb.system_name        = "$($liveCon.system_name)" }
-            if (-not $cb.client)             { $cb.client             = "$($liveCon.client)" }
-            if (-not $cb.user)               { $cb.user               = "$($liveCon.user)" }
-            if (-not $cb.language)           { $cb.language           = "$($liveCon.language)" }
-            if (-not $cb.description)        { $cb.description        = "$($liveCon.description)" }
-            if (-not $cb.logon_id)           { $cb.logon_id           = "$($liveCon.logon_id)" }
-            if (-not $cb.message_server)     { $cb.message_server     = "$($liveCon.message_server)" }
-            if (-not $cb.logon_group)        { $cb.logon_group        = "$($liveCon.logon_group)" }
-            if (-not $cb.system_id)          { $cb.system_id          = "$($liveCon.system_id)" }
-            if (-not $cb.application_server) { $cb.application_server = "$($liveCon.application_server)" }
-            if (-not $cb.system_number)      { $cb.system_number      = "$($liveCon.system_number)" }
+            # Refresh per-connection metadata from live. The preceding
+            # Sweep-StaleEntries already reconciled a system swap on a reused
+            # /app/con[N] slot (mirrored the new identity, cleared the stale
+            # connection_id, dropped the old entries); this mirror keeps the
+            # block current for the unchanged case too -- e.g. a relogin in a
+            # different language. Mirror only non-empty live values so a
+            # transient empty read (a session still on the SAPMSYST logon
+            # screen) cannot wipe good data. connection_id is NOT touched here:
+            # it is broker-owned (assigned by set-connection-id), not read from
+            # SAP, and the sweep already cleared it if the system changed.
+            Copy-LiveIdentityToBlock -Block $cb -Live $liveCon
 
             $existingPaths = @{}
             foreach ($e in $cb.entries) { $existingPaths["$($e.path)"] = $e }

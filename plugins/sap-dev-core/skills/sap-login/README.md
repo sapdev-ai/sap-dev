@@ -12,6 +12,7 @@ This skill provides automation for SAP GUI login operations including:
 - **Auto-Start**: Launch SAP Logon if not running
 - **Manual Login Fallback**: Wait up to 5 minutes for manual login when no password provided
 - **Session Reuse**: Detect and reuse existing SAP GUI sessions
+- **Logon Language Switch**: When a login language is requested (`--lang <CODE>` or natural language) and an active connection is logged on in a *different* language, close that connection — after confirming, unless `--force` — and re-login in the requested language (logon language is fixed at logon, so a re-logon is the only way to change it)
 
 ## Auto-Trigger Keywords
 
@@ -36,12 +37,17 @@ This skill activates when discussing:
 
 ```
 sap-login/
-├── SKILL.md                        # Main skill file (this file's companion)
-├── README.md                       # This file (keywords for discoverability)
+├── SKILL.md                            # Main skill file (this file's companion)
+├── README.md                           # This file (keywords for discoverability)
+├── sap_login_select.ps1                # Multi-profile selection driver (decide/list/switch/finalize/...)
 └── references/
-    ├── sap_login.vbs               # VBScript template with placeholder tokens
-    └── sap_login_popup.ps1         # PowerShell WPF login popup with connection dropdown
+    ├── sap_login_capture_active_session.vbs  # GUI-side capture of the active session's identity
+    └── sap_close_connection.vbs              # Close a connection by path (logon-language switch)
 ```
+
+The login VBScript template (`sap_login.vbs`) and other shared scripts live
+under `sap-dev-core/shared/scripts/` and are listed in SKILL.md's Shared
+Resources table.
 
 ## Usage
 
@@ -51,6 +57,7 @@ Ask about any SAP GUI login automation topic:
 - "Open a SAP GUI connection"
 - "Store my SAP credentials"
 - "Connect to SAP DEV system"
+- "Log in to S4D in Japanese" / `/sap-login --lang JA`
 
 ## Prerequisites
 

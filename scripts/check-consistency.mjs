@@ -117,6 +117,7 @@ if (mp.metadata.total_skills !== totalSkills) {
 //   sap_gui_object_details.vbs          — own findById(SESSION_PATH) per Phase-1 fix
 //   sap_gui_probe_action.vbs            — own action.json "session" field resolution
 //   sap_login_capture_active_session.vbs — captures the just-logged-in session
+//   sap_close_connection.vbs            — closes a /app/con[N] by path (login family)
 //   sap_gui_security_warmup.vbs         — one-shot SAP-GUI-Security warmup; bootstrap
 //   sap_attach_lib.vbs                  — the helper itself
 //
@@ -134,6 +135,9 @@ const TIER3_EXEMPT_VBS = new Set([
   'sap_gui_object_details.vbs',
   'sap_gui_probe_action.vbs',
   'sap_login_capture_active_session.vbs',
+  'sap_close_connection.vbs',           // connection-level close-by-path helper
+                                        // (login family); takes a /app/con[N]
+                                        // path directly, no session attach.
   'sap_gui_security_warmup.vbs',
   'sap_attach_lib.vbs',
   // generic golden-screen inspector: self-resolves SESSION_PATH (Chr(37)

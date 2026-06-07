@@ -42,15 +42,26 @@ handles it fine).
 2. **Connection isolation.** A claim resolved against connection N
    never returns a session of connection M. The acquire-time resolver
    refuses to default across connections when ambiguous.
-3. **Cleanup on every call.** Acquire and release run a sweep that drops
-   entries reflecting any of these failure modes:
+3. **Cleanup + identity reconciliation on every call.** Acquire, release,
+   discover and gc run a sweep that first mirrors the **live SAP identity**
+   onto each connection block (the live state is the source of truth for
+   every field read from `GuiSessionInfo`), then drops entries reflecting
+   any of these failure modes:
    - The SAP GUI session was closed (`findById` returns nothing).
    - The owner PID is no longer alive (when supplied by the caller).
    - The claim's TTL expired.
-   - The user logged out and back in on a specific connection (the
-     SAP-side `SystemSessionId` for that connection changed; only
-     that connection's entries are dropped — other connections are
-     unaffected).
+   - A relogin happened on a connection. A `/app/con[N]` slot is recyclable:
+     the user can close system A's connection and open system B in the same
+     slot. The swap is detected by the **(system, client, user) identity
+     tuple** changing — NOT by `SystemSessionId`, which on the kernels we run
+     (S/4HANA 1909, 754) is **per-workstation, not per-logon**, and stays
+     byte-identical across an A→B swap on one slot. On a tuple change the
+     block's identity is replaced wholesale with the live one and its stale
+     `connection_id` (the profile association) is cleared; the next login
+     finalize re-assigns it. A rotated `SystemSessionId` or a changed logon
+     language are also treated as relogin signals. In every case that
+     connection's entries are dropped (the prior sessions are gone, even when
+     SAP recycles the same paths); other connections are unaffected.
    - The entire connection was closed (its `connection_path` no longer
      resolves); all of that connection's entries are dropped.
 4. **Spawn-on-demand.** If acquire can't find a free session on the
@@ -182,7 +193,7 @@ pwsh -File sap_session_broker.ps1 -Action gc -WorkTemp "<abs-path>"
 Sweeps stale entries without acquiring. Prints one `DROP:` line per drop
 with the reason, then a final summary:
 ```
-DROP: <path> task=<id> reason=<session_closed|pid_dead|ttl_expired|logon_changed>
+DROP: <path> task=<id> reason=<session_closed|pid_dead|ttl_expired|system_changed|logon_changed|language_changed|connection_closed>
 GC: dropped <n> stale entries
 ```
 
@@ -203,15 +214,20 @@ Read-only snapshot. Pretty-prints the full registry JSON. No side effects.
 pwsh -File sap_session_broker.ps1 -Action discover -WorkTemp "<abs-path>"
 ```
 
-Walks `oCon.Children` and registers any session the broker doesn't know
-about. Classifies each as `free` (at Easy Access, no popup) or
-`user_owned` (mid-work). Output:
+Runs the reconciliation sweep first (so an existing block whose `/app/con[N]`
+slot was reused by a different system is refreshed to the live identity —
+see the cleanup contract), then walks `oCon.Children` and registers any
+session the broker doesn't know about. Classifies each as `free` (at Easy
+Access, no popup) or `user_owned` (mid-work). Output:
 ```
 DISCOVERED: <n> new (total free=<f> user_owned=<u>)
 ```
 
-Call this once after `/sap-login` succeeds. Idempotent — re-running adds
-nothing if everything is already known.
+Call this once after `/sap-login` succeeds. Idempotent for an unchanged
+system — re-running adds nothing if everything is already known. After a
+slot is reused by a different system, the stale entries are dropped and the
+live sessions re-registered, so `discover` then `list` reflect the live
+identity (and `set-connection-id` re-binds the profile).
 
 ---
 
@@ -261,9 +277,15 @@ connection, since Phase 3.5):
   The address-of-record (recyclable). Use `(system_name, client, user)`
   for stable identification.
 - `connections[].logon_id` — current `SystemSessionId` for THIS
-  connection. Used to detect logout+relogin on one connection without
-  invalidating others. Empty before first acquire/discover on the
-  connection.
+  connection. A *secondary* relogin signal only: on the kernels we run it is
+  per-workstation, not per-logon, so it does NOT change when a slot is reused
+  by a different system. Stable identification uses `(system_name, client,
+  user)`; see the cleanup contract above. Empty before first
+  acquire/discover on the connection.
+- `connections[].connection_id` — the saved-profile UUID this live
+  connection maps to, assigned by `set-connection-id` (login finalize). NOT
+  read from SAP. Cleared by the sweep when the slot's identity tuple changes
+  (the old profile association is then invalid); re-assigned on next finalize.
 - `connections[].entries[].path` — primary key for a session within
   the connection. Stable while the session is alive.
 - `connections[].entries[].session_number` — `Info.SessionNumber` at
@@ -311,9 +333,10 @@ Same sweep logic but invoked without an acquire. Verbose mode emits a
 
 ### Hook 4: pre-flight `discover`
 
-Registers any pre-existing sessions the broker doesn't know about.
-Classifies each as `free` or `user_owned`. Run once after `/sap-login`;
-the broker only allocates sessions it explicitly knows about.
+Reconciles each existing block to live identity (catching a slot reused by a
+different system), then registers any pre-existing sessions the broker
+doesn't know about. Classifies each as `free` or `user_owned`. Run once after
+`/sap-login`; the broker only allocates sessions it explicitly knows about.
 
 ---
 

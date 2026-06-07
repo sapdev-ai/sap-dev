@@ -12,10 +12,12 @@ description: |
   re-uploads, and activates the program (Ctrl+F3).
   Also supports change-attributes mode: when the user asks to change a
   program's Title, Status, Type, or other header attributes (no source
-  involved), opens the SE38 Attributes dialog and updates only the supplied
-  fields. Handles the SAPLSETX original-language popup (only shown when
-  logon language differs from MASTERLANG) and the post-save Workbench
-  request popup per `/sap-transport-request`.
+  involved), opens the program in the SE38 editor (change mode), edits the
+  supplied fields via Goto -> Attributes, then Saves and Activates so the
+  change actually persists (the attributes dialog's Continue alone does NOT
+  write to the DB). Handles the SAPLSETX original-language popup (only shown
+  when logon language differs from MASTERLANG) and the post-save / post-
+  activate Workbench request popup per `/sap-transport-request`.
   Also supports delete mode: when the user asks to delete a program
   (e.g. "delete program <X>", "drop report <X>", "remove pgm <X>"),
   navigates to SE38, fills the program-name field, presses Shift+F2
@@ -351,6 +353,14 @@ Program type codes: `1`=Executable, `I`=Include, `M`=Module Pool, `F`=Function G
 
 The create VBScript template is at `./references/sap_se38_create.vbs`.
 
+**Title encoding (mandatory).** Write the program title to
+`{WORK_TEMP}\se38_title.txt` as **UTF-8 (no BOM)** using the Write tool — never
+embed a ZH/JA/non-ASCII title as a PowerShell literal in the generator below.
+PowerShell 5.1 reads a BOM-less `.ps1` as the system ANSI codepage (cp932 on a
+JP box) and mojibakes the title before it reaches the VBS (this corrupted the
+ZH title on the 2026-06-07 `ZMMRMAT057R01` build). The generator reads the title
+back via `[IO.File]::ReadAllText(...,UTF8)`, so the `.ps1` itself stays ASCII.
+
 ### Generate the filled-in VBScript
 
 Write `{WORK_TEMP}\sap_se38_create_run.ps1`:
@@ -358,7 +368,12 @@ Write `{WORK_TEMP}\sap_se38_create_run.ps1`:
 $content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_se38_create.vbs', [System.Text.Encoding]::UTF8)
 $content = $content -replace '%%PROGRAM_NAME%%','THE_PROGRAM_NAME'
 $content = $content -replace '%%PROGRAM_TYPE%%','THE_PROGRAM_TYPE'
-$content = $content -replace '%%PROGRAM_TITLE%%','THE_PROGRAM_TITLE'
+# Title: read from a UTF-8 (no-BOM) file so a non-ASCII title is NEVER a PS literal
+# (a BOM-less .ps1 is read as the system ANSI codepage by PS 5.1 -> cp932 mojibake;
+# the *57 ZMMRMAT057R01 title bug, 2026-06-07). Literal .Replace; double any " for
+# the VBS string literal.
+$title   = if (Test-Path '{WORK_TEMP}\se38_title.txt') { ([System.IO.File]::ReadAllText('{WORK_TEMP}\se38_title.txt', [System.Text.Encoding]::UTF8)).Trim() } else { '' }
+$content = $content.Replace('%%PROGRAM_TITLE%%', $title.Replace('"','""'))
 $content = $content -replace '%%ABAP_SOURCE_FILE%%','THE_SOURCE_PATH'
 $content = $content -replace '%%PACKAGE%%','THE_PACKAGE'
 $content = $content -replace '%%TRANSPORT%%','THE_TRANSPORT'
@@ -686,6 +701,16 @@ more parameters than visible rows, the template scrolls using `VerticalScrollbar
 
 The change-attributes VBScript template is at `./references/sap_se38_change_attrs.vbs`.
 
+**How it persists (fixed 2026-06-07):** the VBS opens the program in the SOURCE
+editor (`FUNC_EDIT` + Change), edits attributes via **Goto -> Attributes**
+(`wnd[0]/mbar/menu[2]/menu[0]`), Continues back to the editor, then **Saves
+(`sendVKey 11`) and Activates (`sendVKey 27`)**. The older "Attributes radio
+(`FUNC_HEAD`) + Change -> dialog -> Continue" path was a false success — its
+Continue returns to the SE38 *initial* screen where Save is disabled, so the
+change was staged but never written (confirmed on S/4HANA 1909 for both ZH and
+ASCII titles). The Goto-menu index is positional and language-neutral; re-record
+via `/sap-gui-record` if a release moves it.
+
 ### Collect Inputs
 
 | Token | Description | Allowed values | Empty? |
@@ -708,13 +733,24 @@ VBS with no values (it will exit `DONE: NO_CHANGE`).
 
 ### Generate the filled-in VBScript
 
+**Title encoding (mandatory when changing the title).** Write the new title to
+`{WORK_TEMP}\se38_title.txt` as **UTF-8 (no BOM)** via the Write tool — never
+embed a non-ASCII title as a PowerShell literal (a BOM-less `.ps1` is read as the
+system ANSI codepage by PS 5.1 → cp932 mojibake). The generator reads it back via
+`[IO.File]::ReadAllText(...,UTF8)`. Leave the file absent (or empty) to leave the
+title unchanged.
+
 Write `{WORK_TEMP}\sap_se38_change_attrs_run.ps1`:
 ```powershell
 $skillDir = '<SKILL_DIR>'
 $tpl      = "$skillDir\references\sap_se38_change_attrs.vbs"
 $content  = [System.IO.File]::ReadAllText($tpl, [System.Text.Encoding]::UTF8)
 $content  = $content.Replace('%%PROGRAM_NAME%%','THE_PROGRAM_NAME')
-$content  = $content.Replace('%%TITLE%%',       'THE_TITLE')
+# Title: read from a UTF-8 (no-BOM) file (never a PS literal -> BOM-less .ps1 is read as
+# the system ANSI codepage by PS 5.1 -> cp932 mojibake of ZH/JA titles). Absent/empty
+# file -> empty token (= leave the title unchanged). Double any " for the VBS literal.
+$title    = if (Test-Path '{WORK_TEMP}\se38_title.txt') { ([System.IO.File]::ReadAllText('{WORK_TEMP}\se38_title.txt', [System.Text.Encoding]::UTF8)).Trim() } else { '' }
+$content  = $content.Replace('%%TITLE%%', $title.Replace('"','""'))
 $content  = $content.Replace('%%STATUS%%',      'THE_STATUS')
 $content  = $content.Replace('%%TYPE%%',        'THE_TYPE')
 $content  = $content.Replace('%%TRANSPORT%%',   'THE_TRANSPORT')

@@ -362,6 +362,64 @@ function Test-SapConnectionsEqual {
     return $false
 }
 
+# --- Language compare -------------------------------------------------------
+
+function ConvertTo-SapCanonicalLanguage {
+    <#
+    .SYNOPSIS
+        Normalise a SAP logon-language token to a canonical 2-char ISO code
+        so EN == E == "English" all compare equal.
+    .DESCRIPTION
+        oSession.Info.Language returns EITHER the 1-char SAP language key
+        (E / D / J / 1 / ...) OR the 2-char ISO code (EN / DE / JA / ZH / ...)
+        depending on the SAP GUI release. Stored profiles, login fields and
+        user input can each carry either form (or an English language word).
+        This collapses them to one token.
+
+        Unknown tokens are returned trimmed + upper-cased unchanged, so two
+        equal-but-unmapped codes still compare equal; only cross-form unknown
+        pairs fail to match (acceptable -- mappings cover the languages SAP
+        and this project actually use). Mapping mirrors the 1-char<->ISO table
+        in sap_syntax_check_lib.vbs (GetSyntaxErrorWord).
+    #>
+    param([string]$Language)
+    if ([string]::IsNullOrWhiteSpace($Language)) { return '' }
+    $k = $Language.Trim().ToUpperInvariant()
+    $map = @{
+        'E'='EN'; 'EN'='EN'; 'ENGLISH'='EN'
+        'D'='DE'; 'DE'='DE'; 'GERMAN'='DE'
+        'F'='FR'; 'FR'='FR'; 'FRENCH'='FR'
+        'S'='ES'; 'ES'='ES'; 'SPANISH'='ES'
+        'I'='IT'; 'IT'='IT'; 'ITALIAN'='IT'
+        'P'='PT'; 'PT'='PT'; 'PORTUGUESE'='PT'
+        '1'='ZH'; 'ZH'='ZH'; 'CHINESE'='ZH'   # simplified
+        'M'='ZF'; 'ZF'='ZF'                    # traditional
+        'J'='JA'; 'JA'='JA'; 'JAPANESE'='JA'
+        '3'='KO'; 'KO'='KO'; 'KOREAN'='KO'
+        'R'='RU'; 'RU'='RU'; 'RUSSIAN'='RU'
+    }
+    if ($map.ContainsKey($k)) { return $map[$k] }
+    return $k
+}
+
+function Test-SapLanguageEqual {
+    <#
+    .SYNOPSIS
+        $true if two SAP logon-language tokens denote the same language
+        (after canonicalisation).
+    .DESCRIPTION
+        Blank on EITHER side returns $true ("cannot decide -> treat as a
+        match"), so a missing / unreadable Info.Language never triggers a
+        disruptive close+relogin. Callers gate the comparison on the
+        REQUESTED language being non-blank before relying on the result.
+    #>
+    param([string]$A, [string]$B)
+    $ca = ConvertTo-SapCanonicalLanguage $A
+    $cb = ConvertTo-SapCanonicalLanguage $B
+    if ([string]::IsNullOrWhiteSpace($ca) -or [string]::IsNullOrWhiteSpace($cb)) { return $true }
+    return ($ca -eq $cb)
+}
+
 # --- Lookups ----------------------------------------------------------------
 
 function Find-SapConnectionByMatch {
