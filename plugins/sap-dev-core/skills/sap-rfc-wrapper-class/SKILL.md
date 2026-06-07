@@ -125,12 +125,12 @@ Fill `sap_rfc_read_class_method.ps1` from the template and run it.
 Write `{WORK_TEMP}\sap_rfc_read_cls_run.ps1`:
 ```powershell
 $ps = Get-Content '<SKILL_DIR>\references\sap_rfc_read_class_method.ps1' -Raw -Encoding UTF8
-$ps = $ps -replace '%%SAP_SERVER%%',   'THE_SERVER'
-$ps = $ps -replace '%%SAP_SYSNR%%',    'THE_SYSNR'
-$ps = $ps -replace '%%SAP_CLIENT%%',   'THE_CLIENT'
-$ps = $ps -replace '%%SAP_USER%%',     'THE_USER'
-$ps = $ps -replace '%%SAP_PASSWORD%%', 'THE_PASSWORD'
-$ps = $ps -replace '%%SAP_LANGUAGE%%', 'THE_LANGUAGE'
+$ps = $ps -replace '%%SAP_SERVER%%',   ''
+$ps = $ps -replace '%%SAP_SYSNR%%',    ''
+$ps = $ps -replace '%%SAP_CLIENT%%',   ''
+$ps = $ps -replace '%%SAP_USER%%',     ''
+$ps = $ps -replace '%%SAP_PASSWORD%%', ''
+$ps = $ps -replace '%%SAP_LANGUAGE%%', ''
 $ps = $ps -replace '%%RFC_LIB_PS1%%',  '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_rfc_lib.ps1'
 $ps = $ps -replace '%%CLASS_NAME%%',   'THE_CLASS_NAME'
 $ps = $ps -replace '%%METHOD_NAME%%',  'THE_METHOD_NAME'

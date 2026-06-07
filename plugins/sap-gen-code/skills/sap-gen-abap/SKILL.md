@@ -1116,6 +1116,8 @@ For **selection screen parameters**, use the SAP data element (e.g., `TYPE bukrs
 
 - **GUI_UPLOAD with TABLE OF char2048** — Use `TABLE OF char2048` for `data_tab` WITHOUT `has_field_separator = 'X'`. Parse tabs manually with `SPLIT ... AT cl_abap_char_utilities=>horizontal_tab`.
 
+- **`SPLIT … INTO` targets must be character-type** — never `SPLIT` a text line directly into a typed DDIC record whose components include `QUAN` / `CURR` / `DEC` / packed fields (e.g. `ls_rec-ntgew`, net weight). ABAP rejects a numeric `SPLIT` receiver at **syntax check** — `"NTGEW" must be a character-type object (C, N, D, T or STRING)` — so it breaks the `/sap-se38` deploy gate, not just ATC. Emit an all-CHARACTER staging structure, `SPLIT` into that, then MOVE field-by-field into the typed record (the CHAR→numeric conversion happens on the assignment, not the `SPLIT`); watch locale number formats (thousands separator / decimal comma) on that move. See rule §25 for the worked example. Confirmed live 2026-06-07 on the MaterialUpload CN `*56` build (S/4HANA 1909); cross-ref Claude memory `feedback_sap_gen_abap_inline_type_pitfalls`. The `SPLIT_NONCHAR_TARGET` row in `frequently_errors.tsv` carries this as a `CONFIRMED` hint (auto-injected at Step 1.5f).
+
 - **GUI_UPLOAD FILENAME requires `TYPE string`** — on S/4HANA 1909 (kernel 754, release 7.52) the formal `FILENAME` is typed `STRING`. Passing a `TYPE rlgrap-filename` / `c LENGTH n` actual activates fine but raises ATC P1 (SLIN: `CX_SY_DYN_CALL_ILLEGAL_TYPE` runtime risk). Always introduce a `DATA(lv_filename) = CONV string( p_file ).` adapter line and pass `lv_filename` — never pass the selection-screen `rlgrap-filename` parameter directly. The same trap applies to `GUI_DOWNLOAD FILENAME`. See rule §24's table for the full audit list.
 
 ---
@@ -1168,9 +1170,22 @@ P1/P2/P3 if left unchecked.
    `CORRECT_PATTERN` instead (honouring the row's `RELEASE`). These are
    real, previously-observed deploy/ATC failures — leaving one in re-creates
    a finding the team already paid for once.
+10. **No `SPLIT … INTO` (or other text-parse) into a numeric target.** Every
+    `SPLIT … INTO` receiver — and every target of a manual tab-parse over a
+    `GUI_UPLOAD char2048` line — is character-type (`C`/`N`/`D`/`T`/`STRING`).
+    If the spec maps a `QUAN` / `CURR` / `DEC` / packed file column, `SPLIT`
+    into an all-CHARACTER staging structure first, then MOVE field-by-field
+    into the typed DDIC record (CHAR→numeric conversion on the assignment). A
+    numeric `SPLIT` receiver fails **syntax check** — `"<FIELD>" must be a
+    character-type object (C, N, D, T or STRING)` — so it breaks the
+    `/sap-se38` deploy gate. (Rule §25, ACTIVATION. Confirmed live 2026-06-07
+    on MaterialUpload CN `*56`; cross-ref memory
+    `feedback_sap_gen_abap_inline_type_pitfalls`.)
 and re-walk. Do not ship the file with any unchecked box — the
 post-deploy ATC gate (`/sap-atc`) will fail at `MAX_PRIORITY=2` for
-findings #1, #2, #8; warn for #3-#6.
+findings #1, #2, #8; warn for #3-#6. Findings #7 and #10 are
+syntax / compile-time failures caught even earlier, at the `/sap-se38`
+deploy syntax gate.
 
 ---
 

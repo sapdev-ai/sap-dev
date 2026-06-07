@@ -193,12 +193,12 @@ Resolve cache directory + system ID (see "Step 0 — Resolve Work Directory"):
 
 ```powershell
 $h = Get-Content '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_rfc_lookup_fm.ps1' -Raw
-$h = $h -replace '%%SAP_SERVER%%',     'THE_SERVER'
-$h = $h -replace '%%SAP_SYSNR%%',      'THE_SYSNR'
-$h = $h -replace '%%SAP_CLIENT%%',     'THE_CLIENT'
-$h = $h -replace '%%SAP_USER%%',       'THE_USER'
-$h = $h -replace '%%SAP_PASSWORD%%',   'THE_PASSWORD'
-$h = $h -replace '%%SAP_LANGUAGE%%',   'THE_LANGUAGE'
+$h = $h -replace '%%SAP_SERVER%%',     ''
+$h = $h -replace '%%SAP_SYSNR%%',      ''
+$h = $h -replace '%%SAP_CLIENT%%',     ''
+$h = $h -replace '%%SAP_USER%%',       ''
+$h = $h -replace '%%SAP_PASSWORD%%',   ''
+$h = $h -replace '%%SAP_LANGUAGE%%',   ''
 $h = $h -replace '%%RFC_LIB_PS1%%',    '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_rfc_lib.ps1'
 $h = $h -replace '%%REQUEST_FILE%%',   '{WORK_TEMP}\sap_checkfm_fm_names.txt'
 $h = $h -replace '%%RESULT_FILE%%',    '{WORK_TEMP}\sap_checkfm_fm_result.tsv'
@@ -216,12 +216,12 @@ The cache layer means: if a customer ran `sap-gen-abap` (which now also pre-fetc
 
 ```powershell
 $d = Get-Content '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_rfc_lookup_ddic.ps1' -Raw
-$d = $d -replace '%%SAP_SERVER%%',   'THE_SERVER'
-$d = $d -replace '%%SAP_SYSNR%%',    'THE_SYSNR'
-$d = $d -replace '%%SAP_CLIENT%%',   'THE_CLIENT'
-$d = $d -replace '%%SAP_USER%%',     'THE_USER'
-$d = $d -replace '%%SAP_PASSWORD%%', 'THE_PASSWORD'
-$d = $d -replace '%%SAP_LANGUAGE%%', 'THE_LANGUAGE'
+$d = $d -replace '%%SAP_SERVER%%',   ''
+$d = $d -replace '%%SAP_SYSNR%%',    ''
+$d = $d -replace '%%SAP_CLIENT%%',   ''
+$d = $d -replace '%%SAP_USER%%',     ''
+$d = $d -replace '%%SAP_PASSWORD%%', ''
+$d = $d -replace '%%SAP_LANGUAGE%%', ''
 $d = $d -replace '%%RFC_LIB_PS1%%',  '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_rfc_lib.ps1'
 $d = $d -replace '%%REQUEST_FILE%%', '{WORK_TEMP}\sap_checkfm_ddic_request.txt'
 $d = $d -replace '%%RESULT_FILE%%',  '{WORK_TEMP}\sap_checkfm_ddic_result.tsv'

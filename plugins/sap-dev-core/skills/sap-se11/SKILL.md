@@ -491,12 +491,12 @@ $names = "BUKRS`r`nWAERS`r`n"
 # Fill PS1 template
 $ps = Get-Content '<SKILL_DIR>\references\sap_se11_check_domains.ps1' -Raw -Encoding UTF8
 $ps = $ps -replace '%%NAMES_FILE%%',   '{WORK_TEMP}\check_dom_names.txt'
-$ps = $ps -replace '%%SAP_SERVER%%',   'THE_SERVER'
-$ps = $ps -replace '%%SAP_SYSNR%%',    'THE_SYSNR'
-$ps = $ps -replace '%%SAP_CLIENT%%',   'THE_CLIENT'
-$ps = $ps -replace '%%SAP_USER%%',     'THE_USER'
-$ps = $ps -replace '%%SAP_PASSWORD%%', 'THE_PASSWORD'
-$ps = $ps -replace '%%SAP_LANGUAGE%%', 'THE_LANGUAGE'
+$ps = $ps -replace '%%SAP_SERVER%%',   ''
+$ps = $ps -replace '%%SAP_SYSNR%%',    ''
+$ps = $ps -replace '%%SAP_CLIENT%%',   ''
+$ps = $ps -replace '%%SAP_USER%%',     ''
+$ps = $ps -replace '%%SAP_PASSWORD%%', ''
+$ps = $ps -replace '%%SAP_LANGUAGE%%', ''
 $ps = $ps -replace '%%RFC_LIB_PS1%%',  '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_rfc_lib.ps1'
 [System.IO.File]::WriteAllText("{WORK_TEMP}\sap_check_dom.ps1", $ps, [System.Text.Encoding]::UTF8)
 ```
@@ -520,12 +520,12 @@ $names = "BUKRS`r`nMATNR`r`nWAERK`r`n"
 
 $ps = Get-Content '<SKILL_DIR>\references\sap_se11_check_dataelements.ps1' -Raw -Encoding UTF8
 $ps = $ps -replace '%%NAMES_FILE%%',   '{WORK_TEMP}\check_de_names.txt'
-$ps = $ps -replace '%%SAP_SERVER%%',   'THE_SERVER'
-$ps = $ps -replace '%%SAP_SYSNR%%',    'THE_SYSNR'
-$ps = $ps -replace '%%SAP_CLIENT%%',   'THE_CLIENT'
-$ps = $ps -replace '%%SAP_USER%%',     'THE_USER'
-$ps = $ps -replace '%%SAP_PASSWORD%%', 'THE_PASSWORD'
-$ps = $ps -replace '%%SAP_LANGUAGE%%', 'THE_LANGUAGE'
+$ps = $ps -replace '%%SAP_SERVER%%',   ''
+$ps = $ps -replace '%%SAP_SYSNR%%',    ''
+$ps = $ps -replace '%%SAP_CLIENT%%',   ''
+$ps = $ps -replace '%%SAP_USER%%',     ''
+$ps = $ps -replace '%%SAP_PASSWORD%%', ''
+$ps = $ps -replace '%%SAP_LANGUAGE%%', ''
 $ps = $ps -replace '%%RFC_LIB_PS1%%',  '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_rfc_lib.ps1'
 [System.IO.File]::WriteAllText("{WORK_TEMP}\sap_check_de.ps1", $ps, [System.Text.Encoding]::UTF8)
 ```
@@ -951,12 +951,12 @@ SAP credential tokens plus `%%OBJECT_TYPE%%` and `%%OBJECT_NAME%%`:
 
 ```powershell
 $ps = Get-Content '<SKILL_DIR>\references\sap_se11_verify_active.ps1' -Raw -Encoding UTF8
-$ps = $ps -replace '%%SAP_SERVER%%',   'THE_SERVER'
-$ps = $ps -replace '%%SAP_SYSNR%%',    'THE_SYSNR'
-$ps = $ps -replace '%%SAP_CLIENT%%',   'THE_CLIENT'
-$ps = $ps -replace '%%SAP_USER%%',     'THE_USER'
-$ps = $ps -replace '%%SAP_PASSWORD%%', 'THE_PASSWORD'
-$ps = $ps -replace '%%SAP_LANGUAGE%%', 'THE_LANGUAGE'
+$ps = $ps -replace '%%SAP_SERVER%%',   ''
+$ps = $ps -replace '%%SAP_SYSNR%%',    ''
+$ps = $ps -replace '%%SAP_CLIENT%%',   ''
+$ps = $ps -replace '%%SAP_USER%%',     ''
+$ps = $ps -replace '%%SAP_PASSWORD%%', ''
+$ps = $ps -replace '%%SAP_LANGUAGE%%', ''
 $ps = $ps -replace '%%RFC_LIB_PS1%%',  '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_rfc_lib.ps1'
 $ps = $ps -replace '%%OBJECT_TYPE%%',  'STRUCTURE'
 $ps = $ps -replace '%%OBJECT_NAME%%',  'THE_OBJECT_NAME'

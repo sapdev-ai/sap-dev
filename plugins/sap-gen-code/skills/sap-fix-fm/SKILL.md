@@ -144,12 +144,12 @@ Build a one-name-per-line file of the unique FM names with fixable issues (from 
 Then write `{WORK_TEMP}\sap_getfmparams_run.ps1`:
 ```powershell
 $content = Get-Content '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_rfc_lookup_fm.ps1' -Raw
-$content = $content -replace '%%SAP_SERVER%%',     'THE_SERVER'
-$content = $content -replace '%%SAP_SYSNR%%',      'THE_SYSNR'
-$content = $content -replace '%%SAP_CLIENT%%',     'THE_CLIENT'
-$content = $content -replace '%%SAP_USER%%',       'THE_USER'
-$content = $content -replace '%%SAP_PASSWORD%%',   'THE_PASSWORD'
-$content = $content -replace '%%SAP_LANGUAGE%%',   'THE_LANGUAGE'
+$content = $content -replace '%%SAP_SERVER%%',     ''
+$content = $content -replace '%%SAP_SYSNR%%',      ''
+$content = $content -replace '%%SAP_CLIENT%%',     ''
+$content = $content -replace '%%SAP_USER%%',       ''
+$content = $content -replace '%%SAP_PASSWORD%%',   ''
+$content = $content -replace '%%SAP_LANGUAGE%%',   ''
 $content = $content -replace '%%RFC_LIB_PS1%%',    '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_rfc_lib.ps1'
 $content = $content -replace '%%REQUEST_FILE%%',   '{WORK_TEMP}\sap_getfmparams_names.txt'
 $content = $content -replace '%%RESULT_FILE%%',    '{WORK_TEMP}\getfmparams_result.txt'

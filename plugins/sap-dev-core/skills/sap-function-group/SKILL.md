@@ -171,12 +171,12 @@ Generate `{WORK_TEMP}\sap_function_group_rfc_create_run.ps1`:
 
 ```powershell
 $content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_function_group_rfc_create.ps1', [System.Text.Encoding]::UTF8)
-$content = $content.Replace('%%SAP_APPLICATION_SERVER%%', 'THE_SERVER')
-$content = $content.Replace('%%SAP_SYSTEM_NUMBER%%',      'THE_SYSNR')
-$content = $content.Replace('%%SAP_CLIENT%%',             'THE_CLIENT')
-$content = $content.Replace('%%SAP_USER%%',               'THE_USER')
-$content = $content.Replace('%%SAP_PASSWORD%%',           'THE_PASSWORD')
-$content = $content.Replace('%%SAP_LANGUAGE%%',           'THE_LANGUAGE')
+$content = $content.Replace('%%SAP_APPLICATION_SERVER%%', '')
+$content = $content.Replace('%%SAP_SYSTEM_NUMBER%%',      '')
+$content = $content.Replace('%%SAP_CLIENT%%',             '')
+$content = $content.Replace('%%SAP_USER%%',               '')
+$content = $content.Replace('%%SAP_PASSWORD%%',           '')
+$content = $content.Replace('%%SAP_LANGUAGE%%',           '')
 $content = $content.Replace('%%RFC_LIB_PS1%%',            '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_rfc_lib.ps1')
 $content = $content.Replace('%%FUNCTION_GROUP%%',         'THE_FG_NAME')
 $content = $content.Replace('%%SHORT_TEXT%%',             'THE_SHORT_TEXT')

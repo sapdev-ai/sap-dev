@@ -109,10 +109,22 @@ function Connect-SapRfc {
     )
 
     # ---- Phase 4.3 cred fallback: pinned connection profile -----------------
-    # Detect "field needs fallback" = empty OR still a literal %%TOKEN%%.
+    # Detect "field needs fallback" = empty, a literal %%TOKEN%%, or an
+    # unsubstituted THE_<FIELD> doc placeholder.
     function _Needs($v) {
         if ([string]::IsNullOrWhiteSpace($v)) { return $true }
         if ($v.StartsWith('%%') -and $v.EndsWith('%%')) { return $true }
+        # An unsubstituted 'THE_<FIELD>' doc placeholder: several SKILL.md
+        # token-fill blocks emit THE_SERVER / THE_SYSNR / THE_CLIENT / THE_USER
+        # / THE_PASSWORD / THE_LANGUAGE when the intent is "let the pinned-
+        # profile fallback supply this". Treat it as needs-fallback so it never
+        # reaches NCo as a literal -- otherwise NCo raised, e.g.,
+        # "THE_SYSNR is not a valid system number" and the skill exited 2.
+        # Case-SENSITIVE (-cmatch): the placeholder convention is all-uppercase,
+        # so this never swallows a real mixed/lower-case value (hostname / user
+        # / logon group). Accepting a real all-uppercase THE_* connection value
+        # as a placeholder is a deliberate trade-off (fix 2026-06-07).
+        if ($v -cmatch '^THE_[A-Z_]+$') { return $true }
         return $false
     }
     # Remember whether each endpoint slot came from the caller (explicit)

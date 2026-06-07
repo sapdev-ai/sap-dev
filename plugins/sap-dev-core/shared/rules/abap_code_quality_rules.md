@@ -585,6 +585,86 @@ via `MAX_PRIORITY=2` in `/sap-atc`, but P1 SLIN findings have caught
 real mismatches that ATC's parameter resolver flags as type incompatible.
 Generator-side avoidance is preferred over post-hoc fix loops.
 
+## 25. `SPLIT` / text-parse targets must be character-type (file-load flows)
+
+Every receiver of a `SPLIT … INTO` — and of any other statement that writes a
+parsed text token, e.g. a manual tab-parse over a `GUI_UPLOAD char2048` line
+(rule §22's file-load stage) — MUST be a character-type object: `C`, `N`,
+`D`, `T`, or `STRING`. ABAP rejects a packed / numeric receiver at **syntax
+check**, so it fails the `/sap-se38` deploy syntax gate before ATC ever runs
+(SEVERITY `ACTIVATION`):
+
+```
+"NTGEW" must be a character-type object (C, N, D, T or STRING).
+```
+
+This bites when the spec maps a numeric file column — a `QUAN` (quantity /
+weight), `CURR` (amount), `DEC`, or any packed / `P` DDIC field — and the
+generator `SPLIT`s the input line **directly into a typed DDIC record
+structure** whose matching component carries that numeric type. `SPLIT`
+performs no conversion; it requires every target to be text.
+
+**Generator rule**: when a SPLIT-from-text-file (or equivalent tab-parse)
+flow has ANY target component that is not character-type, emit an
+**all-CHARACTER staging structure**, `SPLIT` the line into that, then assign
+**field-by-field** into the typed target record — the CHAR→numeric conversion
+happens on the MOVE, never on the `SPLIT`.
+
+```abap
+" ❌ Activation error — ls_rec-ntgew is QUAN (packed); a SPLIT receiver
+"    must be character-type.
+"      "NTGEW" must be a character-type object (C, N, D, T or STRING).
+DATA ls_rec TYPE zmms_material_upload.   " component ntgew TYPE ntgew (QUAN)
+SPLIT lv_line AT lc_tab INTO ls_rec-matnr
+                              ls_rec-maktx
+                              ls_rec-ntgew     " <- packed: rejected
+                              ls_rec-gewei.
+
+" ✅ All-character staging struct for the SPLIT, then MOVE field-by-field
+"    into the typed record. The packed conversion happens on each
+"    assignment (CHAR -> QUAN), which the runtime does with a normal MOVE.
+TYPES: BEGIN OF ty_raw,
+         matnr TYPE string,
+         maktx TYPE string,
+         ntgew TYPE string,
+         gewei TYPE string,
+       END OF ty_raw.
+DATA ls_raw TYPE ty_raw.
+DATA ls_rec TYPE zmms_material_upload.
+
+SPLIT lv_line AT lc_tab INTO ls_raw-matnr
+                              ls_raw-maktx
+                              ls_raw-ntgew
+                              ls_raw-gewei.
+
+ls_rec-matnr = ls_raw-matnr.
+ls_rec-maktx = ls_raw-maktx.
+ls_rec-ntgew = ls_raw-ntgew.    " CHAR -> QUAN: numeric conversion here
+ls_rec-gewei = ls_raw-gewei.
+```
+
+When the staging component names match the target one-to-one, a single
+`MOVE-CORRESPONDING ls_raw TO ls_rec.` is the compact equivalent — the
+per-field CHAR→numeric conversion still happens on the move.
+
+**Numeric-format caution**: the implicit CHAR→packed conversion reads `.` as
+the decimal separator and tolerates a leading sign plus blanks, but it does
+NOT strip thousands separators or accept a locale decimal comma. When the
+spec's file format uses `1.234,56` (or `1,234.56`), normalise the staged
+string first (strip / swap separators, or route through a conversion exit /
+`cl_abap_…` helper) BEFORE the MOVE — otherwise activation passes but the
+value parses wrong or dumps `CX_SY_CONVERSION_NO_NUMBER` at runtime.
+
+Related: rule §22 (file-load field mapping into BAPI structures — the same
+"map a spec file column into a typed target" stage, different statement) and
+rule §24 (CALL FUNCTION actual/formal type compatibility — the sibling
+type-compatibility codegen trap). Joins the S/4HANA 1909 strict-syntax trap
+family in Claude memory `feedback_sap_gen_abap_inline_type_pitfalls`.
+Confirmed live 2026-06-07 on the MaterialUpload CN `*56` build
+(`ZMMRMAT056*`; NTGEW = 净重 / net weight, a QUAN field). The machine-readable
+mirror is the `SPLIT_NONCHAR_TARGET` seed row in `frequently_errors.tsv`
+(STMT / `*`, STATUS `CONFIRMED`), auto-injected at Step 1.5f.
+
 ## 23. Cyclomatic complexity & method length
 
 Checker emits a WARNING when:

@@ -72,12 +72,12 @@ Fill the shared artefacts script:
 ```powershell
 $shared   = '<SAP_DEV_CORE_SHARED_DIR>'
 $ps       = Get-Content "$shared\scripts\sap_dev_artefacts.ps1" -Raw -Encoding UTF8
-$ps       = $ps.Replace('%%SAP_SERVER%%',     'THE_SERVER')
-$ps       = $ps.Replace('%%SAP_SYSNR%%',      'THE_SYSNR')
-$ps       = $ps.Replace('%%SAP_CLIENT%%',     'THE_CLIENT')
-$ps       = $ps.Replace('%%SAP_USER%%',       'THE_USER')
-$ps       = $ps.Replace('%%SAP_PASSWORD%%',   'THE_PASSWORD')
-$ps       = $ps.Replace('%%SAP_LANGUAGE%%',   'THE_LANGUAGE')
+$ps       = $ps.Replace('%%SAP_SERVER%%',     '')
+$ps       = $ps.Replace('%%SAP_SYSNR%%',      '')
+$ps       = $ps.Replace('%%SAP_CLIENT%%',     '')
+$ps       = $ps.Replace('%%SAP_USER%%',       '')
+$ps       = $ps.Replace('%%SAP_PASSWORD%%',   '')
+$ps       = $ps.Replace('%%SAP_LANGUAGE%%',   '')
 $ps       = $ps.Replace('%%RFC_LIB_PS1%%',    "$shared\scripts\sap_rfc_lib.ps1")
 $ps       = $ps.Replace('%%TR%%',             'THE_TR')
 $ps       = $ps.Replace('%%PACKAGE%%',        'THE_PKG')

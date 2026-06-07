@@ -168,12 +168,12 @@ Token-substitute and write to `{WORK_TEMP}\sap_checkabap_ddic_helper.ps1`:
 
 ```powershell
 $h = Get-Content '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_rfc_lookup_ddic.ps1' -Raw
-$h = $h -replace '%%SAP_SERVER%%',   'THE_SERVER'
-$h = $h -replace '%%SAP_SYSNR%%',    'THE_SYSNR'
-$h = $h -replace '%%SAP_CLIENT%%',   'THE_CLIENT'
-$h = $h -replace '%%SAP_USER%%',     'THE_USER'
-$h = $h -replace '%%SAP_PASSWORD%%', 'THE_PASSWORD'
-$h = $h -replace '%%SAP_LANGUAGE%%', 'THE_LANGUAGE'
+$h = $h -replace '%%SAP_SERVER%%',   ''
+$h = $h -replace '%%SAP_SYSNR%%',    ''
+$h = $h -replace '%%SAP_CLIENT%%',   ''
+$h = $h -replace '%%SAP_USER%%',     ''
+$h = $h -replace '%%SAP_PASSWORD%%', ''
+$h = $h -replace '%%SAP_LANGUAGE%%', ''
 $h = $h -replace '%%RFC_LIB_PS1%%',  '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_rfc_lib.ps1'
 $h = $h -replace '%%REQUEST_FILE%%', '{WORK_TEMP}\sap_checkabap_ddic_request.txt'
 $h = $h -replace '%%RESULT_FILE%%',  '{WORK_TEMP}\sap_checkabap_ddic_result.tsv'

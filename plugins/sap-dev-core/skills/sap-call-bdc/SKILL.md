@@ -167,12 +167,12 @@ The PowerShell template is at `./references/sap_bdc_transaction.ps1` (relative t
 **Write `{WORK_TEMP}\sap_bdc_run.ps1`:**
 ```powershell
 $content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_bdc_transaction.ps1', [System.Text.Encoding]::UTF8)
-$content = $content.Replace('%%SAP_SERVER%%',   'THE_SERVER')
-$content = $content.Replace('%%SAP_SYSNR%%',    'THE_SYSNR')
-$content = $content.Replace('%%SAP_CLIENT%%',   'THE_CLIENT')
-$content = $content.Replace('%%SAP_USER%%',     'THE_USER')
-$content = $content.Replace('%%SAP_PASSWORD%%', 'THE_PASSWORD')
-$content = $content.Replace('%%SAP_LANGUAGE%%', 'THE_LANGUAGE')
+$content = $content.Replace('%%SAP_SERVER%%',   '')
+$content = $content.Replace('%%SAP_SYSNR%%',    '')
+$content = $content.Replace('%%SAP_CLIENT%%',   '')
+$content = $content.Replace('%%SAP_USER%%',     '')
+$content = $content.Replace('%%SAP_PASSWORD%%', '')
+$content = $content.Replace('%%SAP_LANGUAGE%%', '')
 $content = $content.Replace('%%RFC_LIB_PS1%%',  '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_rfc_lib.ps1')
 $content = $content.Replace('%%TCODE%%',        'THE_TCODE')
 $content = $content.Replace('%%BDC_FILE%%',     'THE_BDC_FILE')

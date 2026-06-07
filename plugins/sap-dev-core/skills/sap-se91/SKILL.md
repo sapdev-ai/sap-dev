@@ -220,12 +220,12 @@ Write `{WORK_TEMP}\sap_se91_checkmsg_run.ps1`:
 $content = Get-Content '<SKILL_DIR>\references\sap_se91_check_messages.ps1' -Raw
 $content = $content -replace '%%MSG_CLASS%%','THE_MSG_CLASS'
 $content = $content -replace '%%MESSAGES_FILE%%','THE_MESSAGES_FILE'
-$content = $content -replace '%%SAP_SERVER%%','THE_SERVER'
-$content = $content -replace '%%SAP_SYSNR%%','THE_SYSNR'
-$content = $content -replace '%%SAP_CLIENT%%','THE_CLIENT'
-$content = $content -replace '%%SAP_USER%%','THE_USER'
-$content = $content -replace '%%SAP_PASSWORD%%','THE_PASSWORD'
-$content = $content -replace '%%SAP_LANGUAGE%%','THE_LANGUAGE'
+$content = $content -replace '%%SAP_SERVER%%',''
+$content = $content -replace '%%SAP_SYSNR%%',''
+$content = $content -replace '%%SAP_CLIENT%%',''
+$content = $content -replace '%%SAP_USER%%',''
+$content = $content -replace '%%SAP_PASSWORD%%',''
+$content = $content -replace '%%SAP_LANGUAGE%%',''
 $content = $content -replace '%%RFC_LIB_PS1%%', '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_rfc_lib.ps1'
 [System.IO.File]::WriteAllText('{WORK_TEMP}\sap_se91_checkmsg_run.ps1', $content, [System.Text.Encoding]::UTF8)
 Write-Host 'Done'
