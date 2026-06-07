@@ -737,6 +737,15 @@ CONSTANTS:
 3. If only `_process.txt` is present (legacy flow) → fall back to extracting
    parameters from the field-definitions section as before.
 
+**Block order — global declarations BEFORE event blocks (applies to MODE_OOP
+and FORM-style alike).** Emit every global `TYPES` / `CLASS lcl_main
+DEFINITION` / `DATA` / `CONSTANTS` AND the whole `SELECTION-SCREEN` before any
+event block (`INITIALIZATION`, `AT SELECTION-SCREEN ...`, `START-OF-SELECTION`);
+put `CLASS lcl_main IMPLEMENTATION` and the `ltcl_main` test class at the very
+end. A global `TYPES` or `CLASS ... DEFINITION` emitted *after* an event block
+is scoped inside that event -> `"Type ... is unknown"` and a failed syntax
+check on the first deploy. Canonical order in `abap_code_quality_rules.md` §10.
+
 ```abap
 *&---------------------------------------------------------------------*
 *& Report   : Z<PROGRAM_ID>

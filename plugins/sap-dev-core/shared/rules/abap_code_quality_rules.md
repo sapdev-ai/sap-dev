@@ -50,6 +50,30 @@ START-OF-SELECTION.
   ENDTRY.
 ```
 
+**Block order (report / type 1): ALL global declarations BEFORE any event
+block.** ABAP scopes a global `TYPES` / `CLASS … DEFINITION` / `DATA` /
+`CONSTANTS` to wherever it is written. If the generator emits one *after* an
+event block (`INITIALIZATION`, `AT SELECTION-SCREEN …`, `START-OF-SELECTION`),
+the declaration is captured inside that event and is invisible elsewhere —
+e.g. a global `TYPES ty_row` placed after `AT SELECTION-SCREEN ON
+VALUE-REQUEST` yields `"Type TY_ROW is unknown"` and a failed syntax check on
+the first deploy. Emit a report in exactly this order:
+
+```abap
+REPORT z...  MESSAGE-ID z....
+" 1. global TYPES (ty_row, ty_result, ...)
+" 2. CLASS lcl_main DEFINITION ... ENDCLASS.
+" 3. global DATA / CONSTANTS
+" 4. SELECTION-SCREEN / PARAMETERS / SELECT-OPTIONS
+INITIALIZATION.                                   " 5. event blocks come AFTER 1-4
+AT SELECTION-SCREEN ON VALUE-REQUEST FOR p_file.  "    (e.g. F4 file dialog)
+  " ...
+START-OF-SELECTION.
+  NEW lcl_main( )->run( ).
+" 6. CLASS lcl_main IMPLEMENTATION ... ENDCLASS.  (at the end)
+" 7. CLASS ltcl_main DEFINITION/IMPLEMENTATION FOR TESTING (end, or test include)
+```
+
 When updating an existing FORM-style program, do NOT rewrite it — extend it
 in the same style to keep the diff minimal.
 
@@ -85,6 +109,24 @@ Forbidden patterns the generator MUST never produce, and the checker MUST flag:
 - `DESCRIBE TABLE … LINES` followed by `IF n > 0` — use `IS NOT INITIAL`.
 - `MODIFY itab FROM wa` inside a `LOOP AT itab INTO wa` — use
   `LOOP AT itab ASSIGNING FIELD-SYMBOL(<fs>)` and modify `<fs>` in place.
+- `SELECT SINGLE COUNT(*)` / `SELECT COUNT(*)` as an **existence check on a
+  buffered table** — the `COUNT(*)` aggregate forces a DB round-trip and
+  **bypasses the table buffer**, so ATC raises "SELECT bypassing table buffer"
+  (Priority 2). Many config tables are buffered (e.g. `T001`, `T001W`, `T023`,
+  `T134`; confirm via SE13 / Technical Settings). For an existence test, read a
+  key field and check `sy-subrc` instead — that path uses the buffer:
+
+  ```abap
+  " bad  — COUNT(*) bypasses the buffer -> ATC P2
+  SELECT SINGLE COUNT(*) FROM t001 WHERE bukrs = @p_bukrs.
+  IF sy-dbcnt = 0. " not found
+
+  " good — key-field read uses the buffer
+  SELECT SINGLE bukrs FROM t001 WHERE bukrs = @p_bukrs INTO @DATA(lv_d).
+  IF sy-subrc <> 0. " company code does not exist
+  ```
+
+  `COUNT(*)` is acceptable only on un-buffered tables (e.g. `MARA`).
 
 **Concrete pattern for explicit field lists:**
 

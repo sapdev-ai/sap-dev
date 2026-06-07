@@ -223,8 +223,32 @@ boundaries, well-known keywords).
 For xlsx inputs, walk the `(Meta) Layout` SECTIONS rows. For each row:
 
 1. Locate the named worksheet by `sheet_name`.
-2. Resolve the section's data anchor — first by `anchor_named_range` (if
-   defined and resolvable), else by scanning column A for `anchor_keyword`.
+2. Resolve the section's data anchor — first by `anchor_named_range`, else
+   by an `anchor_keyword` scan:
+   - **Named range** — use it ONLY if it is defined AND resolves to a sheet
+     that actually exists *in this workbook*. A named range copied from
+     another workbook (common when a spec is built by copying sheets between
+     workbooks in Excel) is rewritten by Excel into an **external reference**
+     like `[4]SourceTemplateSheet!$A18` (the `[N]` prefix points at a
+     DIFFERENT workbook, and the sheet name is the source template's — often
+     in another language); its sheet does not exist in THIS workbook, so it
+     is **NOT resolvable** — fall through to the keyword
+     scan. (Treat any destination sheet not in `wb.sheetnames` as a miss; do
+     not let a broken external-ref named range abort the section.)
+   - **Keyword scan** — scan the worksheet for the first cell whose trimmed
+     value equals `anchor_keyword`, **across ALL columns** (top-to-bottom,
+     then left-to-right within each row) — **not just column A**. A section's
+     anchor keyword may live in any column: e.g. `ddic_tables_fields` uses
+     `FIELDNAME`, which sits in **column C** (after the `Table` join column
+     in A and `No` in B), so a column-A-only scan never finds it and the
+     fields half of `_tables.txt` silently comes out empty. The matched
+     cell's row is the header row; data starts `data_starts_offset` rows
+     below.
+   - **If NEITHER path resolves an anchor**, emit
+     `WARN: section <key>: anchor '<anchor_keyword>' not found on sheet
+     '<sheet_name>' — section skipped` and skip the section. **NEVER silently
+     write an empty or partial output file** — a visible WARN is required so a
+     missing table/section is never mistaken for "the spec had none".
 3. Dispatch on `format`:
    - `kv` — read 2-column key/value pairs from the anchor row downward,
      emit as `KEY\tVALUE` lines.
@@ -372,6 +396,17 @@ Write each file to `{work_folder}` (the same folder that contains the
 **Overwrite policy:** If a target file already exists, OVERWRITE it without
 prompting. Do not back up, rename, or skip existing files. The Write tool
 replaces the file content, which is the desired behaviour.
+
+**Multiple sections → one output_file (concatenate, do NOT overwrite):** when
+two or more `(Meta) Layout` SECTIONS write to the SAME `output_file` (e.g.
+`ddic_tables_metadata` and `ddic_tables_fields` both → `_tables.txt`),
+accumulate their blocks **in SECTIONS order into a single file content, then
+write once** — the later section must NOT overwrite the earlier one's rows.
+Precede each block with a `# === <SECTION_KEY> ===` banner (e.g.
+`# === METADATA ===`, `# === FIELDS ===`) so the consumer (`/sap-gen-abap`)
+can split them. This is the same `output_file` the Step 3 forward-fill carry
+pointer persists across. A section skipped by the Step 3 WARN contributes no
+block — but the other section(s) still write theirs.
 
 File name pattern (all paths relative to `{work_folder}`):
 
