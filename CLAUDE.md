@@ -155,7 +155,13 @@ gitignored dev *checkout* override, live only when running from a repo checkout
 (`--plugin-dir`); (2) `{work_dir}\runtime\userconfig.json` — machine-global user
 overrides + the single skill WRITE target, outside the versioned cache so it
 survives updates; (3) `plugins/<plugin>/settings.json` — tracked schema
-(blank/default values). The full contract is in
+(blank/default values). **`work_dir` itself** has a dedicated bootstrap chain
+(it locates `userconfig.json`, so it can't read it): env var → `settings.local.json`
+→ **`%APPDATA%\sapdev-ai\work_dir.txt`** (durable out-of-cache pointer) →
+`settings.json` → default. The pointer is the durable mirror of the env var that
+ALSO bridges the current AI session (a freshly-set User env var never reaches
+already-running processes — host + every sibling subprocess); `set` writes both.
+The full contract is in
 `plugins/sap-dev-core/shared/rules/settings_lookup.md`. Summary:
 
 - **Reads** merge per-key on `.value`: env (work_dir only) > settings.local.json
@@ -417,14 +423,21 @@ All skills resolve a centralized work directory via `Get-SapWorkDir`
 | `fm_cache_dir` | `{work_dir}\cache\fm_signatures` | FM signature cache (per-system; see "FM Signature Cache" below) |
 
 **`work_dir` resolution order:** env var `SAPDEV_AI_WORK_DIR` →
-`settings.local.json` → `settings.json` → default `C:\sap_dev_work`. The env
-var is the durable, update-proof root: the plugin cache is versioned per release
-(so a custom `work_dir` set only in `settings.local.json` is lost on update),
-but the env var is not. Set it once at the OS user level (then restart the
-terminal / host so child processes inherit it) and everything stable under
-`work_dir` — `connections.json`, dev defaults, logs, `userconfig.json` — keeps
-resolving across updates. `work_dir` is the bootstrap pointer and is therefore
-NOT read from `userconfig.json` (which lives under it).
+`settings.local.json` → **`%APPDATA%\sapdev-ai\work_dir.txt`** (durable
+out-of-cache pointer) → `settings.json` → default `C:\sap_dev_work`. The env var
+and the pointer are the durable, update-proof roots: the plugin cache is
+versioned per release (so a custom `work_dir` set only in `settings.local.json`
+or hand-written into `settings.json` is lost on update), but neither of these is.
+`/sap-login` onboarding (`sap_workdir_setup.ps1 -Action set`) writes **both** —
+the env var for external shells / future sessions, and the pointer file for the
+**current** session: a freshly-set *User* env var never reaches already-running
+processes (this host + every sibling PowerShell it spawns, one per skill call),
+so without the pointer the next skill falls back to `C:\sap_dev_work`. The
+pointer is read fresh by every subprocess, so a work_dir chosen mid-session
+sticks for every later skill. Everything stable under `work_dir` —
+`connections.json`, dev defaults, logs, `userconfig.json` — keeps resolving
+across updates. `work_dir` is the bootstrap pointer and is therefore NOT read
+from `userconfig.json` (which lives under it).
 
 Temp files go to `{work_dir}\temp` (referenced as `{WORK_TEMP}` in SKILL.md files).
 

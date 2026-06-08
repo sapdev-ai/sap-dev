@@ -38,9 +38,14 @@ try {
         'probe' {
             $wd = Get-SapWorkDir
             $runtime = [System.IO.Path]::Combine($wd, 'runtime')
+            $ptr = Get-SapWorkDirPointerPath
+            $ptrVal = Read-SapWorkDirPointer
             Out-KV 'WORK_DIR'          $wd
             Out-KV 'ENV_SET'           ([bool](-not [string]::IsNullOrWhiteSpace($env:SAPDEV_AI_WORK_DIR)))
             Out-KV 'ENV_VALUE'         ($env:SAPDEV_AI_WORK_DIR)
+            Out-KV 'POINTER_PATH'      $ptr
+            Out-KV 'POINTER_EXISTS'    ([bool](-not [string]::IsNullOrWhiteSpace($ptrVal)))
+            Out-KV 'POINTER_VALUE'     $ptrVal
             Out-KV 'STORE_EXISTS'      ([bool](Test-Path ([System.IO.Path]::Combine($runtime, 'connections.json'))))
             Out-KV 'USERCONFIG_EXISTS' ([bool](Test-Path ([System.IO.Path]::Combine($runtime, 'userconfig.json'))))
             Out-KV 'OK' 'True'
@@ -52,11 +57,31 @@ try {
             $runtime = [System.IO.Path]::Combine($wd, 'runtime')
             if (-not (Test-Path $runtime)) { New-Item -ItemType Directory -Force -Path $runtime | Out-Null }
             # Persist at User scope (durable across plugin updates). Takes effect
-            # for NEW processes; the current session is bridged by the caller
-            # prefixing $env:SAPDEV_AI_WORK_DIR (see work_dir_onboarding.md).
+            # for NEW processes only -- already-running processes (this AI host +
+            # every sibling subprocess) never inherit a freshly-set User env var.
             [Environment]::SetEnvironmentVariable('SAPDEV_AI_WORK_DIR', $wd, 'User')
-            Out-KV 'SET_OK'   'True'
-            Out-KV 'WORK_DIR' $wd
+            # Mirror to the durable out-of-cache pointer file. This is what bridges
+            # the CURRENT session across skills: every later sibling subprocess
+            # reads %APPDATA%\sapdev-ai\work_dir.txt fresh (the env-var prefix only
+            # bridges within one skill run). Also survives plugin updates, unlike a
+            # value written into the versioned-cache settings.json.
+            $ptr = Get-SapWorkDirPointerPath
+            $ptrOk = $false
+            if ($ptr) {
+                try {
+                    $ptrDir = [System.IO.Path]::GetDirectoryName($ptr)
+                    if (-not (Test-Path $ptrDir)) { New-Item -ItemType Directory -Force -Path $ptrDir | Out-Null }
+                    # UTF-8 NO BOM, no trailing newline -- read back by Read-SapWorkDirPointer.
+                    [System.IO.File]::WriteAllText($ptr, $wd, (New-Object System.Text.UTF8Encoding($false)))
+                    $ptrOk = $true
+                } catch {
+                    [Console]::Error.WriteLine("WARN: could not write work_dir pointer ${ptr}: $($_.Exception.Message)")
+                }
+            }
+            Out-KV 'SET_OK'      'True'
+            Out-KV 'WORK_DIR'    $wd
+            Out-KV 'POINTER'     $ptr
+            Out-KV 'POINTER_SET' ([bool]$ptrOk)
         }
         'migrate' {
             if ([string]::IsNullOrWhiteSpace($From)) { throw "migrate requires -From" }

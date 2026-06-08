@@ -23,7 +23,7 @@ The plugin that owns `userConfig` is almost always `sap-dev-core`:
     <plugin-root>/settings.local.json    # dev checkout override (tier 1)
     {work_dir}\runtime\userconfig.json   # machine-global overrides + write target (tier 2)
 
-> **work_dir is the bootstrap pointer.** It locates `userconfig.json`, so it is resolved WITHOUT reading `userconfig.json` (env var → settings.local.json → settings.json → default `C:\sap_dev_work`). Never set `work_dir` in `userconfig.json` — it is ignored there.
+> **work_dir is the bootstrap pointer.** It locates `userconfig.json`, so it is resolved WITHOUT reading `userconfig.json`: env var `SAPDEV_AI_WORK_DIR` → `settings.local.json` → **`%APPDATA%\sapdev-ai\work_dir.txt`** → `settings.json` → default `C:\sap_dev_work`. The `%APPDATA%` pointer is a durable out-of-cache file (written by `/sap-login` onboarding alongside the env var) that survives plugin updates AND is read fresh by every sibling subprocess — it bridges the current AI session, since a freshly-set *User* env var never reaches already-running processes. Never set `work_dir` in `userconfig.json` — it is ignored there.
 
 > **Implementation status — PowerShell only.** Tiers 0 and 2 and the new write target are implemented in `sap_settings_lib.ps1` + `Get-SapWorkDir` (`sap_connection_lib.ps1`). There is no VBScript implementation: settings are resolved in PowerShell, and the resolved values are passed into VBS via `%%TOKEN%%` substitution + environment variables (e.g. `%%SESSION_PATH%%` / `SAPDEV_SESSION_PATH`). Every load-bearing settings read is therefore PowerShell.
 
@@ -104,8 +104,8 @@ Implementation choices, in preference order:
    Read tool (treat any missing file as `{"userConfig": {}}`). For each key,
    prefer `settings.local.json` → then `userconfig.json` → then `settings.json`
    on the `.value` field (first non-empty wins). Resolve `work_dir` itself from
-   `$env:SAPDEV_AI_WORK_DIR` → settings.local.json → settings.json → default,
-   NOT from userconfig.json.
+   `$env:SAPDEV_AI_WORK_DIR` → settings.local.json → `%APPDATA%\sapdev-ai\work_dir.txt`
+   → settings.json → default, NOT from userconfig.json.
    For **per-connection keys**, additionally read
    `{work_dir}\runtime\connections.json`, find the profile whose `id`
    matches the AI session's pinned `connection_id` (look it up via

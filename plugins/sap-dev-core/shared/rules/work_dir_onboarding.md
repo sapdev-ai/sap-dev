@@ -6,7 +6,22 @@ one-liner (`Get-SapWorkDir`) and does **NOT** prompt; only these two onboard.
 
 `work_dir` is the load-bearing value — connections, settings (`userconfig.json`),
 logs and caches all live under it. The durable, update-proof root is the **user
-environment variable `SAPDEV_AI_WORK_DIR`** (the versioned plugin cache is not).
+environment variable `SAPDEV_AI_WORK_DIR`** (the versioned plugin cache is not),
+mirrored to a **durable out-of-cache pointer file `%APPDATA%\sapdev-ai\work_dir.txt`**.
+The `set` action writes BOTH; the resolver reads both. Why two:
+
+- The **env var** is what external shells / future sessions inherit.
+- The **pointer file** is what bridges the **current** AI session. A freshly set
+  *User* env var never reaches already-running processes (this host + every
+  sibling PowerShell it spawns, one per skill call), so without the pointer the
+  next skill in the same session falls back to `C:\sap_dev_work`. The pointer is
+  read fresh by every subprocess, so the work_dir chosen mid-session sticks for
+  every later skill — and, living outside the versioned cache, survives plugin
+  updates (unlike a value hand-written into `settings.json`).
+
+Full resolution order (highest first): env var → `settings.local.json` (dev
+checkout override) → `%APPDATA%\sapdev-ai\work_dir.txt` → `settings.json` →
+default `C:\sap_dev_work`.
 
 Helper: `<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_workdir_setup.ps1`
 (`-Action probe | set | migrate`).
@@ -19,7 +34,8 @@ Helper: `<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_workdir_setup.ps1`
 powershell -NoProfile -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_workdir_setup.ps1" -Action probe
 ```
 
-Returns `WORK_DIR`, `ENV_SET`, `ENV_VALUE`, `STORE_EXISTS` (is there a
+Returns `WORK_DIR`, `ENV_SET`, `ENV_VALUE`, `POINTER_PATH`, `POINTER_EXISTS`,
+`POINTER_VALUE` (the durable pointer file), `STORE_EXISTS` (is there a
 `connections.json` under the resolved work_dir), `USERCONFIG_EXISTS`.
 
 ## Step B — Decide `{work_dir}`
@@ -27,8 +43,9 @@ Returns `WORK_DIR`, `ENV_SET`, `ENV_VALUE`, `STORE_EXISTS` (is there a
 | Signal | Action |
 |---|---|
 | `ENV_SET=True` | Use `WORK_DIR`. No prompt. (If the user explicitly asks to change it → **Step D**.) |
-| `ENV_SET=False`, `STORE_EXISTS=True` | Existing user on the default/settings dir. Use `WORK_DIR`, do **not** block. Print one line: *"Tip: set `SAPDEV_AI_WORK_DIR=<WORK_DIR>` to make your work dir update-proof — re-run this skill to choose."* |
-| `ENV_SET=False`, `STORE_EXISTS=False` | **First run** → **Step C**. |
+| `ENV_SET=False`, `POINTER_EXISTS=True` | Already onboarded durably via the pointer file. Use `WORK_DIR`, no prompt, no tip. (Change → **Step D**.) |
+| `ENV_SET=False`, `POINTER_EXISTS=False`, `STORE_EXISTS=True` | Existing user on the default/settings dir, not yet pinned durably. Use `WORK_DIR`, do **not** block. Print one line: *"Tip: re-run `/sap-login` (or `setx SAPDEV_AI_WORK_DIR <WORK_DIR>`) to pin your work dir update-proof."* |
+| `ENV_SET=False`, `POINTER_EXISTS=False`, `STORE_EXISTS=False` | **First run** → **Step C**. |
 
 ## Step C — First-run prompt + set
 
@@ -43,8 +60,14 @@ Returns `WORK_DIR`, `ENV_SET`, `ENV_VALUE`, `STORE_EXISTS` (is there a
    powershell -NoProfile -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_workdir_setup.ps1" -Action set -WorkDir "<chosen>"
    ```
 4. `{work_dir}` = `<chosen>` for the rest of this run.
-5. Tell the user: *"Set `SAPDEV_AI_WORK_DIR=<chosen>` (durable). Active for this
-   run; other already-open terminals/hosts pick it up after you restart them."*
+5. Tell the user: *"Set `SAPDEV_AI_WORK_DIR=<chosen>` (durable env var) and wrote
+   the pointer `%APPDATA%\sapdev-ai\work_dir.txt`. Active immediately — every
+   skill this session resolves to it. Other already-open terminals/hosts pick up
+   the env var after you restart them."*
+
+The `set` action persists **both** the User env var and the pointer file, so the
+choice is durable across plugin updates *and* effective for the current session
+without a restart. (`SET_OK=True`, `POINTER_SET=True` confirm both writes.)
 
 ## Step D — Change (user picks a different work_dir, or changes the env var)
 
@@ -68,13 +91,17 @@ When the new `{work_dir}` differs from a path that already holds state
    - **Cancel**: keep `<old>`; make no change.
 3. Then **set** the env var to `<new>` (Step C.3) and apply the session bridge.
 
-## Step E — Current-session env bridge (always, once `{work_dir}` is known)
+## Step E — Current-session env bridge (within THIS skill run)
 
-Setting the user env var does **not** reach this session's already-spawned
-subprocesses (they inherited their environment at launch). So for the rest of
-THIS run, prefix every PowerShell command with the env assignment before
-dot-sourcing, so internal `Get-SapWorkDir` calls (e.g. the connection-store
-path) agree with `{work_dir}`:
+The pointer file (written by `set` in Step C.3) already bridges the session for
+**later skills** — they each resolve `{work_dir}` from it on their own. Step E is
+the narrower in-run guard for the **rest of `/sap-login` / `/sap-dev-init`
+itself**: a freshly set User env var does not reach this run's already-spawned
+subprocesses, and on a brand-new first-run `set` the pointer write and the first
+dependent command can race. So prefix every PowerShell command in the remainder
+of THIS run with the env assignment before dot-sourcing, so internal
+`Get-SapWorkDir` calls (e.g. the connection-store path) agree with `{work_dir}`
+deterministically:
 
 ```bash
 powershell -NoProfile -ExecutionPolicy Bypass -Command "\$env:SAPDEV_AI_WORK_DIR='{work_dir}'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; <your command>"
@@ -84,4 +111,5 @@ The leading `\$` escapes the dollar so **bash** passes a literal `$env:` to
 PowerShell (these fences run through the Bash tool, which would otherwise expand
 `$env` to nothing and leave a stray `:`); drop the backslash only if you run the
 line via the PowerShell tool directly. This bridge is harmless when `ENV_SET=True`
-already (it re-asserts the same value) and load-bearing on a fresh first-run set.
+already (it re-asserts the same value) and a belt-and-suspenders guard on a fresh
+first-run set (the pointer file is the primary, cross-skill bridge).

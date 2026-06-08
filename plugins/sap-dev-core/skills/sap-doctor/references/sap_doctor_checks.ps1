@@ -97,13 +97,29 @@ if ($ncoPresent) {
 }
 
 # ---------------------------------------------------------------------------
-# cfg 3. work_dir pinned via the update-proof env var
+# cfg 3. work_dir pinned by an update-proof root: the SAPDEV_AI_WORK_DIR env var
+#        OR the durable out-of-cache pointer %APPDATA%\sapdev-ai\work_dir.txt.
+#        The pointer is what bridges the current session (a freshly-set User env
+#        var never reaches already-running processes) AND survives plugin
+#        updates -- so env-unset + pointer-present is a healthy, durable state.
 # ---------------------------------------------------------------------------
 $envWd = $env:SAPDEV_AI_WORK_DIR
-if ([string]::IsNullOrWhiteSpace($envWd)) {
-    Emit 'WORKDIR_ENV' 'cfg' 'WARN' 'SAPDEV_AI_WORK_DIR is not set - a custom work_dir set only in settings is lost on plugin update' 'setx SAPDEV_AI_WORK_DIR "<your work_dir>" then restart the terminal/host'
-} else {
+$ptrPath = $null
+$ptrVal  = ''
+$appData = $env:APPDATA
+if ([string]::IsNullOrWhiteSpace($appData)) { try { $appData = [Environment]::GetFolderPath('ApplicationData') } catch { $appData = '' } }
+if (-not [string]::IsNullOrWhiteSpace($appData)) {
+    $ptrPath = [System.IO.Path]::Combine($appData, 'sapdev-ai', 'work_dir.txt')
+    if (Test-Path -LiteralPath $ptrPath) {
+        try { $ptrVal = (([System.IO.File]::ReadAllText($ptrPath) -split "`r?`n")[0]).Trim().Trim('"').TrimEnd('\') } catch { $ptrVal = '' }
+    }
+}
+if (-not [string]::IsNullOrWhiteSpace($envWd)) {
     Emit 'WORKDIR_ENV' 'cfg' 'PASS' ("SAPDEV_AI_WORK_DIR={0}" -f $envWd) '-'
+} elseif (-not [string]::IsNullOrWhiteSpace($ptrVal)) {
+    Emit 'WORKDIR_ENV' 'cfg' 'PASS' ("work_dir pinned by durable pointer {0} -> {1} (env var not in this process; pointer survives updates + bridges the session)" -f $ptrPath, $ptrVal) 'Optional: setx SAPDEV_AI_WORK_DIR "<work_dir>" so external shells inherit it too'
+} else {
+    Emit 'WORKDIR_ENV' 'cfg' 'WARN' 'work_dir is not pinned by SAPDEV_AI_WORK_DIR nor the %APPDATA%\sapdev-ai\work_dir.txt pointer - a custom work_dir set only in cache settings is lost on plugin update' 'Run /sap-login (writes the durable pointer), or setx SAPDEV_AI_WORK_DIR "<your work_dir>" then restart the terminal/host'
 }
 
 # ---------------------------------------------------------------------------

@@ -71,11 +71,13 @@ $script:SapConnStore_MutexTimeoutMs = 10000
 
 function Get-SapWorkDir {
     # Resolution order: env var SAPDEV_AI_WORK_DIR -> settings.local.json ->
-    # settings.json -> default C:\sap_dev_work. The env var is the durable,
-    # update-proof root (the plugin cache is versioned per release; the env var
-    # is not), so it wins. Everything stable (connections.json, dev defaults,
-    # logs) lives under work_dir, so making this one value update-proof makes
-    # them all update-proof.
+    # %APPDATA%\sapdev-ai\work_dir.txt (durable out-of-cache pointer) ->
+    # settings.json -> default C:\sap_dev_work. The env var and the pointer are
+    # the durable, update-proof roots (the plugin cache is versioned per release;
+    # neither is). The pointer ALSO bridges the current session, since a freshly
+    # set User env var never reaches already-running processes. Everything stable
+    # (connections.json, dev defaults, logs) lives under work_dir, so making this
+    # one value update-proof makes them all update-proof.
     if (-not [string]::IsNullOrWhiteSpace($env:SAPDEV_AI_WORK_DIR)) {
         return ($env:SAPDEV_AI_WORK_DIR.Trim()).TrimEnd('\')
     }
@@ -84,8 +86,8 @@ function Get-SapWorkDir {
         if (Test-Path $libPath) { . $libPath }
     }
     # Delegate to the settings-lib bootstrap resolver (env -> settings.local ->
-    # settings -> default). It NEVER reads userconfig.json, so there is no
-    # circular dependency (userconfig.json lives under work_dir).
+    # %APPDATA% pointer -> settings -> default). It NEVER reads userconfig.json,
+    # so there is no circular dependency (userconfig.json lives under work_dir).
     if (Get-Command Get-SapWorkDirBootstrap -ErrorAction SilentlyContinue) {
         return Get-SapWorkDirBootstrap
     }

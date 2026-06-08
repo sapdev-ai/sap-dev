@@ -10,6 +10,16 @@
 #              > settings.local.json (dev checkout override)
 #              > userconfig.json (machine-global, {work_dir}\runtime)
 #              > settings.json (tracked schema/defaults).
+# work_dir   : special BOOTSTRAP chain (it locates userconfig.json, so it must
+#              resolve WITHOUT reading userconfig.json):
+#              env var SAPDEV_AI_WORK_DIR
+#              > settings.local.json (dev checkout override)
+#              > %APPDATA%\sapdev-ai\work_dir.txt (durable out-of-cache pointer --
+#                survives plugin updates AND is read fresh by every sibling
+#                subprocess, so it bridges the current AI session when a
+#                freshly-set User env var hasn't propagated to running processes)
+#              > settings.json (tracked schema)
+#              > C:\sap_dev_work (default).
 # Write path : non-per-connection writes go to userconfig.json (durable, OUTSIDE
 #              the versioned plugin cache). settings.json is never mutated;
 #              settings.local.json is a hand-edited dev override, never written
@@ -38,28 +48,78 @@ function Resolve-SapSettingsPaths {
     $script:SapSettingsLocalPath = Join-Path $coreRoot 'settings.local.json'
 }
 
+function Get-SapWorkDirPointerPath {
+    # Durable, out-of-cache bootstrap pointer for work_dir:
+    # %APPDATA%\sapdev-ai\work_dir.txt (a single line: the work_dir path).
+    #
+    # It lives under the per-user roaming profile -- NOT the versioned plugin
+    # cache (so it survives plugin updates) and NOT under work_dir itself (so
+    # there is no circular dependency). Onboarding's `set` action writes it
+    # alongside the User env var; this resolver reads it. Its job is to bridge
+    # the gap a freshly-set User env var leaves: already-running processes (the
+    # AI host + every sibling subprocess it spawns) never inherit a new User env
+    # var, but they DO read this file fresh on every call -- so a work_dir chosen
+    # mid-session resolves correctly for every later skill, durably.
+    $base = $env:APPDATA
+    if ([string]::IsNullOrWhiteSpace($base)) {
+        try { $base = [Environment]::GetFolderPath('ApplicationData') } catch { $base = '' }
+    }
+    if ([string]::IsNullOrWhiteSpace($base)) { return $null }
+    return [System.IO.Path]::Combine($base, 'sapdev-ai', 'work_dir.txt')
+}
+
+function Read-SapWorkDirPointer {
+    # Returns the cleaned work_dir from the pointer file, or '' if absent/empty.
+    # Tolerant of a hand-edited file (trailing newline, quotes, trailing slash).
+    $ptr = Get-SapWorkDirPointerPath
+    if (-not $ptr -or -not (Test-Path -LiteralPath $ptr)) { return '' }
+    try {
+        $raw = [System.IO.File]::ReadAllText($ptr)
+        if ([string]::IsNullOrWhiteSpace($raw)) { return '' }
+        $val = (($raw -split "`r?`n")[0]).Trim().Trim('"').TrimEnd('\')
+        return $val
+    } catch { return '' }
+}
+
+function Read-SapWorkDirFromSettingsFile {
+    # Reads userConfig.work_dir.value from one settings file, or '' if absent.
+    param([string] $Path)
+    if ([string]::IsNullOrWhiteSpace($Path) -or -not (Test-Path $Path)) { return '' }
+    try {
+        $o = Get-Content -Raw $Path -Encoding UTF8 | ConvertFrom-Json
+        if ($o.userConfig -and ($o.userConfig.PSObject.Properties.Name -contains 'work_dir')) {
+            $v = $o.userConfig.work_dir.value
+            if (-not [string]::IsNullOrWhiteSpace("$v")) { return "$v" }
+        }
+    } catch { }
+    return ''
+}
+
 function Get-SapWorkDirBootstrap {
     # work_dir is the BOOTSTRAP pointer: it locates userconfig.json, so it must
     # be resolvable WITHOUT reading userconfig.json (otherwise infinite
-    # recursion). Order: env var SAPDEV_AI_WORK_DIR -> settings.local.json ->
-    # settings.json -> default C:\sap_dev_work. Reads the two plugin-dir files
-    # DIRECTLY (never via Get-SapSettings) so it is safe to call from inside
-    # Get-SapSettings.
+    # recursion). Order (highest first):
+    #   1. env var SAPDEV_AI_WORK_DIR        -- live, process-explicit
+    #   2. settings.local.json               -- dev checkout override (in cache)
+    #   3. %APPDATA%\sapdev-ai\work_dir.txt  -- durable out-of-cache pointer that
+    #                                           ALSO bridges the current session
+    #   4. settings.json                     -- tracked schema (in cache)
+    #   5. C:\sap_dev_work                   -- default
+    # Reads the plugin-dir files DIRECTLY (never via Get-SapSettings) so it is
+    # safe to call from inside Get-SapSettings.
     if (-not [string]::IsNullOrWhiteSpace($env:SAPDEV_AI_WORK_DIR)) {
         return ($env:SAPDEV_AI_WORK_DIR.Trim()).TrimEnd('\')
     }
     Resolve-SapSettingsPaths
-    foreach ($p in @($script:SapSettingsLocalPath, $script:SapSettingsMainPath)) {
-        if (Test-Path $p) {
-            try {
-                $o = Get-Content -Raw $p -Encoding UTF8 | ConvertFrom-Json
-                if ($o.userConfig -and ($o.userConfig.PSObject.Properties.Name -contains 'work_dir')) {
-                    $v = $o.userConfig.work_dir.value
-                    if (-not [string]::IsNullOrWhiteSpace("$v")) { return "$v" }
-                }
-            } catch { }
-        }
-    }
+    # (2) dev checkout override -- most specific, wins over the machine-global pointer.
+    $v = Read-SapWorkDirFromSettingsFile $script:SapSettingsLocalPath
+    if (-not [string]::IsNullOrWhiteSpace($v)) { return ("$v".TrimEnd('\')) }
+    # (3) durable out-of-cache pointer (survives plugin updates; bridges this session).
+    $v = Read-SapWorkDirPointer
+    if (-not [string]::IsNullOrWhiteSpace($v)) { return $v }
+    # (4) tracked schema.
+    $v = Read-SapWorkDirFromSettingsFile $script:SapSettingsMainPath
+    if (-not [string]::IsNullOrWhiteSpace($v)) { return ("$v".TrimEnd('\')) }
     return 'C:\sap_dev_work'
 }
 

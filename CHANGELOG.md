@@ -4,6 +4,35 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A `work_dir` chosen during onboarding did not stick for later skills in the
+  same session — they silently fell back to `C:\sap_dev_work` while connections /
+  config lived elsewhere.** `SAPDEV_AI_WORK_DIR` is persisted at *User* scope,
+  which only reaches **new** processes; the running host and every sibling
+  PowerShell it spawns (one per skill call) never inherit it. The per-run
+  `$env:…=` bridge only covered the `/sap-login` run itself, so the next skill
+  (`/sap-se38`, `/sap-se16n`, …) resolved the default. Hand-writing `work_dir`
+  into the versioned-cache `settings.json` bridged the session but was lost on the
+  next plugin update.
+  - Added a **durable, out-of-cache bootstrap pointer** at
+    `%APPDATA%\sapdev-ai\work_dir.txt`. It survives plugin updates (outside the
+    versioned cache) **and** is read fresh by every subprocess, so a work_dir
+    chosen mid-session resolves correctly for every later skill — no restart, no
+    `settings.json` edit. New resolution order: env var → `settings.local.json`
+    → **pointer file** → `settings.json` → default.
+  - `sap_workdir_setup.ps1 -Action set` now writes the pointer alongside the User
+    env var (`POINTER_SET=True`); `-Action probe` reports
+    `POINTER_PATH/POINTER_EXISTS/POINTER_VALUE`. Resolver functions added to
+    `sap_settings_lib.ps1` (`Get-SapWorkDirPointerPath`, `Read-SapWorkDirPointer`).
+  - `/sap-doctor` now treats *env-unset + pointer-present* as a durable **PASS**
+    instead of warning; it only warns when neither pins `work_dir`.
+  - Docs updated: `work_dir_onboarding.md` (resolution order, Step B signals,
+    Step C/E), CLAUDE.md (Rule 7 + Work Directory Configuration).
+  - Verified on Windows PowerShell 5.1 and pwsh 7: full precedence ladder
+    (env > settings.local > pointer > settings.json > default) + set/probe
+    round-trip.
+
 ## [0.6.3] — 2026-06-08
 
 ### Fixed
