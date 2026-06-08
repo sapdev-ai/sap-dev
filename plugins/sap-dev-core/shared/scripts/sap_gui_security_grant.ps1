@@ -24,20 +24,35 @@
 # level <permissions> and <action>, action 0 = Allow), mirroring the structure
 # of the working rules SAP itself emits.
 #
+# Self-heal (idempotency is context-AWARE)
+# ----------------------------------------
+# An equivalent rule is only one whose <directories>/<files> name is THIS exact
+# path AND whose context discriminators are all empty ("any") AND whose rule-
+# level permissions already cover the requested access. Such a rule -> ALREADY.
+# If same-path rules exist but are MALFORMED (literal '*' contexts, backslash
+# paths -- SAP stores forward slashes, so these match nothing yet silently
+# satisfied the old path+perms-only idempotency check and shadowed the real
+# grant) or NARROW (non-empty context, e.g. a per-program Remember rule), they
+# are PURGED and the canonical any-context rule is written in their place ->
+# HEALED. This is the fix for the "warmup done, flag set, still prompted"
+# failure: a single stale '*' rule used to make this script return ALREADY
+# forever without ever writing an effective rule. Only single-name elements for
+# THIS exact path (forward- or backslash form) are touched; multi-name rules and
+# rules for other paths are left byte-for-byte intact.
+#
 # Safety
 # ------
-#   * MINIMAL textual insert before the final </rules> -- the rest of the file is
-#     preserved byte-for-byte (no [xml] reformat that could change SAP's exact
-#     serialization).
+#   * Only same-exact-path single-name rules are removed; everything else is
+#     preserved verbatim (no [xml] reformat that could change serialization).
 #   * Writes UTF-8 WITHOUT BOM (SAP writes it BOM-less; a BOM can break parsing).
-#   * Idempotent: a matching broad rule already present -> ALREADY (no-op).
+#   * Idempotent: a matching canonical rule already present -> ALREADY (no-op).
 #   * The CALLER is responsible for backing up saprules.xml first.
 #
 # Reload caveat: a running SAP Logon may cache the rule store from startup. After
-# an external edit, the new rule is guaranteed to apply to SAP Logon processes
-# started AFTER the edit; currently-running processes may need a restart (or a
-# Security-config reload) to pick it up. Verify with a live file-IO before
-# declaring victory.
+# an external edit (GRANTED or HEALED), the new rule is guaranteed to apply to
+# SAP Logon processes started AFTER the edit; currently-running processes must be
+# restarted (or the Security config reloaded) to pick it up. Verify with a live
+# file-IO before declaring victory.
 #
 # Usage:
 #   powershell -File sap_gui_security_grant.ps1 `
@@ -46,9 +61,10 @@
 #       [-RulesFile <path>]
 #
 # Stdout last line / exit code:
-#   GRANTED: id=<n> <dir|file>=<path> perms=<access>   exit 0  -> rule added
-#   ALREADY: id=<n> ...                                exit 0  -> equivalent rule present
-#   ERROR: <message>                                   exit 2  -> store unreadable/unwritable
+#   GRANTED: id=<n> <dir|file>=<path> perms=<access>            exit 0  -> new rule added
+#   HEALED:  id=<n> ... removed=<ids>                           exit 0  -> stale/narrow same-path rules purged + canonical written
+#   ALREADY: id=<n> ...                                         exit 0  -> equivalent canonical rule present
+#   ERROR: <message>                                            exit 2  -> store unreadable/unwritable
 # =============================================================================
 
 [CmdletBinding()]
@@ -79,6 +95,7 @@ if (-not $isDir) {
 # trailing slash (SAP stores them that way; the precheck prefix-matches on it).
 $np = ($Path -replace '\\','/')
 if ($isDir -and -not $np.EndsWith('/')) { $np += '/' }
+$npBack = ($np -replace '/','\')   # malformed-but-same-path variant SAP would ignore
 
 # Permissions string, de-duplicated and lower-cased, kept in r,w,x order.
 $permChars = @()
@@ -100,29 +117,76 @@ if ($raw -notmatch '</rules>\s*</SAP>') {
     exit 2
 }
 
-# --- Idempotency: is an equivalent broad Allow rule already present? ----------
-# We treat a rule as equivalent if the SAME container/file element with the SAME
-# rule-level permissions already exists. (The broad rules this script writes are
-# self-identifying because the perms string is combined, e.g. 'rw', which SAP's
-# single-op Remember never emits.)
 $elem = if ($isDir) { 'directories' } else { 'files' }
-$marker = "<$elem><name>$np</name></$elem><permissions>$perms</permissions>"
-if ($raw.Contains($marker)) {
-    $existingId = '?'
-    $m = [regex]::Match($raw, 'id="(\d+)"[^>]*>(?:(?!</rule>).)*?' + [regex]::Escape($marker), 'Singleline')
-    if ($m.Success) { $existingId = $m.Groups[1].Value }
-    Write-Output "ALREADY: id=$existingId $elem=$np perms=$perms"
+
+# Single-name element markers for THIS exact path (forward + the dead backslash
+# form). A multi-name element (e.g. two <name> children) won't contain either
+# marker, so multi-name rules are never touched.
+$nameMarkers = @(
+    "<$elem><name>$np</name></$elem>",
+    "<$elem><name>$npBack</name></$elem>"
+)
+
+# Helper: is a context block "any" (all five discriminators empty)?
+function Test-CanonicalContext([string]$block) {
+    $m = [regex]::Match($block,
+        '<contexts><context><system>(.*?)</system><network>.*?</network><client>(.*?)</client><transaction>(.*?)</transaction><dynpro_name>(.*?)</dynpro_name><dynpro_num>(.*?)</dynpro_num>',
+        [System.Text.RegularExpressions.RegexOptions]::Singleline)
+    if (-not $m.Success) { return $false }
+    foreach ($g in 1..5) { if ($m.Groups[$g].Value -ne '') { return $false } }
+    return $true
+}
+
+# Helper: rule-level permissions of a block ('' if absent / malformed).
+function Get-RulePerms([string]$block) {
+    $m = [regex]::Match($block, "</$elem><permissions>(.*?)</permissions>")
+    if ($m.Success) { return $m.Groups[1].Value }
+    return ''
+}
+
+# Helper: does 'have' cover every char of 'need'?
+function Test-PermsSuperset([string]$have, [string]$need) {
+    foreach ($c in $need.ToCharArray()) { if (-not $have.Contains([string]$c)) { return $false } }
+    return $true
+}
+
+# --- Scan every rule block for THIS exact path -------------------------------
+# Rules never nest, so a non-greedy <rule ...>...</rule> match is exact.
+$blockRx = [regex]'(?s)<rule\b[^>]*>.*?</rule>'
+$staleBlocks = @()
+$staleIds    = @()
+$canonicalId = $null
+foreach ($bm in $blockRx.Matches($raw)) {
+    $block = $bm.Value
+    $isSamePath = $false
+    foreach ($marker in $nameMarkers) { if ($block.Contains($marker)) { $isSamePath = $true; break } }
+    if (-not $isSamePath) { continue }
+
+    $idm = [regex]::Match($block, 'id="(\d+)"')
+    $bid = if ($idm.Success) { $idm.Groups[1].Value } else { '?' }
+
+    if ((Test-CanonicalContext $block) -and (Test-PermsSuperset (Get-RulePerms $block) $perms)) {
+        if ($null -eq $canonicalId) { $canonicalId = $bid }   # effective rule already present
+    } else {
+        $staleBlocks += $block                                # malformed / narrow -> purge + replace
+        $staleIds    += $bid
+    }
+}
+
+# Already covered by an effective any-context rule with sufficient permissions?
+if ($null -ne $canonicalId) {
+    Write-Output "ALREADY: id=$canonicalId $elem=$np perms=$perms"
     exit 0
 }
 
-# --- Compute next rule id (max existing + 1) ---------------------------------
+# --- Compute next rule id (max existing + 1, over the original store) ---------
 $ids = [regex]::Matches($raw, 'id="(\d+)"') | ForEach-Object { [int]$_.Groups[1].Value }
 $nextId = if ($ids) { (($ids | Measure-Object -Maximum).Maximum + 1) } else { 1 }
 
-# --- Build the new rule, mirroring SAP's own serialization --------------------
+# --- Build the canonical rule, mirroring SAP's own serialization -------------
 # Rule-level <action>3</action> + context-level <action>0</action> (Allow) is
-# the exact shape SAP emits for an allowed rule (see any rule it wrote itself).
-# Empty context fields = "any value", consistent with the always-empty <network>.
+# the exact shape SAP emits for an allowed rule. Empty context fields = "any
+# value", consistent with the always-empty <network>.
 $newRule =
     "<rule id=`"$nextId`">" +
     "<$elem><name>$np</name></$elem>" +
@@ -134,20 +198,22 @@ $newRule =
     "<permissions>$perms</permissions><action>0</action>" +
     "</context></contexts></rule>"
 
-# --- Minimal textual insert before the final </rules> ------------------------
-# Use a literal .Replace on the unique tail so the rest of the file is untouched.
-# Match the actual tail (there may be whitespace between </rules> and </SAP>).
-$tailMatch = [regex]::Match($raw, '</rules>\s*</SAP>')
-$tail = $tailMatch.Value
-$updated = $raw.Replace($tail, $newRule + $tail)
+# --- Purge stale same-path blocks (self-heal), then insert the canonical -----
+$updated = $raw
+foreach ($sb in $staleBlocks) { $updated = $updated.Replace($sb, '') }
 
-if ($updated -eq $raw) {
+$tailMatch = [regex]::Match($updated, '</rules>\s*</SAP>')
+if (-not $tailMatch.Success) { Write-Output "ERROR: </rules></SAP> tail vanished after heal; aborting (no write)"; exit 2 }
+$tail = $tailMatch.Value
+$final = $updated.Replace($tail, $newRule + $tail)
+
+if ($final -eq $updated) {
     Write-Output "ERROR: insertion failed (tail not replaced)"
     exit 2
 }
 
 try {
-    [System.IO.File]::WriteAllText($RulesFile, $updated, (New-Object System.Text.UTF8Encoding($false)))
+    [System.IO.File]::WriteAllText($RulesFile, $final, (New-Object System.Text.UTF8Encoding($false)))
 } catch {
     Write-Output "ERROR: could not write $RulesFile : $($_.Exception.Message)"
     exit 2
@@ -161,5 +227,9 @@ try {
     exit 2
 }
 
-Write-Output "GRANTED: id=$nextId $elem=$np perms=$perms (context: system='$System' client='$Client' txn='$Transaction' dynpro='$DynproName')"
+if ($staleIds.Count -gt 0) {
+    Write-Output ("HEALED: id=$nextId $elem=$np perms=$perms removed=" + ($staleIds -join ',') + " (context: any system/client/txn/program)")
+} else {
+    Write-Output "GRANTED: id=$nextId $elem=$np perms=$perms (context: system='$System' client='$Client' txn='$Transaction' dynpro='$DynproName')"
+}
 exit 0

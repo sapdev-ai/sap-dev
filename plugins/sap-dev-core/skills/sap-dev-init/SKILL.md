@@ -286,18 +286,22 @@ Write-Output "SIDECAR=$sidecarResult"
 
 ### Cover read access (broad grant)
 
-The Hardcopy warmup above only persists a **write** rule. To also cover **reads** (`GUI_UPLOAD` / file-open) — and writes from programs that bypass the stable ALV `SAPLKKBL` dynpro — write one broad read+write Allow rule for `{work_dir}`, leaving **system / client / transaction / program all "any"** (required for transaction/program, since each generated program is a new context; any-system because `{work_dir}` is the operator's own dev sandbox, trusted workstation-wide). This edits `saprules.xml` directly because the dialog's "Remember" can only ever make narrow per-program rules.
+The Hardcopy warmup above only persists a **write** rule. To also cover **reads** (`GUI_UPLOAD` / file-open) — and writes from programs that bypass the stable ALV `SAPLKKBL` dynpro — write one broad read+write Allow rule for `{work_dir}`, leaving **system / client / transaction / program all "any"** (required for transaction/program, since each generated program is a new context; any-system because `{work_dir}` is the operator's own dev sandbox, trusted workstation-wide). This is the **single rule that permanently covers** the ATC result download, the generated material-upload `GUI_UPLOAD`, and every other SAP-GUI file IO under `{work_dir}` — provided that IO targets a path under `{work_dir}`. It edits `saprules.xml` directly because the dialog's "Remember" can only ever make narrow per-program rules.
 
 ```powershell
 $rules = Join-Path $env:APPDATA 'SAP\Common\saprules.xml'
 if (Test-Path $rules) { Copy-Item $rules "$rules.bak" -Force }   # backup before edit
-# Idempotent: ALREADY on re-run. All context fields empty = any system/client/txn/program.
+# Context-aware idempotency: ALREADY only if an effective any-context rule already
+# covers it; a stale '*'/backslash or narrow per-program same-path rule is purged
+# and replaced (HEALED). All context fields empty = any system/client/txn/program.
 $grant = & '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_gui_security_grant.ps1' `
     -Path "{work_dir}\" -Access rw -AsDirectory
 Write-Output "GRANT=$grant"
 ```
 
-Expected: `GRANT=GRANTED: id=<n> directories=… perms=rw …` (first run) or `GRANT=ALREADY: …` (subsequent). On `GRANT=ERROR:`, do **not** fail the step — reads fall back to the runtime sidecar; surface the line and continue.
+Expected: `GRANT=GRANTED: …` (first run, new rule), `GRANT=HEALED: … removed=<ids>` (a stale/narrow same-path rule was shadowing the grant and has been replaced), or `GRANT=ALREADY: …` (an effective rule is already present). On `GRANT=ERROR:`, surface the line and continue — but note the dialog **will** appear at runtime for reads until the rule is in place (this build does not wire a runtime sidecar fallback into the file-IO skills).
+
+> **Restart SAP Logon after GRANTED / HEALED.** Because a rule was just written, and a running SAP Logon caches `saprules.xml` at startup, the new rule does **not** take effect in the current session — close every SAP Logon / SAP GUI window and reopen, then re-run `/sap-login`. After that one restart the trust is permanent for this Windows account (it survives reboots and plugin updates — it lives in SAP's own per-user store, not ours). On `ALREADY`, no restart is needed.
 
 > **First-run authorization.** This writes a deliberate any-system trust for the operator's own work dir, which the Claude auto-mode security classifier guards. If it's blocked on the first `/sap-dev-init`, that's expected — approve it (or run the one-liner above manually). It is idempotent (`ALREADY`) thereafter, so the classifier only matters once per workstation. Scope it down to a specific `-System`/`-Client` (least privilege) only if your operator policy requires it.
 
