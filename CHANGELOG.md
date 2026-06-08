@@ -25,6 +25,14 @@ All notable changes to this project will be documented in this file.
     env var (`POINTER_SET=True`); `-Action probe` reports
     `POINTER_PATH/POINTER_EXISTS/POINTER_VALUE`. Resolver functions added to
     `sap_settings_lib.ps1` (`Get-SapWorkDirPointerPath`, `Read-SapWorkDirPointer`).
+  - **Existing users now get the pointer too** (closes a gap where it only
+    appeared on a first-run or explicit change): new `-Action pin -WorkDir <path>`
+    writes ONLY the pointer (no consent-gated env-var change), idempotently
+    (`ALREADY=True` when unchanged). Onboarding (`work_dir_onboarding.md` Step B.1)
+    auto-pins any **non-default** resolved `work_dir` that isn't already recorded —
+    so a single `/sap-login` makes a `C:\Work\…`-style work_dir durable without a
+    manual `settings.json` edit. The default `C:\sap_dev_work` is intentionally
+    never pinned (it is the hardcoded fallback, so a pointer adds nothing).
   - `/sap-doctor` now treats *env-unset + pointer-present* as a durable **PASS**
     instead of warning; it only warns when neither pins `work_dir`.
   - Docs updated: `work_dir_onboarding.md` (resolution order, Step B signals,

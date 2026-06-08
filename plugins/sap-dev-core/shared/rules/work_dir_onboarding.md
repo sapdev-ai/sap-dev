@@ -42,10 +42,30 @@ Returns `WORK_DIR`, `ENV_SET`, `ENV_VALUE`, `POINTER_PATH`, `POINTER_EXISTS`,
 
 | Signal | Action |
 |---|---|
-| `ENV_SET=True` | Use `WORK_DIR`. No prompt. (If the user explicitly asks to change it → **Step D**.) |
+| `ENV_SET=True` | Use `WORK_DIR`. No prompt. (If the user explicitly asks to change it → **Step D**.) Then **Step B.1** (keep the pointer in sync). |
 | `ENV_SET=False`, `POINTER_EXISTS=True` | Already onboarded durably via the pointer file. Use `WORK_DIR`, no prompt, no tip. (Change → **Step D**.) |
-| `ENV_SET=False`, `POINTER_EXISTS=False`, `STORE_EXISTS=True` | Existing user on the default/settings dir, not yet pinned durably. Use `WORK_DIR`, do **not** block. Print one line: *"Tip: re-run `/sap-login` (or `setx SAPDEV_AI_WORK_DIR <WORK_DIR>`) to pin your work dir update-proof."* |
+| `ENV_SET=False`, `POINTER_EXISTS=False`, `STORE_EXISTS=True` | Existing user, not yet pinned durably. Use `WORK_DIR` (no prompt). Then **Step B.1** auto-pins it. |
 | `ENV_SET=False`, `POINTER_EXISTS=False`, `STORE_EXISTS=False` | **First run** → **Step C**. |
+
+### Step B.1 — Auto-pin a non-default work_dir (zero-consent, idempotent)
+
+Whenever `{work_dir}` resolves to a **non-default** path (`WORK_DIR` ≠
+`C:\sap_dev_work`) that the pointer does not already record (`POINTER_VALUE` ≠
+`WORK_DIR`), write the pointer so the choice is durable across plugin updates
+**and** read by every later skill this session. This is what makes the pointer
+reliably appear after a single `/sap-login` for an *existing* user (the
+first-run/change paths already write it via `set`). Writing only the `%APPDATA%`
+file — not the User env var — is a low-stakes, local record of where config
+already lives, so it needs no prompt:
+
+```bash
+powershell -NoProfile -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_workdir_setup.ps1" -Action pin -WorkDir "{work_dir}"
+```
+
+Returns `PIN_OK=True` (and `ALREADY=True` when it was already that value).
+When `WORK_DIR` **is** the default `C:\sap_dev_work`, skip — the default is the
+hardcoded fallback, so a pointer adds nothing. Optionally still tip the user:
+*"set `SAPDEV_AI_WORK_DIR=<WORK_DIR>` so non-AI shells inherit it too."*
 
 ## Step C — First-run prompt + set
 

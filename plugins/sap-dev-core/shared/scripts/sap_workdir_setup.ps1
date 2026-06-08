@@ -5,11 +5,17 @@
 # =============================================================================
 # Actions:
 #   probe                          Report current resolution + first-run signals.
-#   set     -WorkDir <path>        Persist SAPDEV_AI_WORK_DIR (User scope). The
-#                                  caller MUST have the user's consent first
+#   set     -WorkDir <path>        Persist SAPDEV_AI_WORK_DIR (User scope) AND
+#                                  the %APPDATA%\sapdev-ai\work_dir.txt pointer.
+#                                  The caller MUST have the user's consent first
 #                                  (setting a persistent env var is a standing
 #                                  config change). Non-destructive; creates
 #                                  {work_dir}\runtime.
+#   pin     -WorkDir <path>        Write ONLY the durable pointer (no env var).
+#                                  Idempotent (skips if already that value). Used
+#                                  by onboarding to make an already-resolved
+#                                  non-default work_dir durable + session-bridging
+#                                  WITHOUT the consent-gated env-var write.
 #   migrate -From <old> -To <new>  Copy connections.json + userconfig.json
 #                                  old->new (non-destructive: never deletes the
 #                                  source, never overwrites an existing target;
@@ -20,7 +26,7 @@
 # =============================================================================
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory)][ValidateSet('probe', 'set', 'migrate')] [string] $Action,
+    [Parameter(Mandatory)][ValidateSet('probe', 'set', 'pin', 'migrate')] [string] $Action,
     [string] $WorkDir,
     [string] $From,
     [string] $To
@@ -82,6 +88,27 @@ try {
             Out-KV 'WORK_DIR'    $wd
             Out-KV 'POINTER'     $ptr
             Out-KV 'POINTER_SET' ([bool]$ptrOk)
+        }
+        'pin' {
+            # Pointer-only write -- NO env var. Makes an already-resolved work_dir
+            # durable (survives plugin updates) + session-bridging (read fresh by
+            # every sibling subprocess) without the consent-gated User env-var
+            # write. Idempotent: a no-op when the pointer already holds this value.
+            if ([string]::IsNullOrWhiteSpace($WorkDir)) { throw "pin requires -WorkDir" }
+            $wd = Clean-Path $WorkDir
+            $ptr = Get-SapWorkDirPointerPath
+            if (-not $ptr) { throw "pin: cannot resolve %APPDATA% pointer path (APPDATA unset)" }
+            $already = ((Read-SapWorkDirPointer) -ieq $wd)
+            if (-not $already) {
+                $ptrDir = [System.IO.Path]::GetDirectoryName($ptr)
+                if (-not (Test-Path $ptrDir)) { New-Item -ItemType Directory -Force -Path $ptrDir | Out-Null }
+                # UTF-8 NO BOM, no trailing newline -- read back by Read-SapWorkDirPointer.
+                [System.IO.File]::WriteAllText($ptr, $wd, (New-Object System.Text.UTF8Encoding($false)))
+            }
+            Out-KV 'PIN_OK'   'True'
+            Out-KV 'WORK_DIR' $wd
+            Out-KV 'POINTER'  $ptr
+            Out-KV 'ALREADY'  ([bool]$already)
         }
         'migrate' {
             if ([string]::IsNullOrWhiteSpace($From)) { throw "migrate requires -From" }
