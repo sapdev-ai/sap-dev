@@ -4,6 +4,36 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.6.3] — 2026-06-08
+
+### Fixed
+
+- **SAP GUI Security broad-grant could be silently shadowed by a stale rule, so the
+  "SAP GUI Security" dialog kept appearing at runtime even though `/sap-dev-init`
+  reported the warmup done** — e.g. on the ATC result download and when running a
+  generated `GUI_UPLOAD` / `GUI_DOWNLOAD` report such as a material-upload program.
+  `sap_gui_security_grant.ps1` decided idempotency on the rule's **path + permissions
+  only**, ignoring its context fields. A same-path rule left from an earlier attempt —
+  with literal `*` context values (SAP treats *empty*, not `*`, as "any") or a
+  backslash path (SAP stores forward slashes) — matches nothing at runtime yet
+  satisfied that check, so the script returned `ALREADY` forever and the effective
+  any-context `rw` rule was never written.
+  - Idempotency is now **context-aware and self-healing**: `ALREADY` only when an
+    *effective* any-context same-path rule with sufficient permissions already exists;
+    a malformed (`*` / backslash) or narrow (per-program) same-path rule is **purged
+    and replaced** with the canonical empty-context rule — a new
+    `HEALED: … removed=<ids>` outcome (it also upgrades `w` → `rw`). Only single-name
+    elements for the exact path are touched; multi-name and other-path rules are
+    byte-preserved.
+  - `/sap-dev-init` Step 1b now surfaces the `HEALED` outcome and makes the one-time
+    **SAP Logon restart** explicit (a running SAP Logon caches `saprules.xml` at
+    startup, so a freshly written rule only takes effect after a restart — permanent
+    thereafter). Contract docs updated: `shared/rules/sap_gui_security_handling.md`
+    and the CLAUDE.md shared-files table.
+  - Verified on Windows PowerShell 5.1 and pwsh 7 (23/23), and end-to-end live on
+    S/4HANA 1909: a healed `{work_dir}` rule covers both a write (Hardcopy) and a read
+    (`GUI_UPLOAD`, subrc 0) under a fresh program dynpro with no dialog.
+
 ## [0.6.2] — 2026-06-07
 
 ### Added

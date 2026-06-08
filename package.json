@@ -1,6 +1,6 @@
 {
   "name": "sap-dev-validation",
-  "version": "0.6.2",
+  "version": "0.6.3",
   "private": true,
   "scripts": {
     "validate": "./scripts/validate-json-schemas.sh",
