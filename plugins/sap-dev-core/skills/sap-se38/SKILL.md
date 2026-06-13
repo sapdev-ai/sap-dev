@@ -965,8 +965,15 @@ SUCCESS line.
 - Show the full script output as a code block.
 - Log the SUCCESS end record:
   ```bash
-  powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_se38_run.json" -Status SUCCESS -ExitCode 0
+  powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_se38_run.json" -Status SUCCESS -ExitCode 0 -MetricsJson '{"gate":"DEPLOY","verdict":"PASS","syntax_errors":0,"activated":true,"text_elements":"APPLIED"}'
   ```
+  **Build-KPI enrichment (best-effort).** Populate `-MetricsJson` from this
+  deploy: `syntax_errors` from the `SYNTAX_ERRORS:` marker, `activated` from the
+  PROGDIR.STATE verify (`true` when active), and `text_elements` from the
+  `TEXT_ELEMENTS:` marker (`APPLIED` / `FAILED` / `NA` for non-reports). The
+  offline aggregator (`shared/rules/build_metrics.md`) fans the `DEPLOY` payload
+  out into the SYNTAX, ACTIVATE, and TEXT build gates. Best-effort: omit if you
+  cannot read the markers.
 
 **On failure** (output contains `ERROR:` OR `SYNTAX_ERRORS:` > 0 OR exit code non-zero):
 - Show the full output and diagnose using this table:

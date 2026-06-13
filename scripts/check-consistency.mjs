@@ -479,6 +479,76 @@ for (const plugin of mp.plugins) {
 const baselineCoverage = `screen-baseline coverage ${baselinePresent}/${baselineOperational}` +
   (baselineWarnings.length > 0 ? ` (${baselineWarnings.length} unbaselined)` : '');
 
+// ---------------------------------------------------------------------------
+// Build-KPI gate-enrichment + Step-0 work_dir gates (added 2026-06-13 with the
+// first-pass-yield metrics work).
+//
+// (a) The build-KPI aggregator (shared/scripts/sap_build_kpi.ps1) reconstructs
+//     generated-ABAP builds from the JSONL logs and needs each gate skill to
+//     stamp its verdict payload onto its own `## Final — Log End` end record via
+//     a `-MetricsJson '{...}'` argument. The end record itself is already
+//     guaranteed by Rule 4; this gate guards the enrichment so a future edit
+//     cannot silently drop a gate's KPI fields. Contract:
+//     shared/rules/build_metrics.md.
+// (b) Step-0 work_dir resolution MUST be env-aware (CLAUDE.md Rule 7), never a
+//     direct settings.json read that ignores SAPDEV_AI_WORK_DIR / userconfig.json.
+//     Long-acknowledged gap; this is the static guard against a new skill
+//     regressing it. There are TWO accepted env-aware forms:
+//       1. Calling Get-SapWorkDir directly (the canonical one-liner the 49
+//          non-onboarding skills use).
+//       2. Routing through the onboarding helper sap_workdir_setup.ps1
+//          (-Action probe), which calls Get-SapWorkDir internally (see that
+//          script's 'probe' branch). The onboarding entry points /sap-login and
+//          /sap-dev-init use this form because their Step 0 is a full
+//          probe -> set / first-run-prompt / migrate flow, not a bare
+//          resolution; inlining the one-liner would drop that onboarding logic.
+//     Both honour the env var; a direct settings.json read references NEITHER
+//     token, so the regression this guards against is still caught.
+//
+// Both are informational WARN (ratcheting), mirroring the non-ASCII / baseline
+// gates: they surface regressions without breaking the build.
+// ---------------------------------------------------------------------------
+
+const LEDGER_GATE_SKILLS = new Set([
+  'sap-gen-abap',
+  'sap-check-abap',
+  'sap-se38',
+  'sap-se37',
+  'sap-se24',
+  'sap-atc',
+  'sap-run-abap-unit',
+]);
+
+const ledgerWarnings = [];
+const step0Warnings = [];
+
+for (const plugin of mp.plugins) {
+  const sourceRel = plugin.source.replace(/^\.\//, '').replace(/\/$/, '');
+  const sourceAbs = join(repoRoot, sourceRel);
+  const skillsDir = join(sourceAbs, 'skills');
+  if (!existsSync(skillsDir)) continue;
+  for (const skillEntry of readdirSync(skillsDir)) {
+    const skillMdPath = join(skillsDir, skillEntry, 'SKILL.md');
+    if (!existsSync(skillMdPath)) continue;
+    const md = readFileSync(skillMdPath, 'utf8');
+
+    // (a) Gate skills must pass -MetricsJson on their log-end block.
+    if (LEDGER_GATE_SKILLS.has(skillEntry) && !md.includes('-MetricsJson')) {
+      ledgerWarnings.push(`${plugin.name}: skills/${skillEntry}/SKILL.md is a build-KPI gate skill but its Final/Log-End block never passes -MetricsJson; the first-pass-yield aggregator will read this gate as n/a (shared/rules/build_metrics.md)`);
+    }
+
+    // (b) Skills with a Step-0 work-dir resolution must resolve it env-aware:
+    //     Get-SapWorkDir directly, OR via the onboarding helper
+    //     sap_workdir_setup.ps1 (which calls Get-SapWorkDir internally). See the
+    //     header comment above for why the onboarding entry points use the helper.
+    if (/Resolve Work Director/i.test(md)
+        && !/Get-SapWorkDir/.test(md)
+        && !/sap_workdir_setup\.ps1/.test(md)) {
+      step0Warnings.push(`${plugin.name}: skills/${skillEntry}/SKILL.md has a Step 0 "Resolve Work Directory" but resolves work_dir via neither Get-SapWorkDir nor the env-aware onboarding helper sap_workdir_setup.ps1; resolve work_dir env-aware, not via a direct settings.json read (CLAUDE.md Rule 7)`);
+    }
+  }
+}
+
 if (errors.length === 0) {
   let summary = `OK: ${mp.plugins.length} plugins, ${totalSkills} skills, all manifests aligned at version ${mp.version}, Tier 3 attach contract clean`;
   if (phase4Warnings.length > 0) {
@@ -487,10 +557,18 @@ if (errors.length === 0) {
   if (encodingWarnings.length > 0) {
     summary += `, ${encodingWarnings.length} non-ASCII warning(s)`;
   }
+  if (ledgerWarnings.length > 0) {
+    summary += `, ${ledgerWarnings.length} build-KPI warning(s)`;
+  }
+  if (step0Warnings.length > 0) {
+    summary += `, ${step0Warnings.length} Step-0 warning(s)`;
+  }
   summary += `, ${baselineCoverage}`;
   console.log(summary);
   for (const w of phase4Warnings) console.warn('  WARN: ' + w);
   for (const w of encodingWarnings) console.warn('  WARN: ' + w);
+  for (const w of ledgerWarnings) console.warn('  WARN: ' + w);
+  for (const w of step0Warnings) console.warn('  WARN: ' + w);
   for (const w of baselineWarnings) console.warn('  WARN: ' + w);
   process.exit(0);
 } else {
@@ -503,6 +581,14 @@ if (errors.length === 0) {
   if (encodingWarnings.length > 0) {
     console.error(`\nNon-ASCII source warnings (informational):`);
     for (const w of encodingWarnings) console.error('  WARN: ' + w);
+  }
+  if (ledgerWarnings.length > 0) {
+    console.error(`\nBuild-KPI gate-enrichment warnings (informational):`);
+    for (const w of ledgerWarnings) console.error('  WARN: ' + w);
+  }
+  if (step0Warnings.length > 0) {
+    console.error(`\nStep-0 work_dir warnings (informational):`);
+    for (const w of step0Warnings) console.error('  WARN: ' + w);
   }
   console.error(`\n${baselineCoverage}`);
   if (baselineWarnings.length > 0) {

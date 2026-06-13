@@ -508,11 +508,19 @@ findings TSV (`<save-to>.findings.tsv`) — both are operator artefacts.
 ## Final — Log End
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_atc_run.json" -Status SUCCESS -ExitCode 0
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_atc_run.json" -Status SUCCESS -ExitCode 0 -MetricsJson '{"gate":"ATC","verdict":"PASS","p1":0,"p2":0,"p3":0}'
 ```
 
 For gate FAIL, set `-Status FAILED -ExitCode 1 -ErrorClass ATC_GATE_FAIL`
 and put the P1/P2/P3 counts in `-ErrorMsg`.
+
+**Build-KPI enrichment (best-effort).** Include `-MetricsJson` on BOTH the PASS
+and FAIL end paths, populated from the `GATE_VERDICT:` line: `verdict` is `PASS`
+or `FAIL` (the *gate* verdict, independent of the run `-Status`), and
+`p1`/`p2`/`p3` are the priority counts. The offline aggregator
+(`shared/rules/build_metrics.md`) reads it for the `atc_first_pass_pct` KPI.
+Best-effort: if you cannot read the counts, omit `-MetricsJson` — the run still
+logs and the KPI degrades to `n/a`, never a wrong value.
 
 For other failure modes:
 - `-ErrorClass ATC_OBJ_SET_FAILED` (Stage 1 broke)

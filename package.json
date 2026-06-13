@@ -5,7 +5,8 @@
   "scripts": {
     "validate": "./scripts/validate-json-schemas.sh",
     "validate:marketplace": "ajv validate -s schemas/marketplace.schema.json -d .claude-plugin/marketplace.json --strict=false -c ajv-formats --all-errors",
-    "check:consistency": "node scripts/check-consistency.mjs"
+    "check:consistency": "node scripts/check-consistency.mjs",
+    "lint:abap": "node scripts/lint-abap-contract.mjs --selftest"
   },
   "devDependencies": {
     "ajv-cli": "^5.0.0",

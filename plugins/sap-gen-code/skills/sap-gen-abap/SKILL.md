@@ -954,8 +954,16 @@ if generation was blocked (missing `_process.txt`, unsupported program
 type, identifier too long after retry, etc.):
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_gen_abap_run.json" -Status SUCCESS -ExitCode 0
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_gen_abap_run.json" -Status SUCCESS -ExitCode 0 -MetricsJson '{"gate":"GEN","verdict":"PASS","test_file":"EMITTED","methods":0,"hints_injected":0}'
 ```
+
+**Build-KPI enrichment (best-effort).** Add `-MetricsJson` populated from this
+run: `test_file` is the `TEST_FILE:` marker state (`EMITTED` / `SKIPPED` /
+`FAILED`); `methods` is its `methods=N`; `hints_injected` is the number of data
+rows in `_error_hints.txt` (Step 1.5f), i.e. how many frequently_errors hints
+steered this generation. The offline aggregator
+(`shared/rules/build_metrics.md`) reads it for `gen_first_pass_pct` and
+`hints_injected_avg`. Best-effort: omit if generation was blocked.
 
 ---
 

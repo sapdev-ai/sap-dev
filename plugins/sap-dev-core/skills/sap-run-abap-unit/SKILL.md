@@ -209,8 +209,16 @@ gate outcome (ok / below-min warn-or-block).
 ## Final — Log End
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_run_abap_unit_run.json" -Status SUCCESS -ExitCode 0
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_run_abap_unit_run.json" -Status SUCCESS -ExitCode 0 -MetricsJson '{"gate":"AUNIT","verdict":"PASS","methods":0,"passed":0,"failed":0,"coverage":-1}'
 ```
+
+**Build-KPI enrichment (best-effort).** Include `-MetricsJson` on every end path,
+populated from the `AUNIT_VERDICT:` / `UNIT_TEST_RUN:` lines: `verdict` is `PASS`
+when `failed=0 AND errors=0` else `FAIL`; `methods`/`passed`/`failed` are the
+run counts; `coverage` is the measured percent, or `-1` when not measured (no
+`--with-coverage`). The offline aggregator (`shared/rules/build_metrics.md`)
+reads it for `aunit_first_pass_pct` / `aunit_coverage_avg`. Best-effort: omit on
+`NEEDS_RECORDING` or when you cannot parse the result grid.
 
 | Outcome | Status / ExitCode / ErrorClass |
 |---|---|

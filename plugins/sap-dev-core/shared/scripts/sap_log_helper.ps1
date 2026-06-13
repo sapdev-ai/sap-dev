@@ -6,7 +6,14 @@
 # Usage:
 #   sap_log_helper.ps1 -Action start -StateFile <path> -Skill <name> [-ParamsJson '{"k":"v"}']
 #   sap_log_helper.ps1 -Action step  -StateFile <path> -Step <name> -Message <msg> [-Level INFO|WARN|ERROR]
-#   sap_log_helper.ps1 -Action end   -StateFile <path> [-Status SUCCESS|FAILED|SKIPPED|EXISTED|ABANDONED] [-ExitCode 0] [-ErrorClass <code>] [-ErrorMsg <text>]
+#   sap_log_helper.ps1 -Action end   -StateFile <path> [-Status SUCCESS|FAILED|SKIPPED|EXISTED|ABANDONED] [-ExitCode 0] [-ErrorClass <code>] [-ErrorMsg <text>] [-MetricsJson '{"gate":"ATC","verdict":"PASS","p1":0}']
+#
+# -MetricsJson (end only): a compact JSON object of build-KPI fields. It is
+# parsed and merged into the JSONL end record via Stop-SapLog -Extra, so the
+# offline aggregator (sap_build_kpi.ps1) can reconstruct first-pass-yield KPIs
+# from the logs alone. The only required key is `gate`. Best-effort: malformed
+# or absent JSON never changes the run's status or exit code. Contract:
+# shared/rules/build_metrics.md.
 #
 # All actions are idempotent and never throw - logging failures must not break the skill.
 
@@ -22,7 +29,8 @@ param(
     [ValidateSet('SUCCESS','FAILED','SKIPPED','EXISTED','ABANDONED','TEST_FIXED','TEST_FAILED_MODES','SUCCESS_WITH_DIRTY_FIXTURES','ABORTED_BUDGET')][string]$Status = 'SUCCESS',
     [int]$ExitCode = 0,
     [string]$ErrorClass,
-    [string]$ErrorMsg
+    [string]$ErrorMsg,
+    [string]$MetricsJson
 )
 
 $ErrorActionPreference = 'Continue'
@@ -65,6 +73,25 @@ function Load-State {
     }
 }
 
+# Running plugin version (cache- vs repo-aware): read from the plugin.json two
+# levels up from shared/scripts (= the sap-dev-core plugin root). When the skill
+# runs from the marketplace cache, $PSScriptRoot is the cache path, so this
+# returns the cache's version (the version that actually generated the code) --
+# NOT the repo version, which diverges in the --plugin-dir dev loop. Build-KPI
+# rows stamp this so trends are attributable to a release. Best-effort: '' on
+# any failure. See shared/rules/build_metrics.md section 4.
+function Get-RunningPluginVersion {
+    try {
+        $pluginRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+        $manifest   = Join-Path $pluginRoot '.claude-plugin\plugin.json'
+        if (Test-Path -LiteralPath $manifest) {
+            $j = Get-Content -LiteralPath $manifest -Raw -Encoding UTF8 | ConvertFrom-Json
+            if ($j.version) { return [string]$j.version }
+        }
+    } catch { }
+    return ''
+}
+
 switch ($Action) {
 
     'start' {
@@ -99,6 +126,31 @@ switch ($Action) {
                 }
             } catch { }
         }
+        # Stamp the running plugin version into every start record so build-KPI
+        # rows can attribute first-pass-yield trends to a plugin release.
+        if (-not $params.ContainsKey('plugin_version')) {
+            $pv = Get-RunningPluginVersion
+            if ($pv) { $params['plugin_version'] = $pv }
+        }
+        # Resolve the active-connection banner BEFORE writing the start record so
+        # the SAP system identity (SID_client) can be stamped into params for
+        # build-KPI per-system grouping. Reuses the banner's own cached profile
+        # ($script:_SapBannerCache) -- no extra connection lookup. Best-effort:
+        # any failure here never blocks the start.
+        $bannerLine = ''
+        try {
+            $connLib = Join-Path $PSScriptRoot 'sap_connection_lib.ps1'
+            if (Test-Path -LiteralPath $connLib) {
+                . $connLib
+                $bannerLine = Format-SapBannerLine
+                if (-not $params.ContainsKey('system_id') -and $script:_SapBannerCache) {
+                    $prof = $script:_SapBannerCache
+                    $sid = "$($prof.system_name)"
+                    $cli = "$($prof.client)"
+                    if ($sid -or $cli) { $params['system_id'] = ($sid + '_' + $cli).ToLower() }
+                }
+            }
+        } catch { }
         try {
             $run = Start-SapLog -Skill $Skill -Params $params
             Save-State -Run $run -Path $StateFile
@@ -106,17 +158,9 @@ switch ($Action) {
         } catch {
             Write-Host "log_helper: start failed: $($_.Exception.Message)"
         }
-        # Banner: emit one line summarising the currently pinned SAP connection
-        # so every sap-* skill output starts with "which system am I hitting?".
-        # Best-effort: silently no-ops on lib-load failure or when no pin exists.
-        try {
-            $connLib = Join-Path $PSScriptRoot 'sap_connection_lib.ps1'
-            if (Test-Path -LiteralPath $connLib) {
-                . $connLib
-                $banner = Format-SapBannerLine
-                if ($banner) { Write-Host "INFO: $banner" }
-            }
-        } catch { }
+        # Emit the banner line resolved above (best-effort): every sap-* skill
+        # output starts with "which system am I hitting?".
+        if ($bannerLine) { Write-Host "INFO: $bannerLine" }
     }
 
     'step' {
@@ -135,7 +179,24 @@ switch ($Action) {
         try {
             $errObj = $null
             if ($ErrorMsg) { $errObj = $ErrorMsg }
-            Stop-SapLog -Run $run -Status $Status -ExitCode $ExitCode -ErrorClass $ErrorClass -ErrorObject $errObj
+            # Parse -MetricsJson (build-KPI gate payload) into a hashtable and
+            # merge it onto the end record via -Extra. Best-effort: bad JSON is
+            # ignored and the end record is still written with status/exit only.
+            $extra = $null
+            if ($MetricsJson) {
+                try {
+                    $mo = $MetricsJson | ConvertFrom-Json
+                    if ($mo) {
+                        $extra = @{}
+                        $mo.PSObject.Properties | ForEach-Object { $extra[$_.Name] = $_.Value }
+                    }
+                } catch { }
+            }
+            if ($extra -and $extra.Count -gt 0) {
+                Stop-SapLog -Run $run -Status $Status -ExitCode $ExitCode -ErrorClass $ErrorClass -ErrorObject $errObj -Extra $extra
+            } else {
+                Stop-SapLog -Run $run -Status $Status -ExitCode $ExitCode -ErrorClass $ErrorClass -ErrorObject $errObj
+            }
         } catch {
             Write-Host "log_helper: end failed: $($_.Exception.Message)"
         }

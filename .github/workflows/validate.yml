@@ -35,3 +35,11 @@ jobs:
 
       - name: Consistency check
         run: node scripts/check-consistency.mjs
+
+      # Offline contract-lint for generated ABAP. The --selftest seeds known
+      # good/bad ABAP snippets and asserts the lint classifies them correctly,
+      # so the rule engine itself is gated. When tests/fixtures/ goldens land
+      # (P2), add a step that lints each golden via:
+      #   node scripts/lint-abap-contract.mjs <golden.abap> --work-folder <dir>
+      - name: ABAP contract-lint self-test
+        run: node scripts/lint-abap-contract.mjs --selftest

@@ -390,8 +390,16 @@ Log the run-end record. Best-effort.
 On success:
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_check_abap_run.json" -Status SUCCESS -ExitCode 0
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_check_abap_run.json" -Status SUCCESS -ExitCode 0 -MetricsJson '{"gate":"CHECK","verdict":"PASS","errors":0,"warnings":0}'
 ```
+
+**Build-KPI enrichment (best-effort).** Add `-MetricsJson` populated from the
+`.check.tsv` summary: `verdict` is `PASS` when the ERROR-severity count is 0
+else `FAIL`; `errors`/`warnings` are the severity counts. The offline aggregator
+(`shared/rules/build_metrics.md`) reads it for `gen_first_pass_pct` and derives
+the per-build fix-iteration count by counting how many CHECK end-records appear
+in the build cluster — so you do not report iterations here. Best-effort: omit
+if you cannot read the counts.
 
 On failure:
 

@@ -1,0 +1,43 @@
+# =============================================================================
+# sap-dev .gitattributes
+#
+# Purpose: freeze the byte content of the data files that the offline
+# regression suite (sap-dev/tests/fixtures/) and the shared reference tables
+# depend on, so a checkout on a Windows CI runner cannot silently rewrite
+# them.
+#
+# Why this matters (documented failure modes in this repo):
+#   * TSV files carry REAL TAB bytes as field separators. A line-ending or
+#     whitespace filter that touches them corrupts the schema silently — and
+#     a corrupted TSV "reads fine" until a column shifts. (Hit twice: SE11
+#     .def files, the sap-migrate knowledge-pack TSVs.)
+#   * Golden .abap outputs and frozen work-folder extraction files are
+#     compared / schema-checked byte-for-byte by the regression harness. If
+#     actions/checkout normalises CRLF<->LF differently than the author's
+#     working copy, fixture-integrity checks pass locally and fail in CI
+#     (or, worse, pass against corrupted bytes).
+#
+# `-text` tells git to treat the path as binary for end-of-line purposes:
+# never apply CRLF<->LF conversion, never run a text filter. The exact bytes
+# that were committed are the exact bytes that are checked out, on every OS.
+# =============================================================================
+
+# Reference tables (shared/tables/*.tsv) and any fixture TSV: real TABs, frozen.
+*.tsv          -text
+
+# ABAP source: the shipped sample, fixture goldens, and any committed .abap.
+*.abap         -text
+
+# Everything under the regression fixtures is frozen byte-for-byte: specs,
+# frozen extraction (_*.txt), committed RFC signature snapshots, goldens,
+# and the per-case expectation JSON. -text on the whole tree is the simplest
+# guarantee that fixture-integrity / golden checks see identical bytes in CI.
+tests/fixtures/**   -text
+
+# Design-spec workbooks and other binary assets: mark binary so git never
+# attempts a text diff or eol conversion on them.
+*.xlsx         binary
+*.xlsm         binary
+*.pdf          binary
+*.png          binary
+*.bmp          binary

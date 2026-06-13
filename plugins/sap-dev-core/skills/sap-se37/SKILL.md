@@ -1362,8 +1362,14 @@ Log the run-end record. Best-effort.
 On success:
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_se37_run.json" -Status SUCCESS -ExitCode 0
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_se37_run.json" -Status SUCCESS -ExitCode 0 -MetricsJson '{"gate":"DEPLOY","verdict":"PASS","syntax_errors":0,"activated":true}'
 ```
+
+**Build-KPI enrichment (best-effort).** Populate `-MetricsJson` from this deploy:
+`syntax_errors` from the `SYNTAX_ERRORS:` marker and `activated` from the
+activation verify. The offline aggregator (`shared/rules/build_metrics.md`) fans
+the `DEPLOY` payload out into the SYNTAX and ACTIVATE build gates. Best-effort:
+omit if you cannot read the markers.
 
 On failure:
 
