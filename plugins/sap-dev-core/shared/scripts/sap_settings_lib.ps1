@@ -40,6 +40,57 @@ $script:SapSettingsCache     = $null
 $script:SapSettingsLocalPath = $null
 $script:SapSettingsMainPath  = $null
 
+# Cross-process serialization for userconfig.json writes. Without it, two AI
+# sessions (e.g. one on S4D, one on S4H) that both Set-SapUserSetting at
+# overlapping times race on a bare WriteAllText: lost update at best, a torn /
+# corrupt JSON file at worst -- after which Get-SapSettings throws and every
+# settings read in that session dies. Mirrors sap_connection_lib's store mutex.
+$script:SapUserConfig_MutexName     = 'SapDevUserConfigStore_v1'
+$script:SapUserConfig_MutexTimeoutMs = 10000
+
+function With-SapUserConfigLock {
+    param([scriptblock] $Body)
+    $mutex = [System.Threading.Mutex]::new($false, $script:SapUserConfig_MutexName)
+    $acquired = $false
+    try {
+        try {
+            $acquired = $mutex.WaitOne($script:SapUserConfig_MutexTimeoutMs)
+        } catch [System.Threading.AbandonedMutexException] {
+            # Prior holder crashed before releasing; the on-disk file is still a
+            # complete document (writes are atomic), so it is safe to continue.
+            $acquired = $true
+        }
+        if (-not $acquired) {
+            throw "sap_settings_lib: could not acquire userconfig mutex within $($script:SapUserConfig_MutexTimeoutMs)ms"
+        }
+        & $Body
+    } finally {
+        if ($acquired) { try { $mutex.ReleaseMutex() } catch {} }
+        try { $mutex.Dispose() } catch {}
+    }
+}
+
+function Write-SapJsonAtomic {
+    # Write $Json to $Path so a concurrent reader NEVER sees a torn file: write a
+    # sibling temp file, then atomically swap it in via NTFS File.Replace (or Move
+    # when the target doesn't exist yet). Falls back to a direct write only if the
+    # atomic swap throws (different volume / AV lock). UTF-8, no BOM.
+    param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][string]$Json)
+    $enc = New-Object System.Text.UTF8Encoding($false)
+    $tmp = "$Path.tmp.$PID"
+    [System.IO.File]::WriteAllText($tmp, $Json, $enc)
+    try {
+        if (Test-Path -LiteralPath $Path) {
+            [System.IO.File]::Replace($tmp, $Path, $null)
+        } else {
+            [System.IO.File]::Move($tmp, $Path)
+        }
+    } catch {
+        [System.IO.File]::WriteAllText($Path, $Json, $enc)
+        if (Test-Path -LiteralPath $tmp) { try { Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue } catch {} }
+    }
+}
+
 function Resolve-SapSettingsPaths {
     if ($null -ne $script:SapSettingsMainPath) { return }
     # This script lives at <root>\plugins\sap-dev-core\shared\scripts\sap_settings_lib.ps1
@@ -158,10 +209,17 @@ function Get-SapSettings {
     # settings.local.json > userconfig.json > settings.json.
     $ucPath = Get-SapUserConfigPath
     if (Test-Path $ucPath) {
+        $uc = $null
         try {
             $uc = Get-Content -Raw $ucPath -Encoding UTF8 | ConvertFrom-Json
         } catch {
-            throw "sap_settings_lib: failed to parse userconfig.json: $_"
+            # userconfig.json is machine-global and mutable (hand-edited, or torn
+            # by a pre-fix concurrent writer). A parse failure here must NOT brick
+            # every settings read -- WARN and fall back to settings.json defaults
+            # for this run. (Set-SapUserSetting now writes atomically + under a
+            # mutex, so this is a legacy / external-corruption safety net.)
+            [Console]::Error.WriteLine("WARN: sap_settings_lib: userconfig.json unreadable ($($_.Exception.Message)); ignoring machine-global overrides for this run.")
+            $uc = $null
         }
         if ($null -ne $uc -and $null -ne $uc.userConfig) {
             foreach ($p in $uc.userConfig.PSObject.Properties) {
@@ -179,10 +237,14 @@ function Get-SapSettings {
     }
 
     if (Test-Path $script:SapSettingsLocalPath) {
+        $local = $null
         try {
             $local = Get-Content -Raw $script:SapSettingsLocalPath -Encoding UTF8 | ConvertFrom-Json
         } catch {
-            throw "sap_settings_lib: failed to parse settings.local.json: $_"
+            # settings.local.json is a hand-edited dev override; a typo there
+            # should WARN, not abort every skill that reads a setting.
+            [Console]::Error.WriteLine("WARN: sap_settings_lib: settings.local.json unreadable ($($_.Exception.Message)); ignoring dev-checkout overrides for this run.")
+            $local = $null
         }
         if ($null -ne $local -and $null -ne $local.userConfig) {
             foreach ($p in $local.userConfig.PSObject.Properties) {
@@ -294,28 +356,38 @@ function Set-SapUserSetting {
     $ucDir  = Split-Path -Parent $ucPath
     if (-not (Test-Path $ucDir)) { New-Item -ItemType Directory -Force -Path $ucDir | Out-Null }
 
-    $uc = $null
-    if (Test-Path $ucPath) {
-        try {
-            $uc = Get-Content -Raw $ucPath -Encoding UTF8 | ConvertFrom-Json
-        } catch {
-            throw "sap_settings_lib: failed to parse userconfig.json: $_"
+    # The whole read-modify-write runs under the cross-process mutex so two
+    # concurrent sessions can't lose each other's update, and the swap-in is
+    # atomic so a concurrent READER never sees a half-written file.
+    With-SapUserConfigLock {
+        $uc = $null
+        if (Test-Path $ucPath) {
+            try {
+                $uc = Get-Content -Raw $ucPath -Encoding UTF8 | ConvertFrom-Json
+            } catch {
+                # Corrupt on disk (legacy torn write / hand edit). Don't throw and
+                # lose this write -- preserve the bad file for forensics and start
+                # from an empty document so the key still gets persisted.
+                try { Copy-Item -LiteralPath $ucPath -Destination "$ucPath.corrupt.$PID" -Force -ErrorAction SilentlyContinue } catch {}
+                [Console]::Error.WriteLine("WARN: sap_settings_lib: userconfig.json was unreadable; backed up to userconfig.json.corrupt.$PID and rewritten.")
+                $uc = $null
+            }
         }
-    }
-    if ($null -eq $uc) { $uc = [pscustomobject]@{ userConfig = [pscustomobject]@{} } }
-    if ($null -eq $uc.userConfig) {
-        $uc | Add-Member -NotePropertyName userConfig -NotePropertyValue ([pscustomobject]@{}) -Force
-    }
+        if ($null -eq $uc) { $uc = [pscustomobject]@{ userConfig = [pscustomobject]@{} } }
+        if ($null -eq $uc.userConfig) {
+            $uc | Add-Member -NotePropertyName userConfig -NotePropertyValue ([pscustomobject]@{}) -Force
+        }
 
-    if ($uc.userConfig.PSObject.Properties.Name -contains $Key) {
-        $uc.userConfig.$Key.value = $Value
-    } else {
-        $entry = [pscustomobject]@{ value = $Value }
-        $uc.userConfig | Add-Member -NotePropertyName $Key -NotePropertyValue $entry -Force
-    }
+        if ($uc.userConfig.PSObject.Properties.Name -contains $Key) {
+            $uc.userConfig.$Key.value = $Value
+        } else {
+            $entry = [pscustomobject]@{ value = $Value }
+            $uc.userConfig | Add-Member -NotePropertyName $Key -NotePropertyValue $entry -Force
+        }
 
-    $json = $uc | ConvertTo-Json -Depth 10
-    [System.IO.File]::WriteAllText($ucPath, $json, (New-Object System.Text.UTF8Encoding($false)))
+        $json = $uc | ConvertTo-Json -Depth 10
+        Write-SapJsonAtomic -Path $ucPath -Json $json
+    }
 
     Reset-SapSettingsCache
 }

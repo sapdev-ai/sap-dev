@@ -216,13 +216,26 @@ function Reset-SapConnectionStoreCache {
 function Write-SapConnectionStore {
     param([Parameter(Mandatory)][hashtable] $Store)
     With-ConnectionStoreLock {
-        # Coerce the version + atomically write under the mutex.
         if (-not $Store.version)           { $Store.version = 2 }
         if (-not $Store.default_target_id) { $Store.default_target_id = '' }
         if (-not $Store.connections)       { $Store.connections = @() }
         $json = $Store | ConvertTo-Json -Depth 8
         $path = Get-SapConnectionStorePath
-        [System.IO.File]::WriteAllText($path, $json, [System.Text.UTF8Encoding]::new($false))
+        # Atomic swap: Read-SapConnectionStore takes NO lock, so a concurrent
+        # reader must never see a half-written file. A torn read used to fail
+        # ConvertFrom-Json -> "resetting" to an EMPTY store; a later Save then
+        # overwrote the real file -> ALL saved connections lost. Temp-write +
+        # NTFS Replace (Move when the target is new) closes that race.
+        $enc = [System.Text.UTF8Encoding]::new($false)
+        $tmp = "$path.tmp.$PID"
+        [System.IO.File]::WriteAllText($tmp, $json, $enc)
+        try {
+            if (Test-Path -LiteralPath $path) { [System.IO.File]::Replace($tmp, $path, $null) }
+            else { [System.IO.File]::Move($tmp, $path) }
+        } catch {
+            [System.IO.File]::WriteAllText($path, $json, $enc)
+            if (Test-Path -LiteralPath $tmp) { try { Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue } catch {} }
+        }
     }
     Reset-SapConnectionStoreCache
 }
@@ -1502,6 +1515,77 @@ function Get-SapPerConnectionDevKeys {
     return ,$script:SapPerConnectionDevKeys
 }
 
+$script:_SapDevDefaultAmbigWarned = $false
+
+function Get-SapDevDefaultProfile {
+    <#
+    .SYNOPSIS
+        Resolve the connection profile whose dev_defaults this AI session may
+        READ / WRITE -- ONLY when it is unambiguously this session's:
+          1. explicit AI-session pin (ai_sessions[<aid>].connection_id).
+          2. no pin BUT the store holds exactly one connection -> that one.
+          3. otherwise -> $null  (ambiguous: >=2 connections and no pin).
+    .DESCRIPTION
+        Unlike Get-SapCurrentConnectionProfile this deliberately does NOT fall
+        back to Get-SapDefaultConnection or the single-password auto-bootstrap.
+        Those fallbacks are correct for the banner / version info, but for
+        SYSTEM-SPECIFIC dev defaults they are silent cross-system contamination:
+        a TR carries the SID prefix (S4DK... vs S4HK...), so an unpinned S4H
+        session resolving to "the default connection" (S4D) would READ S4D's TR
+        and, on save, WRITE an S4H value into S4D's dev_defaults block. Returning
+        $null on ambiguity lets the caller fall through to the global file value
+        (read) or refuse-to-guess (write) instead.
+    .OUTPUTS
+        Profile hashtable, or $null when ambiguous.
+    #>
+    param([string]$RuntimeDir = '')
+    if ([string]::IsNullOrWhiteSpace($RuntimeDir)) { $RuntimeDir = Get-SapWorkRuntimeDir }
+    $aid = Get-SapAiSessionId -RuntimeDir $RuntimeDir
+    $reg = _Read-SessionRegistry -RuntimeDir $RuntimeDir
+    $pinnedConnId = ''
+    if ($reg -and $reg.ai_sessions -and $reg.ai_sessions.PSObject.Properties[$aid]) {
+        $pinnedConnId = "$($reg.ai_sessions.$aid.connection_id)"
+    }
+    if ($pinnedConnId) {
+        $p = Find-SapConnectionById -Id $pinnedConnId
+        if ($p) { return $p }
+        # Pin dangles (the connection was removed) -> treat as unpinned below.
+    }
+    $conns = @((Read-SapConnectionStore).connections)
+    if ($conns.Count -eq 1) { return $conns[0] }
+    return $null
+}
+
+function Test-SapDevDefaultAmbiguous {
+    # $true when this AI session has NO pin AND >=2 connections are saved -- the
+    # state where guessing a connection for a system-specific dev default would
+    # contaminate across systems. Drives the one-shot WARN below.
+    param([string]$RuntimeDir = '')
+    if ([string]::IsNullOrWhiteSpace($RuntimeDir)) { $RuntimeDir = Get-SapWorkRuntimeDir }
+    $aid = Get-SapAiSessionId -RuntimeDir $RuntimeDir
+    $reg = _Read-SessionRegistry -RuntimeDir $RuntimeDir
+    $pinned = ''
+    if ($reg -and $reg.ai_sessions -and $reg.ai_sessions.PSObject.Properties[$aid]) {
+        $pinned = "$($reg.ai_sessions.$aid.connection_id)"
+    }
+    if ($pinned) {
+        # A pin that dangles (deleted connection) is still ambiguous if >=2 remain.
+        if (Find-SapConnectionById -Id $pinned) { return $false }
+    }
+    return (@((Read-SapConnectionStore).connections).Count -ge 2)
+}
+
+function Write-SapDevDefaultAmbiguityWarning {
+    param([Parameter(Mandatory)][string]$Key, [ValidateSet('read','write')][string]$Mode = 'read')
+    if ($script:_SapDevDefaultAmbigWarned) { return }
+    $script:_SapDevDefaultAmbigWarned = $true
+    if ($Mode -eq 'write') {
+        [Console]::Error.WriteLine("WARN: sap_connection_lib: per-connection key '$Key' -- this AI session is not pinned to a connection and >=2 are saved. Writing to the GLOBAL settings file instead of guessing a system (would corrupt the default connection's dev_defaults). Run /sap-login to pin the target system so TR/package/FG land on the right connection.")
+    } else {
+        [Console]::Error.WriteLine("WARN: sap_connection_lib: per-connection key '$Key' -- this AI session is not pinned and >=2 connections are saved; using the GLOBAL fallback rather than the default connection's value (avoids cross-system contamination). Run /sap-login to pin the target system.")
+    }
+}
+
 function Get-SapCurrentDevDefault {
     <#
     .SYNOPSIS
@@ -1514,7 +1598,7 @@ function Get-SapCurrentDevDefault {
     #>
     param([Parameter(Mandatory)][string]$Key)
     $profile = $null
-    try { $profile = Get-SapCurrentConnectionProfile } catch {}
+    try { $profile = Get-SapDevDefaultProfile } catch {}
     if ($profile -and $profile.ContainsKey('dev_defaults') -and $profile['dev_defaults']) {
         $dd = $profile['dev_defaults']
         $v = $null
@@ -1524,6 +1608,13 @@ function Get-SapCurrentDevDefault {
             $v = $dd.$Key
         }
         if ($null -ne $v -and "$v" -ne '') { return "$v" }
+    }
+    if (-not $profile) {
+        # No unambiguous connection for this session. We deliberately do NOT read
+        # the default connection's dev_defaults (cross-system contamination); warn
+        # once when that ambiguity is real (>=2 connections, unpinned) and fall
+        # through to the global file value below.
+        try { if (Test-SapDevDefaultAmbiguous) { Write-SapDevDefaultAmbiguityWarning -Key $Key -Mode 'read' } } catch {}
     }
     # File-based fallback -- read raw from merged settings WITHOUT re-entering
     # the per-conn path (avoid the Get-SapSettingValue<->Get-SapCurrentDevDefault
@@ -1551,8 +1642,14 @@ function Set-SapCurrentDevDefault {
         [Parameter(Mandatory)][AllowEmptyString()][string]$Value
     )
     $profile = $null
-    try { $profile = Get-SapCurrentConnectionProfile } catch {}
+    try { $profile = Get-SapDevDefaultProfile } catch {}
     if (-not $profile -or -not (_NotEmpty "$($profile.id)")) {
+        # No unambiguous connection -> do NOT guess the default connection (that
+        # writes one system's value into another's dev_defaults block). Warn when
+        # the ambiguity is real (>=2 connections, unpinned) and fall back to the
+        # global settings file -- inert because the read path checks each
+        # connection's own dev_defaults first.
+        try { if (Test-SapDevDefaultAmbiguous) { Write-SapDevDefaultAmbiguityWarning -Key $Key -Mode 'write' } } catch {}
         if (Get-Command Set-SapUserSetting -ErrorAction SilentlyContinue) {
             # -SkipPerConnRouting breaks the cycle: Set-SapUserSetting routes
             # per-conn keys through us; we route no-pin writes back through it.

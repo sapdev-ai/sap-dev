@@ -4,6 +4,46 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Two concurrent AI sessions on different SAP systems (e.g. S4D + S4H) could
+  corrupt `userconfig.json` and cross-contaminate system-specific dev settings.**
+  Three distinct multi-connection races, all in the shared settings / connection
+  libraries:
+  - **`userconfig.json` torn / lost writes.** `Set-SapUserSetting` did an
+    unlocked, non-atomic `WriteAllText`, while `Get-SapSettings` *threw* on a
+    parse error. Two sessions writing a global key at overlapping times produced
+    a lost update or a half-written file, after which every settings read in that
+    session died. The whole read-modify-write now runs under a cross-process
+    named mutex (`SapDevUserConfigStore_v1`) and swaps the file in atomically
+    (temp file + NTFS `File.Replace`), so a concurrent reader never sees a torn
+    document. A `userconfig.json` / `settings.local.json` that is unreadable
+    anyway now **WARNs and is skipped** (falling back to `settings.json`
+    defaults) instead of aborting the skill; a write over a corrupt file backs it
+    up to `userconfig.json.corrupt.<pid>` and rewrites cleanly.
+  - **`connections.json` could be wiped under a concurrent read.**
+    `Write-SapConnectionStore` was likewise non-atomic, so a reader that hit a
+    half-written file reset to an *empty* store — and the next save then
+    overwrote the real file, losing every saved connection. It now uses the same
+    atomic temp-file + `File.Replace` swap.
+  - **Per-connection dev defaults leaked across systems when a session was
+    unpinned.** `Get-SapCurrentDevDefault` / `Set-SapCurrentDevDefault` resolved
+    the profile via `Get-SapCurrentConnectionProfile`, which falls back to the
+    **default connection** (and a single-password auto-bootstrap) when this AI
+    session has no pin. Because a transport request carries the SID prefix
+    (`S4DK…` vs `S4HK…`), an unpinned S4H session would *read* S4D's TR/package/
+    function-group and, on save, *write* an S4H value into S4D's `dev_defaults`
+    block. A new strict resolver (`Get-SapDevDefaultProfile`) returns a profile
+    only when it is unambiguously this session's — explicit pin, or a sole saved
+    connection — and otherwise returns `$null`, so reads fall through to the
+    global value and writes go to the global file (with a one-shot WARN telling
+    the user to `/sap-login` to pin) instead of silently corrupting the default
+    connection. Banner / version-info / RFC callers still use the original
+    default-fallback resolver unchanged.
+  - Verified on Windows PowerShell 5.1: per-connection isolation under pin /
+    no-pin, write targeting, corrupt-file resilience, and a cross-process
+    concurrent-writer race (16/16; `temp/test_multiconn_devdefaults.ps1`).
+
 ## [0.6.4] — 2026-06-13
 
 ### Added
