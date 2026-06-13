@@ -131,7 +131,7 @@ Exit code `0` = OK (no row written). Exit code `2` = UNKNOWN_TYPE / RULES_NOT_FO
 | `sap-dev-core/shared/scripts/sap_check_object_name.ps1` | *(helper)* | Shared validator invoked in Step 1.5 |
 | `sap-dev-core/shared/scripts/sap_check_signatures.ps1` | *(helper)* | Step 3.5 signature validator — struct-field + AUTHORITY-CHECK shape vs the live-SAP caches |
 | `sap-dev-core/shared/scripts/sap_check_spec_coverage.ps1` | *(helper)* | Step 3.6 spec-coverage validator — confirms the generated manifests cover the spec's deps / messages / text elements / selection fields |
-| `sap-dev-core/shared/rules/abap_code_quality_rules.md` | *(rule)* | **Mandatory** ABAP code-quality rules. Phase 5f of the VBS engine emits the offline-checkable subset: `LITERAL_MESSAGE` + `MESSAGE_NUM_UNDECLARED` (§20), `TEXT_NNN_ASSIGN` + `TEXT_SYMBOL_UNDECLARED` (§21), `CLASS_DEF_AFTER_EVENT` (§10), `LOOP_WHERE_EXIT` (§19), `SPLIT_INTO_NUMERIC` (§25), `SELECT_STAR` (§12), `LINE_TOO_LONG`/`LINE_HARD_LIMIT`, plus `SQL_STRICT_COMMA` (§9). These mirror the CI gate `scripts/lint-abap-contract.mjs` (same contract, two engines). The semantic rules needing data-flow / method-scope reasoning — `MESSAGE_E_IN_METHOD` (§11), `SELECT_IN_LOOP`/`FOR_ALL_ENTRIES_NO_GUARD` (§12), `MISSING_AT_HOST_VAR`/`STRING_CONCAT_SQL` (§13), `MISSING_AUTHZ_CHECK` (§14), `METHOD_TOO_LONG` (§18) — are reviewed by the orchestrator against this rule file. |
+| `sap-dev-core/shared/rules/abap_code_quality_rules.md` | *(rule)* | **Mandatory** ABAP code-quality rules. The VBS engine emits the offline-checkable rules in two phases. **Phase 5f** (per-line): `LITERAL_MESSAGE` + `MESSAGE_NUM_UNDECLARED` (§20), `TEXT_NNN_ASSIGN` + `TEXT_SYMBOL_UNDECLARED` (§21), `CLASS_DEF_AFTER_EVENT` (§10), `LOOP_WHERE_EXIT` (§19), `SPLIT_INTO_NUMERIC` (§25), `SELECT_STAR` (§12), `LINE_TOO_LONG`/`LINE_HARD_LIMIT`, plus `SQL_STRICT_COMMA` (§9). **Phase 5g** (scope-tracked): `MESSAGE_E_IN_METHOD` (§11), `SELECT_IN_LOOP` + `FOR_ALL_ENTRIES_NO_GUARD` (§12), `METHOD_TOO_LONG` (§18). These mirror the CI gate `scripts/lint-abap-contract.mjs` (same contract, two engines). The remaining heuristic rules — `MISSING_AT_HOST_VAR`/`STRING_CONCAT_SQL` (§13), `MISSING_AUTHZ_CHECK` (§14) — carry a higher false-positive risk and are reviewed by the orchestrator against this rule file rather than emitted by the engine. |
 | `sap-dev-core/shared/templates/customer_brief.md` | *(config)* | Project Profile — used to set the quality bar (e.g. method length limit, modern-ABAP required, ATC priority gating) |
 
 ---
@@ -201,10 +201,12 @@ $content = $content -replace '%%NAMING_RULES%%',       'THE_NAMING_RULES_PATH'
 $content = $content -replace '%%DDIC_HELPER_PS1%%',    '{WORK_TEMP}\sap_checkabap_ddic_helper.ps1'
 $content = $content -replace '%%DDIC_REQUEST_FILE%%',  '{WORK_TEMP}\sap_checkabap_ddic_request.txt'
 $content = $content -replace '%%DDIC_RESULT_FILE%%',   '{WORK_TEMP}\sap_checkabap_ddic_result.tsv'
+$content = $content -replace '%%MAX_METHOD_LINES%%',   'THE_MAX_METHOD_LINES'
 [System.IO.File]::WriteAllText('{WORK_TEMP}\sap_checkabap_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 Replace all `THE_*` placeholders and `<SKILL_DIR>` / `<SAP_DEV_CORE_SHARED_DIR>` with absolute paths.
+`THE_MAX_METHOD_LINES` = the customer brief's "Maximum method length" (`MODE_MAX_METHOD_LINES`); use `50` if the brief doesn't set it. The VBS defaults to 50 if the token is left unsubstituted or blank, so this is safe to omit.
 
 For **offline mode**, set `THE_SERVER` to empty string (`''`); the VBS will skip the helper invocation entirely.
 

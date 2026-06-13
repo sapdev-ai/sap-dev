@@ -2053,6 +2053,39 @@ Function Gc_Pad3(s)
     Gc_Pad3 = r
 End Function
 
+' True if the string is pure ASCII. The .abap is read as the host ANSI codepage
+' (g_fso.OpenTextFile), so a line containing CJK / JA comment text has an
+' unreliable Len() -- gate the line-length rule on this rather than emit a false
+' LINE_TOO_LONG on every multibyte comment line.
+Function Gc_IsAscii(s)
+    Dim i, code
+    For i = 1 To Len(s)
+        code = AscW(Mid(s, i, 1))
+        If code > 127 Or code < 0 Then Gc_IsAscii = False : Exit Function
+    Next
+    Gc_IsAscii = True
+End Function
+
+' Read a UTF-8 file into an array of lines via ADODB.Stream. FSO OpenTextFile
+' reads as the host ANSI codepage and scrambles UTF-8 CJK -- on the sibling
+' files (full of CJK labels/messages) that eats line boundaries and breaks id
+' parsing (only the last line survives). Returns Array() on any failure.
+Function Gc_ReadUtf8Lines(path)
+    Dim arr : arr = Array()
+    On Error Resume Next
+    Dim st : Set st = CreateObject("ADODB.Stream")
+    st.Type = 2 : st.Charset = "utf-8" : st.Open
+    st.LoadFromFile path
+    Dim txt : txt = st.ReadText(-1)
+    st.Close
+    If Err.Number = 0 Then
+        txt = Replace(Replace(txt, vbCrLf, vbLf), vbCr, vbLf)
+        arr = Split(txt, vbLf)
+    End If
+    On Error GoTo 0
+    Gc_ReadUtf8Lines = arr
+End Function
+
 ' Is this (uppercased, comment-stripped) line the start of an event block?
 Function Gc_IsEventLine(u)
     Dim tk : tk = SplitTokens(u)
@@ -2135,16 +2168,20 @@ For gcL = 1 To g_srcCount
     Dim gcRaw : gcRaw = g_srcLines(gcL)
 
     ' R-LINE length (column 1 inclusive; trailing whitespace ignored). Applies
-    ' to every line, including comments and banners.
-    Dim gcLen : gcLen = Len(RTrim(gcRaw))
-    If gcLen > 255 Then
-        AddIssue "LINE_HARD_LIMIT", "ERROR", gcL, "", "SOURCE", "LINE", _
-                 "line is " & gcLen & " chars (>255 hard ABAP limit)", _
-                 "Wrap the statement across lines"
-    ElseIf gcLen > 72 Then
-        AddIssue "LINE_TOO_LONG", "WARNING", gcL, "", "SOURCE", "LINE", _
-                 "line is " & gcLen & " chars (>72)", _
-                 "Wrap to <=72 chars (generation style rule)"
+    ' to every line, including comments and banners -- but ONLY when the line is
+    ' pure ASCII (a CJK/JA comment line has a meaningless Len() under the ANSI
+    ' read; we skip rather than false-flag it).
+    If Gc_IsAscii(gcRaw) Then
+        Dim gcLen : gcLen = Len(RTrim(gcRaw))
+        If gcLen > 255 Then
+            AddIssue "LINE_HARD_LIMIT", "ERROR", gcL, "", "SOURCE", "LINE", _
+                     "line is " & gcLen & " chars (>255 hard ABAP limit)", _
+                     "Wrap the statement across lines"
+        ElseIf gcLen > 72 Then
+            AddIssue "LINE_TOO_LONG", "WARNING", gcL, "", "SOURCE", "LINE", _
+                     "line is " & gcLen & " chars (>72)", _
+                     "Wrap to <=72 chars (generation style rule)"
+        End If
     End If
 
     If Left(Trim(gcRaw), 1) <> "*" Then
@@ -2251,10 +2288,11 @@ Dim gcTEPath : gcTEPath = gcDir & "\" & gcStem & ".text_elements.txt"
 If g_fso.FileExists(gcTEPath) Then
     Dim gcTEDecl : Set gcTEDecl = CreateObject("Scripting.Dictionary")
     gcTEDecl.CompareMode = 1
-    Dim fTE : Set fTE = g_fso.OpenTextFile(gcTEPath, 1)
+    Dim gcTELines : gcTELines = Gc_ReadUtf8Lines(gcTEPath)
     Dim gcInSym : gcInSym = False
-    Do Until fTE.AtEndOfStream
-        Dim teT : teT = Trim(fTE.ReadLine)
+    Dim gcTEi
+    For gcTEi = 0 To UBound(gcTELines)
+        Dim teT : teT = Trim(gcTELines(gcTEi))
         If UCase(teT) = "[TEXT_SYMBOLS]" Then
             gcInSym = True
         ElseIf Left(teT, 1) = "[" Then
@@ -2263,8 +2301,7 @@ If g_fso.FileExists(gcTEPath) Then
             Dim teId : teId = Trim(Split(teT, vbTab)(0))
             If teId <> "" And IsNumeric(teId) Then gcTEDecl(Gc_Pad3(teId)) = True
         End If
-    Loop
-    fTE.Close
+    Next
     Dim gcTL
     For gcTL = 1 To g_srcCount
         If Left(Trim(g_srcLines(gcTL)), 1) <> "*" Then
@@ -2294,13 +2331,17 @@ Dim gcMGPath : gcMGPath = gcDir & "\" & gcStem & ".messages.txt"
 If g_fso.FileExists(gcMGPath) Then
     Dim gcMGDecl : Set gcMGDecl = CreateObject("Scripting.Dictionary")
     gcMGDecl.CompareMode = 1
-    Dim fMG : Set fMG = g_fso.OpenTextFile(gcMGPath, 1)
-    Do Until fMG.AtEndOfStream
-        Dim mgT : mgT = fMG.ReadLine
-        Dim mgId : mgId = Trim(Split(mgT, vbTab)(0))
-        If mgId <> "" And IsNumeric(mgId) Then gcMGDecl(Gc_Pad3(mgId)) = True
-    Loop
-    fMG.Close
+    Dim gcMGLines : gcMGLines = Gc_ReadUtf8Lines(gcMGPath)
+    Dim gcMGi
+    For gcMGi = 0 To UBound(gcMGLines)
+        Dim mgT : mgT = gcMGLines(gcMGi)
+        ' Guard: Split("") returns a 0-element array in VBScript, so the trailing
+        ' empty line from the UTF-8 split would crash Split(...)(0).
+        If Trim(mgT) <> "" Then
+            Dim mgId : mgId = Trim(Split(mgT, vbTab)(0))
+            If mgId <> "" And IsNumeric(mgId) Then gcMGDecl(Gc_Pad3(mgId)) = True
+        End If
+    Next
     Dim gcML
     For gcML = 1 To g_srcCount
         If Left(Trim(g_srcLines(gcML)), 1) <> "*" Then
@@ -2319,6 +2360,145 @@ If g_fso.FileExists(gcMGPath) Then
     Next
 End If
 WScript.Echo "INFO: Generation contract-rule check complete."
+
+' =============================================================================
+' PHASE 5g -- Semantic quality rules (offline; scope-tracked)
+'
+' The data-flow / scope rules from abap_code_quality_rules.md that need
+' method / loop scope tracking (not just a per-line scan):
+'   MESSAGE_E_IN_METHOD (s11) -- MESSAGE e/a/x inside a class method short-dumps
+'   METHOD_TOO_LONG     (s18) -- method body exceeds the brief's max line count
+'   SELECT_IN_LOOP      (s12) -- SELECT inside LOOP AT (pre-select instead)
+'   FOR_ALL_ENTRIES_NO_GUARD (s12) -- FAE with no IS NOT INITIAL guard
+' =============================================================================
+
+' MESSAGE severity is E/A/X (short form eNNN/aNNN/xNNN OR long form TYPE 'E')?
+Function Gc_IsMsgEAX(toks)
+    Gc_IsMsgEAX = False
+    If UBound(toks) < 1 Then Exit Function
+    Dim t1 : t1 = StripTrailing(toks(1))
+    If Len(t1) >= 2 Then
+        Dim c0 : c0 = Left(t1, 1)
+        Dim c1 : c1 = Mid(t1, 2, 1)
+        If (c0 = "E" Or c0 = "A" Or c0 = "X") And (c1 >= "0" And c1 <= "9") Then
+            Gc_IsMsgEAX = True : Exit Function
+        End If
+    End If
+    Dim joined : joined = ""
+    Dim z
+    For z = 1 To UBound(toks)
+        joined = joined & " " & toks(z)
+    Next
+    If InStr(joined, "TYPE 'E'") > 0 Or InStr(joined, "TYPE 'A'") > 0 Or InStr(joined, "TYPE 'X'") > 0 Then
+        Gc_IsMsgEAX = True
+    End If
+End Function
+
+' Extract the driver itab from "... FOR ALL ENTRIES IN [@]<itab> ...".
+Function Gc_FaeDriver(buf)
+    Gc_FaeDriver = ""
+    Dim p : p = InStr(buf, "FOR ALL ENTRIES IN ")
+    If p = 0 Then Exit Function
+    Dim rtoks : rtoks = SplitTokens(Trim(Mid(buf, p + 19)))
+    If UBound(rtoks) < 0 Then Exit Function
+    Dim d : d = StripTrailing(rtoks(0))
+    If Left(d, 1) = "@" Then d = Mid(d, 2)
+    Gc_FaeDriver = d
+End Function
+
+' Is there an "IS NOT INITIAL" guard on <drv> within 15 lines before lineNum?
+Function Gc_GuardedBefore(drv, lineNum)
+    Gc_GuardedBefore = False
+    Dim lo : lo = lineNum - 15
+    If lo < 1 Then lo = 1
+    Dim gi
+    For gi = lineNum - 1 To lo Step -1
+        Dim gu : gu = UCase(StripInlineComment(g_srcLines(gi)))
+        If InStr(gu, "IS NOT INITIAL") > 0 And InStr(gu, drv) > 0 Then
+            Gc_GuardedBefore = True : Exit Function
+        End If
+    Next
+End Function
+
+' Resolve the max method-line budget from the brief (token; default 50).
+Dim g_maxMethodLines : g_maxMethodLines = 50
+If IsNumeric("%%MAX_METHOD_LINES%%") Then
+    Dim mmlTmp : mmlTmp = CLng("%%MAX_METHOD_LINES%%")
+    If mmlTmp > 0 Then g_maxMethodLines = mmlTmp
+End If
+
+Dim g_inMethod : g_inMethod = False
+Dim g_methodStart : g_methodStart = 0
+Dim g_loopDepth : g_loopDepth = 0
+Dim sgL
+For sgL = 1 To g_srcCount
+    Dim sgRaw : sgRaw = g_srcLines(sgL)
+    If Left(Trim(sgRaw), 1) <> "*" Then
+        Dim sgU : sgU = UCase(Trim(StripInlineComment(sgRaw)))
+        Dim sgToks : sgToks = SplitTokens(sgU)
+        Dim sgT0 : sgT0 = ""
+        If UBound(sgToks) >= 0 Then sgT0 = StripTrailing(sgToks(0))
+
+        ' method scope + METHOD_TOO_LONG
+        If sgT0 = "METHOD" Then
+            g_inMethod = True
+            g_methodStart = sgL
+        ElseIf sgT0 = "ENDMETHOD" Then
+            If g_inMethod Then
+                Dim mlen : mlen = sgL - g_methodStart - 1
+                If mlen > g_maxMethodLines Then
+                    AddIssue "METHOD_TOO_LONG", "WARNING", g_methodStart, "METHOD", "LOCAL", "STATEMENT", _
+                             "method body is " & mlen & " lines (max " & g_maxMethodLines & ")", _
+                             "Split into smaller methods (rules section 18)"
+                End If
+            End If
+            g_inMethod = False
+            g_methodStart = 0
+        End If
+
+        ' loop scope
+        If sgT0 = "LOOP" Then
+            g_loopDepth = g_loopDepth + 1
+        ElseIf sgT0 = "ENDLOOP" Then
+            If g_loopDepth > 0 Then g_loopDepth = g_loopDepth - 1
+        End If
+
+        ' MESSAGE e/a/x inside a method (capture form `... INTO` is safe)
+        If g_inMethod And sgT0 = "MESSAGE" Then
+            If InStr(sgU, " INTO ") = 0 And Gc_IsMsgEAX(sgToks) Then
+                AddIssue "MESSAGE_E_IN_METHOD", "ERROR", sgL, "MESSAGE", "LOCAL", "STATEMENT", _
+                         "MESSAGE e/a/x inside a method raises UNCAUGHT_EXCEPTION", _
+                         "Raise an exception class or return a result; or MESSAGE ... INTO to capture (rules section 11)"
+            End If
+        End If
+
+        ' SELECT inside a LOOP AT
+        If g_loopDepth > 0 And sgT0 = "SELECT" Then
+            AddIssue "SELECT_IN_LOOP", "ERROR", sgL, "SELECT", "SOURCE", "STATEMENT", _
+                     "SELECT inside LOOP AT -- pre-select before the loop", _
+                     "Read once into an internal table before the loop (rules section 12)"
+        End If
+
+        ' FOR ALL ENTRIES without a preceding IS NOT INITIAL guard
+        If sgT0 = "SELECT" And InStr(sgU, "FOR ALL ENTRIES") > 0 Then
+            Dim faeBuf : faeBuf = sgU
+            Dim faeEnd : faeEnd = sgL
+            Do While Not EndsWithPeriod(g_srcLines(faeEnd)) And faeEnd < g_srcCount
+                faeEnd = faeEnd + 1
+                faeBuf = faeBuf & " " & UCase(StripInlineComment(g_srcLines(faeEnd)))
+            Loop
+            Dim drv : drv = Gc_FaeDriver(faeBuf)
+            If drv <> "" Then
+                If Not Gc_GuardedBefore(drv, sgL) Then
+                    AddIssue "FOR_ALL_ENTRIES_NO_GUARD", "ERROR", sgL, drv, "SOURCE", "STATEMENT", _
+                             "FOR ALL ENTRIES IN " & drv & " with no IS NOT INITIAL guard -- empty driver reads ALL rows", _
+                             "Guard with IF " & drv & " IS NOT INITIAL ... ENDIF (rules section 12)"
+                End If
+            End If
+        End If
+    End If
+Next
+WScript.Echo "INFO: Semantic quality-rule check complete."
 
 ' =============================================================================
 ' PHASE 6 -- Write Result File

@@ -80,6 +80,19 @@ function Add-Cov($checkType, $severity, $varName, $detail, $fix) {
     $results.Add(($checkType + "`t" + $severity + "`t0`t" + $varName + "`tSPEC`tCOVERAGE`t" + $detail + "`t" + $fix))
 }
 
+# Return the first 1-3 digit numeric token in a tab-separated row (padded to 3),
+# or $null. Tolerates layouts where the message/text NUMBER is not in column 1
+# (e.g. the common MSG_CLASS<TAB>MSG_NO<TAB>... error-message sheet, where the
+# number sits in column 2). The generated .messages.txt has it in column 1, so
+# the same scan resolves both producers.
+function Get-FirstNumId($line) {
+    foreach ($tok in ($line -split "`t")) {
+        $t = $tok.Trim()
+        if ($t -match '^\d{1,3}$') { return $t.PadLeft(3,'0') }
+    }
+    return $null
+}
+
 # ---- parse generated manifests into lookup sets -----------------------------
 $genDepNames = New-Object 'System.Collections.Generic.HashSet[string]'
 $depSections = @('STANDARD_TABLES','BAPIS','CLASSES','AUTHZ_OBJECTS','CUSTOM_OBJECTS')
@@ -94,8 +107,8 @@ if (Test-Path -LiteralPath $genDeps) {
 $genMsgIds = New-Object 'System.Collections.Generic.HashSet[string]'
 if (Test-Path -LiteralPath $genMsgs) {
     foreach ($r in Get-Content -LiteralPath $genMsgs -Encoding UTF8) {
-        $id = ($r -split "`t")[0].Trim()
-        if ($id -match '^\d{1,3}$') { [void]$genMsgIds.Add($id.PadLeft(3,'0')) }
+        $id = Get-FirstNumId $r
+        if ($id) { [void]$genMsgIds.Add($id) }
     }
 }
 
@@ -117,19 +130,43 @@ if (Test-Path -LiteralPath $genText) {
     }
 }
 
-# ---- 1) dependency coverage (best-effort name matching; WARNING) ------------
+# ---- 1) dependency coverage (WARNING) ---------------------------------------
+# The spec _deps.txt is normally a TSV with a NAME column (TYPE/NAME/PURPOSE/...)
+# -- take ONLY that column so header words, TYPE values (FM/BAPI/AUTHZ/CUSTOM),
+# and PURPOSE/NOTES free-text (ACTVT, ALV, GUI_UPLOAD, ...) are not mistaken for
+# dependency names. Falls back to token-collection (with a stoplist) only when
+# the file has no recognizable header (a flat list).
 if ($specDeps -ne "" -and (Test-Path -LiteralPath $genDeps)) {
-    $stop = @('FM','BAPI','BAPIS','CLASS','CLASSES','FUNCTION','MODULE','METHOD',
-              'INTERFACE','TABLE','TABLES','STRUCTURE','DEPENDENCY','DEPENDENCIES',
-              'AUTH','AUTHORIZATION','AUTHORIZATIONS','OBJECT','OBJECTS','NAME','NAMES',
-              'TYPE','KIND','STANDARD_TABLES','AUTHZ_OBJECTS','CUSTOM_OBJECTS','NOTE','DESC')
     $specDepNames = New-Object 'System.Collections.Generic.HashSet[string]'
-    foreach ($r in Get-Content -LiteralPath $specDeps -Encoding UTF8) {
-        $line = $r.Trim()
-        if ($line -eq "" -or $line.StartsWith("#")) { continue }
-        foreach ($tok in ($line -split '[\t ,;|]+')) {
-            $u = $tok.Trim().ToUpper()
-            if ($u -match '^[A-Z][A-Z0-9_/]{2,}$' -and ($stop -notcontains $u)) { [void]$specDepNames.Add($u) }
+    $specLines = @(Get-Content -LiteralPath $specDeps -Encoding UTF8)
+    $nameCol = -1
+    if ($specLines.Count -gt 0) {
+        $hdr = $specLines[0] -split "`t"
+        for ($i = 0; $i -lt $hdr.Count; $i++) {
+            if ($hdr[$i].Trim().ToUpper() -eq 'NAME') { $nameCol = $i; break }
+        }
+    }
+    if ($nameCol -ge 0) {
+        for ($i = 1; $i -lt $specLines.Count; $i++) {
+            $cols = $specLines[$i] -split "`t"
+            if ($cols.Count -gt $nameCol) {
+                $u = $cols[$nameCol].Trim().ToUpper()
+                if ($u -match '^[A-Z][A-Z0-9_/]{2,}$') { [void]$specDepNames.Add($u) }
+            }
+        }
+    } else {
+        $stop = @('FM','BAPI','BAPIS','CLASS','CLASSES','FUNCTION','MODULE','METHOD',
+                  'INTERFACE','TABLE','TABLES','STRUCTURE','DEPENDENCY','DEPENDENCIES',
+                  'AUTH','AUTHZ','AUTHORIZATION','AUTHORIZATIONS','OBJECT','OBJECTS',
+                  'NAME','NAMES','TYPE','KIND','PURPOSE','NOTE','NOTES','DESC','CUSTOM',
+                  'INCLUDE','STANDARD_TABLES','AUTHZ_OBJECTS','CUSTOM_OBJECTS')
+        foreach ($r in $specLines) {
+            $line = $r.Trim()
+            if ($line -eq "" -or $line.StartsWith("#")) { continue }
+            foreach ($tok in ($line -split '[\t ,;|]+')) {
+                $u = $tok.Trim().ToUpper()
+                if ($u -match '^[A-Z][A-Z0-9_/]{2,}$' -and ($stop -notcontains $u)) { [void]$specDepNames.Add($u) }
+            }
         }
     }
     $missDeps = 0
@@ -148,8 +185,8 @@ if ($specDeps -ne "" -and (Test-Path -LiteralPath $genDeps)) {
 if ($specMsgs -ne "" -and (Test-Path -LiteralPath $genMsgs)) {
     $specMsgIds = New-Object 'System.Collections.Generic.HashSet[string]'
     foreach ($r in Get-Content -LiteralPath $specMsgs -Encoding UTF8) {
-        $id = ($r -split "`t")[0].Trim()
-        if ($id -match '^\d{1,3}$') { [void]$specMsgIds.Add($id.PadLeft(3,'0')) }
+        $id = Get-FirstNumId $r
+        if ($id) { [void]$specMsgIds.Add($id) }
     }
     $missMsg = 0
     foreach ($m in $specMsgIds) {
@@ -167,8 +204,8 @@ if ($specMsgs -ne "" -and (Test-Path -LiteralPath $genMsgs)) {
 if ($specText -ne "" -and (Test-Path -LiteralPath $genText)) {
     $specTextIds = New-Object 'System.Collections.Generic.HashSet[string]'
     foreach ($r in Get-Content -LiteralPath $specText -Encoding UTF8) {
-        $id = ($r -split "`t")[0].Trim()
-        if ($id -match '^\d{1,3}$') { [void]$specTextIds.Add($id.PadLeft(3,'0')) }
+        $id = Get-FirstNumId $r
+        if ($id) { [void]$specTextIds.Add($id) }
     }
     $missText = 0
     foreach ($s in $specTextIds) {
