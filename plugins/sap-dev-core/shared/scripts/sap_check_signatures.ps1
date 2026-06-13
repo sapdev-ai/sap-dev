@@ -22,8 +22,10 @@
 #   %%AUTHZ_SIG_FILE%%   Path to _authz_signatures.txt (may be missing / blank)
 #   %%RESULT_FILE%%      Path to the existing .check.tsv (append; don't overwrite)
 #
-# Output: APPENDS rows to RESULT_FILE in the same TSV shape sap-check-abap uses:
-#   Line<TAB>Severity<TAB>Class<TAB>Variable<TAB>Type<TAB>Reason<TAB>FixAdvice
+# Output: APPENDS rows to RESULT_FILE in the canonical sap-check-abap TSV shape
+# (matches sap_check_abap.vbs WriteResults so the shared .check.tsv is uniform):
+#   CHECK_TYPE<TAB>SEVERITY<TAB>LINE<TAB>VARIABLE<TAB>SCOPE<TAB>DATA_KIND<TAB>DETAIL<TAB>FIX_ADVICE
+#   For these findings SCOPE='DDIC' and DATA_KIND carries the struct / auth type.
 #
 # When a signature cache file is missing or empty, the corresponding check is
 # silently skipped -- this validator is purely additive over the existing
@@ -63,7 +65,10 @@ for ($i = 0; $i -lt $rawLines.Count; $i++) {
 # ---- Result accumulator -----------------------------------------------------
 $results = New-Object System.Collections.Generic.List[string]
 function Add-Finding($lineNum, $severity, $class, $varName, $typ, $reason, $fix) {
-    $results.Add("$lineNum`t$severity`t$class`t$varName`t$typ`t$reason`t$fix")
+    # Canonical 8-col shape CHECK_TYPE/SEVERITY/LINE/VARIABLE/SCOPE/DATA_KIND/DETAIL/FIX_ADVICE
+    # (same column order sap_check_abap.vbs writes, so the shared .check.tsv is uniform).
+    # SCOPE='DDIC' (these are DDIC/SU21 signature findings); DATA_KIND carries the struct/auth type.
+    $results.Add("$class`t$severity`t$lineNum`t$varName`tDDIC`t$typ`t$reason`t$fix")
 }
 
 # ---- Build DATA-var -> type map (only top-level DATA declarations) ----------
@@ -283,7 +288,7 @@ if ($authzFields.Count -gt 0 -or $authzNotFound.Count -gt 0) {
 if ($results.Count -gt 0) {
     # If file doesn't exist yet, write a header. If it exists, just append.
     if (-not (Test-Path $RESULT_FILE)) {
-        Set-Content -LiteralPath $RESULT_FILE -Value "Line`tSeverity`tClass`tVariable`tType`tReason`tFixAdvice" -Encoding UTF8
+        Set-Content -LiteralPath $RESULT_FILE -Value "CHECK_TYPE`tSEVERITY`tLINE`tVARIABLE`tSCOPE`tDATA_KIND`tDETAIL`tFIX_ADVICE" -Encoding UTF8
     }
     Add-Content -LiteralPath $RESULT_FILE -Value $results -Encoding UTF8
     Write-Host ("INFO: Appended " + $results.Count + " finding(s) to " + $RESULT_FILE)
