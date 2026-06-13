@@ -133,7 +133,8 @@ least-privilege policy requires it.
 
 Wired with the guard (2026-05-22): `sap-se16n` (export), `sap-se38` / `sap-se37`
 / `sap-se24` (check-and-fix source download), `sap-se11` (activation-log "Save
-Local File" on create/update), `sap-sp02` (spool download). `/sap-dev-init`
+Local File" on create/update), `sap-sp02` (spool download), `sap-atc` (Stage-4
+result-TXT download + Stage-4b findings-TSV export). `/sap-dev-init`
 Step 1b already uses the watcher as a warmup.
 
 `sap-gui-diagnose` uses `GuiFrameWindow.Hardcopy`, which was **observed NOT to

@@ -68,6 +68,9 @@ Final PASS / FAIL emitted with the findings.tsv path when available.
 |---|---|---|
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/skill_operating_rules.md` | — | Mandatory operating rules |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/language_independence_rules.md` | — | GUI-scripting language independence — identify by component ID + DDIC field name, status-bar checks via `MessageType` codes (S/W/E/I/A), VKey instead of menu-text, no branching on `.Text`/`.Tooltip`/window titles |
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/sap_gui_security_handling.md` | 4 / 4b | SAP GUI Security dialog handling — the Stage-4 result **download** and Stage-4b findings-TSV **export** are SAP-GUI-side file IO, so they can raise the modal "SAP GUI Security" dialog (which suspends the Scripting API and hangs cscript). Pre-check + OS-level watcher wrap both downloads. |
+| `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_gui_security_precheck.ps1` | 4 / 4b | Read-only allow-list pre-check (`saprules.xml`) — `ALLOWED` (exit 0) / `NOT_COVERED` (exit 1). |
+| `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_gui_security_sidecar.ps1` | 4 / 4b | OS-level (Win32) watcher that auto-dismisses the SAP GUI Security dialog (ticks Remember + clicks Allow). Launched as a background process before each download. |
 | `<SKILL_DIR>/references/sap_sci_create_object_set.vbs` | 1 | Define the scope — programs / classes / FMs / interfaces / FUGRs |
 | `<SKILL_DIR>/references/sap_atc_create_run_series.vbs` | 2 | Schedule + trigger the ATC run |
 | `<SKILL_DIR>/references/sap_atc_check_run_status.vbs` | 3 | Read run state from the Monitor (read-only; safe to call in a poll loop) |
@@ -330,7 +333,36 @@ $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 [System.IO.File]::WriteAllText('{WORK_TEMP}\sap_atc_stage4_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 ```
 
-Run `{WORK_TEMP}\sap_atc_stage4_run.vbs` via cscript.
+**Run the Stage-4 VBS with the SAP GUI Security guard.** The result-file
+download is SAP-GUI-side file IO, so it can raise the modal **SAP GUI Security**
+dialog — which suspends the Scripting API and hangs cscript. Per
+`shared/rules/sap_gui_security_handling.md`, pre-check the allow-list and run the
+OS-level watcher around the download (the watcher ticks **Remember** + clicks
+**Allow**). The Manage-Results dynpro (`SATC_CI_RESULT_ADMIN_UI`) is stable, so
+one Remember rule covers future runs. Run as one PowerShell block (substitute
+`THE_OUTPUT_PATH` with the same `--save-to` path the generator wrote into the VBS):
+
+```powershell
+$shared = '<SAP_DEV_CORE_SHARED_DIR>\scripts'
+$out    = 'THE_OUTPUT_PATH'   # the path SAP GUI will write the result TXT into
+# 1. Pre-check the allow-list (read-only; informational + lets us skip the watcher).
+& "$shared\sap_gui_security_precheck.ps1" -Path $out -Access w | Out-Host
+$allowed = ($LASTEXITCODE -eq 0)
+# 2. If NOT already allow-listed, launch the OS-level watcher BEFORE the (blocking)
+#    download. It finds the #32770 dialog, ticks Remember + clicks Allow, and
+#    persists a rule so subsequent runs pre-check ALLOWED.
+$watcher = $null
+if (-not $allowed) {
+    $watcher = Start-Process powershell -PassThru -WindowStyle Hidden -ArgumentList @(
+        '-NoProfile','-ExecutionPolicy','Bypass','-File',"$shared\sap_gui_security_sidecar.ps1",'-TimeoutSeconds','40')
+    Start-Sleep -Milliseconds 800
+}
+# 3. Run the results read + download (32-bit cscript). If the dialog appears it
+#    blocks here until the watcher dismisses it; then the download completes.
+& 'C:/Windows/SysWOW64/cscript.exe' //NoLogo '{WORK_TEMP}\sap_atc_stage4_run.vbs'
+# 4. Reap the watcher.
+if ($watcher) { $watcher | Wait-Process -Timeout 45 -ErrorAction SilentlyContinue }
+```
 
 Parse the output for these lines:
 
@@ -402,7 +434,25 @@ $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 [System.IO.File]::WriteAllText('{WORK_TEMP}\sap_atc_stage4b_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 ```
 
-Run via cscript. Expected output lines:
+**Run with the SAP GUI Security guard** — the findings-TSV export is SAP-GUI-side
+file IO, same modal risk as Stage 4:
+
+```powershell
+$shared = '<SAP_DEV_CORE_SHARED_DIR>\scripts'
+$out    = 'THE_DRILL_PATH'   # the findings TSV SAP GUI will write
+& "$shared\sap_gui_security_precheck.ps1" -Path $out -Access w | Out-Host
+$allowed = ($LASTEXITCODE -eq 0)
+$watcher = $null
+if (-not $allowed) {
+    $watcher = Start-Process powershell -PassThru -WindowStyle Hidden -ArgumentList @(
+        '-NoProfile','-ExecutionPolicy','Bypass','-File',"$shared\sap_gui_security_sidecar.ps1",'-TimeoutSeconds','40')
+    Start-Sleep -Milliseconds 800
+}
+& 'C:/Windows/SysWOW64/cscript.exe' //NoLogo '{WORK_TEMP}\sap_atc_stage4b_run.vbs'
+if ($watcher) { $watcher | Wait-Process -Timeout 45 -ErrorAction SilentlyContinue }
+```
+
+Expected output lines:
 
 ```
 INFO: Outer row <N> for series <NAME> — drilling in.
