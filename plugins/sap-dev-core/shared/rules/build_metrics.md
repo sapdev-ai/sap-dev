@@ -55,7 +55,7 @@ The aggregator writes one JSONL row per reconstructed build to
   "system_id": "s4d_100",               // <SID>_<client>, lowercased (§4)
   "sap_release": "1909",                // best-effort; '' when unknown
   "atc_variant": "DEFAULT",             // DEFAULT | S4HANA_READINESS | ...
-  "plugin_version": "0.6.3",            // the RUNNING cache version (§4)
+  "plugin_version": "0.6.4",            // the RUNNING cache version (§4)
   "outcome": "SUCCESS",                 // SUCCESS | PARTIAL | FAILED | ABORTED
   "gates": {
     "GEN":      { "verdict": "PASS", "attempt": 1, "test_file": "EMITTED", "methods": 4, "hints_injected": 7 },

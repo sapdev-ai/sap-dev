@@ -4,6 +4,63 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.6.4] — 2026-06-13
+
+### Added
+
+- **Build-metrics KPI ledger — first-pass-yield for generated ABAP.** A new
+  *derived* quality yardstick that answers "did that prompt change / new KB row /
+  model bump actually move the needle?" `sap_build_kpi.ps1` reconstructs one
+  `sapdev.buildkpi/1` row per build from data the pipeline **already** writes —
+  the structured JSONL logs (every gate skill's `start` / `end` records, so even
+  STOP / ABANDONED runs are captured for free) and the delivery-assurance artifact
+  index — and trends first-attempt pass rates across the GEN / SPEC / CHECK /
+  SYNTAX / ACTIVATE / TEXT / ATC / AUNIT gates into
+  `{work_dir}\metrics\build_kpi.jsonl`, surfaced via `/sap-log-analyze --builds`.
+  The cardinal rule is **derive, do not instrument**: where a KPI needs a number
+  the bare log lacks (ATC P1/P2/P3, ABAP Unit coverage) it rides as an extra field
+  on the gate skill's existing end record — no new per-build write path and no
+  agent-level "append a row" instruction (both have silently failed in this repo
+  before, and STOP/partial builds are exactly the runs such instructions skip).
+  Contract: `shared/rules/build_metrics.md`.
+
+- **Offline ABAP generation-contract regression net (CI-gated).** Three
+  deterministic, no-SAP-connection checks that gate generation quality before a
+  single GUI call:
+  - `scripts/lint-abap-contract.mjs` — mechanises the offline-checkable subset of
+    `/sap-gen-abap`'s pre-emit ATC checklist plus the sibling-file sync rules
+    (line length, literal `MESSAGE`, read-only `TEXT-NNN`, block / declaration
+    order, `SELECT *`, `LOOP ... WHERE`/`EXIT`, and signature-based
+    `AUTHORITY-CHECK` / `CALL FUNCTION` validation). `--fixture` promotes silent
+    "signature absent" skips to hard errors — the snapshot-completeness gate that
+    closes the green-wash hole where a missing snapshot read as a pass.
+  - `scripts/diff-abap-skeleton.mjs` — structure/set-based skeleton diff of the
+    generator's own manifest siblings (`.traceability.txt`, `.deps.txt`,
+    `.messages.txt`, `.text_elements.txt`) against a per-fixture `case.json`,
+    catching a validation rule / dependency / message / selection field silently
+    **dropped or re-mapped** across generator or prompt changes (rule swaps a
+    line-based diff misses).
+  - `shared/scripts/sap_check_spec_coverage.ps1` — the user-facing twin: derives
+    the expected skeleton from the operator's **own** spec (`/sap-docs-extract`
+    output) instead of a committed golden, so it works on any fresh build.
+  Wired into `/sap-check-abap` as offline checks 5 (generation contract) and 6
+  (spec coverage), and into CI via `npm run lint:abap` / `skeleton:abap` /
+  `validate` (both `.mjs` ship `--selftest` fixtures). Self-tested on Node; the
+  PowerShell coverage validator on Windows PowerShell 5.1 + pwsh 7.
+
+### Changed
+
+- **`/sap-atc` now documents SAP GUI Security handling for result-file
+  downloads / exports.** The ATC result `.txt` download trips the "SAP GUI
+  Security" dialog the same way a generated `GUI_DOWNLOAD` report does; the
+  SKILL.md now points at the `{work_dir}` grant / sidecar coordination so the
+  download does not silently block, with a matching note in
+  `shared/rules/sap_gui_security_handling.md`.
+
+- **`/sap-check-abap` validator hardening.** `sap_check_abap.vbs` gains UTF-8
+  handling and improved line-length checks; `sap_check_signatures.ps1` output is
+  aligned with `sap_check_abap.vbs` for consistent downstream parsing.
+
 ### Fixed
 
 - **A `work_dir` chosen during onboarding did not stick for later skills in the
