@@ -5,9 +5,11 @@ description: |
   (1) Variable naming conventions against shared rules file,
   (2) Data type validity via SAP Dictionary (DDIF_FIELDINFO_GET / DDIF_DTEL_GET),
   (3) Unused variable detection,
-  (4) SQL field validation — checks SELECT/UPDATE/DELETE field names against table definitions.
+  (4) SQL field validation — checks SELECT/UPDATE/DELETE field names against table definitions,
+  (5) Generation contract rules (offline) — literal MESSAGE, read-only TEXT-NNN, block order / DECL_ORDER, SELECT *, LOOP-WHERE-EXIT, SPLIT-into-numeric, line length, and TEXT/MESSAGE sibling-file sync,
+  (6) Spec-coverage (offline) — confirms the generated code covers every dependency, message, text element, and selection field in the design spec.
   Writes a tab-delimited result file with fix advice for each issue.
-  SAP connection is optional — offline mode skips type and SQL field validation.
+  SAP connection is optional — offline mode skips type and SQL field validation; the generation-contract and spec-coverage checks are always offline.
   Prerequisites: SAP GUI installed (provides SAP.Functions 32-bit COM object).
 argument-hint: "<path-to-abap-source-file>"
 ---
@@ -127,7 +129,9 @@ Exit code `0` = OK (no row written). Exit code `2` = UNKNOWN_TYPE / RULES_NOT_FO
 | `sap-dev-core/shared/tables/abap_naming_rules.tsv` | `%%NAMING_RULES%%` | ABAP variable naming prefix conventions |
 | `sap-dev-core/shared/tables/sap_object_naming_rules.tsv` | *(read by helper)* | Top-level SAP object naming patterns (program / class / method / FORM). Custom override: `{custom_url}\sap_object_naming_rules.tsv` |
 | `sap-dev-core/shared/scripts/sap_check_object_name.ps1` | *(helper)* | Shared validator invoked in Step 1.5 |
-| `sap-dev-core/shared/rules/abap_code_quality_rules.md` | *(rule)* | **Mandatory** ABAP code-quality rules — checker MUST add these as findings on top of NAMING / TYPE / SQL / UNUSED: `SELECT_IN_LOOP` (rule 12), `FOR_ALL_ENTRIES_NO_GUARD` (12), `MESSAGE_E_IN_METHOD` (11), `MISSING_AT_HOST_VAR` (13), `METHOD_TOO_LONG` (18), `MISSING_AUTHZ_CHECK` (14), `STRING_CONCAT_SQL` (13). Severity per rule. |
+| `sap-dev-core/shared/scripts/sap_check_signatures.ps1` | *(helper)* | Step 3.5 signature validator — struct-field + AUTHORITY-CHECK shape vs the live-SAP caches |
+| `sap-dev-core/shared/scripts/sap_check_spec_coverage.ps1` | *(helper)* | Step 3.6 spec-coverage validator — confirms the generated manifests cover the spec's deps / messages / text elements / selection fields |
+| `sap-dev-core/shared/rules/abap_code_quality_rules.md` | *(rule)* | **Mandatory** ABAP code-quality rules. Phase 5f of the VBS engine emits the offline-checkable subset: `LITERAL_MESSAGE` + `MESSAGE_NUM_UNDECLARED` (§20), `TEXT_NNN_ASSIGN` + `TEXT_SYMBOL_UNDECLARED` (§21), `CLASS_DEF_AFTER_EVENT` (§10), `LOOP_WHERE_EXIT` (§19), `SPLIT_INTO_NUMERIC` (§25), `SELECT_STAR` (§12), `LINE_TOO_LONG`/`LINE_HARD_LIMIT`, plus `SQL_STRICT_COMMA` (§9). These mirror the CI gate `scripts/lint-abap-contract.mjs` (same contract, two engines). The semantic rules needing data-flow / method-scope reasoning — `MESSAGE_E_IN_METHOD` (§11), `SELECT_IN_LOOP`/`FOR_ALL_ENTRIES_NO_GUARD` (§12), `MISSING_AT_HOST_VAR`/`STRING_CONCAT_SQL` (§13), `MISSING_AUTHZ_CHECK` (§14), `METHOD_TOO_LONG` (§18) — are reviewed by the orchestrator against this rule file. |
 | `sap-dev-core/shared/templates/customer_brief.md` | *(config)* | Project Profile — used to set the quality bar (e.g. method length limit, modern-ABAP required, ATC priority gating) |
 
 ---
@@ -311,6 +315,69 @@ cmd /c del {WORK_TEMP}\sap_checkabap_signatures.ps1
 
 ---
 
+## Step 3.6 — Spec-coverage check (did the generated code cover the spec?)
+
+**Why:** Steps 3 / 3.5 check that the code is internally well-formed. They do
+NOT check that it COVERS the spec it was generated from — a dropped dependency,
+a missing error message, or a selection field that never reached the screen all
+pass those steps. This step derives the EXPECTED coverage from the spec
+extraction files (`/sap-docs-extract` output) and confirms the generator's own
+manifest siblings honoured it. It is the user-facing twin of the CI regression
+net `scripts/diff-abap-skeleton.mjs`.
+
+It compares (all in the work folder next to the `.abap`):
+
+| Spec file (`<doc>_` prefix) | Generated manifest (`<stem>.` prefix) | Coverage |
+|---|---|---|
+| `<doc>_deps.txt` | `<stem>.deps.txt` | every spec dependency present |
+| `<doc>_errorMsgs.txt` | `<stem>.messages.txt` | every spec message id emitted |
+| `<doc>_textElements.txt` | `<stem>.text_elements.txt` `[TEXT_SYMBOLS]` | every spec text symbol present |
+| `<doc>_selection_definition.txt` | `[SELECTION_TEXTS]` | field count matches |
+| — | `<stem>.traceability.txt` | category rollup (informational) |
+
+### 3.6a — Token-replace and run
+
+Template at `<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_check_spec_coverage.ps1`.
+
+```powershell
+$content = Get-Content '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_check_spec_coverage.ps1' -Raw
+$content = $content.Replace('%%ABAP_FILE%%',   'THE_ABAP_FILE')
+$content = $content.Replace('%%RESULT_FILE%%', 'THE_RESULT_FILE')   # SAME file Step 3 wrote
+Set-Content '{WORK_TEMP}\sap_checkabap_speccov.ps1' $content -Encoding UTF8
+```
+
+Run via standard PowerShell (no SAP — pure file I/O over the work folder):
+
+```bash
+powershell -ExecutionPolicy Bypass -File "{WORK_TEMP}\sap_checkabap_speccov.ps1"
+```
+
+If the work folder has no `*_deps.txt` / `*_errorMsgs.txt` / `*_textElements.txt`
+/ `*_selection_definition.txt` (e.g. hand-written ABAP, or the spec lives
+elsewhere), the script prints a single INFO line and appends nothing — the
+check is purely additive.
+
+### 3.6b — New finding classes
+
+| Code | Severity | Meaning |
+|---|---|---|
+| `SPEC_DEP_MISSING` | WARNING | A dependency declared in the spec `_deps.txt` is absent from the generated `.deps.txt`. Best-effort name match. |
+| `SPEC_MESSAGE_MISSING` | WARNING | A spec error-message id (`_errorMsgs.txt`) was not emitted in `.messages.txt`. |
+| `SPEC_TEXTSYM_MISSING` | WARNING | A spec text element (`_textElements.txt`) is absent from `[TEXT_SYMBOLS]`. |
+| `SPEC_SELECTION_COUNT` | WARNING | The spec selection-field count differs from `[SELECTION_TEXTS]`. |
+| `SPEC_TRACEABILITY_INFO` | INFO | Category rollup of `.traceability.txt` entries (validation / processing / file-mapping). |
+
+> **Boundary:** this is a STRUCTURAL coverage check (presence + counts). It does
+> not verify the logic INSIDE a validation (right field, right operator) — that
+> is the live ABAP Unit run (`/sap-run-abap-unit`) on the `_golden.txt` rows.
+
+Clean up:
+```bash
+cmd /c del {WORK_TEMP}\sap_checkabap_speccov.ps1
+```
+
+---
+
 ## Step 4 — Interpret and Report Results
 
 Read the result TSV file. The file has a header section (STATUS, ABAP_FILE, NAMING_RULES, TIMESTAMP, TOTAL_DECLARATIONS, TOTAL_SQL_STATEMENTS, TOTAL_ISSUES) followed by a column header row and tab-delimited findings.
@@ -344,6 +411,17 @@ Read the result TSV file. The file has a header section (STATUS, ABAP_FILE, NAMI
 | `MISSING_AUTHZ_CHECK` | WARNING | Persistence (`UPDATE`/`INSERT`/`MODIFY`/`DELETE`/BAPI write) without preceding `AUTHORITY-CHECK` (§14) |
 | `METHOD_TOO_LONG` | WARNING | Method exceeds `MODE_MAX_METHOD_LINES` from brief (default 50) (§18) |
 | `OBJECT_NAMING` | WARNING | Top-level object name (program / FORM / global class / method) does not match `sap_object_naming_rules.tsv` |
+| `LITERAL_MESSAGE` | ERROR | (Phase 5f) Hard-coded `MESSAGE '...'` / `MESSAGE \|...\|` text — route via a message class (§20). |
+| `TEXT_NNN_ASSIGN` | ERROR | (Phase 5f) Assignment to a read-only `TEXT-NNN` symbol; populate via `.text_elements.txt` (§21). |
+| `SELECT_STAR` | WARNING | (Phase 5f) `SELECT *` — list only the columns you use (§12). |
+| `CLASS_DEF_AFTER_EVENT` | ERROR | (Phase 5f) Global `CLASS … DEFINITION` after an event block — the DECL_ORDER activation bug; move global decls before the event blocks (§10). |
+| `LOOP_WHERE_EXIT` | WARNING | (Phase 5f) `LOOP AT … WHERE … EXIT` first-match; use `READ TABLE … TRANSPORTING NO FIELDS` (§19). |
+| `SPLIT_INTO_NUMERIC` | ERROR | (Phase 5f) A `SPLIT … INTO` receiver is an elementary numeric variable; text-parse targets must be character-type (§25). |
+| `LINE_TOO_LONG` / `LINE_HARD_LIMIT` | WARNING / ERROR | (Phase 5f) Source line > 72 cols (generation style rule) / > 255 cols (hard ABAP limit). |
+| `TEXT_SYMBOL_UNDECLARED` | ERROR | (Phase 5f) `TEXT-NNN` referenced but absent from `[TEXT_SYMBOLS]` in the `.text_elements.txt` sibling (§21). Only when the sibling exists. |
+| `MESSAGE_NUM_UNDECLARED` | ERROR | (Phase 5f) `MESSAGE eNNN(class)` referenced but absent from the `.messages.txt` sibling (§20). Only when the sibling exists. |
+| `SPEC_DEP_MISSING` / `SPEC_MESSAGE_MISSING` / `SPEC_TEXTSYM_MISSING` / `SPEC_SELECTION_COUNT` | WARNING | (Step 3.6) Spec-coverage gaps — a spec dependency / message / text element / selection field is not covered by the generated manifests. |
+| `SPEC_TRACEABILITY_INFO` | INFO | (Step 3.6) Category rollup of `.traceability.txt` entries. |
 | `STRUCT_FIELD_MISSING` | ERROR | (Step 3.5) `<var>-<field>` references a field not on the variable's structure type, per `_struct_signatures.txt`. Catches BAPI_MARA-style typos before deploy. |
 | `STRUCT_TYPE_MISSING` | ERROR | (Step 3.5) Struct type marked `NOT_FOUND` in cache — typo or release-removed. |
 | `AUTHZ_OBJECT_MISSING` | ERROR | (Step 3.5) AUTHORITY-CHECK OBJECT name `NOT_FOUND` in SU21 cache. |

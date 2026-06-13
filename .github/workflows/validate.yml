@@ -39,7 +39,17 @@ jobs:
       # Offline contract-lint for generated ABAP. The --selftest seeds known
       # good/bad ABAP snippets and asserts the lint classifies them correctly,
       # so the rule engine itself is gated. When tests/fixtures/ goldens land
-      # (P2), add a step that lints each golden via:
-      #   node scripts/lint-abap-contract.mjs <golden.abap> --work-folder <dir>
+      # (P2.3), add a step that lints each golden via:
+      #   node scripts/lint-abap-contract.mjs <golden.abap> --work-folder <dir> --fixture
+      # (--fixture turns silent signature-skips into SNAPSHOT_INCOMPLETE errors,
+      #  so an incomplete RFC snapshot can no longer green-wash a fixture run.)
       - name: ABAP contract-lint self-test
         run: node scripts/lint-abap-contract.mjs --selftest
+
+      # Offline skeleton-diff: the logic-regression net (dropped/re-mapped spec
+      # rules) the contract-lint cannot be. --selftest gates the diff engine on
+      # seeded good / dependency-drop / pair-swap cases. When fixtures land
+      # (P2.3), add a per-golden step:
+      #   node scripts/diff-abap-skeleton.mjs --work-folder <dir> --program <stem> --case <case.json>
+      - name: ABAP skeleton-diff self-test
+        run: node scripts/diff-abap-skeleton.mjs --selftest

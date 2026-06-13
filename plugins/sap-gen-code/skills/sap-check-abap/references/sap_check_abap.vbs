@@ -2031,6 +2031,296 @@ If g_cmCount > 0 Then
 End If
 
 ' =============================================================================
+' PHASE 5f -- Generation Contract Rules (offline: source + sibling files)
+'
+' Mechanises the offline-checkable subset of /sap-gen-abap's pre-emit ATC
+' checklist (shared/rules/abap_code_quality_rules.md). Mirrors the CI gate
+' scripts/lint-abap-contract.mjs so the user-facing check and the CI regression
+' enforce the SAME contract. New finding codes:
+'   LITERAL_MESSAGE (s20), TEXT_NNN_ASSIGN (s21), SELECT_STAR (s12),
+'   CLASS_DEF_AFTER_EVENT (s10), LOOP_WHERE_EXIT (s19), SPLIT_INTO_NUMERIC (s25),
+'   LINE_TOO_LONG / LINE_HARD_LIMIT, TEXT_SYMBOL_UNDECLARED (s21),
+'   MESSAGE_NUM_UNDECLARED (s20).
+' (The @-host-var comma rule is already emitted as SQL_STRICT_COMMA in Phase 2b.)
+' =============================================================================
+
+' Pad a numeric id to 3 digits ("1" -> "001").
+Function Gc_Pad3(s)
+    Dim r : r = Trim(s)
+    Do While Len(r) < 3
+        r = "0" & r
+    Loop
+    Gc_Pad3 = r
+End Function
+
+' Is this (uppercased, comment-stripped) line the start of an event block?
+Function Gc_IsEventLine(u)
+    Dim tk : tk = SplitTokens(u)
+    If UBound(tk) < 0 Then Gc_IsEventLine = False : Exit Function
+    Dim w0 : w0 = StripTrailing(tk(0))
+    Gc_IsEventLine = False
+    Select Case w0
+        Case "INITIALIZATION","START-OF-SELECTION","END-OF-SELECTION", _
+             "LOAD-OF-PROGRAM","TOP-OF-PAGE","END-OF-PAGE"
+            Gc_IsEventLine = True
+        Case "AT"
+            ' AT SELECTION-SCREEN / AT LINE-SELECTION / AT USER-COMMAND are
+            ' event blocks; AT NEW / AT END OF / AT FIRST are LOOP control
+            ' breaks -- NOT events.
+            If UBound(tk) >= 1 Then
+                Dim w1 : w1 = StripTrailing(tk(1))
+                If w1 = "SELECTION-SCREEN" Or w1 = "LINE-SELECTION" Or w1 = "USER-COMMAND" Then
+                    Gc_IsEventLine = True
+                End If
+            End If
+    End Select
+End Function
+
+' Check a SPLIT statement's receivers for elementary numeric targets.
+' buf = uppercased, comment-stripped, joined SPLIT statement.
+Sub Gc_CheckSplit(buf, lineNum)
+    Dim ip : ip = InStr(buf, " INTO ")
+    If ip = 0 Then Exit Sub
+    Dim rest : rest = Mid(buf, ip + 6)
+    Dim rtoks : rtoks = SplitTokens(Trim(rest))
+    If UBound(rtoks) < 0 Then Exit Sub
+    If StripTrailing(rtoks(0)) = "TABLE" Then Exit Sub  ' INTO TABLE itab -> table form
+    Dim k
+    For k = 0 To UBound(rtoks)
+        Dim rt : rt = StripTrailing(rtoks(k))
+        If rt = "" Or rt = "." Then Exit For
+        If rt = "IN" Then Exit For
+        If g_numVar.Exists(rt) Then
+            AddIssue "SPLIT_INTO_NUMERIC", "ERROR", lineNum, rt, "SOURCE", "STATEMENT", _
+                     "SPLIT receiver " & rt & " is an elementary numeric variable", _
+                     "Text-parse targets must be character-type C/N/STRING (rules section 25)"
+        End If
+    Next
+End Sub
+
+' --- numeric-variable set (forbidden SPLIT receivers): P/I/F/INT*/DECFLOAT.
+' NUMC (N), DATS (D), TIMS (T) are character-type and ARE valid SPLIT targets.
+Dim g_numVar : Set g_numVar = CreateObject("Scripting.Dictionary")
+g_numVar.CompareMode = 1
+Dim gcN
+For gcN = 1 To g_dCount
+    Dim gcBaseT : gcBaseT = ExtractBaseType(g_dType(gcN))
+    Select Case gcBaseT
+        Case "I","P","F","INT1","INT2","INT4","INT8","B","S","DECFLOAT16","DECFLOAT34"
+            g_numVar(UCT(g_dName(gcN))) = True
+    End Select
+Next
+
+' --- RegExps for id extraction (VBScript RegExp has no \b; guarded by hand).
+Dim gcReText : Set gcReText = New RegExp
+gcReText.Pattern = "TEXT-([0-9]{1,3})"
+gcReText.IgnoreCase = True
+gcReText.Global = True
+Dim gcReMsgRef : Set gcReMsgRef = New RegExp
+gcReMsgRef.Pattern = "MESSAGE\s+[EIWSAX]([0-9]{1,3})\s*\("
+gcReMsgRef.IgnoreCase = True
+gcReMsgRef.Global = True
+
+' --- first event-block line (for CLASS_DEF_AFTER_EVENT) ---
+Dim gcFirstEvent : gcFirstEvent = 0
+Dim gcL
+For gcL = 1 To g_srcCount
+    If gcFirstEvent = 0 And Left(Trim(g_srcLines(gcL)), 1) <> "*" Then
+        If Gc_IsEventLine(UCT(StripInlineComment(g_srcLines(gcL)))) Then gcFirstEvent = gcL
+    End If
+Next
+
+' --- per-line source rules ---
+For gcL = 1 To g_srcCount
+    Dim gcRaw : gcRaw = g_srcLines(gcL)
+
+    ' R-LINE length (column 1 inclusive; trailing whitespace ignored). Applies
+    ' to every line, including comments and banners.
+    Dim gcLen : gcLen = Len(RTrim(gcRaw))
+    If gcLen > 255 Then
+        AddIssue "LINE_HARD_LIMIT", "ERROR", gcL, "", "SOURCE", "LINE", _
+                 "line is " & gcLen & " chars (>255 hard ABAP limit)", _
+                 "Wrap the statement across lines"
+    ElseIf gcLen > 72 Then
+        AddIssue "LINE_TOO_LONG", "WARNING", gcL, "", "SOURCE", "LINE", _
+                 "line is " & gcLen & " chars (>72)", _
+                 "Wrap to <=72 chars (generation style rule)"
+    End If
+
+    If Left(Trim(gcRaw), 1) <> "*" Then
+        Dim gcCode : gcCode = StripInlineComment(gcRaw)
+        Dim gcUp : gcUp = UCase(gcCode)
+        Dim gcToks : gcToks = SplitTokens(UCase(Trim(gcCode)))
+        Dim gcT0 : gcT0 = ""
+        If UBound(gcToks) >= 0 Then gcT0 = StripTrailing(gcToks(0))
+
+        ' R-MSG literal: statement-initial MESSAGE followed by ' or | literal.
+        ' (MESSAGE eNNN(class) / MESSAGE ID '..' route via a class -- not flagged.)
+        If gcT0 = "MESSAGE" And UBound(gcToks) >= 1 Then
+            Dim gcM1 : gcM1 = gcToks(1)
+            If Left(gcM1, 1) = "'" Or Left(gcM1, 1) = "|" Then
+                AddIssue "LITERAL_MESSAGE", "ERROR", gcL, "MESSAGE", "SOURCE", "STATEMENT", _
+                         "literal MESSAGE text; route via a message class", _
+                         "Use MESSAGE eNNN(zXXX) ... INTO (rules section 20)"
+            End If
+        End If
+
+        ' R-TEXT-ASSIGN: statement-initial TEXT-NNN = ... (read-only symbol).
+        If Left(gcT0, 5) = "TEXT-" And UBound(gcToks) >= 1 Then
+            If StripTrailing(gcToks(1)) = "=" Then
+                AddIssue "TEXT_NNN_ASSIGN", "ERROR", gcL, gcT0, "SOURCE", "STATEMENT", _
+                         "assignment to a read-only TEXT-NNN symbol", _
+                         "Populate via the .text_elements.txt sibling (rules section 21)"
+            End If
+        End If
+
+        ' R-SELECT-STAR: SELECT [SINGLE|DISTINCT] * ...
+        If gcT0 = "SELECT" And UBound(gcToks) >= 1 Then
+            Dim gcSi : gcSi = 1
+            If StripTrailing(gcToks(gcSi)) = "SINGLE" Then gcSi = gcSi + 1
+            If gcSi <= UBound(gcToks) Then
+                If StripTrailing(gcToks(gcSi)) = "DISTINCT" Then gcSi = gcSi + 1
+            End If
+            If gcSi <= UBound(gcToks) Then
+                If StripTrailing(gcToks(gcSi)) = "*" Then
+                    AddIssue "SELECT_STAR", "WARNING", gcL, "SELECT", "SOURCE", "STATEMENT", _
+                             "SELECT * -- list only the columns you use", _
+                             "Name the columns explicitly (rules section 12)"
+                End If
+            End If
+        End If
+
+        ' R-CLASS-DEF-after-event: a global CLASS ... DEFINITION emitted after the
+        ' first event block (the DECL_ORDER activation bug). Local test classes
+        ' (FOR TESTING) and DEFERRED forward decls legitimately follow events.
+        If gcFirstEvent > 0 And gcL > gcFirstEvent And gcT0 = "CLASS" And UBound(gcToks) >= 2 Then
+            If StripTrailing(gcToks(2)) = "DEFINITION" Then
+                If InStr(gcUp, "FOR TESTING") = 0 And InStr(gcUp, "DEFERRED") = 0 Then
+                    AddIssue "CLASS_DEF_AFTER_EVENT", "ERROR", gcL, StripTrailing(gcToks(1)), "SOURCE", "STATEMENT", _
+                             "CLASS DEFINITION after an event block (first event at line " & gcFirstEvent & ")", _
+                             "Move global TYPES/CLASS DEFINITION/DATA before the event blocks (rules section 10)"
+                End If
+            End If
+        End If
+    End If
+Next
+
+' --- statement-spanning rules: SPLIT-into-numeric + LOOP-WHERE-EXIT ---
+For gcL = 1 To g_srcCount
+    If Left(Trim(g_srcLines(gcL)), 1) <> "*" Then
+        Dim gcSU : gcSU = UCase(StripInlineComment(g_srcLines(gcL)))
+        Dim gcSt : gcSt = SplitTokens(Trim(gcSU))
+        If UBound(gcSt) >= 0 Then
+            Dim gcSk : gcSk = StripTrailing(gcSt(0))
+            ' SPLIT <src> AT <sep> INTO [TABLE] r1 r2 ...  (may wrap)
+            If gcSk = "SPLIT" Then
+                Dim gcBuf : gcBuf = gcSU
+                Dim gcEnd : gcEnd = gcL
+                Do While Not EndsWithPeriod(g_srcLines(gcEnd)) And gcEnd < g_srcCount
+                    gcEnd = gcEnd + 1
+                    gcBuf = gcBuf & " " & UCase(StripInlineComment(g_srcLines(gcEnd)))
+                Loop
+                Gc_CheckSplit gcBuf, gcL
+            End If
+            ' LOOP AT itab ... WHERE ... <EXIT before ENDLOOP> -- first-match
+            ' anti-pattern (use READ TABLE ... TRANSPORTING NO FIELDS).
+            If gcSk = "LOOP" And InStr(gcSU, " WHERE ") > 0 Then
+                Dim gcLk
+                For gcLk = gcL + 1 To gcL + 8
+                    If gcLk > g_srcCount Then Exit For
+                    Dim gcLkU : gcLkU = UCase(Trim(StripInlineComment(g_srcLines(gcLk))))
+                    If Left(gcLkU, 7) = "ENDLOOP" Then Exit For
+                    If gcLkU = "EXIT." Or gcLkU = "EXIT" Then
+                        AddIssue "LOOP_WHERE_EXIT", "WARNING", gcL, "LOOP", "SOURCE", "STATEMENT", _
+                                 "LOOP AT ... WHERE ... EXIT first-match", _
+                                 "Use READ TABLE ... WITH KEY ... TRANSPORTING NO FIELDS (rules section 19)"
+                        Exit For
+                    End If
+                Next
+            End If
+        End If
+    End If
+Next
+
+' --- sibling-file sync (only when the generated sibling exists) ---
+Dim gcDir : gcDir = g_fso.GetParentFolderName(ABAP_FILE)
+Dim gcStem : gcStem = g_fso.GetBaseName(ABAP_FILE)
+
+' TEXT-NNN <-> [TEXT_SYMBOLS] in <stem>.text_elements.txt
+Dim gcTEPath : gcTEPath = gcDir & "\" & gcStem & ".text_elements.txt"
+If g_fso.FileExists(gcTEPath) Then
+    Dim gcTEDecl : Set gcTEDecl = CreateObject("Scripting.Dictionary")
+    gcTEDecl.CompareMode = 1
+    Dim fTE : Set fTE = g_fso.OpenTextFile(gcTEPath, 1)
+    Dim gcInSym : gcInSym = False
+    Do Until fTE.AtEndOfStream
+        Dim teT : teT = Trim(fTE.ReadLine)
+        If UCase(teT) = "[TEXT_SYMBOLS]" Then
+            gcInSym = True
+        ElseIf Left(teT, 1) = "[" Then
+            gcInSym = False
+        ElseIf gcInSym And teT <> "" Then
+            Dim teId : teId = Trim(Split(teT, vbTab)(0))
+            If teId <> "" And IsNumeric(teId) Then gcTEDecl(Gc_Pad3(teId)) = True
+        End If
+    Loop
+    fTE.Close
+    Dim gcTL
+    For gcTL = 1 To g_srcCount
+        If Left(Trim(g_srcLines(gcTL)), 1) <> "*" Then
+            Dim gcTC : gcTC = StripInlineComment(g_srcLines(gcTL))
+            Dim mTE : Set mTE = gcReText.Execute(gcTC)
+            Dim itTE
+            For Each itTE In mTE
+                Dim okTE : okTE = True
+                If itTE.FirstIndex > 0 Then
+                    If Not IsWordBoundary(Mid(gcTC, itTE.FirstIndex, 1)) Then okTE = False
+                End If
+                If okTE Then
+                    Dim teRef : teRef = Gc_Pad3(itTE.SubMatches(0))
+                    If Not gcTEDecl.Exists(teRef) Then
+                        AddIssue "TEXT_SYMBOL_UNDECLARED", "ERROR", gcTL, "TEXT-" & itTE.SubMatches(0), "SOURCE", "STATEMENT", _
+                                 "TEXT-" & itTE.SubMatches(0) & " referenced but absent from [TEXT_SYMBOLS] in " & gcStem & ".text_elements.txt", _
+                                 "Add the symbol to the .text_elements.txt sibling (rules section 21)"
+                    End If
+                End If
+            Next
+        End If
+    Next
+End If
+
+' MESSAGE eNNN(class) <-> <stem>.messages.txt
+Dim gcMGPath : gcMGPath = gcDir & "\" & gcStem & ".messages.txt"
+If g_fso.FileExists(gcMGPath) Then
+    Dim gcMGDecl : Set gcMGDecl = CreateObject("Scripting.Dictionary")
+    gcMGDecl.CompareMode = 1
+    Dim fMG : Set fMG = g_fso.OpenTextFile(gcMGPath, 1)
+    Do Until fMG.AtEndOfStream
+        Dim mgT : mgT = fMG.ReadLine
+        Dim mgId : mgId = Trim(Split(mgT, vbTab)(0))
+        If mgId <> "" And IsNumeric(mgId) Then gcMGDecl(Gc_Pad3(mgId)) = True
+    Loop
+    fMG.Close
+    Dim gcML
+    For gcML = 1 To g_srcCount
+        If Left(Trim(g_srcLines(gcML)), 1) <> "*" Then
+            Dim gcMC : gcMC = StripInlineComment(g_srcLines(gcML))
+            Dim mMG : Set mMG = gcReMsgRef.Execute(gcMC)
+            Dim itMG
+            For Each itMG In mMG
+                Dim mgRef : mgRef = Gc_Pad3(itMG.SubMatches(0))
+                If Not gcMGDecl.Exists(mgRef) Then
+                    AddIssue "MESSAGE_NUM_UNDECLARED", "ERROR", gcML, "MSG" & itMG.SubMatches(0), "SOURCE", "STATEMENT", _
+                             "message number " & itMG.SubMatches(0) & " referenced but absent from " & gcStem & ".messages.txt", _
+                             "Add the message to the .messages.txt sibling (rules section 20)"
+                End If
+            Next
+        End If
+    Next
+End If
+WScript.Echo "INFO: Generation contract-rule check complete."
+
+' =============================================================================
 ' PHASE 6 -- Write Result File
 ' =============================================================================
 Dim finalStatus
