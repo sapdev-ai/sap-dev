@@ -336,8 +336,8 @@ if (-not ($verify | Wait-Process -Timeout 5 -ErrorAction SilentlyContinue)) {
 
 | Combined result | Meaning | Action |
 |---|---|---|
-| WARMUP=`ALLOWED` + SIDECAR=`DISMISSED:UIA` + VERIFY=`ALLOWED` | Dialog appeared, sidecar dismissed it via UIA, trust persisted. | Persist `sap_gui_security_warmup_done=true`. Continue. |
-| WARMUP=`ALLOWED` + SIDECAR=`DISMISSED:SENDKEYS` + VERIFY=`ALLOWED` | Dialog appeared, sidecar dismissed via SendKeys fallback, trust persisted. | Persist `sap_gui_security_warmup_done=true`. Continue, but note that UIA didn't expose a Toggle/Invoke pattern on this SAP GUI release — review `$sidecarLog`. |
+| WARMUP=`ALLOWED` + SIDECAR=`DISMISSED:WIN32` + VERIFY=`ALLOWED` | Dialog appeared, the Win32 watcher ticked Remember + clicked Allow and verified it closed (a preceding `INFO: closed N security dialog(s)` line gives the count), trust persisted. | Persist `sap_gui_security_warmup_done=true`. Continue. |
+| WARMUP=`ALLOWED` + SIDECAR=`FOUND_BUT_STUCK` | The watcher saw the dialog but the click never closed it (retried to its timeout). | Do **not** mark done. Review `$sidecarLog`; re-run, or have the customer dismiss the dialog manually once (ticking *Remember My Decision*) so the rule persists. |
 | WARMUP=`ALLOWED` + SIDECAR=`TIMEOUT` + VERIFY=`ALLOWED` | No dialog appeared (`{work_dir}` was already trusted). | Persist `sap_gui_security_warmup_done=true`. Continue. |
 | WARMUP=`NO_GUI` *or* SIDECAR=`NO_SAP_GUI` | No SAP GUI session attached. | Stop. Tell customer to run `/sap-login` first, then re-run. |
 | WARMUP=`ALLOWED` + VERIFY=`DIALOG_STILL_APPEARS` | Sidecar dismissed the first dialog but trust did NOT persist. | Group policy override or SAP Logon needs restart. Show the fallback checklist below. **Do not** mark done. |

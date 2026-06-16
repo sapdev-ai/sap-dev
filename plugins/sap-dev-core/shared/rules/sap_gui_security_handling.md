@@ -42,7 +42,7 @@ Two shared helpers in `shared/scripts/`:
 | Helper | Role |
 |---|---|
 | `sap_gui_security_precheck.ps1` | **Pre-check** (read-only): is the target `Path` + `Access` (r/w/x) + context (`System`/`Client`/`Transaction`) already covered by an Allow rule in `%APPDATA%\SAP\Common\saprules.xml`? `ALLOWED` (exit 0) / `NOT_COVERED` (exit 1). |
-| `sap_gui_security_sidecar.ps1` | **Watcher** (OS-level **Win32**): the dialog is a standard `#32770` window titled "SAP GUI Security", **owned** by saplogon — invisible to `FindWindow`-exact (owned) and to UIA descendant scans (SAP GUI doesn't expose it to UIA). The watcher finds it via `EnumWindows` (caption match, or the locale-proof structural test "has both an Allow and a Deny child button"), then ticks **Remember My Decision** (`BM_SETCHECK`) + clicks **Allow** (`BM_CLICK`) via `EnumChildWindows` — no focus/foreground dependency. Run as a background process *before* the file-IO action. Ticking Remember persists an Allow rule into `saprules.xml` **live** (no GUI restart). `DISMISSED:WIN32` / `TIMEOUT` / `NO_SAP_GUI`. |
+| `sap_gui_security_sidecar.ps1` | **Watcher** (OS-level **Win32**): the dialog is a standard `#32770` window titled "SAP GUI Security", **owned** by saplogon — invisible to `FindWindow`-exact (owned) and to UIA descendant scans (SAP GUI doesn't expose it to UIA). The watcher finds it via `EnumWindows` (caption match, or the locale-proof structural test "has both an Allow and a Deny child button"), then ticks **Remember My Decision** (`BM_SETCHECK`) + clicks **Allow** (`BM_CLICK`) via `EnumChildWindows` — no focus/foreground dependency. Run as a background process *before* the file-IO action. Ticking Remember persists an Allow rule into `saprules.xml` **live** (no GUI restart). The watcher **polls for its whole window and dismisses EVERY dialog that appears — not just the first — verifying each window actually closed** before moving on. This matters because a single first-time **source upload raises more than one** SAP GUI Security dialog in quick succession (two, ~0.75 s apart, in the 2026-06-17 SE37/SE24 test); a watcher that exited on the first click left the second one hanging the cscript for minutes. Last stdout line: `DISMISSED:WIN32` (≥1 dialog closed — a preceding `INFO: closed N security dialog(s)` gives the count) / `FOUND_BUT_STUCK` (a dialog was seen but the click never closed it — caller should surface this, not assume OK) / `TIMEOUT` (no dialog seen) / `NO_SAP_GUI`. |
 | `sap_gui_security_grant.ps1` | **Broad grant** (writes `saprules.xml` directly): idempotently merges one well-formed `<directories>` Allow rule with **combined permissions** (e.g. `rw`) and **empty context fields** (= "any" transaction/program), in SAP's native serialization. The *only* way to pre-cover reads/writes from **arbitrary future programs** — see "Reads from arbitrary programs" below. Idempotency is **context-aware + self-healing**: a same-path rule that is malformed (literal `*` contexts or backslash path — both of which SAP silently ignores) or narrow (a non-empty per-program context) is **purged and replaced** with the canonical any-context rule, instead of being mistaken for an effective grant. `GRANTED: id=<n> …` (new) / `HEALED: … removed=<ids>` (stale same-path rule replaced) / `ALREADY: …` (effective rule present) (exit 0) / `ERROR:` (exit 2). Caller backs up `saprules.xml` first. This is a deliberate weakening of the prompt for the granted path. For the operator's own `{work_dir}` sandbox, granting **any-system** (empty `-System`/`-Client`) is the intended scope; pin `-System`/`-Client` only when a least-privilege policy requires it. Any-system grants are a Security-Weaken action the Claude auto-mode classifier guards — they need explicit operator authorization on first write. |
 
 ### Canonical pattern (PowerShell, inside the skill wrapper)
@@ -60,8 +60,10 @@ $allowed = ($LASTEXITCODE -eq 0)
 #    the (blocking) cscript action that triggers the file IO. The watcher
 #    runs in its own process, so the modal does not block it.
 $watcher = $null
+$secOut  = Join-Path $env:TEMP 'sap_secdlg.out'   # capture the watcher's verdict
 if (-not $allowed) {
     $watcher = Start-Process -FilePath 'powershell' -PassThru -WindowStyle Hidden `
+        -RedirectStandardOutput $secOut `
         -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass',
                         '-File',"$shared\sap_gui_security_sidecar.ps1",
                         '-TimeoutSeconds','30',
@@ -74,8 +76,14 @@ if (-not $allowed) {
 #    ALLOWED and the watcher is skipped.
 & 'C:/Windows/SysWOW64/cscript.exe' //NoLogo "$runtimeVbs"
 
-# 4. Reap the watcher.
-if ($watcher) { $watcher | Wait-Process -Timeout 35 -ErrorAction SilentlyContinue }
+# 4. Reap the watcher; surface a dialog it could NOT dismiss (don't assume OK).
+if ($watcher) {
+    $watcher | Wait-Process -Timeout 35 -ErrorAction SilentlyContinue
+    $verdict = if (Test-Path $secOut) { Get-Content $secOut -Tail 1 } else { '' }
+    if ($verdict -eq 'FOUND_BUT_STUCK') {
+        Write-Warning "SAP GUI Security dialog seen but NOT auto-dismissed; the file IO likely hung. See $env:TEMP\sap_secdlg.log."
+    }
+}
 ```
 
 ### Reads from arbitrary programs — why the watcher isn't enough
@@ -121,7 +129,11 @@ least-privilege policy requires it.
   after — once the modal is up, the cscript call is already hung.
 - The first run for a given path/context will show the dialog (watcher
   dismisses it + Remember persists the rule); subsequent runs precheck as
-  `ALLOWED` and run dialog-free.
+  `ALLOWED` and run dialog-free. A first-time **source upload** prompts **more
+  than once** (the file access is checked twice, ~0.75 s apart) — the watcher
+  dismisses every one, so never assume a single dismiss is enough. This is why
+  the watcher keeps polling its whole window instead of exiting on the first
+  click (the 2026-06-17 SE37/SE24 hang).
 - `saprules.xml` rules are **context-specific** (system + client + transaction
   + dynpro). "Remember My Decision" creates a narrow rule for exactly that
   context; do not assume one Allow covers a different transaction.
