@@ -4,7 +4,43 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.6.5] — 2026-06-17
+
 ### Fixed
+
+- **`/sap-se37`, `/sap-se24` and the SE38/SE37/SE24 check-and-download paths
+  could report a deploy as SUCCESS while the object stayed INACTIVE on ECC 6.0.**
+  The Ctrl+F2 syntax-check / activation result grid sits at a release-specific
+  container path (`wnd[0]/shellcont/shell/shellcont[1]/shell` on S/4HANA 1909;
+  nested deeper on ECC 6.0). The hardcoded path resolved to an empty/different
+  control on the other release, so real syntax errors were silently dropped
+  (`SYNTAX_ERRORS: 0` → Activate → false SUCCESS). A new shared
+  `FindSyntaxErrorGrid` (in `sap_syntax_check_lib.vbs`) **walks** `wnd[0]/shellcont`
+  for the GridView carrying a `MSGTYPE` column instead of hardcoding the path, and
+  is wired into `sap_se38` / `sap_se37` / `sap_se24` create/update + every
+  `check_and_download`. Live-verified on both ECC 6.0 (ER1) and S/4HANA 1909 (S4D,
+  incl. a Chinese logon — icon `5C` + "错误" classified). Reusable gotcha fixed in
+  the walk: re-reading `oNode.Children` for `.Count` then per-index throws err 618
+  (the COM enumerator invalidates) — bind the collection once and use `.ElementAt(k)`.
+
+- **`/sap-se24` create crashed (`control could not be found`) on the S/4HANA SE24
+  screen flow that shows the Class/Interface chooser first.** `sap_se24_create.vbs`
+  pressed Create then immediately expected the description field; it now detects
+  and advances the `DY_0101` chooser when present (no-op when absent — other flows
+  go straight to the details dialog) and aborts gracefully instead of crashing if
+  the details dialog is unexpected. Live-verified on S4D.
+
+- **The SAP GUI Security auto-dismiss watcher could leave a source upload hung for
+  minutes.** A first-time `/sap-se37` / `/sap-se24` source upload raises **two**
+  "SAP GUI Security" dialogs in quick succession; `sap_gui_security_sidecar.ps1`
+  exited after the first `BM_CLICK` (without verifying the window closed), so the
+  second dialog hung the driving cscript. It now verifies each dialog actually
+  closed (retries if not) and keeps watching through re-prompts until a quiet grace
+  window; new `FOUND_BUT_STUCK` status. The process doc
+  (`sap_gui_security_handling.md`), `/sap-dev-init` result table, and the
+  `CLAUDE.md` shared-files row (which still described the obsolete UIA
+  implementation) were corrected. Live-verified on S4D across `/sap-se37`,
+  `/sap-se24`, `/sap-se16n`, and `/sap-atc`.
 
 - **Two concurrent AI sessions on different SAP systems (e.g. S4D + S4H) could
   corrupt `userconfig.json` and cross-contaminate system-specific dev settings.**
