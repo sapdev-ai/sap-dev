@@ -110,3 +110,80 @@ Function IsErrorMsgType(sCell, sLogonLang)
             IsErrorMsgType = True
     End Select
 End Function
+
+' -----------------------------------------------------------------------------
+' FindSyntaxErrorGrid(oSess)
+'   Locate the ABAP-editor syntax-check / activation result grid: a GuiShell
+'   with SubType "GridView" that carries a MSGTYPE column. The container PATH
+'   is release/build-specific, so callers must NOT hardcode it:
+'     - S/4HANA 1909 : wnd[0]/shellcont/shell/shellcont[1]/shell
+'     - ECC 6.0      : wnd[0]/shellcont/shell/shellcont[2]/shell/shellcont[0]/shell
+'   A hardcoded path silently misses errors on the other release because the
+'   wrong container resolves to an empty/different grid -> RowCount 0 -> false
+'   "no findings" -> Activate -> false SUCCESS while the program stays INACTIVE
+'   (the 2026-06-16 EC6/ER1 incident). This walks the wnd[0]/shellcont subtree
+'   and returns the first matching grid, or Nothing. Callers then read
+'   getCellValue(row,"MSGTYPE"/"LINE"/"TEXT") and classify MSGTYPE via
+'   IsErrorMsgType (above).
+' -----------------------------------------------------------------------------
+Function FindSyntaxErrorGrid(oSess)
+    Set FindSyntaxErrorGrid = Nothing
+    On Error Resume Next
+    Dim oRoot
+    Set oRoot = oSess.findById("wnd[0]/shellcont")
+    If Err.Number <> 0 Or oRoot Is Nothing Then
+        Err.Clear : On Error GoTo 0 : Exit Function
+    End If
+    Set FindSyntaxErrorGrid = SyntaxGridWalk_(oRoot, 0)
+    Err.Clear
+    On Error GoTo 0
+End Function
+
+' Depth-first walk; returns the first GridView carrying a MSGTYPE column.
+Function SyntaxGridWalk_(oNode, depth)
+    Set SyntaxGridWalk_ = Nothing
+    On Error Resume Next
+    If oNode Is Nothing Then Exit Function
+    If depth > 12 Then Exit Function
+    If oNode.Type = "GuiShell" Then
+        If oNode.SubType = "GridView" Then
+            If GridHasColumn_(oNode, "MSGTYPE") Then
+                Set SyntaxGridWalk_ = oNode
+                Exit Function
+            End If
+        End If
+    End If
+    ' Cache the children collection ONCE. Re-reading oNode.Children for the
+    ' .Count and then again per index (.Children(k)) invalidates the COM
+    ' enumerator on these editor shell containers and throws err 618, so the
+    ' walk never descends. Bind it to oKids and index that (.ElementAt).
+    Dim oKids, n, k, oChild, oFound
+    Set oKids = oNode.Children
+    If Err.Number <> 0 Or oKids Is Nothing Then Err.Clear : Exit Function
+    n = oKids.Count
+    For k = 0 To n - 1
+        Set oChild = oKids.ElementAt(k)
+        If Err.Number = 0 And Not (oChild Is Nothing) Then
+            Set oFound = SyntaxGridWalk_(oChild, depth + 1)
+            If Not (oFound Is Nothing) Then
+                Set SyntaxGridWalk_ = oFound : Exit Function
+            End If
+        End If
+        Err.Clear
+    Next
+End Function
+
+' True iff an ALV GridView exposes a column whose technical id = sCol.
+Function GridHasColumn_(oGrid, sCol)
+    GridHasColumn_ = False
+    On Error Resume Next
+    Dim oCols, i
+    Set oCols = oGrid.ColumnOrder
+    If Err.Number <> 0 Or oCols Is Nothing Then Err.Clear : Exit Function
+    For i = 0 To oCols.Count - 1
+        If UCase(CStr(oCols.ElementAt(i))) = UCase(sCol) Then
+            GridHasColumn_ = True : Exit Function
+        End If
+    Next
+    Err.Clear
+End Function

@@ -646,7 +646,11 @@ WScript.Sleep 3000
 Err.Clear
 On Error GoTo 0
 
-' Read syntax errors from the error grid (shellcont[1]/shell)
+' Read syntax errors from the editor result GridView. The container path is
+' RELEASE-SPECIFIC (S/4 1909 = shellcont[1]/shell; ECC 6.0 nests it deeper at
+' shellcont[2]/shell/shellcont[0]/shell), so FindSyntaxErrorGrid (shared
+' sap_syntax_check_lib.vbs) locates it by walking the shellcont subtree for a
+' GridView with a MSGTYPE column instead of a hardcoded path.
 Dim oChkGrid, lChkRows, iChk
 Dim sChkType, sChkLine, sChkText
 Dim bHasErrors
@@ -667,8 +671,8 @@ WScript.Echo "INFO: Logon language = '" & sLogonLang & _
              "'; matching syntax-error word = '" & GetSyntaxErrorWord(sLogonLang) & "'."
 
 On Error Resume Next
-Set oChkGrid = oSession.findById("wnd[0]/shellcont/shell/shellcont[1]/shell")
-If Err.Number = 0 And Not (oChkGrid Is Nothing) Then
+Set oChkGrid = FindSyntaxErrorGrid(oSession)
+If Not (oChkGrid Is Nothing) Then
     lChkRows = oChkGrid.RowCount
     Err.Clear
     If lChkRows > 0 Then
@@ -788,9 +792,40 @@ End If
 Err.Clear
 On Error GoTo 0
 
-' --- Release the session UI lock; Steps 9.5 + 10 are read-only verification ---
+' --- Release the session UI lock; Steps 9.4 + 9.5 + 10 are read-only verify ---
 ReleaseSession oSession, wasLocked
 If wasLocked Then WScript.Echo "INFO: Session UI lock released."
+
+' ------ 9.4 Post-activate editor error-grid gate (RFC-free, release-robust) -
+' Even after Activate, SAP renders unresolved activation/syntax errors in the
+' editor's result GridView. Fail-closed on any remaining ERROR row BEFORE the
+' RFC / F8 checks, so this works when RFC is disabled (the EC6/ER1 case) and
+' catches the false-success the F8 run-test (Step 10) misses: F8 executes the
+' last ACTIVE version, so it reaches the selection screen even when THIS
+' activation failed. Additive: no error grid -> fall through to RFC + F8.
+On Error Resume Next
+Dim oPostGrid, lPostRows, iPost, sPostType, bPostErr
+bPostErr = False
+Set oPostGrid = FindSyntaxErrorGrid(oSession)
+If Not (oPostGrid Is Nothing) Then
+    lPostRows = oPostGrid.RowCount
+    For iPost = 0 To lPostRows - 1
+        sPostType = oPostGrid.getCellValue(iPost, "MSGTYPE")
+        If IsErrorMsgType(sPostType, sLogonLang) Then
+            bPostErr = True
+            WScript.Echo "  [" & sPostType & "] Line " & oPostGrid.getCellValue(iPost, "LINE") & ": " & oPostGrid.getCellValue(iPost, "TEXT")
+        End If
+    Next
+End If
+Dim oStatFld
+Set oStatFld = oSession.findById("wnd[0]/usr/txtSTATUS_TEXT")
+If Not (oStatFld Is Nothing) Then WScript.Echo "INFO: SE38 editor status after activate: [" & oStatFld.Text & "]."
+Err.Clear
+On Error GoTo 0
+If bPostErr Then
+    WScript.Echo "ERROR: Program " & UCase(PROGRAM_NAME) & " did NOT activate — errors remain after Activate (see above). Activation FAILED."
+    WScript.Quit 1
+End If
 
 ' ------ 9.5 Post-activate RFC verify (authoritative gate) -----------------
 ' Queries PROGDIR.STATE via RFC. ACTIVE = success, INACTIVE/MISSING =
