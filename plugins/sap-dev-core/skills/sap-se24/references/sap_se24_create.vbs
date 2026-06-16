@@ -61,9 +61,42 @@ oSession.findById("wnd[0]/usr/btnPUSH_CREATE").press
 WScript.Sleep 2000
 
 ' ------ 4. Handle Create dialog (wnd[1]) ------------------------------------
+' SE24 "Create" shows ONE of two entry dialogs depending on release / SE24
+' settings:
+'   (a) a Class/Interface chooser (DY_0101: radDY_0101-CHECK_CLASS / -CHECK_
+'       INTERFACE) observed on S/4HANA 1909 (2026-06-17 S4D/ZH). Pick
+'       "Class" + Enter to advance to the class-details dialog.
+'   (b) the class-details dialog directly (VSEOCLASS-DESCRIPT).
+' Handle (a) when present, then set the description on (b). Jumping straight
+' to VSEOCLASS-DESCRIPT hard-crashes ("control could not be found") whenever
+' the chooser is shown -- the recorded path missed it.
+On Error Resume Next
+Dim oClsChooser
+Set oClsChooser = oSession.findById("wnd[1]/usr/radDY_0101-CHECK_CLASS")
+If Err.Number = 0 And Not (oClsChooser Is Nothing) Then
+    WScript.Echo "INFO: Class/Interface chooser (DY_0101) - selecting Class and continuing."
+    oClsChooser.Select
+    oSession.findById("wnd[1]").sendVKey VKEY_ENTER
+    WScript.Sleep 2000
+End If
+Err.Clear
+On Error GoTo 0
+
 If InStr(oSession.ActiveWindow.Id, "wnd[1]") > 0 Then
     WScript.Echo "INFO: Setting description=" & CLASS_DESCRIPTION
+    On Error Resume Next
     oSession.findById("wnd[1]/usr/txtVSEOCLASS-DESCRIPT").Text = CLASS_DESCRIPTION
+    If Err.Number <> 0 Then
+        Err.Clear
+        On Error GoTo 0
+        WScript.Echo "ERROR: Class-details dialog did not expose VSEOCLASS-DESCRIPT (unexpected SE24 create screen)."
+        WScript.Quit 1
+    End If
+    ' Ensure 'Usual ABAP Class' is selected (the default; explicit for safety).
+    ' No-op when the dialog variant does not expose the radio.
+    oSession.findById("wnd[1]/usr/radDY_0102-RB_NORMAL_CLASS").Select
+    Err.Clear
+    On Error GoTo 0
     ' Default: Usual ABAP Class, Public instantiation, not Final
     WScript.Sleep 300
     oSession.findById("wnd[1]").sendVKey VKEY_ENTER
