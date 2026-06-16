@@ -40,7 +40,14 @@
 #   $w | Wait-Process -Timeout 45
 #
 # Stdout contract (last line):
-#   DISMISSED:WIN32   -> Found and dismissed (Remember ticked + Allow clicked)
+#   DISMISSED:WIN32   -> Found and CLOSED >=1 dialog (Remember ticked + Allow
+#                        clicked AND verified the window actually went away). A
+#                        preceding "INFO: closed N security dialog(s)" line gives
+#                        the count. The watcher keeps polling through re-prompts /
+#                        unresponsive-click retries until a quiet grace window, so
+#                        it cannot report success while a modal is still up.
+#   FOUND_BUT_STUCK   -> Saw the dialog but the click never closed it (retried to
+#                        timeout) -- caller must surface this, NOT assume OK.
 #   TIMEOUT           -> Timeout expired with no dialog seen
 #   NO_SAP_GUI        -> No SAP GUI process running at all
 #   ERROR: <message>  -> Win32 interop load failure
@@ -148,20 +155,63 @@ function Find-SecurityDialogs {
     return $script:_sapSecHits
 }
 
+# Is this hwnd STILL a visible security dialog (i.e. our click did NOT close it)?
+# A successfully-dismissed dialog is destroyed, so IsWindowVisible() goes false.
+function Test-StillOpen([IntPtr]$h) {
+    if (-not [SapSecWin]::IsWindowVisible($h)) { return $false }
+    if ((Get-WinClass $h) -ne '#32770') { return $false }
+    return (Test-IsSecurityDialog $h (Get-WinText $h))
+}
+
 # ----- Main poll loop --------------------------------------------------------
+# CRITICAL: do NOT exit on the first BM_CLICK. Invoke-Dismiss returns true the
+# moment it SENDS the click, but the click is a no-op if it lands before the
+# dialog's buttons are responsive, and SAP can raise a SECOND prompt for the same
+# file IO. The pre-2026-06-17 loop exited immediately on the send, so a no-op
+# click left the triggering VBS hung on a still-open modal (observed live: a
+# 12-minute block whose sidecar had already reported DISMISSED). So after each
+# click VERIFY the window actually closed (retry next poll if not), and keep
+# watching through re-prompts until a quiet grace window passes with no dialog.
 $sawSap = $false
 try { $sawSap = [bool](Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -match '(?i)sap' }) } catch {}
 
-$deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+$GraceMs      = 2500          # quiet period after the last close before declaring done
+$dismissCount = 0
+$foundAny     = $false
+$idleDeadline = $null
+$deadline     = (Get-Date).AddSeconds($TimeoutSeconds)
 while ((Get-Date) -lt $deadline) {
-    foreach ($d in (Find-SecurityDialogs)) {
-        $pid2 = 0; [void][SapSecWin]::GetWindowThreadProcessId($d, [ref]$pid2)
-        Write-Log "detected #32770 security dialog hwnd=$d pid=$pid2"
-        if (Invoke-Dismiss $d) { Write-Output "DISMISSED:WIN32"; exit 0 }
+    $dialogs = @(Find-SecurityDialogs)
+    if ($dialogs.Count -gt 0) {
+        $foundAny = $true
+        foreach ($d in $dialogs) {
+            $pid2 = 0; [void][SapSecWin]::GetWindowThreadProcessId($d, [ref]$pid2)
+            Write-Log "detected #32770 security dialog hwnd=$d pid=$pid2"
+            [void](Invoke-Dismiss $d)
+            Start-Sleep -Milliseconds 300
+            if (Test-StillOpen $d) {
+                Write-Log "hwnd=$d still open after click; will retry next poll"
+            } else {
+                $dismissCount++
+                Write-Log "hwnd=$d closed (count=$dismissCount)"
+            }
+        }
+        # A dialog was present this iteration -> reset the quiet timer so we keep
+        # watching for a re-prompt (or to retry a click that did not take effect).
+        $idleDeadline = (Get-Date).AddMilliseconds($GraceMs)
+    } elseif ($dismissCount -gt 0 -and $null -ne $idleDeadline -and (Get-Date) -gt $idleDeadline) {
+        break   # closed >=1 dialog and stayed quiet for the grace window -> done
     }
     Start-Sleep -Milliseconds $PollIntervalMs
 }
 
+if ($dismissCount -gt 0) {
+    Write-Log "done: closed $dismissCount dialog(s)"
+    Write-Output "INFO: closed $dismissCount security dialog(s)"
+    Write-Output "DISMISSED:WIN32"          # last line kept stable for callers
+    exit 0
+}
+if ($foundAny) { Write-Output "FOUND_BUT_STUCK"; exit 4 }   # saw it, click never closed it
 if (-not $sawSap) { Write-Output "NO_SAP_GUI"; exit 2 }
 Write-Output "TIMEOUT"
 exit 3
