@@ -263,9 +263,14 @@ If InStr(oSession.ActiveWindow.Id, "wnd[1]") > 0 Then oSession.ActiveWindow.send
 Err.Clear
 On Error GoTo 0
 
+' Locate the result grid via FindSyntaxErrorGrid (shared sap_syntax_check_lib.vbs):
+' it WALKS wnd[0]/shellcont for the GridView carrying a MSGTYPE column, because
+' the container PATH is release-specific (S/4 1909 = shellcont[1]/shell; ECC 6.0
+' nests it deeper). A hardcoded path silently misses errors on the other release
+' -> false SUCCESS. This runs AFTER Activate (Ctrl+F3 above) = post-activate gate.
 Dim oGrid, nRows
 On Error Resume Next
-Set oGrid = oSession.findById("wnd[0]/shellcont/shell/shellcont[1]/shell")
+Set oGrid = FindSyntaxErrorGrid(oSession)
 If Err.Number = 0 And Not (oGrid Is Nothing) Then
     nRows = oGrid.RowCount
     Err.Clear

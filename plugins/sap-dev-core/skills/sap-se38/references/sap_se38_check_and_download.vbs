@@ -33,6 +33,10 @@ Const VKEY_F3_BACK = 3
 ' Include shared attach helper.
 ExecuteGlobal CreateObject("Scripting.FileSystemObject") _
     .OpenTextFile("%%ATTACH_LIB_VBS%%", 1).ReadAll()
+' Syntax-check grid locator (FindSyntaxErrorGrid) -- release-agnostic walk for
+' the Ctrl+F2 result grid (shared sap_syntax_check_lib.vbs).
+ExecuteGlobal CreateObject("Scripting.FileSystemObject") _
+    .OpenTextFile("%%SYNTAX_CHECK_LIB_VBS%%", 1).ReadAll()
 
 ' ------ 1. Attach to existing SAP GUI session (via shared attach helper) ----
 Dim oSession
@@ -103,14 +107,18 @@ End If
 Err.Clear
 On Error GoTo 0
 
-' Read syntax errors from the error grid
-' Grid: wnd[0]/shellcont/shell/shellcont[1]/shell
-' Columns: MSGTYPE ("1"/"E"=Error, "2"/"W"=Warning), LINE, TEXT
+' Read syntax errors from the error grid. The container PATH is release-specific
+' (S/4 1909 = shellcont[1]/shell; ECC 6.0 nests it deeper at
+' shellcont[2]/shell/shellcont[0]/shell), so locate it via FindSyntaxErrorGrid,
+' which WALKS wnd[0]/shellcont for the GridView carrying a MSGTYPE column. A
+' hardcoded path silently resolves to a different/empty grid on the other
+' release -> RowCount 0 -> false "no findings" (the 2026-06-16 EC6/ER1 incident).
+' Columns: MSGTYPE ("1"/"E"=Error, "2"/"W"=Warning), LINE, TEXT.
 Dim oSyntaxGrid, nSyntaxRows, bSyntaxOK
 bSyntaxOK = True
 
 On Error Resume Next
-Set oSyntaxGrid = oSession.findById("wnd[0]/shellcont/shell/shellcont[1]/shell")
+Set oSyntaxGrid = FindSyntaxErrorGrid(oSession)
 If Err.Number = 0 And Not (oSyntaxGrid Is Nothing) Then
     nSyntaxRows = oSyntaxGrid.RowCount
     Err.Clear

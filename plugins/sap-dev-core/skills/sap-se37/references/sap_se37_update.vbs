@@ -414,16 +414,22 @@ End If
 Err.Clear
 On Error GoTo 0
 
-' Read syntax errors from the error grid (same location as SE38)
-' The AbapEditor swallows status bar messages, so we read the grid instead.
-' Grid: wnd[0]/shellcont/shell/shellcont[1]/shell
-' Columns: MSGTYPE (icon format @5C\QError@), LINE, TEXT
-' Errors come in pairs: row N has MSGTYPE+LINE+FM name, row N+1 has description
+' Read syntax errors from the error grid. The AbapEditor swallows status bar
+' messages, so we read the grid instead. The container PATH is RELEASE-SPECIFIC
+' (S/4 1909 = shellcont[1]/shell; ECC 6.0 nests it deeper at
+' shellcont[2]/shell/shellcont[0]/shell), so locate it via FindSyntaxErrorGrid
+' (shared sap_syntax_check_lib.vbs) which WALKS wnd[0]/shellcont for the
+' GridView carrying a MSGTYPE column. A hardcoded path silently resolves to a
+' different/empty grid on the other release -> RowCount 0 -> false "no findings"
+' -> false SUCCESS while the FM stays INACTIVE (the 2026-06-16 EC6/ER1 incident).
+' This check runs AFTER Activate (Ctrl+F3 above), so it doubles as the
+' post-activate gate. Columns: MSGTYPE (icon format @5C\QError@), LINE, TEXT.
+' Errors come in pairs: row N has MSGTYPE+LINE+FM name, row N+1 has description.
 Dim oSyntaxGrid, nSyntaxRows, bSyntaxOK
 bSyntaxOK = True
 
 On Error Resume Next
-Set oSyntaxGrid = oSession.findById("wnd[0]/shellcont/shell/shellcont[1]/shell")
+Set oSyntaxGrid = FindSyntaxErrorGrid(oSession)
 If Err.Number = 0 And Not (oSyntaxGrid Is Nothing) Then
     nSyntaxRows = oSyntaxGrid.RowCount
     Err.Clear
