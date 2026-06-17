@@ -56,8 +56,12 @@ End If
 Err.Clear
 On Error GoTo 0
 
-' --- 3. Read data file ---
-Dim oFSO, oFile, sLine, aLines(), iLineCount
+' --- 3. Read data file (UTF-8) ---
+' The data-file contract (SKILL.md Step 1) and the PROG path (GUI_UPLOAD)
+' are UTF-8. This was previously read via OpenTextFile(..., -1) = UTF-16,
+' so a UTF-8 file silently failed. Use ADODB.Stream Charset=utf-8 (the house
+' idiom, e.g. sap_se38_create.vbs) so PROG / SE16 / SM30 all agree on UTF-8.
+Dim oFSO, aLines(), iLineCount, sLine
 Set oFSO = CreateObject("Scripting.FileSystemObject")
 
 If Not oFSO.FileExists(DATA_FILE) Then
@@ -65,18 +69,29 @@ If Not oFSO.FileExists(DATA_FILE) Then
     WScript.Quit 1
 End If
 
-Set oFile = oFSO.OpenTextFile(DATA_FILE, 1, False, -1) ' UTF-8 / Unicode
+Dim oStream, sAll, aRaw, iR
+Set oStream = CreateObject("ADODB.Stream")
+oStream.Type = 2            ' adTypeText
+oStream.Charset = "utf-8"   ' strips a BOM if present; reads BOM-less UTF-8 too
+oStream.Open
+oStream.LoadFromFile DATA_FILE
+sAll = oStream.ReadText
+oStream.Close
+
+' Normalize line endings, split, skip blank lines, build a 1-based array.
+sAll = Replace(sAll, vbCrLf, vbLf)
+sAll = Replace(sAll, vbCr, vbLf)
+aRaw = Split(sAll, vbLf)
 iLineCount = 0
 ReDim aLines(0)
-Do While Not oFile.AtEndOfStream
-    sLine = oFile.ReadLine
+For iR = 0 To UBound(aRaw)
+    sLine = aRaw(iR)
     If Trim(sLine) <> "" Then
         iLineCount = iLineCount + 1
         ReDim Preserve aLines(iLineCount)
         aLines(iLineCount) = sLine
     End If
-Loop
-oFile.Close
+Next
 
 If iLineCount < 2 Then
     WScript.Echo "ERROR: Data file must have a header line and at least one data line."

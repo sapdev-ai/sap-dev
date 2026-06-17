@@ -27,7 +27,7 @@ Task: $ARGUMENTS
 |---|---|
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/skill_operating_rules.md` | Mandatory operating rules |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/language_independence_rules.md` | GUI-scripting language independence — applies to the GUI-driving sub-skills this orchestrator dispatches (sap-transport-request, sap-se21, sap-function-group, sap-se38) |
-| `<SAP_DEV_CORE_SHARED_DIR>/rules/abap_code_quality_rules.md` | ABAP code-quality rules — `ZCMRUPDATE_ADDON_TABLE.abap` and the `Z_GENERIC_RFC_WRAPPER_TBL` wrapper FM source deployed by this init flow must follow modern syntax, OOP / exception conventions, and no literal MESSAGE strings |
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/abap_code_quality_rules.md` | ABAP code-quality rules — the `Z_GENERIC_RFC_WRAPPER_TBL` wrapper FM source deployed by this init flow follows modern syntax, OOP / exception conventions, and no literal MESSAGE strings. **Exception:** `ZCMRUPDATE_ADDON_TABLE.abap` (Step 8) is deliberately **classic-syntax** so a single source activates on ECC 6.0 / NetWeaver ≤7.40 as well as S/4HANA — do NOT modernize it (see that file's header + sap-update-addon Step 4c). |
 
 ---
 
@@ -665,6 +665,13 @@ The ABAP source file is at:
 
 (Go up 1 level from this skill directory to the skills/ folder, then into `sap-update-addon/references/`.)
 
+> **Release note.** This utility is intentionally written in **classic,
+> release-independent ABAP** so the SAME source activates on both classic
+> ECC 6.0 / NetWeaver ≤7.40 and S/4HANA 1909+ (verified 2026-06-17 on SID ER1).
+> Do not regenerate it with modern 7.40+ expression syntax — see the file
+> header and sap-update-addon Step 4c. No release detection is needed: deploy
+> this one file on every target.
+
 Copy the ABAP source to `{WORK_TEMP}\ZCMRUPDATE_ADDON_TABLE.abap`:
 ```bash
 powershell -Command "Copy-Item '<SKILL_DIR>\..\sap-update-addon\references\ZCMRUPDATE_ADDON_TABLE.abap' '{WORK_TEMP}\ZCMRUPDATE_ADDON_TABLE.abap'"
@@ -737,3 +744,4 @@ Suggested `<CLASS>`: `DEV_INIT_FAILED`, `TR_RESOLUTION_FAILED`, `PACKAGE_FAILED`
 | ZCMCT_RFC_PARAM creation failed | ZCMST_RFC_PARAM not active | Ensure Step 5 succeeded before Step 6 |
 | Z_GENERIC_RFC_WRAPPER_TBL deploy failed | ZCMCT_RFC_PARAM not active or SE37 authorization missing | Ensure Step 6 succeeded; deploy manually via SE37 |
 | ZCMRUPDATE_ADDON_TABLE deploy failed | SE38 authorization missing | Deploy manually via SE38 |
+| ZCMRUPDATE_ADDON_TABLE deploys but won't activate / won't launch on ECC 6.0 | Stale modern-syntax source (pre-2026-06-17) | Pull the current **classic-syntax** source and redeploy via `/sap-se38`; it activates on both ECC 6.0 and S/4HANA |

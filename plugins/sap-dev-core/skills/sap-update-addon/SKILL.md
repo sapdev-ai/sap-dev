@@ -25,7 +25,7 @@ Task: $ARGUMENTS
 |---|---|
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/skill_operating_rules.md` | Mandatory operating rules |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/language_independence_rules.md` | GUI-scripting language independence — identify by component ID + DDIC field name, status-bar checks via `MessageType` codes (S/W/E/I/A), VKey instead of menu-text, no branching on `.Text`/`.Tooltip`/window titles |
-| `<SAP_DEV_CORE_SHARED_DIR>/rules/abap_code_quality_rules.md` | ABAP code-quality rules — `ZCMRUPDATE_ADDON_TABLE` fallback path executes a deployed ABAP utility program; any change to that utility's source must follow modern-ABAP / OOP / message-class conventions |
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/abap_code_quality_rules.md` | ABAP code-quality rules — apply to ABAP this skill generates or checks. **Exception:** `references/ZCMRUPDATE_ADDON_TABLE.abap` is a deliberately **classic-syntax** bootstrap utility (it must activate on ECC 6.0 / NetWeaver ≤7.40 as well as S/4HANA) — do NOT modernize it. See "Classic-syntax exception" in Step 4c. |
 
 ---
 
@@ -211,15 +211,33 @@ Execute:
 powershell -Command "& cscript //NoLogo '{WORK_TEMP}\sap_update_addon_se16_run.vbs'"
 ```
 
-**SE16 Notes:**
-- SE16 Create Entries button: `tbar[1]/btn[18]` or menu `Table > Create Entry`
-- Fields on the entry form: `ctxt<TABLE>-<FIELD>` or `txt<TABLE>-<FIELD>`
-- Each record is saved individually with Ctrl+S
+**SE16 Notes (INSERT / UPDATE):**
+- Create Entries button is **release-specific**, pressed on the SE16 initial screen (`SAPLSETB`/230) after entering the table name:
+  - **S/4HANA:** `tbar[1]/btn[18]`
+  - **ECC 6.0:** `tbar[1]/btn[5]` (F5) — on ECC6 `btn[18]` is *Selection Screen Help*, and the post-Enter selection screen has no Create-Entries at all (live-verified on SID ER1, 2026-06-17).
+- The VBS tries both buttons (then the Edit menu) and **verifies it reached the Insert form** (probes the first non-MANDT field via `EntryFieldPresent`) before filling — a press that lands on the wrong screen never leads to saving an empty/wrong row; if none reach the form it fails loud.
+- Insert-form fields: `ctxt<TABLE>-<FIELD>` or `txt<TABLE>-<FIELD>` (ECC6 uses `txt`; MANDT is read-only and skipped). Each record is saved with Ctrl+S → status "Database record successfully created".
+- The data file is read as **UTF-8** (ADODB.Stream), aligned with the PROG path and the Step 1 contract — older revisions read UTF-16 and silently failed on UTF-8 files.
+- **Live-verified end-to-end on ECC 6.0 (SID ER1, 2026-06-17):** INSERT via the ECC6 `btn[5]` path created a row in a Z table.
+- **DELETE via SE16 is a stub on all releases** (the classic ECC6 result is a non-grid list with no Delete button; even on S/4 the DELETE branch only warns). For deletes use SM30 (needs a maintenance view) or delete manually. INSERT/UPDATE is the supported SE16 path.
 
 ### Step 4c — ZCMRUPDATE_ADDON_TABLE Method
 
-First, ensure the ZCMRUPDATE_ADDON_TABLE program is available. If not, tell the user to deploy it using the sap-se38 skill.
+First, ensure the ZCMRUPDATE_ADDON_TABLE program is available. If not, tell the user to deploy it using the sap-se38 skill (or run `/sap-dev-init`).
 The source code for ZCMRUPDATE_ADDON_TABLE is at `./references/ZCMRUPDATE_ADDON_TABLE.abap` for reference.
+
+> **Classic-syntax exception — do not modernize `ZCMRUPDATE_ADDON_TABLE.abap`.**
+> Unlike customer-facing ABAP (which follows the modern-syntax / OOP rules in
+> `abap_code_quality_rules.md`), this bootstrap utility is written entirely in
+> **classic, release-independent ABAP** so a SINGLE source activates on BOTH
+> classic ECC 6.0 / NetWeaver ≤7.40 AND S/4HANA 1909+. The 7.40+ expression
+> syntax a generator normally emits — inline `DATA(...)`, `VALUE`/`NEW`/`CONV`,
+> string templates `|…{ }…|`, the `&&` operator, table types `WITH EMPTY KEY` —
+> does **not** activate on ECC 6.0 (verified 2026-06-17 on SID ER1: the program
+> deploys but will not activate and will not launch from SA38). If you edit this
+> file keep it classic — explicit `DATA`, `CREATE OBJECT`, `CONCATENATE` / `WRITE`,
+> `WITH DEFAULT KEY`. The file header repeats this rule. No release detection is
+> needed: one file runs everywhere.
 
 Template: `./references/sap_update_addon_prog.vbs`
 
@@ -293,3 +311,6 @@ Suggested `<CLASS>`: `UPDATE_ADDON_FAILED`, `RFC_LOGON_FAILED`.
 | `SM30 transport dialog` | Table in transportable package | Enter transport or Cancel |
 | `SE16 Create Entries not found` | MAINFLAG not set or editing blocked | Fall back to PROG method |
 | `ZCMRUPDATE_ADDON_TABLE field mismatch` | Data file header doesn't match table | Check field names match table definition |
+| `ERROR: Could not open the SE16 Create-Entries form` | Neither `btn[18]` (S/4HANA) nor `btn[5]` (ECC 6.0) nor the Edit menu reached the entry form on this release | Re-record the Create-Entries button for this release and add its ID to `sap_update_addon_se16.vbs`; or use the PROG / SM30 method |
+| `ZCMRUPDATE_ADDON_TABLE` deploys but won't activate / won't launch on ECC 6.0 | Stale modern-syntax source (pre-2026-06-17) | Redeploy the current **classic-syntax** `ZCMRUPDATE_ADDON_TABLE.abap` via `/sap-se38` (or `/sap-dev-init`) |
+| SE16/SM30 path: "must have header + data lines" on a valid file | Older VBS read the data file as UTF-16 | Fixed 2026-06-17 — both VBS now read UTF-8; ensure the data file is UTF-8, TAB-delimited |
