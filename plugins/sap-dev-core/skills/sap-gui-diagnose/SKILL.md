@@ -35,6 +35,7 @@ Task: $ARGUMENTS
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/language_independence_rules.md` | *(rule)* | GUI-scripting language independence — identify by component ID + DDIC field name, status-bar checks via `MessageType` codes (S/W/E/I/A), VKey instead of menu-text, no branching on `.Text`/`.Tooltip`/window titles |
 | `<SKILL_DIR>/references/sap_gui_diagnose_capture.vbs` | `%%OUTPUT_DIR%%`, `%%MANIFEST%%` | HardCopy each window's BMP + emit TSV manifest |
 | `<SKILL_DIR>/references/sap_gui_diagnose_compose.ps1` | `%%MANIFEST%%`, `%%COMPOSITE_PNG%%`, `%%TOPMOST_PNG%%` | Stack BMPs in screen-space order to produce composite PNG + topmost PNG |
+| `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_gui_security_sidecar.ps1` | *(launched)* | OS-level (Win32) auto-dismiss for the "SAP GUI Security" dialog. Launched in parallel with the Step 3 capture: `HardCopy` writes BMPs through SAP GUI (SAP-GUI-side file IO) and would otherwise hang `cscript` on the modal when the output dir isn't trusted. |
 
 ---
 
@@ -153,10 +154,26 @@ $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 Write-Host 'Done'
 ```
 
-Run via `cscript`:
+Run via `cscript`, **with the SAP GUI Security watcher in parallel**. `HardCopy`
+writes each window's BMP through SAP GUI — SAP-GUI-side file IO that **can raise**
+the modal "SAP GUI Security" (write-permission) dialog (which suspends the
+Scripting API and **hangs cscript**) when `$diagDir` isn't already write-trusted.
+(It is system-dependent — some systems pre-allow Hardcopy writes via a built-in
+rule — but `/sap-dev-init`'s warmup provokes this very dialog via Hardcopy, so
+treat it as a real trigger.) Because `/sap-gui-diagnose` is
+the first-resort troubleshooting tool, it must never hang on that dialog, so
+launch `sap_gui_security_sidecar.ps1` alongside the capture (it clicks Allow +
+ticks Remember, persisting the rule so later runs are clean):
 
-```bash
-cscript //NoLogo {WORK_TEMP}\sap_gui_diagnose_capture_run.vbs
+```powershell
+$shared  = '<SAP_DEV_CORE_SHARED_DIR>\scripts'
+$watcher = Start-Process powershell -PassThru -WindowStyle Hidden `
+    -RedirectStandardOutput "{WORK_TEMP}\sap_gui_diagnose_sidecar.out" `
+    -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File',
+                    "$shared\sap_gui_security_sidecar.ps1",'-TimeoutSeconds','45')
+Start-Sleep -Milliseconds 800
+& 'C:\Windows\SysWOW64\cscript.exe' //NoLogo "{WORK_TEMP}\sap_gui_diagnose_capture_run.vbs"
+if (-not $watcher.HasExited) { Stop-Process -Id $watcher.Id -Force -ErrorAction SilentlyContinue }
 ```
 
 | Last line | Meaning |
@@ -252,7 +269,7 @@ the orchestrator may still want to attach the PNGs to its final summary.
 Delete the per-invocation generated scripts:
 
 ```bash
-cmd /c del {WORK_TEMP}\sap_gui_diagnose_capture_run.vbs & del {WORK_TEMP}\sap_gui_diagnose_compose_run.ps1
+cmd /c del {WORK_TEMP}\sap_gui_diagnose_capture_run.vbs & del {WORK_TEMP}\sap_gui_diagnose_compose_run.ps1 & del {WORK_TEMP}\sap_gui_diagnose_sidecar.out
 ```
 
 ---
