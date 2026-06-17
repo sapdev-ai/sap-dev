@@ -26,6 +26,7 @@ Task: $ARGUMENTS
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/skill_operating_rules.md` | Mandatory operating rules |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/language_independence_rules.md` | GUI-scripting language independence — identify by component ID + DDIC field name, status-bar checks via `MessageType` codes (S/W/E/I/A), VKey instead of menu-text, no branching on `.Text`/`.Tooltip`/window titles |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/abap_code_quality_rules.md` | ABAP code-quality rules — apply to ABAP this skill generates or checks. **Exception:** `references/ZCMRUPDATE_ADDON_TABLE.abap` is a deliberately **classic-syntax** bootstrap utility (it must activate on ECC 6.0 / NetWeaver ≤7.40 as well as S/4HANA) — do NOT modernize it. See "Classic-syntax exception" in Step 4c. |
+| `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_gui_security_sidecar.ps1` | OS-level (Win32) auto-dismiss for the "SAP GUI Security" dialog. Step 4c (PROG method) launches it in parallel: the program's `GUI_UPLOAD` (data-file read) and save-list `GUI_DOWNLOAD` (output write) are SAP-GUI-side file IO that trip the modal when `{work_dir}` isn't trusted — without the watcher, `cscript` hangs. |
 
 ---
 
@@ -255,12 +256,37 @@ $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 Write-Host 'Done'
 ```
 
-Execute:
-```bash
-powershell -Command "& cscript //NoLogo '{WORK_TEMP}\sap_update_addon_prog_run.vbs'"
+### Execute (with SAP GUI Security guard)
+
+The PROG method does **SAP-GUI-side file IO** — the ABAP program's `GUI_UPLOAD`
+reads the data file, and the save-list step writes `sap_update_addon_output.txt`.
+Both can raise the modal **SAP GUI Security** dialog, which suspends the Scripting
+API and **hangs `cscript`** unless `{work_dir}` is already trusted (so a plain
+`cscript` run with no guard hangs — verified 2026-06-17 on SID ER1, where the
+save-list dialog blocked the run). Launch the OS-level watcher
+`sap_gui_security_sidecar.ps1` in parallel; it dismisses each dialog (clicks
+Allow + ticks Remember, persisting the rule so later runs are clean). The timeout
+is generous because on slower systems (e.g. classic ECC 6.0) the save-list dialog
+can appear well after the upload.
+
+```powershell
+$shared  = '<SAP_DEV_CORE_SHARED_DIR>\scripts'
+$watcher = Start-Process powershell -PassThru -WindowStyle Hidden `
+    -RedirectStandardOutput "{WORK_TEMP}\sap_update_addon_sidecar.out" `
+    -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File',
+                    "$shared\sap_gui_security_sidecar.ps1",'-TimeoutSeconds','90')
+Start-Sleep -Milliseconds 800
+# cscript returns only after the program run + save-list complete (all dialogs handled).
+& 'C:\Windows\SysWOW64\cscript.exe' //NoLogo "{WORK_TEMP}\sap_update_addon_prog_run.vbs"
+if (-not $watcher.HasExited) { Stop-Process -Id $watcher.Id -Force -ErrorAction SilentlyContinue }
+Get-Content "{WORK_TEMP}\sap_update_addon_sidecar.out" -Tail 1   # DISMISSED:WIN32 / TIMEOUT
 ```
 
-If output file was saved, read `{WORK_TEMP}\sap_update_addon_output.txt` for results.
+If output file was saved, read `{WORK_TEMP}\sap_update_addon_output.txt` for
+results. NOTE: the program's WRITE list is Japanese; the save-list "unconverted"
+export can render the labels as `#` under a non-matching logon codepage (the
+`成功: N  エラー: M` counts still parse by number). The authoritative result is
+the target table content — confirm via `/sap-se16n` (or RFC where available).
 
 ---
 
@@ -276,7 +302,7 @@ Show the user:
 ## Step 6 — Clean Up
 
 ```bash
-cmd /c del {WORK_TEMP}\sap_update_addon_detect_run.ps1 {WORK_TEMP}\sap_update_addon_sm30_run.vbs {WORK_TEMP}\sap_update_addon_sm30_run.ps1 {WORK_TEMP}\sap_update_addon_se16_run.vbs {WORK_TEMP}\sap_update_addon_se16_run.ps1 {WORK_TEMP}\sap_update_addon_prog_run.vbs {WORK_TEMP}\sap_update_addon_prog_run.ps1 {WORK_TEMP}\sap_update_addon_output.txt
+cmd /c del {WORK_TEMP}\sap_update_addon_detect_run.ps1 {WORK_TEMP}\sap_update_addon_sm30_run.vbs {WORK_TEMP}\sap_update_addon_sm30_run.ps1 {WORK_TEMP}\sap_update_addon_se16_run.vbs {WORK_TEMP}\sap_update_addon_se16_run.ps1 {WORK_TEMP}\sap_update_addon_prog_run.vbs {WORK_TEMP}\sap_update_addon_prog_run.ps1 {WORK_TEMP}\sap_update_addon_output.txt {WORK_TEMP}\sap_update_addon_sidecar.out
 ```
 
 ---
