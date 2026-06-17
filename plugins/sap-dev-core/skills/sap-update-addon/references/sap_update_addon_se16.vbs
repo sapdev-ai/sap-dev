@@ -89,19 +89,18 @@ For i = 2 To iLineCount
 
     If UCase(OPERATION) = "INSERT" Or UCase(OPERATION) = "UPDATE" Then
         ' Open the "Create Entries" form from the SE16 INITIAL screen (the table
-        ' name is already entered above). The toolbar button differs by release,
-        ' so we try each candidate and VERIFY we actually reached the entry form
-        ' (by probing the first non-MANDT field) before filling anything --
+        ' name is already entered above). VERIFY we actually reached the entry
+        ' form (by probing the first non-MANDT field) before filling anything --
         ' a press that "succeeds" but lands on the wrong screen must not lead to
         ' saving an empty / wrong row.
-        '   * S/4HANA    : tbar[1]/btn[18] = Create Entries.
-        '   * ECC 6.0     : tbar[1]/btn[5] (F5) = Create Entries (program SAPLSETB,
-        '                  dynpro 230). On ECC6, btn[18] here is "Selection Screen
-        '                  Help" and the post-Enter selection screen has NO
-        '                  Create-Entries button -- btn[5] opens the Insert form
-        '                  (program /1BCDWB/DB<table>, dynpro 101) with
-        '                  txt<table>-<field> inputs. Verified 2026-06-17 on SID
-        '                  ER1 (table ZMMFIXEDVALS71).
+        '   * Create Entries = tbar[1]/btn[5] (icon B_CREA) on the SE16 initial
+        '     screen (program SAPLSETB, dynpro 230). Live-verified the SAME on
+        '     BOTH ER1 (ECC 6.0) and S4D (S/4HANA 1909), 2026-06-17. It opens the
+        '     Insert form (program /1BCDWB/DB<table>, dynpro 101) with
+        '     txt<table>-<field> inputs.
+        '   * tbar[1]/btn[18] is NOT Create Entries on either tested release -- it
+        '     is "Selection Screen Help" (icon B_INFO) and only exists on the
+        '     post-Enter selection screen. Kept below as a legacy fallback only.
         Dim sProbeFld, bEntryForm, k
         sProbeFld = ""
         For k = 0 To UBound(aHeader)
@@ -111,18 +110,20 @@ For i = 2 To iLineCount
             End If
         Next
 
-        ' Attempt 1 -- S/4HANA Create Entries (tbar[1]/btn[18]).
+        ' Attempt 1 -- Create Entries tbar[1]/btn[5] (icon B_CREA). Verified on
+        ' BOTH ECC 6.0 (ER1) and S/4HANA 1909 (S4D), 2026-06-17.
         On Error Resume Next
-        oSession.findById("wnd[0]/tbar[1]/btn[18]").Press
+        oSession.findById("wnd[0]/tbar[1]/btn[5]").Press
         WScript.Sleep 500
         Err.Clear
         On Error GoTo 0
         bEntryForm = EntryFieldPresent(oSession, TABLE_NAME, sProbeFld)
 
-        ' Attempt 2 -- ECC 6.0 Create Entries (tbar[1]/btn[5], F5).
+        ' Attempt 2 -- legacy fallback tbar[1]/btn[18] (older assumption; on tested
+        ' releases this is Selection-Screen-Help -- harmless, gated by the verify).
         If Not bEntryForm Then
             On Error Resume Next
-            oSession.findById("wnd[0]/tbar[1]/btn[5]").Press
+            oSession.findById("wnd[0]/tbar[1]/btn[18]").Press
             WScript.Sleep 500
             Err.Clear
             On Error GoTo 0
@@ -141,7 +142,7 @@ For i = 2 To iLineCount
 
         If Not bEntryForm Then
             WScript.Echo "ERROR: Could not open the SE16 Create-Entries form for " & TABLE_NAME & "."
-            WScript.Echo "       Tried tbar[1]/btn[18] (S/4HANA), tbar[1]/btn[5] (ECC 6.0, F5),"
+            WScript.Echo "       Tried tbar[1]/btn[5] (Create, ECC6+S/4), tbar[1]/btn[18] (legacy),"
             WScript.Echo "       and the Edit menu, but none reached an entry form with field"
             WScript.Echo "       " & sProbeFld & ". This release's Create-Entries control may differ."
             WScript.Echo "       Re-record on this system (Help > SAP GUI > Scripting > Record;"

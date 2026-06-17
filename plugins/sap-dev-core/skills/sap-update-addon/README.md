@@ -55,13 +55,13 @@ Conversational forms:
   yet — feature in roadmap)
 - Data file must be **UTF-8**, TAB-delimited, with one header line (all three
   methods — PROG / SE16 / SM30 — read UTF-8)
-- **Classic ECC 6.0:** the `ZCMRUPDATE_ADDON_TABLE` (PROG) fallback is
-  classic-syntax and activates/runs on ECC 6.0 as well as S/4HANA
-  (live-verified on SID ER1). The SE16 *Create Entries* (INSERT/UPDATE) path
-  is release-aware — S/4HANA uses `tbar[1]/btn[18]`, ECC 6.0 uses
-  `tbar[1]/btn[5]` (F5) — and is live-verified on ECC 6.0. The SM30 path still
-  needs a maintenance view; SE16 *DELETE* is a stub on all releases (use SM30
-  or delete the row manually).
+- **Classic ECC 6.0 + S/4HANA:** the `ZCMRUPDATE_ADDON_TABLE` (PROG) fallback is
+  classic-syntax and activates/runs on **both** ECC 6.0 and S/4HANA 1909
+  (live-verified on SID ER1 and S4D). The SE16 *Create Entries* (INSERT/UPDATE)
+  path uses `tbar[1]/btn[5]` on the SE16 initial screen — the **same** button on
+  both releases (the old "S/4 = btn[18]" assumption was wrong) — and is
+  live-verified end-to-end on both. The SM30 path still needs a maintenance
+  view; SE16 *DELETE* is a stub on all releases (use SM30 or delete manually).
 
 ## Version
 

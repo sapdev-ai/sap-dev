@@ -212,14 +212,12 @@ powershell -Command "& cscript //NoLogo '{WORK_TEMP}\sap_update_addon_se16_run.v
 ```
 
 **SE16 Notes (INSERT / UPDATE):**
-- Create Entries button is **release-specific**, pressed on the SE16 initial screen (`SAPLSETB`/230) after entering the table name:
-  - **S/4HANA:** `tbar[1]/btn[18]`
-  - **ECC 6.0:** `tbar[1]/btn[5]` (F5) — on ECC6 `btn[18]` is *Selection Screen Help*, and the post-Enter selection screen has no Create-Entries at all (live-verified on SID ER1, 2026-06-17).
-- The VBS tries both buttons (then the Edit menu) and **verifies it reached the Insert form** (probes the first non-MANDT field via `EntryFieldPresent`) before filling — a press that lands on the wrong screen never leads to saving an empty/wrong row; if none reach the form it fails loud.
-- Insert-form fields: `ctxt<TABLE>-<FIELD>` or `txt<TABLE>-<FIELD>` (ECC6 uses `txt`; MANDT is read-only and skipped). Each record is saved with Ctrl+S → status "Database record successfully created".
+- Create Entries = **`tbar[1]/btn[5]`** (icon `B_CREA`) on the SE16 initial screen (`SAPLSETB`/230), pressed after entering the table name. Live-verified the **SAME on both ECC 6.0 (SID ER1) and S/4HANA 1909 (S4D)**, 2026-06-17. NB: `tbar[1]/btn[18]` is **not** Create Entries (it is Selection-Screen-Help / Info, icon `B_INFO`, and only exists on the post-Enter selection screen) — the original "S/4 = btn[18]" assumption was wrong; it's kept only as a legacy fallback.
+- The VBS tries `btn[5]` → `btn[18]` (legacy) → the Edit menu, and **verifies it reached the Insert form** (probes the first non-MANDT field via `EntryFieldPresent`) before filling — a press that lands on the wrong screen never leads to saving an empty/wrong row; if none reach the form it fails loud.
+- Insert-form fields (`/1BCDWB/DB<table>`/101): `txt<TABLE>-<FIELD>` (or `ctxt`); MANDT is read-only and skipped. Each record is saved with Ctrl+S → status "Database record successfully created".
 - The data file is read as **UTF-8** (ADODB.Stream), aligned with the PROG path and the Step 1 contract — older revisions read UTF-16 and silently failed on UTF-8 files.
-- **Live-verified end-to-end on ECC 6.0 (SID ER1, 2026-06-17):** INSERT via the ECC6 `btn[5]` path created a row in a Z table.
-- **DELETE via SE16 is a stub on all releases** (the classic ECC6 result is a non-grid list with no Delete button; even on S/4 the DELETE branch only warns). For deletes use SM30 (needs a maintenance view) or delete manually. INSERT/UPDATE is the supported SE16 path.
+- **Live-verified end-to-end INSERT on BOTH ER1 (ECC 6.0) and S4D (S/4HANA 1909), 2026-06-17** — a row was created in a Z table on each via the `btn[5]` path.
+- **DELETE via SE16 is a stub on all releases** (the SE16 result is a non-grid classic `SAPMSSY0`/120 list with no Delete button on both ER1 and S4D). For deletes use SM30 (needs a maintenance view) or delete manually. INSERT/UPDATE is the supported SE16 path.
 
 ### Step 4c — ZCMRUPDATE_ADDON_TABLE Method
 
@@ -311,6 +309,6 @@ Suggested `<CLASS>`: `UPDATE_ADDON_FAILED`, `RFC_LOGON_FAILED`.
 | `SM30 transport dialog` | Table in transportable package | Enter transport or Cancel |
 | `SE16 Create Entries not found` | MAINFLAG not set or editing blocked | Fall back to PROG method |
 | `ZCMRUPDATE_ADDON_TABLE field mismatch` | Data file header doesn't match table | Check field names match table definition |
-| `ERROR: Could not open the SE16 Create-Entries form` | Neither `btn[18]` (S/4HANA) nor `btn[5]` (ECC 6.0) nor the Edit menu reached the entry form on this release | Re-record the Create-Entries button for this release and add its ID to `sap_update_addon_se16.vbs`; or use the PROG / SM30 method |
+| `ERROR: Could not open the SE16 Create-Entries form` | Neither `btn[5]` (Create — verified ECC6 + S/4) nor `btn[18]` (legacy) nor the Edit menu reached the entry form on this release | Re-record the Create-Entries button for this release and add its ID to `sap_update_addon_se16.vbs`; or use the PROG / SM30 method |
 | `ZCMRUPDATE_ADDON_TABLE` deploys but won't activate / won't launch on ECC 6.0 | Stale modern-syntax source (pre-2026-06-17) | Redeploy the current **classic-syntax** `ZCMRUPDATE_ADDON_TABLE.abap` via `/sap-se38` (or `/sap-dev-init`) |
 | SE16/SM30 path: "must have header + data lines" on a valid file | Older VBS read the data file as UTF-16 | Fixed 2026-06-17 — both VBS now read UTF-8; ensure the data file is UTF-8, TAB-delimited |
