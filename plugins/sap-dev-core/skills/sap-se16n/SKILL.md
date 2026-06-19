@@ -329,9 +329,11 @@ runtime and matches `Tab` or `preadsheet` substrings, then falls back to
 - Pooled / cluster tables that SE16N forbids reading return `NO_DATA` with a
   message like "Display of cluster table not allowed" — surface this to the
   user.
-- Date / numeric values must be passed in SAP internal format
-  (`YYYY.MM.DD`, no thousand separators) unless the user has set their personal
-  display format to match.
+- Date values must be passed as 8-digit `YYYYMMDD` (e.g. `20240131`) — SAP DATS
+  fields accept this regardless of the logon user's date personalization
+  (`USR01-DATFM`), so it is locale-independent. Do NOT use a separator form such
+  as `YYYY.MM.DD`, which is only accepted when it matches the user's DATFM.
+  Numeric values must have no thousand separators.
 - Some long-text / non-selectable fields (e.g. `AS4TEXT` on `E070`, `STEXT` on
   many tables) cannot be filtered via SE16N at all — SAP renders the row
   greyed-out (no operator, no input, no multi-select). The skill detects this

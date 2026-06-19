@@ -232,7 +232,9 @@ following lookup itself (no `/sap-se16n` call required):
    technical field name and is locale-independent.)
 3. Write `LOW` value (`ctxtGS_SELFIELDS-LOW[2,r]`) for the matched rows:
    - AS4USER row → `oSess.Info.User` (uppercased)
-   - AS4DATE row → workstation today as `YYYY.MM.DD`
+   - AS4DATE row → workstation today as 8-digit `YYYYMMDD` (locale-independent —
+     SAP DATS fields accept it for any `USR01-DATFM`; a separator form like
+     `YYYY.MM.DD` only works when it matches the user's date personalization)
 4. Press F8 (`tbar[1]/btn[8]`) to execute. Dismiss any post-execute popup
    with Enter.
 5. On the result grid (`wnd[0]/usr/cntlRESULT_LIST/shellcont/shell`):
