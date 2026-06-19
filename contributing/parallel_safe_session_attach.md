@@ -111,8 +111,19 @@ $content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scr
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 
-[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_<skill>_<mode>_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
+[System.IO.File]::WriteAllText('{RUN_TEMP}\sap_<skill>_<mode>_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 ```
+
+- **`{WORK_TEMP}` (base) vs `{RUN_TEMP}` (per-run) — do not confuse them.**
+  `Get-SapCurrentSessionPath -WorkTemp` MUST stay on the base `{WORK_TEMP}`
+  (`{work_dir}\temp`): it derives the durable runtime dir (`{work_dir}\runtime`,
+  home of `session_registry.json` + the AI-session pin) from the parent of the
+  path you pass, so a run-scoped path would silently relocate the broker registry
+  and break parallel-session coordination. The generated runtime `.vbs` and every
+  other scratch file the wrapper writes go to `{RUN_TEMP}` (`{work_dir}\temp\run_<id>`,
+  minted once in Step 0 by `Get-SapRunTemp`) so two concurrent runs never clobber
+  each other's `*_run.vbs` between write and `cscript` exec. See CLAUDE.md
+  "Work Directory Configuration".
 
 - `$sessionPath = ''` is intentional default — the helper auto-resolves via `SAPDEV_SESSION_PATH` → sole-connection → refuse.
 - `Get-SapCurrentSessionPath` reads `session_registry.json`'s `ai_sessions[<id>].connection_id` for this AI session (parent-PID walk), finds the matching connection block, returns a usable session path on it. Empty string when nothing resolves; the attach lib's sole-connection fallback or "refuse" path then takes over.

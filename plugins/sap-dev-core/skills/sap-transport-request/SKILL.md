@@ -41,7 +41,7 @@ Task: $ARGUMENTS
 **Resolve `work_dir` via the env-aware helper** — do NOT take `work_dir` from a direct `settings.json` read (that ignores the `SAPDEV_AI_WORK_DIR` env var and `userconfig.json`). Use the `WORK_DIR=` value printed by:
 
 ```bash
-powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('WORK_DIR=' + (Get-SapWorkDir))"
+powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('WORK_DIR=' + (Get-SapWorkDir)); Write-Output ('RUN_TEMP=' + (Get-SapRunTemp))"
 ```
 
 The settings note below still applies to the OTHER keys.
@@ -60,14 +60,25 @@ Ensure the temp directory exists:
 cmd /c if not exist "{WORK_TEMP}" mkdir "{WORK_TEMP}"
 ```
 
+Set `{RUN_TEMP}` = the `RUN_TEMP=` value printed above — a fresh per-run scratch
+directory `{work_dir}\temp\run_<id>`, already created by `Get-SapRunTemp`.
+Resolve it **once here** and reuse it; write this skill's OWN scratch (the
+generated `sap_tr_run.*` and the `sap_tr_run.json` log-state file) under
+`{RUN_TEMP}` so concurrent TR resolutions never collide on fixed names. When this
+skill calls `/sap-se16n` to read `E070`, it passes its own
+`{RUN_TEMP}\se16n_E070.txt` as the **explicit output path** so the producer
+(se16n) and this consumer agree on the same per-run location (se16n otherwise
+writes to ITS own run dir, which this skill cannot read). `{WORK_TEMP}` (base) is
+kept only for the Step-0 definition above.
+
 ---
 
 ## Step 0.5 — Start Logging
 
-Start a structured log run. State file: `{WORK_TEMP}\sap_tr_run.json`. Best-effort. Honours `SAPDEV_PARENT_RUN_ID` env var so parent skill calls can be linked.
+Start a structured log run. State file: `{RUN_TEMP}\sap_tr_run.json`. Best-effort. Honours `SAPDEV_PARENT_RUN_ID` env var so parent skill calls can be linked.
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{WORK_TEMP}\sap_tr_run.json" -Skill sap-transport-request -ParamsJson "{}"
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{RUN_TEMP}\sap_tr_run.json" -Skill sap-transport-request -ParamsJson "{}"
 ```
 
 ---
@@ -182,10 +193,10 @@ Invoke `/sap-se16n` to read the candidate TR's `TRSTATUS` directly from
 table `E070`:
 
 ```
-/sap-se16n TABLE=E070 WHERE: TRKORR=<candidate> SELECT: TRKORR TRSTATUS TRFUNCTION AS4USER
+/sap-se16n TABLE=E070 WHERE: TRKORR=<candidate> SELECT: TRKORR TRSTATUS TRFUNCTION AS4USER Output file={RUN_TEMP}\se16n_E070.txt
 ```
 
-Parse the resulting `{WORK_TEMP}\se16n_E070.txt`:
+Parse the resulting `{RUN_TEMP}\se16n_E070.txt`:
 
 | Observation | Outcome |
 |---|---|
@@ -237,7 +248,7 @@ create.
 
 The PowerShell template is at `<SKILL_DIR>/references/sap_transport_request.ps1`.
 
-Write `{WORK_TEMP}\sap_tr_run.ps1`:
+Write `{RUN_TEMP}\sap_tr_run.ps1`:
 ```powershell
 $content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_transport_request.ps1', [System.Text.Encoding]::UTF8)
 $content = $content.Replace('%%SAP_APPLICATION_SERVER%%', '')
@@ -249,7 +260,7 @@ $content = $content.Replace('%%SAP_LANGUAGE%%',           '')
 $content = $content.Replace('%%RFC_LIB_PS1%%',            '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_rfc_lib.ps1')
 $content = $content.Replace('%%TRANSPORT_REQUEST%%',      'THE_TR')
 $content = $content.Replace('%%SAP_DEV_MODE%%',           'THE_MODE')
-[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_tr_run.ps1', $content, [System.Text.Encoding]::UTF8)
+[System.IO.File]::WriteAllText('{RUN_TEMP}\sap_tr_run.ps1', $content, [System.Text.Encoding]::UTF8)
 Write-Host 'Done'
 ```
 Replace all `THE_*` placeholders with actual values from Steps 1-2.
@@ -270,7 +281,7 @@ dispatch in the caller, not the guardrail.
 
 Execute via **32-bit PowerShell** (SAP NCo 3.1 is registered in the 32-bit GAC):
 ```bash
-C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File "{WORK_TEMP}\sap_tr_run.ps1"
+C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_tr_run.ps1"
 ```
 
 ---
@@ -300,7 +311,7 @@ Parse the script output for `RESULT_TR:` and `RESULT_STATUS:` lines.
 ## Step 5 — Clean Up
 
 ```bash
-cmd /c del "{WORK_TEMP}\sap_tr_run.ps1"
+cmd /c del "{RUN_TEMP}\sap_tr_run.ps1"
 ```
 
 ---
@@ -312,13 +323,13 @@ Log the run-end record. Best-effort.
 On success:
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_tr_run.json" -Status SUCCESS -ExitCode 0
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_tr_run.json" -Status SUCCESS -ExitCode 0
 ```
 
 On failure:
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_tr_run.json" -Status FAILED -ExitCode 1 -ErrorClass <CLASS> -ErrorMsg "<short>"
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_tr_run.json" -Status FAILED -ExitCode 1 -ErrorClass <CLASS> -ErrorMsg "<short>"
 ```
 
 Suggested `<CLASS>`: `TR_RESOLUTION_FAILED`, `TR_NOT_MODIFIABLE`, `RFC_LOGON_FAILED`.

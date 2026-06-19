@@ -57,7 +57,7 @@ Steps 0 – 7 below are the CREATE flow.
 **Resolve `work_dir` via the env-aware helper** — do NOT take `work_dir` from a direct `settings.json` read (that ignores the `SAPDEV_AI_WORK_DIR` env var and `userconfig.json`). Use the `WORK_DIR=` value printed by:
 
 ```bash
-powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('WORK_DIR=' + (Get-SapWorkDir))"
+powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('WORK_DIR=' + (Get-SapWorkDir)); Write-Output ('RUN_TEMP=' + (Get-SapRunTemp))"
 ```
 
 The settings note below still applies to the OTHER keys.
@@ -80,6 +80,16 @@ Set `{WORK_TEMP}` = `{work_dir}\temp`. Ensure it exists:
 cmd /c if not exist "{WORK_TEMP}" mkdir "{WORK_TEMP}"
 ```
 
+Set `{RUN_TEMP}` = the `RUN_TEMP=` value printed above — a fresh per-run scratch
+directory `{work_dir}\temp\run_<id>`, already created by `Get-SapRunTemp`.
+Resolve it **once here** and reuse the same value for the rest of this
+invocation; it isolates this run's generated wrappers / state / scratch files so
+concurrent runs (parallel sub-agents, multi-connection deploys) never collide.
+**`{WORK_TEMP}` stays the base temp dir** and is used ONLY for
+`Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'` (the session-attach plumbing
+derives `{work_dir}\runtime` from its parent, so it must see the base path, not
+the run dir). Everything the skill writes itself goes under `{RUN_TEMP}`.
+
 The logged-in SAP user (`sap_user`) is needed for the E070 lookup. If blank,
 ask the user.
 
@@ -91,10 +101,10 @@ defaults.
 
 ## Step 0.5 — Start Logging
 
-Start a structured log run. State file: `{WORK_TEMP}\sap_se01_run.json`. Best-effort.
+Start a structured log run. State file: `{RUN_TEMP}\sap_se01_run.json`. Best-effort.
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{WORK_TEMP}\sap_se01_run.json" -Skill sap-se01 -ParamsJson "{\"description\":\"<DESC>\",\"request_type\":\"W\"}"
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{RUN_TEMP}\sap_se01_run.json" -Skill sap-se01 -ParamsJson "{\"description\":\"<DESC>\",\"request_type\":\"W\"}"
 ```
 
 ---
@@ -183,7 +193,7 @@ Template: `./references/sap_se01_create.vbs`. Tokens: `%%REQUEST_TYPE%%`,
 `%%DESCRIPTION%%`. The VBS performs both **create** and **lookup** in a
 single run.
 
-Write `{WORK_TEMP}\sap_se01_create_run.ps1`:
+Write `{RUN_TEMP}\sap_se01_create_run.ps1`:
 ```powershell
 $content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_se01_create.vbs', [System.Text.Encoding]::UTF8)
 $content = $content -replace '%%REQUEST_TYPE%%','THE_TYPE'
@@ -195,7 +205,7 @@ $content = $content -replace '%%SESSION_PATH%%', $sessionPath
 $content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_se01_create_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
+[System.IO.File]::WriteAllText('{RUN_TEMP}\sap_se01_create_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 Replace `THE_TYPE` (W or C), `THE_DESC` (short text), and `<SKILL_DIR>` /
@@ -203,8 +213,8 @@ Replace `THE_TYPE` (W or C), `THE_DESC` (short text), and `<SKILL_DIR>` /
 
 Run:
 ```bash
-powershell -ExecutionPolicy Bypass -File "{WORK_TEMP}\sap_se01_create_run.ps1"
-C:/Windows/SysWOW64/cscript.exe //NoLogo {WORK_TEMP}\sap_se01_create_run.vbs
+powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_se01_create_run.ps1"
+C:/Windows/SysWOW64/cscript.exe //NoLogo {RUN_TEMP}\sap_se01_create_run.vbs
 ```
 
 **Expected last line of stdout:** `DONE`. If the VBS prints `ERROR:`, abort
@@ -341,7 +351,7 @@ Same as Step 2: requires an active SAP GUI session.
 
 Template: `./references/sap_se01_release.vbs`. Token: `%%TRANSPORT%%`.
 
-Write `{WORK_TEMP}\sap_se01_release_run.ps1`:
+Write `{RUN_TEMP}\sap_se01_release_run.ps1`:
 ```powershell
 $content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_se01_release.vbs', [System.Text.Encoding]::UTF8)
 $content = $content -replace '%%TRANSPORT%%','THE_TR'
@@ -351,14 +361,14 @@ $content = $content -replace '%%SESSION_PATH%%', $sessionPath
 $content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_se01_release_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
+[System.IO.File]::WriteAllText('{RUN_TEMP}\sap_se01_release_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 
 Run:
 ```bash
-powershell -ExecutionPolicy Bypass -File "{WORK_TEMP}\sap_se01_release_run.ps1"
-C:/Windows/SysWOW64/cscript.exe //NoLogo {WORK_TEMP}\sap_se01_release_run.vbs
+powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_se01_release_run.ps1"
+C:/Windows/SysWOW64/cscript.exe //NoLogo {RUN_TEMP}\sap_se01_release_run.vbs
 ```
 
 ## R6 — Interpret VBS output
@@ -413,13 +423,13 @@ Log the run-end record. Best-effort.
 On success:
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_se01_run.json" -Status SUCCESS -ExitCode 0
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_se01_run.json" -Status SUCCESS -ExitCode 0
 ```
 
 On failure:
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_se01_run.json" -Status FAILED -ExitCode 1 -ErrorClass <CLASS> -ErrorMsg "<short>"
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_se01_run.json" -Status FAILED -ExitCode 1 -ErrorClass <CLASS> -ErrorMsg "<short>"
 ```
 
 Suggested `<CLASS>`: `TR_CREATE_FAILED`, `GUI_TIMEOUT`.

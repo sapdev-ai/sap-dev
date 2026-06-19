@@ -39,7 +39,7 @@ Task: $ARGUMENTS
 **Resolve `work_dir` via the env-aware helper** — do NOT take `work_dir` from a direct `settings.json` read (that ignores the `SAPDEV_AI_WORK_DIR` env var and `userconfig.json`). Use the `WORK_DIR=` value printed by:
 
 ```bash
-powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('WORK_DIR=' + (Get-SapWorkDir))"
+powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('WORK_DIR=' + (Get-SapWorkDir)); Write-Output ('RUN_TEMP=' + (Get-SapRunTemp))"
 ```
 
 The settings note below still applies to the OTHER keys.
@@ -58,14 +58,24 @@ Ensure the temp directory exists:
 cmd /c if not exist "{WORK_TEMP}" mkdir "{WORK_TEMP}"
 ```
 
+Set `{RUN_TEMP}` = the `RUN_TEMP=` value printed above — a fresh per-run scratch
+directory `{work_dir}\temp\run_<id>`, already created by `Get-SapRunTemp`.
+Resolve it **once here** and reuse the same value for the rest of this
+invocation; it isolates this run's generated wrappers / state / scratch files so
+concurrent runs (parallel sub-agents, multi-connection deploys) never collide.
+**`{WORK_TEMP}` stays the base temp dir** and is used ONLY for
+`Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'` (the session-attach plumbing
+derives `{work_dir}\runtime` from its parent, so it must see the base path, not
+the run dir). Everything the skill writes itself goes under `{RUN_TEMP}`.
+
 ---
 
 ## Step 0.5 — Start Logging
 
-Start a structured log run. State file: `{WORK_TEMP}\sap_se16n_run.json`. Best-effort.
+Start a structured log run. State file: `{RUN_TEMP}\sap_se16n_run.json`. Best-effort.
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{WORK_TEMP}\sap_se16n_run.json" -Skill sap-se16n -ParamsJson "{\"table\":\"<TABLE>\"}"
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{RUN_TEMP}\sap_se16n_run.json" -Skill sap-se16n -ParamsJson "{\"table\":\"<TABLE>\"}"
 ```
 
 ---
@@ -77,7 +87,7 @@ powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_
 | Table name | SAP transparent / pooled / cluster table | `T001` |
 | Filter fields | Zero or more `field op value(s)` triples — see operator table | `LAND1 IN CN,JP` |
 | Select fields | Optional comma-separated list of output columns; empty = all fields | `BUKRS,BUTXT,LAND1,WAERS` |
-| Output file | Absolute path of the resulting `.txt` file (default: `{WORK_TEMP}\se16n_<TABLE>.txt`) | |
+| Output file | Absolute path of the resulting `.txt` file (default: `{RUN_TEMP}\se16n_<TABLE>.txt`) | |
 
 **Operators** (column 2 of each FILTER row):
 
@@ -116,7 +126,7 @@ the `/sap-login` skill first, then return here.
 
 ## Step 3 — Write the PARAMS_FILE
 
-Write `{WORK_TEMP}\se16n_params.txt` with two literal section headers, **`SELECT`**
+Write `{RUN_TEMP}\se16n_params.txt` with two literal section headers, **`SELECT`**
 and **`FILTER`**, each followed by its rows. Either section may be empty.
 
 Format:
@@ -166,12 +176,12 @@ The VBS template is at `./references/sap_se16n.vbs`.
 
 ### Generate the filled-in VBScript
 
-Write `{WORK_TEMP}\sap_se16n_run.ps1`:
+Write `{RUN_TEMP}\sap_se16n_run.ps1`:
 ```powershell
 $content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_se16n.vbs', [System.Text.Encoding]::UTF8)
 $content = $content -replace '%%TABLE_NAME%%','THE_TABLE'
-$content = $content -replace '%%PARAMS_FILE%%','{WORK_TEMP}\se16n_params.txt'
-$content = $content -replace '%%OUTPUT_FILE%%','{WORK_TEMP}\se16n_THE_TABLE.txt'
+$content = $content -replace '%%PARAMS_FILE%%','{RUN_TEMP}\se16n_params.txt'
+$content = $content -replace '%%OUTPUT_FILE%%','{RUN_TEMP}\se16n_THE_TABLE.txt'
 # Session-attach plumbing (Phase 4.2: pin file eliminated). The shared
 # AttachSapSession helper resolves the target session in this order:
 #   1. SESSION_PATH constant (set from the parsed --session argument)
@@ -186,7 +196,7 @@ $content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scr
 # default for the single-conn case.
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_se16n_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
+[System.IO.File]::WriteAllText('{RUN_TEMP}\sap_se16n_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 Replace `THE_TABLE` with the actual table name (UPPERCASE) and `<SKILL_DIR>` /
@@ -194,7 +204,7 @@ Replace `THE_TABLE` with the actual table name (UPPERCASE) and `<SKILL_DIR>` /
 
 Run:
 ```bash
-powershell -ExecutionPolicy Bypass -File "{WORK_TEMP}\sap_se16n_run.ps1"
+powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_se16n_run.ps1"
 ```
 
 ### Execute (with SAP GUI Security guard)
@@ -209,7 +219,7 @@ system / client:
 
 ```powershell
 $shared = '<SAP_DEV_CORE_SHARED_DIR>\scripts'
-$out    = '{WORK_TEMP}\se16n_THE_TABLE.txt'
+$out    = '{RUN_TEMP}\se16n_THE_TABLE.txt'
 # 1. Pre-check the allow-list (read-only; informational + lets us skip the watcher).
 & "$shared\sap_gui_security_precheck.ps1" -Path $out -Access w -System 'THE_SID' -Client 'THE_CLIENT' -Transaction 'SE16N' | Out-Host
 $allowed = ($LASTEXITCODE -eq 0)
@@ -224,7 +234,7 @@ if (-not $allowed) {
 }
 # 3. Run the export (32-bit cscript). If the dialog appears it blocks here until
 #    the watcher dismisses it; then the export completes.
-& 'C:/Windows/SysWOW64/cscript.exe' //NoLogo '{WORK_TEMP}\sap_se16n_run.vbs'
+& 'C:/Windows/SysWOW64/cscript.exe' //NoLogo '{RUN_TEMP}\sap_se16n_run.vbs'
 # 4. Reap the watcher.
 if ($watcher) { $watcher | Wait-Process -Timeout 45 -ErrorAction SilentlyContinue }
 ```
@@ -241,7 +251,7 @@ if ($watcher) { $watcher | Wait-Process -Timeout 45 -ErrorAction SilentlyContinu
 | `ROWS=0 (NO_DATA)` | "No values found" or empty result set. Output file contains a single line `NO_DATA<TAB><status text>`. |
 | `ERROR: …` | Failure — show the full output and stop. |
 
-**Output file** (`{WORK_TEMP}\se16n_<TABLE>.txt`):
+**Output file** (`{RUN_TEMP}\se16n_<TABLE>.txt`):
 - First line = header (technical field names)
 - Subsequent lines = data rows
 - Field separator = TAB
@@ -268,13 +278,13 @@ Log the run-end record. Best-effort.
 On success:
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_se16n_run.json" -Status SUCCESS -ExitCode 0
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_se16n_run.json" -Status SUCCESS -ExitCode 0
 ```
 
 On failure:
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_se16n_run.json" -Status FAILED -ExitCode 1 -ErrorClass <CLASS> -ErrorMsg "<short>"
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_se16n_run.json" -Status FAILED -ExitCode 1 -ErrorClass <CLASS> -ErrorMsg "<short>"
 ```
 
 Suggested `<CLASS>`: `SE16N_FAILED`, `TABLE_NOT_FOUND`, `GUI_TIMEOUT`.

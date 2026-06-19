@@ -36,7 +36,7 @@ Task: $ARGUMENTS
 **Resolve `work_dir` via the env-aware helper** — do NOT take `work_dir` from a direct `settings.json` read (that ignores the `SAPDEV_AI_WORK_DIR` env var and `userconfig.json`). Use the `WORK_DIR=` value printed by:
 
 ```bash
-powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('WORK_DIR=' + (Get-SapWorkDir))"
+powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('WORK_DIR=' + (Get-SapWorkDir)); Write-Output ('RUN_TEMP=' + (Get-SapRunTemp))"
 ```
 
 The settings note below still applies to the OTHER keys.
@@ -52,6 +52,16 @@ Set `{WORK_TEMP}` = `{work_dir}\temp`. Ensure it exists:
 cmd /c if not exist "{WORK_TEMP}" mkdir "{WORK_TEMP}"
 ```
 
+Set `{RUN_TEMP}` = the `RUN_TEMP=` value printed above — a fresh per-run scratch
+directory `{work_dir}\temp\run_<id>`, already created by `Get-SapRunTemp`.
+Resolve it **once here** and reuse the same value for the rest of this
+invocation; it isolates this run's generated wrappers / state / scratch files so
+concurrent runs (parallel sub-agents, multi-connection deploys) never collide.
+**`{WORK_TEMP}` stays the base temp dir** and is used ONLY for
+`Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'` (the session-attach plumbing
+derives `{work_dir}\runtime` from its parent, so it must see the base path, not
+the run dir). Everything the skill writes itself goes under `{RUN_TEMP}`.
+
 `sap_user` is needed for the DWINACTIV pre/post checks. If blank, ask the
 user.
 
@@ -66,10 +76,10 @@ helper silently no-ops.
 
 `<SAP_DEV_CORE_SHARED_DIR>` resolves to `plugins/sap-dev-core/shared/`.
 
-State file: `{WORK_TEMP}\sap_activate_object_run.json`
+State file: `{RUN_TEMP}\sap_activate_object_run.json`
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{WORK_TEMP}\sap_activate_object_run.json" -Skill sap-activate-object -ParamsJson "{\"object_type\":\"<TYPE>\",\"object_name\":\"<NAME>\"}"
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{RUN_TEMP}\sap_activate_object_run.json" -Skill sap-activate-object -ParamsJson "{\"object_type\":\"<TYPE>\",\"object_name\":\"<NAME>\"}"
 ```
 
 ---
@@ -187,26 +197,26 @@ Pick the template by transaction:
 | SE24 | `./references/sap_activate_se24.vbs` | `%%OBJECT_NAME%%` |
 | SE11 | `./references/sap_activate_se11.vbs` | `%%OBJECT_NAME%%`, `%%OBJECT_TYPE%%`, `%%ACTIVATION_LOG_VBS%%`, `%%TEMP_DIR%%` |
 
-Token-replace into `{WORK_TEMP}\sap_activate_<txn>_run.ps1`:
+Token-replace into `{RUN_TEMP}\sap_activate_<txn>_run.ps1`:
 ```powershell
 $content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_activate_<TXN>.vbs', [System.Text.Encoding]::UTF8)
 $content = $content -replace '%%OBJECT_NAME%%','THE_NAME'
 $content = $content -replace '%%OBJECT_TYPE%%','THE_TYPE'   # SE11 only
 $content = $content -replace '%%ACTIVATION_LOG_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_activation_log.vbs'   # SE11 only
-$content = $content -replace '%%TEMP_DIR%%','{WORK_TEMP}'   # SE11 only
+$content = $content -replace '%%TEMP_DIR%%','{RUN_TEMP}'   # SE11 only
 # Phase 3.5 session-attach plumbing.
 $sessionPath = ''
 $content = $content -replace '%%SESSION_PATH%%', $sessionPath
 $content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_activate_<TXN>_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
+[System.IO.File]::WriteAllText('{RUN_TEMP}\sap_activate_<TXN>_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 
 > **Activation-log capture (SE11 only, by design)**: when SE11 activation
 > reports an error (`STATUS_TYPE = E` or `A`), the helper writes
-> `{WORK_TEMP}\<OBJECT>.activation_log.txt` and the script echoes
+> `{RUN_TEMP}\<OBJECT>.activation_log.txt` and the script echoes
 > `ACTIVATION_LOG: <path>` and `ACTIVATION_ERROR: <top error line>`. This
 > turns the opaque "refer to log" SAP popup into actionable output.
 >
@@ -220,8 +230,8 @@ Write-Host 'Done'
 
 Run via 32-bit cscript:
 ```bash
-powershell -ExecutionPolicy Bypass -File "{WORK_TEMP}\sap_activate_<TXN>_run.ps1"
-C:/Windows/SysWOW64/cscript.exe //NoLogo {WORK_TEMP}\sap_activate_<TXN>_run.vbs
+powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_activate_<TXN>_run.ps1"
+C:/Windows/SysWOW64/cscript.exe //NoLogo {RUN_TEMP}\sap_activate_<TXN>_run.vbs
 ```
 
 Each VBS emits:
@@ -316,13 +326,13 @@ Log the run-end record. Best-effort: silently no-ops if logging disabled.
 On success:
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_activate_object_run.json" -Status SUCCESS -ExitCode 0
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_activate_object_run.json" -Status SUCCESS -ExitCode 0
 ```
 
 On failure (substitute `<CLASS>` and short message):
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_activate_object_run.json" -Status FAILED -ExitCode 1 -ErrorClass <CLASS> -ErrorMsg "<short>"
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_activate_object_run.json" -Status FAILED -ExitCode 1 -ErrorClass <CLASS> -ErrorMsg "<short>"
 ```
 
 Suggested `<CLASS>`: `ACTIVATE_FAILED`, `GUI_TIMEOUT`.

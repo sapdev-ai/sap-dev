@@ -59,7 +59,7 @@ Task: $ARGUMENTS
 **Resolve `work_dir` via the env-aware helper** — do NOT take `work_dir` from a direct `settings.json` read (that ignores the `SAPDEV_AI_WORK_DIR` env var and `userconfig.json`). Use the `WORK_DIR=` value printed by:
 
 ```bash
-powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('WORK_DIR=' + (Get-SapWorkDir))"
+powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('WORK_DIR=' + (Get-SapWorkDir)); Write-Output ('RUN_TEMP=' + (Get-SapRunTemp))"
 ```
 
 The settings note below still applies to the OTHER keys.
@@ -78,14 +78,24 @@ Ensure the temp directory exists:
 cmd /c if not exist "{WORK_TEMP}" mkdir "{WORK_TEMP}"
 ```
 
+Set `{RUN_TEMP}` = the `RUN_TEMP=` value printed above — a fresh per-run scratch
+directory `{work_dir}\temp\run_<id>`, already created by `Get-SapRunTemp`.
+Resolve it **once here** and reuse the same value for the rest of this
+invocation; it isolates this run's generated wrappers / state / scratch files so
+concurrent runs (parallel sub-agents, multi-connection deploys) never collide.
+**`{WORK_TEMP}` stays the base temp dir** and is used ONLY for
+`Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'` (the session-attach plumbing
+derives `{work_dir}\runtime` from its parent, so it must see the base path, not
+the run dir). Everything the skill writes itself goes under `{RUN_TEMP}`.
+
 ---
 
 ## Step 0.5 — Start Logging
 
-Start a structured log run. State file: `{WORK_TEMP}\sap_se24_run.json`. Best-effort.
+Start a structured log run. State file: `{RUN_TEMP}\sap_se24_run.json`. Best-effort.
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{WORK_TEMP}\sap_se24_run.json" -Skill sap-se24 -ParamsJson "{\"class\":\"<CLASS_NAME>\"}"
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{RUN_TEMP}\sap_se24_run.json" -Skill sap-se24 -ParamsJson "{\"class\":\"<CLASS_NAME>\"}"
 ```
 
 ---
@@ -166,12 +176,12 @@ CLASS zcl_example IMPLEMENTATION.
   ENDMETHOD.
 ENDCLASS.
 "@
-[System.IO.File]::WriteAllText("{WORK_TEMP}\zcl_example.abap", $content, (New-Object System.Text.UTF8Encoding $false))
+[System.IO.File]::WriteAllText("{RUN_TEMP}\zcl_example.abap", $content, (New-Object System.Text.UTF8Encoding $false))
 ```
 
 **If the user pasted source code directly:**
 
-1. Write the source using the BOM-free method above to: `{WORK_TEMP}\<CLASS_NAME>.abap`
+1. Write the source using the BOM-free method above to: `{RUN_TEMP}\<CLASS_NAME>.abap`
 2. Confirm the file by reading back the first 5 lines.
 
 **If the user provided a file path:**
@@ -199,7 +209,7 @@ The check VBScript template is at `./references/sap_se24_check.vbs`.
 
 ### Generate the filled-in VBScript
 
-Write `{WORK_TEMP}\sap_se24_check_run.ps1`:
+Write `{RUN_TEMP}\sap_se24_check_run.ps1`:
 ```powershell
 $content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_se24_check.vbs', [System.Text.Encoding]::UTF8)
 $content = $content -replace '%%CLASS_NAME%%','THE_CLASS_NAME'
@@ -209,20 +219,20 @@ $content = $content -replace '%%SESSION_PATH%%', $sessionPath
 $content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_se24_check_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
+[System.IO.File]::WriteAllText('{RUN_TEMP}\sap_se24_check_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 Replace `THE_CLASS_NAME` with the actual class name (UPPERCASE) and `<SKILL_DIR>` with the absolute path to this skill directory.
 
 Run:
 ```bash
-powershell -ExecutionPolicy Bypass -File "{WORK_TEMP}\sap_se24_check_run.ps1"
+powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_se24_check_run.ps1"
 ```
 
 ### Execute
 
 ```bash
-cscript //NoLogo {WORK_TEMP}\sap_se24_check_run.vbs
+cscript //NoLogo {RUN_TEMP}\sap_se24_check_run.vbs
 ```
 
 **Parse the last line of output:**
@@ -283,7 +293,7 @@ per class.
 
 ### Generate the filled-in VBScript
 
-Write `{WORK_TEMP}\sap_se24_update_run.ps1`:
+Write `{RUN_TEMP}\sap_se24_update_run.ps1`:
 ```powershell
 $content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_se24_update.vbs', [System.Text.Encoding]::UTF8)
 $content = $content -replace '%%CLASS_NAME%%','THE_CLASS_NAME'
@@ -298,7 +308,7 @@ $content = $content -replace '%%SESSION_PATH%%', $sessionPath
 $content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_se24_update_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
+[System.IO.File]::WriteAllText('{RUN_TEMP}\sap_se24_update_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 Replace `THE_CLASS_NAME` (UPPERCASE), `THE_SOURCE_PATH` (absolute path with backslashes),
@@ -306,7 +316,7 @@ Replace `THE_CLASS_NAME` (UPPERCASE), `THE_SOURCE_PATH` (absolute path with back
 
 Run:
 ```bash
-powershell -ExecutionPolicy Bypass -File "{WORK_TEMP}\sap_se24_update_run.ps1"
+powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_se24_update_run.ps1"
 ```
 
 ### Execute (with SAP GUI Security guard)
@@ -339,7 +349,7 @@ if (-not $allowed) {
 }
 # 3. Run the upload + save + activate + syntax check (32-bit cscript). If the dialog
 #    appears it blocks here until the watcher dismisses it; then the upload completes.
-& 'C:/Windows/SysWOW64/cscript.exe' //NoLogo '{WORK_TEMP}\sap_se24_update_run.vbs'
+& 'C:/Windows/SysWOW64/cscript.exe' //NoLogo '{RUN_TEMP}\sap_se24_update_run.vbs'
 # 4. Reap the watcher.
 if ($watcher) { $watcher | Wait-Process -Timeout 50 -ErrorAction SilentlyContinue }
 ```
@@ -363,7 +373,7 @@ It does NOT upload source code. After creation, you must:
 
 ### Generate the filled-in VBScript
 
-Write `{WORK_TEMP}\sap_se24_create_run.ps1`:
+Write `{RUN_TEMP}\sap_se24_create_run.ps1`:
 ```powershell
 $content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_se24_create.vbs', [System.Text.Encoding]::UTF8)
 $content = $content -replace '%%CLASS_NAME%%','THE_CLASS_NAME'
@@ -376,20 +386,20 @@ $content = $content -replace '%%SESSION_PATH%%', $sessionPath
 $content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_se24_create_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
+[System.IO.File]::WriteAllText('{RUN_TEMP}\sap_se24_create_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 Replace all `THE_*` placeholders (PACKAGE/TRANSPORT blank if local $TMP) and `<SKILL_DIR>`.
 
 Run:
 ```bash
-powershell -ExecutionPolicy Bypass -File "{WORK_TEMP}\sap_se24_create_run.ps1"
+powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_se24_create_run.ps1"
 ```
 
 ### Execute
 
 ```bash
-cscript //NoLogo {WORK_TEMP}\sap_se24_create_run.vbs
+cscript //NoLogo {RUN_TEMP}\sap_se24_create_run.vbs
 ```
 
 **On success** (output contains `SUCCESS:`):
@@ -439,7 +449,7 @@ The reference VBS is at `./references/sap_se24_test_classes.vbs`.
 
 ### Generate the filled-in VBScript
 
-Write `{WORK_TEMP}\sap_se24_test_classes_run.ps1`:
+Write `{RUN_TEMP}\sap_se24_test_classes_run.ps1`:
 ```powershell
 $content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_se24_test_classes.vbs', [System.Text.Encoding]::UTF8)
 $content = $content -replace '%%CLASS_NAME%%','THE_CLASS_NAME'
@@ -452,7 +462,7 @@ $content = $content -replace '%%SESSION_PATH%%', $sessionPath
 $content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_se24_test_classes_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
+[System.IO.File]::WriteAllText('{RUN_TEMP}\sap_se24_test_classes_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 Replace `THE_CLASS_NAME` (UPPERCASE), `THE_TEST_SOURCE_PATH` (absolute path with
@@ -477,7 +487,7 @@ if (-not $allowed) {
         '-NoProfile','-ExecutionPolicy','Bypass','-File',"$shared\sap_gui_security_sidecar.ps1",'-TimeoutSeconds','45')
     Start-Sleep -Milliseconds 800
 }
-& 'C:/Windows/SysWOW64/cscript.exe' //NoLogo '{WORK_TEMP}\sap_se24_test_classes_run.vbs'
+& 'C:/Windows/SysWOW64/cscript.exe' //NoLogo '{RUN_TEMP}\sap_se24_test_classes_run.vbs'
 if ($watcher) { $watcher | Wait-Process -Timeout 50 -ErrorAction SilentlyContinue }
 ```
 
@@ -556,18 +566,18 @@ literal non-ASCII description in the script would mojibake. The generator reads
 it back as UTF-8 and doubles any `"` for the VBS string literal:
 
 ```powershell
-[System.IO.File]::WriteAllText('{WORK_TEMP}\se24_desc.txt', 'THE_DESCRIPTION', (New-Object System.Text.UTF8Encoding $false))
+[System.IO.File]::WriteAllText('{RUN_TEMP}\se24_desc.txt', 'THE_DESCRIPTION', (New-Object System.Text.UTF8Encoding $false))
 ```
 (If `DESCRIPTION` is empty, write an empty file or skip — the generator treats a
 missing file as empty.)
 
-Write `{WORK_TEMP}\sap_se24_change_props_run.ps1`:
+Write `{RUN_TEMP}\sap_se24_change_props_run.ps1`:
 ```powershell
 $skillDir = '<SKILL_DIR>'
 $tpl      = "$skillDir\references\sap_se24_change_props.vbs"
 $content  = [System.IO.File]::ReadAllText($tpl, [System.Text.Encoding]::UTF8)
 # Description: read UTF-8 file, escape VBS quotes ("->"") so non-ASCII + quotes survive.
-$descFile = '{WORK_TEMP}\se24_desc.txt'
+$descFile = '{RUN_TEMP}\se24_desc.txt'
 $desc     = if (Test-Path $descFile) { [System.IO.File]::ReadAllText($descFile, [System.Text.Encoding]::UTF8) } else { '' }
 $desc     = $desc.Replace('"','""')
 $content  = $content.Replace('%%CLASS_NAME%%',  'THE_CLASS_NAME')
@@ -582,7 +592,7 @@ $content  = $content.Replace('%%SESSION_PATH%%',     $sessionPath)
 $content  = $content.Replace('%%ATTACH_LIB_VBS%%',   '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs')
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_se24_change_props_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
+[System.IO.File]::WriteAllText('{RUN_TEMP}\sap_se24_change_props_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 Use `.Replace()` (literal) for `STATUS`/`CATEGORY`/`TRANSPORT` — description text
@@ -593,13 +603,13 @@ blank when unused).
 
 Run:
 ```bash
-powershell -ExecutionPolicy Bypass -File "{WORK_TEMP}\sap_se24_change_props_run.ps1"
+powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_se24_change_props_run.ps1"
 ```
 
 ### Execute
 
 ```bash
-cscript //NoLogo {WORK_TEMP}\sap_se24_change_props_run.vbs
+cscript //NoLogo {RUN_TEMP}\sap_se24_change_props_run.vbs
 ```
 
 ### Behaviour Notes
@@ -711,7 +721,7 @@ name, so a single VBS handles both.
 
 ### Generate the filled-in VBScript
 
-Write `{WORK_TEMP}\sap_se24_delete_run.ps1`:
+Write `{RUN_TEMP}\sap_se24_delete_run.ps1`:
 ```powershell
 $skillDir = '<SKILL_DIR>'
 $tpl      = "$skillDir\references\sap_se24_delete.vbs"
@@ -724,20 +734,20 @@ $content  = $content.Replace('%%SESSION_PATH%%',     $sessionPath)
 $content  = $content.Replace('%%ATTACH_LIB_VBS%%',   '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs')
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_se24_delete_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
+[System.IO.File]::WriteAllText('{RUN_TEMP}\sap_se24_delete_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 Replace `<SKILL_DIR>` and the `THE_*` placeholders.
 
 Run:
 ```bash
-powershell -ExecutionPolicy Bypass -File "{WORK_TEMP}\sap_se24_delete_run.ps1"
+powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_se24_delete_run.ps1"
 ```
 
 ### Execute
 
 ```bash
-cscript //NoLogo {WORK_TEMP}\sap_se24_delete_run.vbs
+cscript //NoLogo {RUN_TEMP}\sap_se24_delete_run.vbs
 ```
 
 ### Behaviour Notes
@@ -861,7 +871,7 @@ The check-and-download VBScript template is at `./references/sap_se24_check_and_
 
 ### Generate the filled-in VBScript
 
-Write `{WORK_TEMP}\sap_se24_check_and_download_run.ps1`:
+Write `{RUN_TEMP}\sap_se24_check_and_download_run.ps1`:
 ```powershell
 $className = 'THE_CLASS_NAME'
 $outFile   = 'THE_OUTPUT_FILE'
@@ -878,20 +888,20 @@ $content = $content -replace '%%ATTACH_LIB_VBS%%', '<SAP_DEV_CORE_SHARED_DIR>\sc
 $content = $content -replace '%%SYNTAX_CHECK_LIB_VBS%%', '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_syntax_check_lib.vbs'
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp $workTemp
-[System.IO.File]::WriteAllText("$workTemp\sap_se24_check_and_download_run.vbs", $content, [System.Text.UnicodeEncoding]::new($false, $true))
+[System.IO.File]::WriteAllText("{RUN_TEMP}\sap_se24_check_and_download_run.vbs", $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 
 | Placeholder | Value |
 |---|---|
 | `THE_CLASS_NAME` | Class name (UPPERCASE) |
-| `THE_OUTPUT_FILE` | `{WORK_TEMP}\<CLASS_NAME>_from_sap.txt` |
+| `THE_OUTPUT_FILE` | `{RUN_TEMP}\<CLASS_NAME>_from_sap.txt` |
 | `THE_SKILL_DIR` | Absolute path to this skill directory |
 | `THE_WORK_TEMP` | `{WORK_TEMP}` resolved value |
 
 Run:
 ```bash
-powershell -ExecutionPolicy Bypass -File "{WORK_TEMP}\sap_se24_check_and_download_run.ps1"
+powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_se24_check_and_download_run.ps1"
 ```
 
 ### Execute (with SAP GUI Security guard)
@@ -907,7 +917,7 @@ system / client:
 
 ```powershell
 $shared = '<SAP_DEV_CORE_SHARED_DIR>\scripts'
-$out    = '{WORK_TEMP}\THE_CLASS_NAME_from_sap.txt'   # the path SAP GUI will write
+$out    = '{RUN_TEMP}\THE_CLASS_NAME_from_sap.txt'   # the path SAP GUI will write
 # 1. Pre-check the allow-list (read-only; informational + lets us skip the watcher).
 & "$shared\sap_gui_security_precheck.ps1" -Path $out -Access w -System 'THE_SID' -Client 'THE_CLIENT' -Transaction 'SE24' | Out-Host
 $allowed = ($LASTEXITCODE -eq 0)
@@ -922,7 +932,7 @@ if (-not $allowed) {
 }
 # 3. Run the check + download (32-bit cscript). If the dialog appears it blocks
 #    here until the watcher dismisses it; then the download completes.
-& 'C:/Windows/SysWOW64/cscript.exe' //NoLogo '{WORK_TEMP}\sap_se24_check_and_download_run.vbs'
+& 'C:/Windows/SysWOW64/cscript.exe' //NoLogo '{RUN_TEMP}\sap_se24_check_and_download_run.vbs'
 # 4. Reap the watcher.
 if ($watcher) { $watcher | Wait-Process -Timeout 45 -ErrorAction SilentlyContinue }
 ```
@@ -940,13 +950,13 @@ if ($watcher) { $watcher | Wait-Process -Timeout 45 -ErrorAction SilentlyContinu
 
 ## Step B — Analyze and Fix Source
 
-The source was downloaded to `{WORK_TEMP}\<CLASS_NAME>_from_sap.txt` (**UTF-8, no BOM** — SE24 Download menu saves in UTF-8).
+The source was downloaded to `{RUN_TEMP}\<CLASS_NAME>_from_sap.txt` (**UTF-8, no BOM** — SE24 Download menu saves in UTF-8).
 
 **Important — file format:** SE24 Download saves the class in "class pool" format (compact lowercase ABAP OO syntax), not the full `CLASS ... DEFINITION PUBLIC ...` form. This is normal and correct for SE24.
 
 **1. Read the file:**
 ```powershell
-$srcFile = '{WORK_TEMP}\<CLASS_NAME>_from_sap.txt'
+$srcFile = '{RUN_TEMP}\<CLASS_NAME>_from_sap.txt'
 $text = [System.IO.File]::ReadAllText($srcFile, [System.Text.Encoding]::UTF8)
 Write-Host $text
 ```
@@ -956,8 +966,8 @@ Write this to a `.ps1` file and run it — do not pass inline to `powershell -Co
 
 **3. Apply fixes and write fixed file (UTF-8 without BOM):**
 ```powershell
-$srcFile   = '{WORK_TEMP}\<CLASS_NAME>_from_sap.txt'
-$fixedFile = '{WORK_TEMP}\<CLASS_NAME>_fixed.txt'
+$srcFile   = '{RUN_TEMP}\<CLASS_NAME>_from_sap.txt'
+$fixedFile = '{RUN_TEMP}\<CLASS_NAME>_fixed.txt'
 $text = [System.IO.File]::ReadAllText($srcFile, [System.Text.Encoding]::UTF8)
 # Apply fixes — example:
 $text = $text -replace '(?i)bad_pattern', 'correct_replacement'
@@ -973,7 +983,7 @@ After all fixes are applied, proceed to Step C.
 
 ## Step C — Re-upload Fixed Source
 
-Run the **Step 5a (Update)** flow with `{WORK_TEMP}\<CLASS_NAME>_fixed.txt` as `THE_SOURCE_PATH`.
+Run the **Step 5a (Update)** flow with `{RUN_TEMP}\<CLASS_NAME>_fixed.txt` as `THE_SOURCE_PATH`.
 
 The update VBS uploads the fixed source, saves, activates (Ctrl+F3), and runs the syntax check.
 
@@ -991,15 +1001,15 @@ The update VBS uploads the fixed source, saves, activates (Ctrl+F3), and runs th
 
 Delete all temporary files:
 ```bash
-cmd /c del {WORK_TEMP}\sap_se24_check_run.vbs & del {WORK_TEMP}\sap_se24_check_run.ps1 & del {WORK_TEMP}\sap_se24_create_run.vbs & del {WORK_TEMP}\sap_se24_create_run.ps1 & del {WORK_TEMP}\sap_se24_update_run.vbs & del {WORK_TEMP}\sap_se24_update_run.ps1 & del {WORK_TEMP}\sap_se24_check_and_download_run.vbs & del {WORK_TEMP}\sap_se24_check_and_download_run.ps1 & del {WORK_TEMP}\sap_se24_change_props_run.vbs & del {WORK_TEMP}\sap_se24_change_props_run.ps1 & del {WORK_TEMP}\sap_se24_delete_run.vbs & del {WORK_TEMP}\sap_se24_delete_run.ps1
+cmd /c del {RUN_TEMP}\sap_se24_check_run.vbs & del {RUN_TEMP}\sap_se24_check_run.ps1 & del {RUN_TEMP}\sap_se24_create_run.vbs & del {RUN_TEMP}\sap_se24_create_run.ps1 & del {RUN_TEMP}\sap_se24_update_run.vbs & del {RUN_TEMP}\sap_se24_update_run.ps1 & del {RUN_TEMP}\sap_se24_check_and_download_run.vbs & del {RUN_TEMP}\sap_se24_check_and_download_run.ps1 & del {RUN_TEMP}\sap_se24_change_props_run.vbs & del {RUN_TEMP}\sap_se24_change_props_run.ps1 & del {RUN_TEMP}\sap_se24_delete_run.vbs & del {RUN_TEMP}\sap_se24_delete_run.ps1
 ```
 
 For fix mode, also delete:
 ```bash
-cmd /c del {WORK_TEMP}\<CLASS_NAME>_from_sap.txt & del {WORK_TEMP}\<CLASS_NAME>_fixed.txt
+cmd /c del {RUN_TEMP}\<CLASS_NAME>_from_sap.txt & del {RUN_TEMP}\<CLASS_NAME>_fixed.txt
 ```
 
-Also delete `{WORK_TEMP}\<CLASS_NAME>.abap` if the user pasted code (not a user-supplied file).
+Also delete `{RUN_TEMP}\<CLASS_NAME>.abap` if the user pasted code (not a user-supplied file).
 
 ---
 
@@ -1010,7 +1020,7 @@ Log the run-end record. Best-effort.
 On success:
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_se24_run.json" -Status SUCCESS -ExitCode 0 -MetricsJson '{"gate":"DEPLOY","verdict":"PASS","syntax_errors":0,"activated":true}'
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_se24_run.json" -Status SUCCESS -ExitCode 0 -MetricsJson '{"gate":"DEPLOY","verdict":"PASS","syntax_errors":0,"activated":true}'
 ```
 
 **Build-KPI enrichment (best-effort).** Populate `-MetricsJson` from this deploy:
@@ -1022,7 +1032,7 @@ omit if you cannot read the markers.
 On failure:
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_se24_run.json" -Status FAILED -ExitCode 1 -ErrorClass <CLASS> -ErrorMsg "<short>"
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_se24_run.json" -Status FAILED -ExitCode 1 -ErrorClass <CLASS> -ErrorMsg "<short>"
 ```
 
 Suggested `<CLASS>`: `SE24_FAILED`, `SE24_INACTIVE`, `SE24_LOCKED`, `TR_RESOLUTION_FAILED`, `GUI_TIMEOUT`.
@@ -1041,10 +1051,10 @@ class's own method declaration is filed under the class with the METHOD in
 source was deployed.
 
 1. Write the captured VBS stdout (per-finding `... Line N: <text>` lines) to
-   `{WORK_TEMP}\se24_output.txt`.
+   `{RUN_TEMP}\se24_output.txt`.
 2. Run:
    ```bash
-   powershell -NoProfile -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_error_hints.ps1" -Action record -Source SE24 -CustomUrl "{custom_url}" -SourceFile "<DEPLOYED_ABAP_PATH>" -RawOutputFile "{WORK_TEMP}\se24_output.txt" -Program "<CLASS_NAME>"
+   powershell -NoProfile -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_error_hints.ps1" -Action record -Source SE24 -CustomUrl "{custom_url}" -SourceFile "<DEPLOYED_ABAP_PATH>" -RawOutputFile "{RUN_TEMP}\se24_output.txt" -Program "<CLASS_NAME>"
    ```
    Report `STATUS: RECORDED ...` as INFO. Non-zero exit is non-fatal.
 
@@ -1071,7 +1081,7 @@ The VBS update template automatically handles ABAP source file encoding:
 
 When writing ABAP source files, always use **UTF-8 without BOM**:
 ```powershell
-[System.IO.File]::WriteAllText("{WORK_TEMP}\file.abap", $content, (New-Object System.Text.UTF8Encoding $false))
+[System.IO.File]::WriteAllText("{RUN_TEMP}\file.abap", $content, (New-Object System.Text.UTF8Encoding $false))
 ```
 Do NOT use `Set-Content -Encoding UTF8` — it adds a BOM that causes SAP activation errors.
 

@@ -106,6 +106,76 @@ function Get-SapWorkRuntimeDir {
     return $dir
 }
 
+function Get-SapRunTemp {
+    # Per-invocation scratch directory: {work_dir}\temp\run_<guid8>.
+    #
+    # Mints a FRESH unique subdirectory each call and creates it. Each skill
+    # invocation -- INCLUDING each parallel sub-agent -- calls this ONCE in its
+    # Step 0 and reuses the returned path for the rest of the run, so two
+    # concurrent runs never share a scratch file name. This is the fix for the
+    # fixed-name {WORK_TEMP} collision class: the generate-then-execute TOCTOU on
+    # *_run.vbs (a concurrent run clobbering the file between write and cscript
+    # exec -> wrong object deployed), the sap_<skill>_run.json log-state clobber,
+    # and scratch-txt clobber.
+    #
+    # CONTRACT: call once, in Step 0; reuse the value. Do NOT re-mint mid-skill
+    # (a second call returns a DIFFERENT dir and would fork a write-then-read
+    # handoff such as se38's "Write {RUN_TEMP}\<PGM>.abap then read it").
+    #
+    # Unlike the broker / Get-SapCurrentSessionPath / Get-SapCurrentConnectionProfile
+    # family, this builds DOWN from {work_dir}\temp and NEVER does
+    # `Split-Path -Parent`, so it cannot disturb the durable runtime-dir
+    # derivation ({work_dir}\runtime, home of session_registry.json + the
+    # AI-session pin). Callers MUST keep `-WorkTemp` on the base {work_dir}\temp
+    # for those helpers; only the skill's OWN scratch goes under this run dir.
+    param([string]$WorkDir = '')
+    if ([string]::IsNullOrWhiteSpace($WorkDir)) { $WorkDir = Get-SapWorkDir }
+    $base = Join-Path $WorkDir 'temp'
+    if (-not (Test-Path $base)) { New-Item -ItemType Directory -Force -Path $base | Out-Null }
+    # Retry a few times so an old, not-yet-GC'd run dir with the same 8-hex
+    # token cannot be silently reused (which would re-introduce sharing).
+    for ($i = 0; $i -lt 20; $i++) {
+        $token = 'run_' + ([guid]::NewGuid().ToString('N').Substring(0, 8))
+        $dir = Join-Path $base $token
+        if (-not (Test-Path $dir)) {
+            New-Item -ItemType Directory -Force -Path $dir | Out-Null
+            return $dir
+        }
+    }
+    # Astronomically unlikely (20 GUID collisions). Fall back to a full GUID.
+    $dir = Join-Path $base ('run_' + [guid]::NewGuid().ToString('N'))
+    New-Item -ItemType Directory -Force -Path $dir | Out-Null
+    return $dir
+}
+
+function Remove-SapStaleRunTemp {
+    # Best-effort GC of orphaned per-run scratch dirs ({work_dir}\temp\run_*).
+    # A crashed or abandoned run never reaches its `rmdir {RUN_TEMP}` cleanup, so
+    # sweep run_* dirs whose last-write is older than -MaxAgeHours (default 24h).
+    # Intended for /sap-login Step 6 alongside the broker `gc`. Never throws;
+    # returns the count removed.
+    param(
+        [string]$WorkDir = '',
+        [int]$MaxAgeHours = 24
+    )
+    try {
+        if ([string]::IsNullOrWhiteSpace($WorkDir)) { $WorkDir = Get-SapWorkDir }
+        $base = Join-Path $WorkDir 'temp'
+        if (-not (Test-Path $base)) { return 0 }
+        $cutoff = (Get-Date).AddHours(-1 * [math]::Abs($MaxAgeHours))
+        $removed = 0
+        Get-ChildItem -LiteralPath $base -Directory -Filter 'run_*' -ErrorAction SilentlyContinue | ForEach-Object {
+            if ($_.LastWriteTime -lt $cutoff) {
+                try {
+                    Remove-Item -LiteralPath $_.FullName -Recurse -Force -ErrorAction Stop
+                    $removed++
+                } catch { }
+            }
+        }
+        return $removed
+    } catch { return 0 }
+}
+
 function Get-SapConnectionStorePath {
     if ($script:SapConnStore_PathCache) { return $script:SapConnStore_PathCache }
     $script:SapConnStore_PathCache = Join-Path (Get-SapWorkRuntimeDir) 'connections.json'

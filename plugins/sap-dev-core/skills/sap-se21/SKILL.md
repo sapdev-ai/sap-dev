@@ -48,7 +48,7 @@ Task: $ARGUMENTS
 **Resolve `work_dir` via the env-aware helper** — do NOT take `work_dir` from a direct `settings.json` read (that ignores the `SAPDEV_AI_WORK_DIR` env var and `userconfig.json`). Use the `WORK_DIR=` value printed by:
 
 ```bash
-powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('WORK_DIR=' + (Get-SapWorkDir))"
+powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('WORK_DIR=' + (Get-SapWorkDir)); Write-Output ('RUN_TEMP=' + (Get-SapRunTemp))"
 ```
 
 The settings note below still applies to the OTHER keys.
@@ -67,14 +67,24 @@ Ensure the temp directory exists:
 cmd /c if not exist "{WORK_TEMP}" mkdir "{WORK_TEMP}"
 ```
 
+Set `{RUN_TEMP}` = the `RUN_TEMP=` value printed above — a fresh per-run scratch
+directory `{work_dir}\temp\run_<id>`, already created by `Get-SapRunTemp`.
+Resolve it **once here** and reuse the same value for the rest of this
+invocation; it isolates this run's generated wrappers / state / scratch files so
+concurrent runs (parallel sub-agents, multi-connection deploys) never collide.
+**`{WORK_TEMP}` stays the base temp dir** and is used ONLY for
+`Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'` (the session-attach plumbing
+derives `{work_dir}\runtime` from its parent, so it must see the base path, not
+the run dir). Everything the skill writes itself goes under `{RUN_TEMP}`.
+
 ---
 
 ## Step 0.5 — Start Logging
 
-Start a structured log run. State file: `{WORK_TEMP}\sap_se21_run.json`. Best-effort.
+Start a structured log run. State file: `{RUN_TEMP}\sap_se21_run.json`. Best-effort.
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{WORK_TEMP}\sap_se21_run.json" -Skill sap-se21 -ParamsJson "{\"package\":\"<PACKAGE>\"}"
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{RUN_TEMP}\sap_se21_run.json" -Skill sap-se21 -ParamsJson "{\"package\":\"<PACKAGE>\"}"
 ```
 
 ---
@@ -120,7 +130,7 @@ they configure settings.json for future use.
 
 Use RFC_READ_TABLE via the PowerShell template at `<SKILL_DIR>/references/sap_check_package.ps1`.
 
-**Write `{WORK_TEMP}\sap_check_package_run.ps1`:**
+**Write `{RUN_TEMP}\sap_check_package_run.ps1`:**
 ```powershell
 $content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_check_package.ps1', [System.Text.Encoding]::UTF8)
 $content = $content.Replace('%%SAP_APPLICATION_SERVER%%', '')
@@ -131,19 +141,19 @@ $content = $content.Replace('%%SAP_PASSWORD%%', '')
 $content = $content.Replace('%%SAP_LANGUAGE%%', '')
 $content = $content.Replace('%%RFC_LIB_PS1%%',  '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_rfc_lib.ps1')
 $content = $content.Replace('%%PACKAGE%%',      'THE_PACKAGE')
-[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_check_package_filled.ps1', $content, [System.Text.Encoding]::UTF8)
+[System.IO.File]::WriteAllText('{RUN_TEMP}\sap_check_package_filled.ps1', $content, [System.Text.Encoding]::UTF8)
 Write-Host 'Done'
 ```
 
 Replace all `THE_*` placeholders and `<SKILL_DIR>` with actual values. Run it:
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "{WORK_TEMP}\sap_check_package_run.ps1"
+powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_check_package_run.ps1"
 ```
 
 Execute via 32-bit PowerShell (SAP NCo 3.1 is registered in the 32-bit GAC):
 ```bash
-C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File "{WORK_TEMP}\sap_check_package_filled.ps1"
+C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_check_package_filled.ps1"
 ```
 
 **Parse output:**
@@ -194,7 +204,7 @@ fills in the package name + description, and assigns the TR.
 **Prerequisite:** The user must already be logged in (run `/sap-login` first).
 This script does **not** open a new connection.
 
-**Write `{WORK_TEMP}\sap_se21_run.ps1`:**
+**Write `{RUN_TEMP}\sap_se21_run.ps1`:**
 ```powershell
 $content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_se21_create.vbs', [System.Text.Encoding]::UTF8)
 $content = $content.Replace('%%PACKAGE%%',          'THE_PACKAGE')
@@ -207,7 +217,7 @@ $content = $content.Replace('%%SESSION_PATH%%',   $sessionPath)
 $content = $content.Replace('%%ATTACH_LIB_VBS%%', '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs')
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_se21_filled.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
+[System.IO.File]::WriteAllText('{RUN_TEMP}\sap_se21_filled.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 
@@ -225,12 +235,12 @@ includes the shared session-lock helpers via `ExecuteGlobal CreateObject(
 
 Run:
 ```bash
-powershell -ExecutionPolicy Bypass -File "{WORK_TEMP}\sap_se21_run.ps1"
+powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_se21_run.ps1"
 ```
 
 Execute via regular cscript (SAP GUI Scripting works in either bitness):
 ```bash
-cscript //NoLogo "{WORK_TEMP}\sap_se21_filled.vbs"
+cscript //NoLogo "{RUN_TEMP}\sap_se21_filled.vbs"
 ```
 
 ---
@@ -304,7 +314,7 @@ flow is:
 
 ### Generate the filled-in VBScript
 
-Write `{WORK_TEMP}\sap_se21_delete_run.ps1`:
+Write `{RUN_TEMP}\sap_se21_delete_run.ps1`:
 
 ```powershell
 $skillDir = '<SKILL_DIR>'
@@ -319,15 +329,15 @@ $content  = $content.Replace('%%SESSION_PATH%%',     $sessionPath)
 $content  = $content.Replace('%%ATTACH_LIB_VBS%%',   '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs')
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_se21_delete_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
+[System.IO.File]::WriteAllText('{RUN_TEMP}\sap_se21_delete_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 
 Run:
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "{WORK_TEMP}\sap_se21_delete_run.ps1"
-cscript //NoLogo "{WORK_TEMP}\sap_se21_delete_run.vbs"
+powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_se21_delete_run.ps1"
+cscript //NoLogo "{RUN_TEMP}\sap_se21_delete_run.vbs"
 ```
 
 ### Behaviour Notes
@@ -378,7 +388,7 @@ create reporting applies.
 ## Step 7 — Clean Up
 
 ```bash
-cmd /c del "{WORK_TEMP}\sap_check_package_run.ps1" "{WORK_TEMP}\sap_check_package_filled.ps1" "{WORK_TEMP}\sap_se21_run.ps1" "{WORK_TEMP}\sap_se21_filled.vbs" "{WORK_TEMP}\sap_se21_delete_run.vbs" "{WORK_TEMP}\sap_se21_delete_run.ps1"
+cmd /c del "{RUN_TEMP}\sap_check_package_run.ps1" "{RUN_TEMP}\sap_check_package_filled.ps1" "{RUN_TEMP}\sap_se21_run.ps1" "{RUN_TEMP}\sap_se21_filled.vbs" "{RUN_TEMP}\sap_se21_delete_run.vbs" "{RUN_TEMP}\sap_se21_delete_run.ps1"
 ```
 
 ---
@@ -390,13 +400,13 @@ Log the run-end record. Best-effort.
 On success:
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_se21_run.json" -Status SUCCESS -ExitCode 0
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_se21_run.json" -Status SUCCESS -ExitCode 0
 ```
 
 On failure:
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_se21_run.json" -Status FAILED -ExitCode 1 -ErrorClass <CLASS> -ErrorMsg "<short>"
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_se21_run.json" -Status FAILED -ExitCode 1 -ErrorClass <CLASS> -ErrorMsg "<short>"
 ```
 
 Suggested `<CLASS>`: `SE21_FAILED`, `TR_RESOLUTION_FAILED`, `GUI_TIMEOUT`.

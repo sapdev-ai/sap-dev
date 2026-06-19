@@ -521,6 +521,7 @@ const LEDGER_GATE_SKILLS = new Set([
 
 const ledgerWarnings = [];
 const step0Warnings = [];
+const runTempWarnings = [];
 
 for (const plugin of mp.plugins) {
   const sourceRel = plugin.source.replace(/^\.\//, '').replace(/\/$/, '');
@@ -546,6 +547,24 @@ for (const plugin of mp.plugins) {
         && !/sap_workdir_setup\.ps1/.test(md)) {
       step0Warnings.push(`${plugin.name}: skills/${skillEntry}/SKILL.md has a Step 0 "Resolve Work Directory" but resolves work_dir via neither Get-SapWorkDir nor the env-aware onboarding helper sap_workdir_setup.ps1; resolve work_dir env-aware, not via a direct settings.json read (CLAUDE.md Rule 7)`);
     }
+
+    // (c) Run-scoped temp isolation ({RUN_TEMP}). HARD ERROR: never point the
+    //     session-attach plumbing at the per-run dir. Get-SapCurrentSessionPath
+    //     -WorkTemp derives the durable runtime dir ({work_dir}\runtime, home of
+    //     session_registry.json) from its PARENT, so passing {RUN_TEMP} there
+    //     relocates the broker registry and breaks parallel-session coordination.
+    //     Migrated skills keep the base '{WORK_TEMP}' on that call.
+    if (/Get-SapCurrentSessionPath\s+-WorkTemp\s+'?\{RUN_TEMP\}'?/.test(md)) {
+      errors.push(`${plugin.name}: skills/${skillEntry}/SKILL.md passes {RUN_TEMP} to Get-SapCurrentSessionPath -WorkTemp; that derives {work_dir}\\runtime from the parent and would relocate session_registry.json. Keep the base '{WORK_TEMP}' on that call; only the skill's own scratch goes under {RUN_TEMP}.`);
+    }
+    // (d) Ratcheting WARN: a skill still writing its generated *_run.vbs/.ps1 to
+    //     the shared base {WORK_TEMP} is unmigrated -- two concurrent runs collide
+    //     on that fixed name (generate-then-cscript TOCTOU -> wrong-object deploy).
+    //     Move per-run scratch to {RUN_TEMP} (Get-SapRunTemp). Informational until
+    //     full coverage, then promote to a hard error.
+    if (/\{WORK_TEMP\}\\[^\s'"]*_run\.(?:vbs|ps1)/.test(md)) {
+      runTempWarnings.push(`${plugin.name}: skills/${skillEntry}/SKILL.md writes a generated *_run.vbs/.ps1 under the shared base {WORK_TEMP}; move per-run scratch to {RUN_TEMP} (Get-SapRunTemp) so concurrent runs don't collide (CLAUDE.md "Work Directory Configuration")`);
+    }
   }
 }
 
@@ -563,12 +582,16 @@ if (errors.length === 0) {
   if (step0Warnings.length > 0) {
     summary += `, ${step0Warnings.length} Step-0 warning(s)`;
   }
+  if (runTempWarnings.length > 0) {
+    summary += `, ${runTempWarnings.length} run-temp warning(s)`;
+  }
   summary += `, ${baselineCoverage}`;
   console.log(summary);
   for (const w of phase4Warnings) console.warn('  WARN: ' + w);
   for (const w of encodingWarnings) console.warn('  WARN: ' + w);
   for (const w of ledgerWarnings) console.warn('  WARN: ' + w);
   for (const w of step0Warnings) console.warn('  WARN: ' + w);
+  for (const w of runTempWarnings) console.warn('  WARN: ' + w);
   for (const w of baselineWarnings) console.warn('  WARN: ' + w);
   process.exit(0);
 } else {
@@ -589,6 +612,10 @@ if (errors.length === 0) {
   if (step0Warnings.length > 0) {
     console.error(`\nStep-0 work_dir warnings (informational):`);
     for (const w of step0Warnings) console.error('  WARN: ' + w);
+  }
+  if (runTempWarnings.length > 0) {
+    console.error(`\nRun-scoped temp ({RUN_TEMP}) warnings (informational):`);
+    for (const w of runTempWarnings) console.error('  WARN: ' + w);
   }
   console.error(`\n${baselineCoverage}`);
   if (baselineWarnings.length > 0) {

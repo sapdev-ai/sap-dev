@@ -38,7 +38,7 @@ Task: $ARGUMENTS
 **Resolve `work_dir` via the env-aware helper** — do NOT take `work_dir` from a direct `settings.json` read (that ignores the `SAPDEV_AI_WORK_DIR` env var and `userconfig.json`). Use the `WORK_DIR=` value printed by:
 
 ```bash
-powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('WORK_DIR=' + (Get-SapWorkDir))"
+powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('WORK_DIR=' + (Get-SapWorkDir)); Write-Output ('RUN_TEMP=' + (Get-SapRunTemp))"
 ```
 
 The settings note below still applies to the OTHER keys.
@@ -50,17 +50,27 @@ Set `{WORK_TEMP}` = `{work_dir}\temp`. Ensure it exists:
 cmd /c if not exist "{WORK_TEMP}" mkdir "{WORK_TEMP}"
 ```
 
+Set `{RUN_TEMP}` = the `RUN_TEMP=` value printed above — a fresh per-run scratch
+directory `{work_dir}\temp\run_<id>`, already created by `Get-SapRunTemp`.
+Resolve it **once here** and reuse the same value for the rest of this
+invocation; it isolates this run's generated wrappers / state / scratch files so
+concurrent runs (parallel sub-agents, multi-connection deploys) never collide.
+**`{WORK_TEMP}` stays the base temp dir** and is used ONLY for
+`Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'` (the session-attach plumbing
+derives `{work_dir}\runtime` from its parent, so it must see the base path, not
+the run dir). Everything the skill writes itself goes under `{RUN_TEMP}`.
+
 ---
 
 ## Step 0.5 — Start Logging
 
 Start a structured log run. The helper persists `run_id` in a state file
-(`{WORK_TEMP}\sap_change_package_run.json`) so subsequent steps and the
+(`{RUN_TEMP}\sap_change_package_run.json`) so subsequent steps and the
 final log-end call append to the same run. Best-effort: silently no-ops
 if `userConfig.log_enabled=false` or the lib can't load.
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{WORK_TEMP}\sap_change_package_run.json" -Skill sap-change-package -ParamsJson "{\"object_type\":\"<OBJECT_TYPE>\",\"object_name\":\"<OBJECT_NAME>\",\"new_package\":\"<NEW_PACKAGE>\"}"
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{RUN_TEMP}\sap_change_package_run.json" -Skill sap-change-package -ParamsJson "{\"object_type\":\"<OBJECT_TYPE>\",\"object_name\":\"<OBJECT_NAME>\",\"new_package\":\"<NEW_PACKAGE>\"}"
 ```
 
 ---
@@ -234,7 +244,7 @@ Tokens:
 | `%%TRANSPORT%%` | `TMP_TO_TRANSPORT` mode (pre-resolved TR); empty otherwise |
 | `%%TR_DESCRIPTION%%` | `TMP_TO_TRANSPORT` mode (used if dialog asks for new-TR description) |
 
-Token-replace into `{WORK_TEMP}\sap_change_package_<TXN>_run.ps1`:
+Token-replace into `{RUN_TEMP}\sap_change_package_<TXN>_run.ps1`:
 ```powershell
 $content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_change_package_<TXN>.vbs', [System.Text.Encoding]::UTF8)
 $content = $content -replace '%%OBJECT_NAME%%','THE_NAME'
@@ -248,14 +258,14 @@ $content = $content -replace '%%SESSION_PATH%%', $sessionPath
 $content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_change_package_<TXN>_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
+[System.IO.File]::WriteAllText('{RUN_TEMP}\sap_change_package_<TXN>_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 
 Run via 32-bit cscript:
 ```bash
-powershell -ExecutionPolicy Bypass -File "{WORK_TEMP}\sap_change_package_<TXN>_run.ps1"
-C:/Windows/SysWOW64/cscript.exe //NoLogo {WORK_TEMP}\sap_change_package_<TXN>_run.vbs
+powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_change_package_<TXN>_run.ps1"
+C:/Windows/SysWOW64/cscript.exe //NoLogo {RUN_TEMP}\sap_change_package_<TXN>_run.vbs
 ```
 
 Each VBS emits a stable contract:
@@ -294,13 +304,13 @@ Log the run-end record. Best-effort: silently no-ops if logging disabled.
 On success:
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_change_package_run.json" -Status SUCCESS -ExitCode 0
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_change_package_run.json" -Status SUCCESS -ExitCode 0
 ```
 
 On failure (substitute `<CLASS>` and short message):
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_change_package_run.json" -Status FAILED -ExitCode 1 -ErrorClass <CLASS> -ErrorMsg "<short>"
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_change_package_run.json" -Status FAILED -ExitCode 1 -ErrorClass <CLASS> -ErrorMsg "<short>"
 ```
 
 Suggested `<CLASS>`: `CHANGE_PACKAGE_FAILED`, `OBJECT_LOCKED_IN_TR`, `TR_RESOLUTION_FAILED`, `GUI_TIMEOUT`.

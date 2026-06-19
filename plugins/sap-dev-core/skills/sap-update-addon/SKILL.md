@@ -35,7 +35,7 @@ Task: $ARGUMENTS
 **Resolve `work_dir` via the env-aware helper** — do NOT take `work_dir` from a direct `settings.json` read (that ignores the `SAPDEV_AI_WORK_DIR` env var and `userconfig.json`). Use the `WORK_DIR=` value printed by:
 
 ```bash
-powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('WORK_DIR=' + (Get-SapWorkDir))"
+powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('WORK_DIR=' + (Get-SapWorkDir)); Write-Output ('RUN_TEMP=' + (Get-SapRunTemp))"
 ```
 
 The settings note below still applies to the OTHER keys.
@@ -54,14 +54,24 @@ Ensure the temp directory exists:
 cmd /c if not exist "{WORK_TEMP}" mkdir "{WORK_TEMP}"
 ```
 
+Set `{RUN_TEMP}` = the `RUN_TEMP=` value printed above — a fresh per-run scratch
+directory `{work_dir}\temp\run_<id>`, already created by `Get-SapRunTemp`.
+Resolve it **once here** and reuse the same value for the rest of this
+invocation; it isolates this run's generated wrappers / state / scratch files so
+concurrent runs (parallel sub-agents, multi-connection deploys) never collide.
+**`{WORK_TEMP}` stays the base temp dir** and is used ONLY for
+`Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'` (the session-attach plumbing
+derives `{work_dir}\runtime` from its parent, so it must see the base path, not
+the run dir). Everything the skill writes itself goes under `{RUN_TEMP}`.
+
 ---
 
 ## Step 0.5 — Start Logging
 
-Start a structured log run. State file: `{WORK_TEMP}\sap_update_addon_run.json`. Best-effort.
+Start a structured log run. State file: `{RUN_TEMP}\sap_update_addon_run.json`. Best-effort.
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{WORK_TEMP}\sap_update_addon_run.json" -Skill sap-update-addon -ParamsJson "{\"table\":\"<TABLE>\"}"
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{RUN_TEMP}\sap_update_addon_run.json" -Skill sap-update-addon -ParamsJson "{\"table\":\"<TABLE>\"}"
 ```
 
 ---
@@ -77,7 +87,7 @@ Extract from `$ARGUMENTS`:
   For ZCMRUPDATE_ADDON_TABLE method, INSERT and UPDATE both result in MODIFY (upsert).
 - **SAP Logon description** — optional. Used for credential lookup.
 
-If the user provides inline data instead of a file, write it to `{WORK_TEMP}\<TABLE_NAME>_data.txt`
+If the user provides inline data instead of a file, write it to `{RUN_TEMP}\<TABLE_NAME>_data.txt`
 as a TAB-delimited file with header.
 
 Verify the data file exists:
@@ -113,7 +123,7 @@ This skill requires an active SAP GUI session. If not already logged in, use the
 
 The detection PowerShell template is at `./references/sap_update_addon_detect.ps1`.
 
-Write `{WORK_TEMP}\sap_update_addon_detect_run.ps1`:
+Write `{RUN_TEMP}\sap_update_addon_detect_run.ps1`:
 ```powershell
 $content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_update_addon_detect.ps1', [System.Text.Encoding]::UTF8)
 $content = $content.Replace('%%SAP_SERVER%%',   '')
@@ -124,13 +134,13 @@ $content = $content.Replace('%%SAP_PASSWORD%%', '')
 $content = $content.Replace('%%SAP_LANGUAGE%%', '')
 $content = $content.Replace('%%RFC_LIB_PS1%%',  '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_rfc_lib.ps1')
 $content = $content.Replace('%%TABLE_NAME%%',   'THE_TABLE_NAME')
-[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_update_addon_detect_run.ps1', $content, [System.Text.Encoding]::UTF8)
+[System.IO.File]::WriteAllText('{RUN_TEMP}\sap_update_addon_detect_run.ps1', $content, [System.Text.Encoding]::UTF8)
 Write-Host 'Done'
 ```
 
 Execute via 32-bit PowerShell:
 ```bash
-C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File "{WORK_TEMP}\sap_update_addon_detect_run.ps1"
+C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_update_addon_detect_run.ps1"
 ```
 
 Parse the output lines:
@@ -160,7 +170,7 @@ not affected by the same registration issue.
 
 Template: `./references/sap_update_addon_sm30.vbs`
 
-Write `{WORK_TEMP}\sap_update_addon_sm30_run.ps1`:
+Write `{RUN_TEMP}\sap_update_addon_sm30_run.ps1`:
 ```powershell
 $content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_update_addon_sm30.vbs', [System.Text.Encoding]::UTF8)
 $content = $content.Replace('%%TABLE_NAME%%', 'THE_TABLE_NAME')
@@ -172,13 +182,13 @@ $content = $content.Replace('%%SESSION_PATH%%',   $sessionPath)
 $content = $content.Replace('%%ATTACH_LIB_VBS%%', '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs')
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_update_addon_sm30_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
+[System.IO.File]::WriteAllText('{RUN_TEMP}\sap_update_addon_sm30_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 
 Execute:
 ```bash
-powershell -Command "& cscript //NoLogo '{WORK_TEMP}\sap_update_addon_sm30_run.vbs'"
+powershell -Command "& cscript //NoLogo '{RUN_TEMP}\sap_update_addon_sm30_run.vbs'"
 ```
 
 **SM30 Notes:**
@@ -191,7 +201,7 @@ powershell -Command "& cscript //NoLogo '{WORK_TEMP}\sap_update_addon_sm30_run.v
 
 Template: `./references/sap_update_addon_se16.vbs`
 
-Write `{WORK_TEMP}\sap_update_addon_se16_run.ps1`:
+Write `{RUN_TEMP}\sap_update_addon_se16_run.ps1`:
 ```powershell
 $content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_update_addon_se16.vbs', [System.Text.Encoding]::UTF8)
 $content = $content.Replace('%%TABLE_NAME%%', 'THE_TABLE_NAME')
@@ -203,13 +213,13 @@ $content = $content.Replace('%%SESSION_PATH%%',   $sessionPath)
 $content = $content.Replace('%%ATTACH_LIB_VBS%%', '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs')
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_update_addon_se16_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
+[System.IO.File]::WriteAllText('{RUN_TEMP}\sap_update_addon_se16_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 
 Execute:
 ```bash
-powershell -Command "& cscript //NoLogo '{WORK_TEMP}\sap_update_addon_se16_run.vbs'"
+powershell -Command "& cscript //NoLogo '{RUN_TEMP}\sap_update_addon_se16_run.vbs'"
 ```
 
 **SE16 Notes (INSERT / UPDATE):**
@@ -240,19 +250,19 @@ The source code for ZCMRUPDATE_ADDON_TABLE is at `./references/ZCMRUPDATE_ADDON_
 
 Template: `./references/sap_update_addon_prog.vbs`
 
-Write `{WORK_TEMP}\sap_update_addon_prog_run.ps1`:
+Write `{RUN_TEMP}\sap_update_addon_prog_run.ps1`:
 ```powershell
 $content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_update_addon_prog.vbs', [System.Text.Encoding]::UTF8)
 $content = $content.Replace('%%TABLE_NAME%%', 'THE_TABLE_NAME')
 $content = $content.Replace('%%DATA_FILE%%',  'THE_DATA_FILE')
-$content = $content.Replace('%%TEMP_DIR%%',   '{WORK_TEMP}')
+$content = $content.Replace('%%TEMP_DIR%%',   '{RUN_TEMP}')
 # Phase 3.5 session-attach plumbing.
 $sessionPath = ''
 $content = $content.Replace('%%SESSION_PATH%%',   $sessionPath)
 $content = $content.Replace('%%ATTACH_LIB_VBS%%', '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs')
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_update_addon_prog_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
+[System.IO.File]::WriteAllText('{RUN_TEMP}\sap_update_addon_prog_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 
@@ -272,17 +282,17 @@ can appear well after the upload.
 ```powershell
 $shared  = '<SAP_DEV_CORE_SHARED_DIR>\scripts'
 $watcher = Start-Process powershell -PassThru -WindowStyle Hidden `
-    -RedirectStandardOutput "{WORK_TEMP}\sap_update_addon_sidecar.out" `
+    -RedirectStandardOutput "{RUN_TEMP}\sap_update_addon_sidecar.out" `
     -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File',
                     "$shared\sap_gui_security_sidecar.ps1",'-TimeoutSeconds','90')
 Start-Sleep -Milliseconds 800
 # cscript returns only after the program run + save-list complete (all dialogs handled).
-& 'C:\Windows\SysWOW64\cscript.exe' //NoLogo "{WORK_TEMP}\sap_update_addon_prog_run.vbs"
+& 'C:\Windows\SysWOW64\cscript.exe' //NoLogo "{RUN_TEMP}\sap_update_addon_prog_run.vbs"
 if (-not $watcher.HasExited) { Stop-Process -Id $watcher.Id -Force -ErrorAction SilentlyContinue }
-Get-Content "{WORK_TEMP}\sap_update_addon_sidecar.out" -Tail 1   # DISMISSED:WIN32 / TIMEOUT
+Get-Content "{RUN_TEMP}\sap_update_addon_sidecar.out" -Tail 1   # DISMISSED:WIN32 / TIMEOUT
 ```
 
-If output file was saved, read `{WORK_TEMP}\sap_update_addon_output.txt` for
+If output file was saved, read `{RUN_TEMP}\sap_update_addon_output.txt` for
 results. NOTE: the program's WRITE list is Japanese; the save-list "unconverted"
 export can render the labels as `#` under a non-matching logon codepage (the
 `成功: N  エラー: M` counts still parse by number). The authoritative result is
@@ -302,7 +312,7 @@ Show the user:
 ## Step 6 — Clean Up
 
 ```bash
-cmd /c del {WORK_TEMP}\sap_update_addon_detect_run.ps1 {WORK_TEMP}\sap_update_addon_sm30_run.vbs {WORK_TEMP}\sap_update_addon_sm30_run.ps1 {WORK_TEMP}\sap_update_addon_se16_run.vbs {WORK_TEMP}\sap_update_addon_se16_run.ps1 {WORK_TEMP}\sap_update_addon_prog_run.vbs {WORK_TEMP}\sap_update_addon_prog_run.ps1 {WORK_TEMP}\sap_update_addon_output.txt {WORK_TEMP}\sap_update_addon_sidecar.out
+cmd /c del {RUN_TEMP}\sap_update_addon_detect_run.ps1 {RUN_TEMP}\sap_update_addon_sm30_run.vbs {RUN_TEMP}\sap_update_addon_sm30_run.ps1 {RUN_TEMP}\sap_update_addon_se16_run.vbs {RUN_TEMP}\sap_update_addon_se16_run.ps1 {RUN_TEMP}\sap_update_addon_prog_run.vbs {RUN_TEMP}\sap_update_addon_prog_run.ps1 {RUN_TEMP}\sap_update_addon_output.txt {RUN_TEMP}\sap_update_addon_sidecar.out
 ```
 
 ---
@@ -314,13 +324,13 @@ Log the run-end record. Best-effort.
 On success:
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_update_addon_run.json" -Status SUCCESS -ExitCode 0
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_update_addon_run.json" -Status SUCCESS -ExitCode 0
 ```
 
 On failure:
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_update_addon_run.json" -Status FAILED -ExitCode 1 -ErrorClass <CLASS> -ErrorMsg "<short>"
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_update_addon_run.json" -Status FAILED -ExitCode 1 -ErrorClass <CLASS> -ErrorMsg "<short>"
 ```
 
 Suggested `<CLASS>`: `UPDATE_ADDON_FAILED`, `RFC_LOGON_FAILED`.
