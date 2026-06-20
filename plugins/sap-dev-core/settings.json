@@ -118,7 +118,7 @@
                        "log_file_pattern":  {
                                                 "description":  "Log filename template. Placeholders: {YYYYMMDD} {YYYYMM} {HHMMSS} {HHMM} {RUN_ID} {SKILL} {USER} {SYSTEM}. Default: 'sap-dev-{YYYYMMDD}.log' (one file per day, all runs merged). For per-run files: 'sap-dev-{YYYYMMDD}-{HHMMSS}-{SKILL}.log' or 'sap-dev-{YYYYMMDD}-{RUN_ID}.log'.",
                                                 "sensitive":  false,
-                                                "value":  ""
+                                                "value":  "{YYYYMMDD}-{SID}-{CLIENT}-{AI_SESSION}.log"
                                             },
                        "log_retention_days":  {
                                                   "description":  "Delete log files older than N days. 0 = keep forever. Default: 30.",

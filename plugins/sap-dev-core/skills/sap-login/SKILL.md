@@ -722,8 +722,9 @@ step errors:
 powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_session_broker.ps1" -Action ensure-own-session -WorkTemp "{WORK_TEMP}" -TtlSeconds 2592000 -OwnerSkill sap-login
 ```
 
-The broker auto-resolves this conversation's AI-session id (parent-PID
-walk) and prints one of:
+The broker auto-resolves this conversation's AI-session id (from
+`CLAUDE_CODE_SESSION_ID` when set — stable across a Claude host restart —
+else a parent-PID walk; see "AI-Session Identity" below) and prints one of:
 
 - `OWN_SESSION: … formalized=true` — **first / sole** conversation on the
   connection: it claims the session it already resolves to (usually
@@ -779,31 +780,43 @@ Suggested `<CLASS>`: `LOGIN_FAILED`, `RFC_LOGON_FAILED`, `GUI_TIMEOUT`.
 
 ---
 
-## AI-Session Identity (automatic, parent-PID-based)
+## AI-Session Identity (automatic; stable conversation id + liveness breadcrumb)
 
-The Phase-4 AI-session pin scope is identified by an id derived from
-the **parent-process PID** of the running skill. `Get-SapAiSessionId` in
-`sap_connection_lib.ps1` walks up the process tree from the current
-PowerShell/cscript, skipping script-host processes (`powershell`, `pwsh`,
-`cscript`, `wscript`, `cmd`, `conhost`), and stops at the first
-non-script-host ancestor — that's the Claude Code conversation process.
-Subagents launched from the same conversation share that ancestor and
-therefore share the id; parallel conversations have different parent
-PIDs and therefore get different ids.
+The Phase-4 AI-session pin scope is identified by `Get-SapAiSessionId` in
+`sap_connection_lib.ps1`, which resolves the id from the most stable source
+available:
 
-State lives at `{work_dir}\runtime\ai_session_by_pid\<owner_pid>.txt`
-(one file per conversation). Opportunistic GC drops files for PIDs that
-are no longer alive, so the directory stays small.
+1. `SAPDEV_AI_SESSION_ID` (env override) — tests / manual one-offs only.
+2. **`CLAUDE_CODE_SESSION_ID`** (env, provided by the Claude Code host) — the
+   normal production source. STABLE for the whole conversation and survives a
+   Claude host-process restart (unlike a PID, which changes on restart).
+3. **Parent-PID walk** (fallback for non-Claude-Code hosts) — walks up the
+   process tree from the current PowerShell/cscript, skipping script-host
+   processes (`powershell`, `pwsh`, `cscript`, `wscript`, `cmd`, `conhost`,
+   `bash`, `sh`, …) to the first non-script-host ancestor (the conversation
+   process), minting a GUID keyed to that owner PID.
+
+In every case the function ALSO writes a **liveness breadcrumb** at
+`{work_dir}\runtime\ai_session_by_pid\<owner_pid>.txt` (content = the id),
+keyed to the long-lived conversation process. This is what lets the broker
+tell parallel conversations apart: `ensure-own-session` reads that directory
+(`Get-LiveAiSessionIds`) to see which conversations are still alive, and
+reverse-maps an id to its owner PID (`Get-PidForAiSession`) so a claim's
+`owner_pid` is the conversation's process and the PID-death sweep
+auto-releases it. Opportunistic GC drops files for dead PIDs, so the
+directory stays small. Subagents inherit the same id (shared env var, or
+shared ancestor in the fallback); parallel conversations get different ids.
+
+> Regression (fixed 2026-06-20): the `CLAUDE_CODE_SESSION_ID` path used to
+> return the id WITHOUT writing the breadcrumb, leaving the directory empty —
+> so the broker saw zero live conversations and every parallel conversation
+> collapsed onto a shared `ses[0]`. The write is now unconditional; regression
+> test at `sap-dev/scripts/test-ai-session-isolation.ps1`.
 
 **No SessionStart hook needed.** Earlier drafts of Phase 4 used a write-
 once-if-missing `ai_session_id.txt` file written by a hook, but that
-silently shared one id across parallel conversations. The parent-PID
-mechanism is automatic, scoped correctly, and has no external setup
-requirement.
-
-**Override:** the env var `SAPDEV_AI_SESSION_ID`, if set non-empty, takes
-precedence over the walked id. Tests and manual one-offs use it; normal
-operation doesn't.
+silently shared one id across parallel conversations. The resolution above is
+automatic, scoped correctly, and has no external setup requirement.
 
 ---
 
