@@ -7,6 +7,19 @@ via `GetObject("SAPGUI") + GetScriptingEngine`.
 **Enforced by**: `sap-dev/scripts/check-consistency.mjs` — runs in CI;
 fails the build on legacy patterns.
 
+> **Scope note (2026-06-20).** Session attach is **layer 1** of the
+> parallel-safety model. After a batch of concurrent same-spec builds (one
+> `MaterialUpload` spec built simultaneously across several SAP connections, plus
+> several conversations on one connection) surfaced cross-session clobbering that
+> attach alone doesn't cover, three more layers were added — **layer 2** per-run
+> temp isolation, **layer 3** per-session dev defaults, **layer 4** per-session
+> log files. They're summarized in *"Beyond session attach — the other three
+> isolation layers"* near the end of this doc; CLAUDE.md holds the authoritative
+> per-key detail. The temp model also gained a **runtime** enforcer,
+> `sap-dev/scripts/run-temp-hook.mjs` (a `PreToolUse` hook), because the static
+> `check-consistency.mjs` can't see the running *cache* copy of a skill or ad-hoc
+> agent/orchestrator scratch.
+
 ---
 
 ## TL;DR for new skill authors
@@ -165,9 +178,9 @@ cd sap-dev
 node scripts/check-consistency.mjs
 ```
 
-Should print:
+Should print (counts grow as the repo grows — the shape is what matters):
 ```
-OK: 3 plugins, 49 skills, all manifests aligned at version 0.3.0, Tier 3 attach contract clean
+OK: 4 plugins, 78 skills, all manifests aligned at version 0.6.5, Tier 3 attach contract clean, 10 non-ASCII warning(s), 30 run-temp warning(s), screen-baseline coverage 7/119 (112 unbaselined)
 ```
 
 On failure, the script lists each non-conforming file with a specific reason. The check covers:
@@ -177,6 +190,8 @@ On failure, the script lists each non-conforming file with a specific reason. Th
 3. VBS that drives SAP GUI (matches `GetObject("SAPGUI")` or `GetScriptingEngine`) but uses neither token → unmigrated.
 4. VBS with `%%ATTACH_LIB_VBS%%` include but no `AttachSapSession(...)` call → dead include.
 5. SKILL.md that wraps a template requiring `%%ATTACH_LIB_VBS%%` but doesn't substitute it → the runtime VBS will fail to attach.
+6. SKILL.md that passes `{RUN_TEMP}` to `Get-SapCurrentSessionPath -WorkTemp` → **hard error** (that call derives `{work_dir}\runtime` from the parent, so a run-scoped path relocates `session_registry.json`; keep the base `{WORK_TEMP}` there). Layer 2.
+7. SKILL.md that writes fixed-named generated scratch under the shared `{WORK_TEMP}` base instead of `{RUN_TEMP}` → **run-temp warning** (the Bucket-A coordination files are exempt via `RUN_TEMP_SHARED_ALLOWLIST`). Layer 2.
 
 ---
 
@@ -185,6 +200,9 @@ On failure, the script lists each non-conforming file with a specific reason. Th
 - **`shared/rules/sap_session_broker.md`** — the broker's CLI contract (`acquire` / `release` / `discover` / `gc` / `list`), v2 multi-connection registry schema, cleanup architecture. Read this when you need to coordinate session ownership across parallel agents.
 - **`shared/scripts/sap_attach_lib.vbs`** — the helper itself; well-commented.
 - **`shared/scripts/sap_session_broker.ps1`** + **`shared/scripts/sap_session_broker_com.vbs`** — broker implementation.
+- **`shared/scripts/sap_dev_default.ps1`** + `Get-SapCurrentDevDefault` (`sap_connection_lib.ps1`) + `Set-SapUserSetting -Scope Session` (`sap_settings_lib.ps1`) — layer 3, per-session dev defaults.
+- **`scripts/run-temp-hook.mjs`** — runtime `PreToolUse` enforcer for layer 2 (mirrors `RUN_TEMP_SHARED_ALLOWLIST` from `check-consistency.mjs` as `SHARED_ALLOWLIST`).
+- **CLAUDE.md** — "Work Directory Configuration" (two-bucket temp), "Transport Request Settings" (two-layer dev defaults), "Logging Settings" (per-session log patterns): authoritative per-key detail for layers 2–4.
 
 ---
 
@@ -290,6 +308,107 @@ Every PS skill wrapper that calls the broker MUST:
 
 ---
 
+## Beyond session attach — the other three isolation layers
+
+Session attach (layer 1, everything above) decides *which GUI session a VBS
+drives*. Three more layers, added **2026-06-20** after concurrent same-spec
+builds clobbered each other, isolate the *build artifacts* around it. Full
+per-key detail lives in CLAUDE.md; this is the parallel-safety summary.
+
+### Layer 2 — Two-bucket temp model
+
+Route every temp file by **scope, not transience** ("it's transient → `{RUN_TEMP}`"
+is the trap — some scratch is genuinely cross-session and must stay shared):
+
+- **Bucket A — cross-session coordination → stable shared path** in
+  `{work_dir}\runtime\`: files a *different* session must find by a *predictable*
+  path — `session_registry.json` (broker), `connections.json`,
+  `session_dev_defaults.json`, the AI-session pins. **Allowlisted.**
+- **Bucket B — per-run private scratch → `{RUN_TEMP}`** (`{work_dir}\temp\run_<id>`,
+  minted by `Get-SapRunTemp` in Step 0): a skill's generated `*_run.vbs`/`.ps1`,
+  asXML payloads, `_run.json`, clipboard/title temp files, input files — **and any
+  ad-hoc orchestrator/agent probe or verify script.**
+
+Decision rule: *will another session read this exact file by a predictable path?*
+Yes → Bucket A; no → Bucket B. Writing a **fixed-named** file into the
+`{WORK_TEMP}` root (or the repo root) is the smell that caused the 2026-06-20
+cross-session `sap_se38_update_run.vbs` collision — two concurrent v74 builds
+clobbered each other's generated VBS between write and `cscript` exec.
+
+Enforced **twice**, because the static checker can't see the running *cache* copy
+of a skill or ad-hoc scratch:
+- `scripts/check-consistency.mjs` — static (repo SKILL.md): hard error on
+  `{RUN_TEMP}` passed to `Get-SapCurrentSessionPath -WorkTemp`; warning on
+  fixed-named scratch outside `{RUN_TEMP}`. Shared basenames in
+  `RUN_TEMP_SHARED_ALLOWLIST`.
+- `scripts/run-temp-hook.mjs` — runtime `PreToolUse` hook (registered per-developer
+  in the gitignored `.claude/settings.local.json`, so it's absent from a fresh
+  checkout; modes `block` (default) / `warn` / `off` via `SAPDEV_RUNTEMP_HOOK`,
+  and it fails **open**): catches the live tool call, including cache-lagged
+  skills and **agent/orchestrator scratch**. Blocks a `Write`/`Edit` of a
+  generated `.vbs`/`.ps1` into the `{WORK_TEMP}` root; mirrors the Bucket-A
+  basenames in `SHARED_ALLOWLIST`.
+
+> This applies to **agents and ad-hoc orchestration**, not just skills. A probe /
+> verify / generator script you write on the fly goes to `{RUN_TEMP}`, never a
+> fixed name in `{WORK_TEMP}` or the repo root.
+
+### Layer 3 — Two-layer dev defaults (per-(AI-session × connection))
+
+The per-connection dev keys (`sap_dev_transport_request`, `sap_dev_package`,
+`sap_dev_function_group`, `sap_dev_mode`, `way_to_get_transport_request`,
+`rule_of_tr_description`, `tr_description_template`) now resolve through **two**
+layers, highest first:
+
+1. **Session** — `{work_dir}\runtime\session_dev_defaults.json`, keyed per
+   `(AI-session × connection)`. A *task's* TR/package lives here, so two
+   conversations on the **same** connection stop clobbering each other (the
+   2026-06-20 `069 → 074 → 075` thrash). Keyed on the connection too, so a
+   `/sap-login --switch` can't carry an `S4DK…` TR onto S4H.
+2. **Connection** — `connections.json[<id>].dev_defaults`: the developer's
+   **standing** default for that system (the Phase 4.4 layer).
+
+Then the global settings file.
+
+- **Writers:** a *task* TR/package → **Session** scope, which is now the
+  **default** — `Set-SapUserSetting … -Scope Session` or the CLI
+  `shared/scripts/sap_dev_default.ps1`. A deliberate **standing** default
+  (onboarding via `/sap-dev-init` / `/sap-login`) must pass `-Scope Connection`
+  explicitly. **Never hand-edit `connections.json` for a task default** — that is
+  the cross-conversation clobber this layer exists to prevent.
+- **Readers:** go through `Get-SapCurrentDevDefault` (`sap_connection_lib.ps1`)
+  for the layered resolution. Session entries are age-pruned (7 days).
+
+### Layer 4 — Per-session log files
+
+Set `log_file_pattern = sap-dev-{YYYYMMDD}-{SID}-{CLIENT}-{AI_SESSION}.log` so
+parallel builds get one coherent file per *(AI session × SAP connection)* instead
+of interleaving into the daily file; each JSONL record still carries `run_id` /
+`skill` for in-file drill-down. Gotchas: `{SYSTEM}` is the Windows
+`%COMPUTERNAME%` (workstation), **not** the SAP SID — it does NOT separate
+parallel builds on one machine; use `{SID}` / `{CLIENT}` (pinned connection) +
+`{AI_SESSION}`. `{AI_SESSION}` resolves `CLAUDE_CODE_SESSION_ID` (stable across a
+Claude host restart) → `SAPDEV_AI_SESSION_ID` (override) → `Get-SapAiSessionId`
+(parent-PID fallback, **drifts** on host restart).
+
+### The layers at a glance
+
+| Layer | Isolates | Mechanism | Keyed by |
+|---|---|---|---|
+| 1 — session attach | which GUI session a VBS drives | `AttachSapSession` + broker pin | AI-session → connection_id |
+| 2 — temp buckets | generated scratch files | `{RUN_TEMP}` + Bucket-A allowlist | run_id |
+| 3 — dev defaults | task TR / package | `session_dev_defaults.json` | AI-session × connection |
+| 4 — logs | forensic log streams | `{AI_SESSION}`/`{SID}`/`{CLIENT}` pattern | AI-session × connection |
+
+**Known gap — the customer brief is still a single shared file.**
+`{custom_url}\customer_brief.md` is NOT auto-isolated. Keep it
+**connection-agnostic** so parallel builds in different logon languages don't
+contend: leave *Comments language* **blank** (each build then inherits its own
+connection's logon language) and let per-build specifics (program / package /
+message class) come from the spec, not the brief.
+
+---
+
 ## History
 
 - **Pre-Tier-3** (legacy): every operational VBS had its own attach loop. Parallel runs and multi-connection users both broken.
@@ -301,3 +420,6 @@ Every PS skill wrapper that calls the broker MUST:
 - **Phase 4** (2026-05-16): multi-profile connection store (`connections.json`), AI-session pin, broker pin enforcement, RFC load-balanced login, stuck-screen tracking, `was_created` close-semantics.
 - **Phase 4.1** (2026-05-16): AI-session id derived from parent-process tree (Get-SapAiSessionId in sap_connection_lib.ps1) so parallel Claude Code conversations get distinct ids and subagents inherit. Broker auto-resolves `-AiSessionId` — wrappers no longer need to bootstrap it.
 - **Phase 4.2** (2026-05-16): `sap_active_session.json` pin file eliminated. Version fields moved into the connection profile in `connections.json`. Session path resolved live via `Get-SapCurrentSessionPath` (reads broker registry). 25+ deploy SKILL.md wrappers migrated from `SAPDEV_PIN_FILE` to `SAPDEV_SESSION_PATH`. `sap_attach_lib.vbs` Strategy 3 removed.
+- **Layer 2 — two-bucket temp model** (2026-06-20): per-run scratch isolation via `{RUN_TEMP}` + a Bucket-A shared allowlist for `{work_dir}\runtime\` coordination files; dual enforcement — `check-consistency.mjs` (static) + `run-temp-hook.mjs` (runtime `PreToolUse`). Motivated by the cross-session `sap_se38_update_run.vbs` collision between two concurrent v74 builds.
+- **Layer 3 — two-layer dev defaults** (2026-06-20): `{work_dir}\runtime\session_dev_defaults.json` keyed per (AI-session × connection); `Set-SapUserSetting -Scope Session` (now the writers' default) + `sap_dev_default.ps1`; reads centralized through `Get-SapCurrentDevDefault`. Fixes the same-connection `069 → 074 → 075` default thrash and stops a `--switch` carrying a TR across systems.
+- **Layer 4 — per-session log files** (2026-06-20): `{AI_SESSION}` / `{SID}` / `{CLIENT}` `log_file_pattern` placeholders, so parallel builds get one log per (AI session × connection) instead of interleaving the daily file.
