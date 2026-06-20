@@ -4,7 +4,7 @@
 
 Repository: sap-dev
 Purpose: SAP GUI automation plugins for AI coding assistants
-Version: 0.6.5 | Plugins: 4 | Last Updated: 2026-06-17
+Version: 0.6.6 | Plugins: 4 | Last Updated: 2026-06-20
 
 ## What This Repository Is
 

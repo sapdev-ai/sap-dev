@@ -4,6 +4,46 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.6.6] — 2026-06-20
+
+### Added
+
+- **Parallel multi-session build safety — three isolation layers on top of the
+  session-attach contract (layer 1),** after concurrent same-spec builds across
+  several SAP connections surfaced cross-session clobbering:
+  - **Layer 2 — two-bucket temp model.** Per-run scratch is isolated to
+    `{RUN_TEMP}` (`{work_dir}\temp\run_<id>`); only allowlisted coordination
+    files (`session_registry.json`, `connections.json`,
+    `session_dev_defaults.json`, AI-session pins) live at the shared
+    `{work_dir}\runtime\` path. Enforced statically by `scripts/check-consistency.mjs`
+    (hard error on `{RUN_TEMP}` passed to `Get-SapCurrentSessionPath -WorkTemp`;
+    warning on fixed-named scratch under the `{WORK_TEMP}` root) and at runtime by
+    `scripts/run-temp-hook.mjs` (a `PreToolUse` hook; modes `block`/`warn`/`off`
+    via `SAPDEV_RUNTEMP_HOOK`, fails open). Motivated by a cross-session
+    `sap_se38_update_run.vbs` collision between two concurrent builds.
+  - **Layer 3 — two-layer dev defaults.** The per-connection dev keys
+    (`sap_dev_transport_request`, `sap_dev_package`, `sap_dev_function_group`,
+    `sap_dev_mode`, `way_to_get_transport_request`, `rule_of_tr_description`,
+    `tr_description_template`) now resolve Session → Connection → global, with a
+    per-`(AI-session × connection)` Session layer at
+    `{work_dir}\runtime\session_dev_defaults.json` (`Set-SapUserSetting -Scope
+    Session`, now the writers' default, + the `shared/scripts/sap_dev_default.ps1`
+    CLI; reads centralized through `Get-SapCurrentDevDefault`). Fixes
+    same-connection default thrash and stops `/sap-login --switch` carrying a TR
+    across systems. Session entries are age-pruned (7 days).
+  - **Layer 4 — per-session log files.** New `log_file_pattern` placeholders
+    `{AI_SESSION}` / `{SID}` / `{CLIENT}` give one coherent log per
+    `(AI session × connection)` instead of interleaving the daily file.
+
+### Changed
+
+- **`contributing/parallel_safe_session_attach.md` extended from a
+  session-attach-only contract into the full four-layer parallel-safety
+  reference** (layers 2–4 section, an at-a-glance table, and a "known gap" note
+  that the customer brief is still a single shared file — keep it
+  connection-agnostic, comment-language blank). CLAUDE.md's pointer row updated to
+  match (CI gate now "seven conditions", four-layer scope, extended history tail).
+
 ## [0.6.5] — 2026-06-17
 
 ### Fixed
