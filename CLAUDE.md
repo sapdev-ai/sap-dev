@@ -516,6 +516,25 @@ Use `{RUN_TEMP}` for the skill's OWN scratch (generated `*_run.vbs/.ps1`, the
 | `rule_of_tr_description` | `ASK`, `PATTERN`, `FIXED`, `RANDOM` | `ASK` | How `/sap-se01` builds the description for new TRs. |
 | `tr_description_template` | string | blank | Template for `PATTERN` (placeholders) or literal for `FIXED`. Final result truncated to 60 chars. |
 
+**Two-layer dev defaults (per-connection + per-session).** The per-connection dev
+keys (`sap_dev_transport_request`, `sap_dev_package`, `sap_dev_function_group`,
+`sap_dev_mode`, `way_to_get_transport_request`, `rule_of_tr_description`,
+`tr_description_template`) resolve through **two** layers, highest first:
+1. **Session** — `{work_dir}\runtime\session_dev_defaults.json`, keyed per
+   `(AI-session × connection)`. A TASK's TR/package lives here, so concurrent
+   conversations on the **same** SAP connection never clobber each other (the
+   2026-06-20 `069→074→075` thrash). Keyed on the connection too, so a
+   `/sap-login --switch` can't carry an `S4DK…` TR onto S4H.
+2. **Connection** — `connections.json[<id>].dev_defaults`, the developer's
+   **standing** default for that system (the existing Phase 4.4 layer).
+Then the global settings file. **Writers:** a task TR/package → **Session** scope
+(`Set-SapUserSetting … -Scope Session`, or the CLI `shared/scripts/sap_dev_default.ps1`
+whose default is Session) — never a hand-edit of `connections.json`. A deliberate
+standing default (onboarding: `/sap-dev-init`, `/sap-login`) → **Connection** scope
+(the default of `Set-SapCurrentDevDefault`). Reads go through `Get-SapCurrentDevDefault`
+(centralized), so all callers get the layered resolution for free. Session entries
+are age-pruned (7 days) — task defaults are ephemeral.
+
 ### FM Signature Cache Settings
 
 Read by `sap_rfc_lookup_fm.ps1` (used by `sap-gen-abap` Step 1.5 to pre-fetch FM signatures before generation). All keys are optional — defaults below.

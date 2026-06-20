@@ -332,15 +332,18 @@ function Set-SapUserSetting {
     param(
         [Parameter(Mandatory)] [string] $Key,
         [Parameter(Mandatory)] [AllowEmptyString()] [string] $Value,
-        [switch] $SkipPerConnRouting
+        [switch] $SkipPerConnRouting,
+        [ValidateSet('Connection','Session')] [string] $Scope = 'Connection'
     )
 
-    # Phase 4.4 write-path routing.
+    # Phase 4.4 write-path routing. -Scope Session targets the per-(AI-session x
+    # connection) layer (task-scoped, no cross-conversation clobber); default
+    # Connection keeps the standing per-connection default (zero regression).
     if (-not $SkipPerConnRouting -and (Get-Command Get-SapPerConnectionDevKeys -ErrorAction SilentlyContinue)) {
         $perConnKeys = Get-SapPerConnectionDevKeys
         if ($perConnKeys -contains $Key) {
             if (Get-Command Set-SapCurrentDevDefault -ErrorAction SilentlyContinue) {
-                Set-SapCurrentDevDefault -Key $Key -Value $Value
+                Set-SapCurrentDevDefault -Key $Key -Value $Value -Scope $Scope
                 Reset-SapSettingsCache
                 return
             }

@@ -1669,6 +1669,15 @@ function Get-SapCurrentDevDefault {
     param([Parameter(Mandatory)][string]$Key)
     $profile = $null
     try { $profile = Get-SapDevDefaultProfile } catch {}
+    # 1. Session layer (per AI-session x THIS connection) wins -- task-scoped,
+    #    isolates concurrent conversations on the same connection (2026-06-20).
+    if ($profile -and (_NotEmpty "$($profile.id)")) {
+        try {
+            $sv = Get-SapSessionDevDefault -Key $Key -ConnId "$($profile.id)"
+            if ("$sv" -ne '') { return "$sv" }
+        } catch {}
+    }
+    # 2. Connection-level standing default.
     if ($profile -and $profile.ContainsKey('dev_defaults') -and $profile['dev_defaults']) {
         $dd = $profile['dev_defaults']
         $v = $null
@@ -1709,10 +1718,19 @@ function Set-SapCurrentDevDefault {
     #>
     param(
         [Parameter(Mandatory)][string]$Key,
-        [Parameter(Mandatory)][AllowEmptyString()][string]$Value
+        [Parameter(Mandatory)][AllowEmptyString()][string]$Value,
+        [ValidateSet('Connection','Session')][string]$Scope = 'Connection'
     )
     $profile = $null
     try { $profile = Get-SapDevDefaultProfile } catch {}
+    # Session scope -> task-scoped (AI-session x connection); never touches
+    # connections.json, so concurrent conversations on the same connection don't
+    # clobber. Needs an unambiguous connection (for the system-qualifying
+    # ConnId); with none, fall through to the connection/global write (best effort).
+    if ($Scope -eq 'Session' -and $profile -and (_NotEmpty "$($profile.id)")) {
+        Set-SapSessionDevDefault -Key $Key -Value $Value -ConnId "$($profile.id)"
+        return
+    }
     if (-not $profile -or -not (_NotEmpty "$($profile.id)")) {
         # No unambiguous connection -> do NOT guess the default connection (that
         # writes one system's value into another's dev_defaults block). Warn when
@@ -1753,6 +1771,152 @@ function Set-SapCurrentDevDefault {
     }
     $target['dev_defaults'][$Key] = "$Value"
     Write-SapConnectionStore -Store $store
+}
+
+# =============================================================================
+# Session-scoped dev defaults (per AI-session x connection)  [added 2026-06-20]
+# -----------------------------------------------------------------------------
+# Phase 4.4's per-connection dev_defaults fixed cross-SYSTEM leakage but NOT
+# cross-SESSION-same-system contention: N AI sessions pinned to ONE connection
+# share one dev_defaults block and clobber each other (the 2026-06-20
+# 069->074->075 thrash on S4D). This layer scopes a TASK's TR/package to the
+# (AI-session x connection) pair, so concurrent conversations on the same
+# connection don't fight, while the connection block stays the standing
+# fallback. Keyed on BOTH the AI session AND the connection so a /sap-login
+# --switch mid-conversation can't carry an S4DK... TR onto S4H. Decoupled from
+# the broker's hot session_registry.json (own file + own mutex) so the broker's
+# reconcile/rewrite never stomps it and vice-versa.
+# Resolution (in Get-SapCurrentDevDefault): session layer -> connection
+# dev_defaults -> global file. GC: age-pruned on write (entries older than
+# _SapSessDD_MaxAgeDays); task defaults are ephemeral, so dropping an old
+# conversation's is correct.
+# =============================================================================
+$script:_SapSessDD_MutexName      = 'SapDevSessionDevDefaults_v1'
+$script:_SapSessDD_MutexTimeoutMs = 10000
+$script:_SapSessDD_MaxAgeDays     = 7
+
+function Get-SapSessionDevDefaultPath {
+    param([string]$RuntimeDir = '')
+    if ([string]::IsNullOrWhiteSpace($RuntimeDir)) { $RuntimeDir = Get-SapWorkRuntimeDir }
+    return (Join-Path $RuntimeDir 'session_dev_defaults.json')
+}
+
+function _With-SessionDevDefaultLock {
+    param([scriptblock]$Body)
+    $mutex = [System.Threading.Mutex]::new($false, $script:_SapSessDD_MutexName)
+    $acquired = $false
+    try {
+        try { $acquired = $mutex.WaitOne($script:_SapSessDD_MutexTimeoutMs) }
+        catch [System.Threading.AbandonedMutexException] { $acquired = $true }
+        if (-not $acquired) { throw "sap_connection_lib: could not acquire session-dev-default mutex within $($script:_SapSessDD_MutexTimeoutMs)ms" }
+        & $Body
+    } finally {
+        if ($acquired) { try { $mutex.ReleaseMutex() } catch {} }
+        try { $mutex.Dispose() } catch {}
+    }
+}
+
+function _Read-SessionDevDefaultFile {
+    # -> hashtable { <aid> = @{ _ts=<iso>; by_conn = @{ <connId> = @{ key=val } } } }
+    param([string]$RuntimeDir = '')
+    $path = Get-SapSessionDevDefaultPath -RuntimeDir $RuntimeDir
+    if (-not (Test-Path $path)) { return @{} }
+    try {
+        $raw = Get-Content -Path $path -Raw -Encoding UTF8
+        if ([string]::IsNullOrWhiteSpace($raw)) { return @{} }
+        $obj = $raw | ConvertFrom-Json
+        $h = @{}
+        foreach ($aidProp in $obj.PSObject.Properties) {
+            $blk = @{ _ts = ''; by_conn = @{} }
+            $v = $aidProp.Value
+            if ($v.PSObject.Properties['_ts']) { $blk._ts = "$($v._ts)" }
+            if ($v.PSObject.Properties['by_conn'] -and $v.by_conn) {
+                foreach ($cp in $v.by_conn.PSObject.Properties) {
+                    $kv = @{}
+                    foreach ($kp in $cp.Value.PSObject.Properties) { $kv[$kp.Name] = "$($kp.Value)" }
+                    $blk.by_conn[$cp.Name] = $kv
+                }
+            }
+            $h[$aidProp.Name] = $blk
+        }
+        return $h
+    } catch { return @{} }
+}
+
+function _Write-SessionDevDefaultFile {
+    param([hashtable]$Data, [string]$RuntimeDir = '')
+    $path = Get-SapSessionDevDefaultPath -RuntimeDir $RuntimeDir
+    $json = $Data | ConvertTo-Json -Depth 8
+    [System.IO.File]::WriteAllText($path, $json, (New-Object System.Text.UTF8Encoding($false)))
+}
+
+function _Prune-SessionDevDefaults {
+    param([hashtable]$Data)
+    try {
+        $cutoff = (Get-Date).ToUniversalTime().AddDays(-1 * [math]::Abs($script:_SapSessDD_MaxAgeDays))
+        foreach ($aid in @($Data.Keys)) {
+            $ts = $null
+            try {
+                if ($Data[$aid].ContainsKey('_ts') -and $Data[$aid]['_ts']) {
+                    $ts = [datetime]::Parse($Data[$aid]['_ts'], [System.Globalization.CultureInfo]::InvariantCulture, [System.Globalization.DateTimeStyles]::RoundtripKind)
+                }
+            } catch {}
+            if ($ts -and $ts.ToUniversalTime() -lt $cutoff) { $Data.Remove($aid) | Out-Null }
+        }
+    } catch {}
+    return $Data
+}
+
+function Get-SapSessionDevDefault {
+    <#
+    .SYNOPSIS
+        Read a TASK-scoped dev default for the (AI-session x connection) pair.
+        Returns '' on any miss. ConnId is REQUIRED (the system the default
+        belongs to) -- a session default is meaningless without it.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$Key,
+        [string]$Aid = '',
+        [string]$ConnId = '',
+        [string]$RuntimeDir = ''
+    )
+    if ([string]::IsNullOrWhiteSpace($ConnId)) { return '' }
+    if ([string]::IsNullOrWhiteSpace($RuntimeDir)) { $RuntimeDir = Get-SapWorkRuntimeDir }
+    if ([string]::IsNullOrWhiteSpace($Aid)) { try { $Aid = Get-SapAiSessionId -RuntimeDir $RuntimeDir } catch { return '' } }
+    $data = _Read-SessionDevDefaultFile -RuntimeDir $RuntimeDir
+    if ($data.ContainsKey($Aid) -and $data[$Aid].by_conn.ContainsKey($ConnId)) {
+        $kv = $data[$Aid].by_conn[$ConnId]
+        if ($kv.ContainsKey($Key) -and "$($kv[$Key])" -ne '') { return "$($kv[$Key])" }
+    }
+    return ''
+}
+
+function Set-SapSessionDevDefault {
+    <#
+    .SYNOPSIS
+        Write a TASK-scoped dev default under (AI-session x connection). Does NOT
+        touch connections.json -- so concurrent conversations on the same
+        connection never clobber each other. Mutex-serialized; age-pruned.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$Key,
+        [Parameter(Mandatory)][AllowEmptyString()][string]$Value,
+        [string]$Aid = '',
+        [string]$ConnId = '',
+        [string]$RuntimeDir = ''
+    )
+    if ([string]::IsNullOrWhiteSpace($ConnId)) { throw "Set-SapSessionDevDefault: -ConnId is required (the system this default belongs to)." }
+    if ([string]::IsNullOrWhiteSpace($RuntimeDir)) { $RuntimeDir = Get-SapWorkRuntimeDir }
+    if ([string]::IsNullOrWhiteSpace($Aid)) { $Aid = Get-SapAiSessionId -RuntimeDir $RuntimeDir }
+    _With-SessionDevDefaultLock {
+        $data = _Read-SessionDevDefaultFile -RuntimeDir $RuntimeDir
+        if (-not $data.ContainsKey($Aid)) { $data[$Aid] = @{ _ts = ''; by_conn = @{} } }
+        if (-not $data[$Aid].by_conn.ContainsKey($ConnId)) { $data[$Aid].by_conn[$ConnId] = @{} }
+        $data[$Aid].by_conn[$ConnId][$Key] = "$Value"
+        $data[$Aid]['_ts'] = (Get-Date).ToUniversalTime().ToString('o')
+        $data = _Prune-SessionDevDefaults -Data $data
+        _Write-SessionDevDefaultFile -Data $data -RuntimeDir $RuntimeDir
+    }
 }
 
 # --- Legacy migration -------------------------------------------------------
