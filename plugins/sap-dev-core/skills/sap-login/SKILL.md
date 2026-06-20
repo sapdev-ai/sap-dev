@@ -74,6 +74,22 @@ Then set `{WORK_TEMP}` = `{work_dir}\temp` and ensure it exists:
 cmd /c if not exist "{WORK_TEMP}" mkdir "{WORK_TEMP}"
 ```
 
+Set `{RUN_TEMP}` = the per-run scratch dir from `Get-SapRunTemp` (env bridge
+applied). This call also sweeps stale `run_*` dirs from crashed prior runs
+(`Remove-SapStaleRunTemp`, best-effort) — login is the natural GC point:
+
+```bash
+powershell -NoProfile -ExecutionPolicy Bypass -Command "\$env:SAPDEV_AI_WORK_DIR='{work_dir}'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; [void](Remove-SapStaleRunTemp); Write-Output ('RUN_TEMP=' + (Get-SapRunTemp))"
+```
+
+Login's OWN scratch — the generated `sap_login_run.vbs` / `sap_rfc_test_run.ps1`
+(which hold **decrypted plaintext** credentials) and the `_run.json` state — goes
+under `{RUN_TEMP}`, isolating concurrent logins and confining the plaintext to a
+single short-lived per-run dir. **Keep `{WORK_TEMP}` (base)** for the
+`-WorkTemp "{WORK_TEMP}"` calls to `sap_login_select.ps1` / the broker — those
+write the DURABLE pin + registry under `{work_dir}\runtime`, derived from the
+base path's parent.
+
 ---
 
 ## Argument Modes (Phase 4)
@@ -124,13 +140,13 @@ endpoint_summary}`. Run `AskUserQuestion`, then re-invoke with `-ProfileId <chos
 ## Step 0.5 — Start Logging
 
 Start a structured log run. The helper persists `run_id` in a state file
-(`{WORK_TEMP}\sap_login_run.json`) so subsequent steps and the final
+(`{RUN_TEMP}\sap_login_run.json`) so subsequent steps and the final
 log-end call append to the same run. Best-effort: silently no-ops if
 `userConfig.log_enabled=false` or the lib can't load. **Do not** include
 the SAP password in `-ParamsJson` — only system / client / user.
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{WORK_TEMP}\sap_login_run.json" -Skill sap-login -ParamsJson "{\"system\":\"<SID>\",\"client\":\"<CLIENT>\",\"user\":\"<USER>\"}"
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{RUN_TEMP}\sap_login_run.json" -Skill sap-login -ParamsJson "{\"system\":\"<SID>\",\"client\":\"<CLIENT>\",\"user\":\"<USER>\"}"
 ```
 
 ---
@@ -408,7 +424,7 @@ ciphertext) — in that case, prompt the operator to type the password
 fresh and offer to encrypt-and-save it after Step 3 succeeds.
 
 The plaintext password lives only in memory of the calling skill and
-in the generated `{WORK_TEMP}\sap_login_run.vbs` (which Step 5
+in the generated `{RUN_TEMP}\sap_login_run.vbs` (which Step 5
 deletes). Do NOT echo the decrypted value to your reply or to any
 log.
 
@@ -418,7 +434,7 @@ log.
 
 The VBScript template is at `sap-dev-core/shared/scripts/sap_login.vbs`.
 
-Write `{WORK_TEMP}\sap_login_run.ps1`:
+Write `{RUN_TEMP}\sap_login_run.ps1`:
 ```powershell
 $content = [System.IO.File]::ReadAllText('<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_login.vbs', [System.Text.Encoding]::UTF8)
 $content = $content.Replace('%%SAP_LOGON_DESCRIPTION%%','THE_LOGON_DESC')
@@ -432,7 +448,7 @@ $content = $content.Replace('%%SAP_CLIENT%%','THE_CLIENT')
 $content = $content.Replace('%%SAP_USER%%','THE_USER')
 $content = $content.Replace('%%SAP_PASSWORD%%','THE_PASSWORD')
 $content = $content.Replace('%%SAP_LANGUAGE%%','THE_LANGUAGE')
-[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_login_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
+[System.IO.File]::WriteAllText('{RUN_TEMP}\sap_login_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 Replace all `THE_*` placeholders with actual values from Step 2.
@@ -452,13 +468,13 @@ If a field is unused in the chosen method, substitute the empty string `""`.
 
 Run:
 ```bash
-powershell -ExecutionPolicy Bypass -File "{WORK_TEMP}\sap_login_run.ps1"
+powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_login_run.ps1"
 ```
 
 ### Execute
 
 ```bash
-cscript //NoLogo {WORK_TEMP}\sap_login_run.vbs
+cscript //NoLogo {RUN_TEMP}\sap_login_run.vbs
 ```
 
 **The VBScript handles four scenarios** (first match wins):
@@ -498,7 +514,7 @@ For load-balanced profiles, call `Connect-SapRfc` directly with the
 template (the template is direct-server only). Either path works for
 verification — pick the one matching the profile's endpoint shape.
 
-Direct-server path (write `{WORK_TEMP}\sap_rfc_test_run.ps1`):
+Direct-server path (write `{RUN_TEMP}\sap_rfc_test_run.ps1`):
 ```powershell
 $content = [System.IO.File]::ReadAllText('<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_rfc_connect.ps1', [System.Text.Encoding]::UTF8)
 $content = $content.Replace('%%SAP_APPLICATION_SERVER%%','THE_SERVER')
@@ -508,7 +524,7 @@ $content = $content.Replace('%%SAP_USER%%','THE_USER')
 $content = $content.Replace('%%SAP_PASSWORD%%','THE_PASSWORD')
 $content = $content.Replace('%%SAP_LANGUAGE%%','THE_LANGUAGE')
 $content = $content.Replace('%%RFC_LIB_PS1%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_rfc_lib.ps1')
-[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_rfc_test_run.ps1', $content, [System.Text.Encoding]::UTF8)
+[System.IO.File]::WriteAllText('{RUN_TEMP}\sap_rfc_test_run.ps1', $content, [System.Text.Encoding]::UTF8)
 Write-Host 'Done'
 ```
 Replace all `THE_*` placeholders.
@@ -529,7 +545,7 @@ if ($dest) { Write-Host 'RFC_OK' } else { Write-Host 'ERROR: RFC connect failed'
 
 Execute via **32-bit PowerShell** (SAP NCo 3.1 is registered in the 32-bit GAC):
 ```bash
-C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File "{WORK_TEMP}\sap_rfc_test_run.ps1"
+C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_rfc_test_run.ps1"
 ```
 
 **On success** (output contains `RFC_OK`): tell user RFC connection verified.
@@ -549,7 +565,7 @@ C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypas
 ## Step 5 — Clean Up
 
 ```bash
-cmd /c del {WORK_TEMP}\sap_login_run.vbs & del {WORK_TEMP}\sap_login_run.ps1 & del {WORK_TEMP}\sap_rfc_test_run.ps1
+cmd /c del {RUN_TEMP}\sap_login_run.vbs & del {RUN_TEMP}\sap_login_run.ps1 & del {RUN_TEMP}\sap_rfc_test_run.ps1
 ```
 
 ---
@@ -693,6 +709,41 @@ Access and free for the user or another AI session.
 
 ---
 
+### Step 6.7 — Ensure a dedicated session (parallel-conversation isolation)
+
+After the pin is set, claim a **dedicated SAP session** for this
+conversation so two conversations logged into the **same** SAP connection
+never drive the same `/app/con[N]/ses[M]` (without this,
+`Get-SapCurrentSessionPath` hands both the connection's first session and
+they trample each other). Best-effort — do **not** fail the login if this
+step errors:
+
+```bash
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_session_broker.ps1" -Action ensure-own-session -WorkTemp "{WORK_TEMP}" -TtlSeconds 2592000 -OwnerSkill sap-login
+```
+
+The broker auto-resolves this conversation's AI-session id (parent-PID
+walk) and prints one of:
+
+- `OWN_SESSION: … formalized=true` — **first / sole** conversation on the
+  connection: it claims the session it already resolves to (usually
+  `ses[0]`); no new window opens.
+- `OWN_SESSION: … spawned=true` — **a second live conversation** is already
+  on this connection: it opens a fresh `ses[1]` (resetting only that
+  newcomer to Easy Access — the other conversation's session is never
+  touched) and claims it. Tell the user a second SAP session window opened
+  for this conversation.
+- `NO_PIN: …` — nothing pinned yet (e.g. an RFC-only flow); nothing to
+  isolate, continue.
+
+The claim's `owner_pid` is this conversation's process, so the broker's
+PID-death sweep releases it automatically when the conversation ends. From
+here on `Get-SapCurrentSessionPath` returns this conversation's own session
+and every downstream skill wrapper picks it up via
+`$env:SAPDEV_SESSION_PATH` (see the resolution contract below).
+
+---
+
 ## Consumer-skill resolution contract (unchanged interface, Phase-4 enriched)
 
 Every downstream skill resolves its target session like this:
@@ -715,13 +766,13 @@ Log the run-end record. Best-effort: silently no-ops if logging disabled.
 On success:
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_login_run.json" -Status SUCCESS -ExitCode 0
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_login_run.json" -Status SUCCESS -ExitCode 0
 ```
 
 On failure (substitute `<CLASS>` and short message):
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_login_run.json" -Status FAILED -ExitCode 1 -ErrorClass <CLASS> -ErrorMsg "<short>"
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_login_run.json" -Status FAILED -ExitCode 1 -ErrorClass <CLASS> -ErrorMsg "<short>"
 ```
 
 Suggested `<CLASS>`: `LOGIN_FAILED`, `RFC_LOGON_FAILED`, `GUI_TIMEOUT`.
@@ -766,11 +817,11 @@ a copied `settings.json` is useless on another machine. See Step 2a
 still accepted for backward compatibility but trigger a warning that
 prompts the operator to re-save.
 
-**In flight** — `{WORK_TEMP}\sap_login_run.vbs` and
-`{WORK_TEMP}\sap_rfc_test_run.ps1` contain the **decrypted plaintext**
+**In flight** — `{RUN_TEMP}\sap_login_run.vbs` and
+`{RUN_TEMP}\sap_rfc_test_run.ps1` contain the **decrypted plaintext**
 during execution because SAP GUI / NCo need it that way. Step 5
 deletes both files immediately after use. Never re-use these files
-across runs and never copy them out of `{WORK_TEMP}`.
+across runs and never copy them out of `{RUN_TEMP}`.
 
 **In logs** — `sap_log_lib.ps1` / `sap_log_lib.vbs` redact `sap_password`
 by key name (`log_redact_keys` setting). With DPAPI on top, the

@@ -57,7 +57,7 @@ priority over the fallback chain when set.
 **Resolve `work_dir` via the env-aware helper** — do NOT take `work_dir` from a direct `settings.json` read (that ignores the `SAPDEV_AI_WORK_DIR` env var and `userconfig.json`). Use the `WORK_DIR=` value printed by:
 
 ```bash
-powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('WORK_DIR=' + (Get-SapWorkDir))"
+powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('WORK_DIR=' + (Get-SapWorkDir)); Write-Output ('RUN_TEMP=' + (Get-SapRunTemp))"
 ```
 
 The settings note below still applies to the OTHER keys.
@@ -75,15 +75,25 @@ Set `{WORK_TEMP}` = `{work_dir}\temp`. Ensure it exists:
 cmd /c if not exist "{WORK_TEMP}" mkdir "{WORK_TEMP}"
 ```
 
+Set `{RUN_TEMP}` = the `RUN_TEMP=` value printed above — a fresh per-run scratch
+directory `{work_dir}\temp\run_<id>`, already created by `Get-SapRunTemp`.
+Resolve it **once here** and reuse the same value for the rest of this
+invocation; it isolates this run's generated wrappers / state / scratch files so
+concurrent runs (parallel sub-agents, multi-connection deploys) never collide.
+**`{WORK_TEMP}` stays the base temp dir** and is used ONLY for
+`Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'` (the session-attach plumbing
+derives `{work_dir}\runtime` from its parent, so it must see the base path, not
+the run dir). Everything the skill writes itself goes under `{RUN_TEMP}`.
+
 ---
 
 ## Step 0.5 — Start Logging
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{WORK_TEMP}\sap_function_group_run.json" -Skill sap-function-group -ParamsJson "{\"function_group\":\"<FUGR>\",\"mode\":\"<MODE>\"}"
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{RUN_TEMP}\sap_function_group_run.json" -Skill sap-function-group -ParamsJson "{\"function_group\":\"<FUGR>\",\"mode\":\"<MODE>\"}"
 ```
 
-State file: `{WORK_TEMP}\sap_function_group_run.json`. Best-effort.
+State file: `{RUN_TEMP}\sap_function_group_run.json`. Best-effort.
 
 ---
 
@@ -167,7 +177,7 @@ Calls `RFC_READ_TABLE` on `TLIBG` to check existence; on miss, calls
 `RS_FUNCTION_POOL_INSERT`. Returns active FG in one round-trip — no
 separate activate step needed.
 
-Generate `{WORK_TEMP}\sap_function_group_rfc_create_run.ps1`:
+Generate `{RUN_TEMP}\sap_function_group_rfc_create_run.ps1`:
 
 ```powershell
 $content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_function_group_rfc_create.ps1', [System.Text.Encoding]::UTF8)
@@ -182,14 +192,14 @@ $content = $content.Replace('%%FUNCTION_GROUP%%',         'THE_FG_NAME')
 $content = $content.Replace('%%SHORT_TEXT%%',             'THE_SHORT_TEXT')
 $content = $content.Replace('%%DEVCLASS%%',               'THE_DEVCLASS')
 $content = $content.Replace('%%CORRNUM%%',                'THE_CORRNUM')
-[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_function_group_rfc_create_run.ps1', $content, [System.Text.Encoding]::UTF8)
+[System.IO.File]::WriteAllText('{RUN_TEMP}\sap_function_group_rfc_create_run.ps1', $content, [System.Text.Encoding]::UTF8)
 Write-Host 'Done'
 ```
 
 Execute via **32-bit PowerShell** (NCo 3.1 is in `GAC_32`):
 
 ```bash
-C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File "{WORK_TEMP}\sap_function_group_rfc_create_run.ps1"
+C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_function_group_rfc_create_run.ps1"
 ```
 
 **Output (parseable):**
@@ -222,7 +232,7 @@ it via toolbar `btn[27]`, handling the Inactive Objects worklist popup
 | `%%PACKAGE%%` | Package name, or empty / `$TMP` for local |
 | `%%TRANSPORT%%` | Transport request, or empty for local |
 
-Generate `{WORK_TEMP}\sap_function_group_gui_create_run.ps1`:
+Generate `{RUN_TEMP}\sap_function_group_gui_create_run.ps1`:
 
 ```powershell
 $content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_function_group_gui_create.vbs', [System.Text.Encoding]::UTF8)
@@ -236,15 +246,15 @@ $content = $content -replace '%%SESSION_PATH%%', $sessionPath
 $content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_function_group_gui_create_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
+[System.IO.File]::WriteAllText('{RUN_TEMP}\sap_function_group_gui_create_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 
 Run via cscript:
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "{WORK_TEMP}\sap_function_group_gui_create_run.ps1"
-C:/Windows/SysWOW64/cscript.exe //NoLogo {WORK_TEMP}\sap_function_group_gui_create_run.vbs
+powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_function_group_gui_create_run.ps1"
+C:/Windows/SysWOW64/cscript.exe //NoLogo {RUN_TEMP}\sap_function_group_gui_create_run.vbs
 ```
 
 **Output:** the VBS prints `INFO: sbar [...]` and `INFO: activate sbar
@@ -349,7 +359,7 @@ Template: `<SKILL_DIR>/references/sap_function_group_gui_delete.vbs`.
 | `%%TRANSPORT%%` | TR for the post-delete prompt — empty when local (`$TMP`) or already locked to a modifiable TR |
 | `%%SESSION_LOCK_VBS%%` | path to `sap_session_lock.vbs` |
 
-Write `{WORK_TEMP}\sap_function_group_gui_delete_run.ps1`:
+Write `{RUN_TEMP}\sap_function_group_gui_delete_run.ps1`:
 
 ```powershell
 $content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_function_group_gui_delete.vbs', [System.Text.Encoding]::UTF8)
@@ -362,15 +372,15 @@ $content = $content -replace '%%SESSION_PATH%%', $sessionPath
 $content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_function_group_gui_delete_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
+[System.IO.File]::WriteAllText('{RUN_TEMP}\sap_function_group_gui_delete_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 
 Run:
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "{WORK_TEMP}\sap_function_group_gui_delete_run.ps1"
-C:/Windows/SysWOW64/cscript.exe //NoLogo {WORK_TEMP}\sap_function_group_gui_delete_run.vbs
+powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_function_group_gui_delete_run.ps1"
+C:/Windows/SysWOW64/cscript.exe //NoLogo {RUN_TEMP}\sap_function_group_gui_delete_run.vbs
 ```
 
 ### Behaviour Notes
@@ -487,7 +497,7 @@ For delete (Step 3e):
 ## Step 6 — Clean Up
 
 ```bash
-cmd /c del "{WORK_TEMP}\sap_function_group_rfc_create_run.ps1" "{WORK_TEMP}\sap_function_group_gui_create_run.ps1" "{WORK_TEMP}\sap_function_group_gui_create_run.vbs" "{WORK_TEMP}\sap_function_group_gui_activate_run.ps1" "{WORK_TEMP}\sap_function_group_gui_activate_run.vbs" "{WORK_TEMP}\sap_function_group_check_state_run.ps1"
+cmd /c del "{RUN_TEMP}\sap_function_group_rfc_create_run.ps1" "{RUN_TEMP}\sap_function_group_gui_create_run.ps1" "{RUN_TEMP}\sap_function_group_gui_create_run.vbs" "{RUN_TEMP}\sap_function_group_gui_activate_run.ps1" "{RUN_TEMP}\sap_function_group_gui_activate_run.vbs" "{RUN_TEMP}\sap_function_group_check_state_run.ps1"
 ```
 
 (`del` ignores missing files; safe to run even when only some paths
@@ -498,13 +508,13 @@ were used.)
 ## Final — Log End
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_function_group_run.json" -Status SUCCESS -ExitCode 0
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_function_group_run.json" -Status SUCCESS -ExitCode 0
 ```
 
 On failure (substitute `<CLASS>` and short message):
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_function_group_run.json" -Status FAILED -ExitCode 1 -ErrorClass <CLASS> -ErrorMsg "<short>"
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_function_group_run.json" -Status FAILED -ExitCode 1 -ErrorClass <CLASS> -ErrorMsg "<short>"
 ```
 
 Suggested `<CLASS>`: `FUNCTION_GROUP_FAILED`, `FUNCTION_GROUP_DELETE_FAILED`,

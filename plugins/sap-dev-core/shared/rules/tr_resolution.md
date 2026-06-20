@@ -114,7 +114,19 @@ truncate to 60 chars by:
 - `ASK` mode → persist only if the user opts in.
 - `CREATE_NEW` mode → never persist.
 
-Persistence is via `/update-config` writing to sap-dev-core `settings.json`.
+**Scope — persist a task TR as a SESSION default, not a connection default.** A
+TR a task creates/resolves is task-scoped: persist it to the per-`(AI-session ×
+connection)` layer so concurrent conversations on the **same** SAP connection
+don't clobber each other's TR (the 2026-06-20 `069→074→075` thrash). Do this via
+the canonical writer with Session scope — `Set-SapUserSetting -Key
+sap_dev_transport_request -Value <TR> -Scope Session`, or the CLI
+`shared/scripts/sap_dev_default.ps1 -Action set -Key sap_dev_transport_request
+-Value <TR>` (Session is its default) — **never** by hand-editing
+`connections.json`. Reads resolve session → connection → global automatically, so
+the task value wins for this conversation while the connection block stays the
+standing fallback. Use `-Scope Connection` (or `/sap-dev-init` / `/sap-login`)
+**only** to set a deliberate STANDING default that should persist across
+conversations on that system.
 
 ---
 

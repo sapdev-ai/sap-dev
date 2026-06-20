@@ -98,7 +98,10 @@ If sScrNum = "1000" Then
     On Error Resume Next
     oSess.findById("wnd[0]/usr/ctxtS_RUNSR-LOW").Text = UCase(RUN_SERIES_NAME)
     Err.Clear
-    Dim sToday : sToday = Year(Date) & "." & Right("0" & Month(Date), 2) & "." & Right("0" & Day(Date), 2)
+    ' YYYYMMDD = locale-independent date input: SAP DATS fields accept an 8-digit
+    ' all-numeric value for any USR01-DATFM. A separator form (e.g. YYYY.MM.DD) is
+    ' only valid for the matching DATFM and otherwise rejected. Fix 2026-06-19.
+    Dim sToday : sToday = Year(Date) & Right("0" & Month(Date), 2) & Right("0" & Day(Date), 2)
     oSess.findById("wnd[0]/usr/ctxtS_SDLON-HIGH").Text = sToday
     Err.Clear
     oSess.findById("wnd[0]").sendVKey VKEY_F8

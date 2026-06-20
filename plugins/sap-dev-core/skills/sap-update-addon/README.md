@@ -62,10 +62,16 @@ Conversational forms:
   both releases (the old "S/4 = btn[18]" assumption was wrong) — and is
   live-verified end-to-end on both. The SM30 path still needs a maintenance
   view; SE16 *DELETE* is a stub on all releases (use SM30 or delete manually).
+- **PROG selection-screen labels:** `ZCMRUPDATE_ADDON_TABLE` assigns its
+  selection texts (アップロード / ダウンロード / テーブル名 / ファイルパス) at
+  runtime in `INITIALIZATION` via the release-independent `%_<name>_%_app_%-text`
+  fields, because the program is deployed **source-only** (no text-pool upload).
+  Without that the screen renders the raw technical names (`RB_UP` / `RB_DOWN` /
+  `P_TABLE` / `P_FILE`).
 
 ## Version
 
-- Skill Version: 1.1.0
+- Skill Version: 1.1.1
 - Last Updated: 2026-06-17
 
 ## License

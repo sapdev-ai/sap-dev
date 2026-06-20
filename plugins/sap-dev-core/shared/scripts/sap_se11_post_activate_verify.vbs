@@ -43,10 +43,21 @@ Function RunPostActivateVerify(sPs1Path, sObjType, sObjName)
     If sPs1Path = "" Then RunPostActivateVerify = "SKIP" : Exit Function
     If sPs1Path = PaVerifySentinelPs1() Then RunPostActivateVerify = "SKIP" : Exit Function
 
-    ' Run hidden (window style 0). powershell.exe is on PATH; using the full
-    ' path would tie us to 64-bit vs 32-bit but the verify is .NET RFC and
-    ' Connect-SapRfc handles GAC discovery either way.
-    sCmd = "powershell.exe -ExecutionPolicy Bypass -NoProfile -File """ & _
+    ' NCo 3.1 is registered ONLY in the 32-bit GAC, so the verify PS1 MUST run
+    ' under 32-bit PowerShell. A bare "powershell.exe" inherits the launching
+    ' cscript's bitness via WOW64 redirection: under a 64-bit cscript it spawns
+    ' 64-bit PowerShell, where Add-Type on the 32-bit sapnco.dll throws
+    ' BadImageFormatException, Connect-SapRfc returns no destination, and the
+    ' generic "no destination" masks the real cause (verified 2026-06-19 on
+    ' S/4HANA 754). Pin the literal SysWOW64 (32-bit) PowerShell -- the literal
+    ' path is NOT WOW64-redirected, so it resolves to 32-bit from either parent
+    ' bitness. Fall back to bare powershell.exe only on a 32-bit-only Windows
+    ' (no SysWOW64), where System32 PowerShell is already 32-bit.
+    Dim oFsoPs, sPsExe
+    Set oFsoPs = CreateObject("Scripting.FileSystemObject")
+    sPsExe = oFsoPs.BuildPath(oFsoPs.GetSpecialFolder(0), "SysWOW64\WindowsPowerShell\v1.0\powershell.exe")
+    If Not oFsoPs.FileExists(sPsExe) Then sPsExe = "powershell.exe"
+    sCmd = """" & sPsExe & """ -ExecutionPolicy Bypass -NoProfile -File """ & _
            sPs1Path & """ -ObjectType " & sObjType & _
            " -ObjectName """ & UCase(sObjName) & """"
     Set oShell = CreateObject("WScript.Shell")

@@ -56,11 +56,19 @@ Task: $ARGUMENTS
 ## Step 0 — Pre-flight
 
 ### 0.1 Resolve work paths
-Resolve `work_dir` via the env-aware helper (NOT a raw `settings.json` read):
+Resolve `work_dir` via the env-aware helper (NOT a raw `settings.json` read), and
+mint a per-run scratch dir for this agent's OWN transient files in the same call:
 
 ```bash
-powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('WORK_DIR=' + (Get-SapWorkDir))"
+powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('WORK_DIR=' + (Get-SapWorkDir)); Write-Output ('RUN_TEMP=' + (Get-SapRunTemp))"
 ```
+
+Take `{RUN_TEMP}` from the `RUN_TEMP=` line and write any agent-authored scratch
+(ad-hoc probes, generated `.vbs`/`.ps1`, scratch files) under that ONE dir — never
+into `{work_dir}\temp` root, where a concurrent run clobbers a fixed name (the
+2026-06-20 cross-session collision). The `/sap-cc-*` skills the agent drives already
+mint their own `{RUN_TEMP}`; `{work_dir}\temp` stays only for the persistent
+transcript (Step 0.4, timestamped). See CLAUDE.md "Two-bucket temp model".
 
 ### 0.2 Resolve (or create) the campaign
 Read the campaign id from `$ARGUMENTS` (`--campaign <id>` or "campaign <id>").

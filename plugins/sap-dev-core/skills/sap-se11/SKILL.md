@@ -47,7 +47,7 @@ Task: $ARGUMENTS
 **Resolve `work_dir` via the env-aware helper** — do NOT take `work_dir` from a direct `settings.json` read (that ignores the `SAPDEV_AI_WORK_DIR` env var and `userconfig.json`). Use the `WORK_DIR=` value printed by:
 
 ```bash
-powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('WORK_DIR=' + (Get-SapWorkDir))"
+powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('WORK_DIR=' + (Get-SapWorkDir)); Write-Output ('RUN_TEMP=' + (Get-SapRunTemp))"
 ```
 
 The settings note below still applies to the OTHER keys.
@@ -66,14 +66,24 @@ Ensure the temp directory exists:
 cmd /c if not exist "{WORK_TEMP}" mkdir "{WORK_TEMP}"
 ```
 
+Set `{RUN_TEMP}` = the `RUN_TEMP=` value printed above — a fresh per-run scratch
+directory `{work_dir}\temp\run_<id>`, already created by `Get-SapRunTemp`.
+Resolve it **once here** and reuse the same value for the rest of this
+invocation; it isolates this run's generated wrappers / state / scratch files so
+concurrent runs (parallel sub-agents, multi-connection deploys) never collide.
+**`{WORK_TEMP}` stays the base temp dir** and is used ONLY for
+`Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'` (the session-attach plumbing
+derives `{work_dir}\runtime` from its parent, so it must see the base path, not
+the run dir). Everything the skill writes itself goes under `{RUN_TEMP}`.
+
 ---
 
 ## Step 0.5 — Start Logging
 
-Start a structured log run. State file: `{WORK_TEMP}\sap_se11_run.json`. Best-effort.
+Start a structured log run. State file: `{RUN_TEMP}\sap_se11_run.json`. Best-effort.
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{WORK_TEMP}\sap_se11_run.json" -Skill sap-se11 -ParamsJson "{\"object_type\":\"<TYPE>\",\"object_name\":\"<NAME>\"}"
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{RUN_TEMP}\sap_se11_run.json" -Skill sap-se11 -ParamsJson "{\"object_type\":\"<TYPE>\",\"object_name\":\"<NAME>\"}"
 ```
 
 ---
@@ -150,7 +160,7 @@ See `<SAP_DEV_CORE_SHARED_DIR>/rules/tr_resolution.md` for the full policy.
 ## Step 2 — Prepare Definition File
 
 Each object type uses a specific tab-delimited definition file format. If the user
-pastes definition data directly, write it to `{WORK_TEMP}\<OBJECT_NAME>.def`.
+pastes definition data directly, write it to `{RUN_TEMP}\<OBJECT_NAME>.def`.
 
 ### Definition File Formats
 
@@ -311,7 +321,7 @@ CONSTANTS: ztyp_active TYPE ztyp_status VALUE 'A'.
 ### Write the definition file
 
 If the user pasted definition data:
-1. Write the definition to: `{WORK_TEMP}\<OBJECT_NAME>.def`
+1. Write the definition to: `{RUN_TEMP}\<OBJECT_NAME>.def`
 2. Either **UTF-8** (the Write tool default) or **UTF-16 LE** is fine — the
    reference VBS auto-detects the BOM via the inline `EnsureUnicodeFile`
    helper and converts UTF-8 → UTF-16 LE in a temp file before reading. No
@@ -354,7 +364,7 @@ cmd /c if exist "<path>" (echo EXISTS) else (echo NOT FOUND)
 >     "MANDT${T}X${T}X${T}MANDT",
 >     "AMT${T}${T}${T}DZWERT${T}ZHKTBL001${T}WAERK"
 >   )
->   [System.IO.File]::WriteAllText('{WORK_TEMP}\<OBJECT_NAME>.def',
+>   [System.IO.File]::WriteAllText('{RUN_TEMP}\<OBJECT_NAME>.def',
 >     ($rows -join "`r`n"),
 >     [System.Text.UTF8Encoding]::new($false))
 >   ```
@@ -376,12 +386,12 @@ upstream LLM pipeline).
 $ps = Get-Content '<SKILL_DIR>\references\sap_se11_normalize_def.ps1' -Raw -Encoding UTF8
 $ps = $ps -replace '%%DEFINITION_FILE%%', 'THE_DEFINITION_FILE_PATH'
 $ps = $ps -replace '%%OBJECT_TYPE%%',     'THE_OBJECT_TYPE'
-[System.IO.File]::WriteAllText("{WORK_TEMP}\sap_se11_normalize.ps1", $ps, [System.Text.Encoding]::UTF8)
+[System.IO.File]::WriteAllText("{RUN_TEMP}\sap_se11_normalize.ps1", $ps, [System.Text.Encoding]::UTF8)
 ```
 
 Run:
 ```bash
-powershell -ExecutionPolicy Bypass -File "{WORK_TEMP}\sap_se11_normalize.ps1"
+powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_se11_normalize.ps1"
 ```
 
 **Parse the last line of output:**
@@ -414,7 +424,7 @@ The check VBScript template is at `./references/sap_se11_check.vbs`. It works fo
 
 ### Generate the filled-in VBScript
 
-Write `{WORK_TEMP}\sap_se11_check_run.ps1`:
+Write `{RUN_TEMP}\sap_se11_check_run.ps1`:
 ```powershell
 $content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_se11_check.vbs', [System.Text.Encoding]::UTF8)
 $content = $content -replace '%%OBJECT_TYPE%%','THE_OBJECT_TYPE'
@@ -425,7 +435,7 @@ $content = $content -replace '%%SESSION_PATH%%', $sessionPath
 $content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_se11_check_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
+[System.IO.File]::WriteAllText('{RUN_TEMP}\sap_se11_check_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 Replace `THE_OBJECT_TYPE` with one of: `TABLE`, `VIEW`, `DATATYPE`, `TYPEGROUP`, `DOMAIN`, `SEARCHHELP`, `LOCKOBJECT`.
@@ -448,13 +458,13 @@ Note: DATAELEMENT, STRUCTURE, and TABLETYPE all use the `DATATYPE` radio button 
 
 Run:
 ```bash
-powershell -ExecutionPolicy Bypass -File "{WORK_TEMP}\sap_se11_check_run.ps1"
+powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_se11_check_run.ps1"
 ```
 
 ### Execute
 
 ```bash
-cscript //NoLogo {WORK_TEMP}\sap_se11_check_run.vbs
+cscript //NoLogo {RUN_TEMP}\sap_se11_check_run.vbs
 ```
 
 **Parse the last line of output:**
@@ -486,11 +496,11 @@ Write a names file with one domain name per line, then fill and run the PS1:
 ```powershell
 # Write domain names to check (one per line)
 $names = "BUKRS`r`nWAERS`r`n"
-[System.IO.File]::WriteAllText("{WORK_TEMP}\check_dom_names.txt", $names, [System.Text.UnicodeEncoding]::new($false, $true))
+[System.IO.File]::WriteAllText("{RUN_TEMP}\check_dom_names.txt", $names, [System.Text.UnicodeEncoding]::new($false, $true))
 
 # Fill PS1 template
 $ps = Get-Content '<SKILL_DIR>\references\sap_se11_check_domains.ps1' -Raw -Encoding UTF8
-$ps = $ps -replace '%%NAMES_FILE%%',   '{WORK_TEMP}\check_dom_names.txt'
+$ps = $ps -replace '%%NAMES_FILE%%',   '{RUN_TEMP}\check_dom_names.txt'
 $ps = $ps -replace '%%SAP_SERVER%%',   ''
 $ps = $ps -replace '%%SAP_SYSNR%%',    ''
 $ps = $ps -replace '%%SAP_CLIENT%%',   ''
@@ -498,12 +508,12 @@ $ps = $ps -replace '%%SAP_USER%%',     ''
 $ps = $ps -replace '%%SAP_PASSWORD%%', ''
 $ps = $ps -replace '%%SAP_LANGUAGE%%', ''
 $ps = $ps -replace '%%RFC_LIB_PS1%%',  '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_rfc_lib.ps1'
-[System.IO.File]::WriteAllText("{WORK_TEMP}\sap_check_dom.ps1", $ps, [System.Text.Encoding]::UTF8)
+[System.IO.File]::WriteAllText("{RUN_TEMP}\sap_check_dom.ps1", $ps, [System.Text.Encoding]::UTF8)
 ```
 
 Run:
 ```bash
-C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File "{WORK_TEMP}\sap_check_dom.ps1"
+C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_check_dom.ps1"
 ```
 
 Output per domain: `EXIST:<NAME>` or `NOT_EXIST:<NAME>`. If any domain shows `NOT_EXIST`, create it first (via this skill's domain create flow) before proceeding.
@@ -516,10 +526,10 @@ Same pattern — write names file, fill PS1, run:
 
 ```powershell
 $names = "BUKRS`r`nMATNR`r`nWAERK`r`n"
-[System.IO.File]::WriteAllText("{WORK_TEMP}\check_de_names.txt", $names, [System.Text.UnicodeEncoding]::new($false, $true))
+[System.IO.File]::WriteAllText("{RUN_TEMP}\check_de_names.txt", $names, [System.Text.UnicodeEncoding]::new($false, $true))
 
 $ps = Get-Content '<SKILL_DIR>\references\sap_se11_check_dataelements.ps1' -Raw -Encoding UTF8
-$ps = $ps -replace '%%NAMES_FILE%%',   '{WORK_TEMP}\check_de_names.txt'
+$ps = $ps -replace '%%NAMES_FILE%%',   '{RUN_TEMP}\check_de_names.txt'
 $ps = $ps -replace '%%SAP_SERVER%%',   ''
 $ps = $ps -replace '%%SAP_SYSNR%%',    ''
 $ps = $ps -replace '%%SAP_CLIENT%%',   ''
@@ -527,12 +537,12 @@ $ps = $ps -replace '%%SAP_USER%%',     ''
 $ps = $ps -replace '%%SAP_PASSWORD%%', ''
 $ps = $ps -replace '%%SAP_LANGUAGE%%', ''
 $ps = $ps -replace '%%RFC_LIB_PS1%%',  '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_rfc_lib.ps1'
-[System.IO.File]::WriteAllText("{WORK_TEMP}\sap_check_de.ps1", $ps, [System.Text.Encoding]::UTF8)
+[System.IO.File]::WriteAllText("{RUN_TEMP}\sap_check_de.ps1", $ps, [System.Text.Encoding]::UTF8)
 ```
 
 Run:
 ```bash
-C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File "{WORK_TEMP}\sap_check_de.ps1"
+C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_check_de.ps1"
 ```
 
 Output per data element: `EXIST:<NAME>:<DATATYPE>` or `NOT_EXIST:<NAME>`. If any shows `NOT_EXIST`, create it first. The `DATATYPE` value (e.g., `CHAR`, `NUMC`, `CURR`, `QUAN`, `CUKY`, `UNIT`) is used for Ref.Field validation below.
@@ -661,7 +671,7 @@ Select the appropriate update VBScript based on the object type:
 
 ### Generate the filled-in VBScript
 
-Write `{WORK_TEMP}\sap_se11_update_run.ps1`:
+Write `{RUN_TEMP}\sap_se11_update_run.ps1`:
 ```powershell
 $content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_se11_<TYPE>_update.vbs', [System.Text.Encoding]::UTF8)
 $content = $content -replace '%%OBJECT_NAME%%','THE_OBJECT_NAME'
@@ -669,7 +679,7 @@ $content = $content -replace '%%DEFINITION_FILE%%','THE_DEFINITION_FILE_PATH'
 $content = $content -replace '%%PACKAGE%%','THE_PACKAGE'
 $content = $content -replace '%%TRANSPORT%%','THE_TRANSPORT'
 $content = $content -replace '%%ACTIVATION_LOG_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_activation_log.vbs'
-$content = $content -replace '%%TEMP_DIR%%','{WORK_TEMP}'
+$content = $content -replace '%%TEMP_DIR%%','{RUN_TEMP}'
 # Enhancement-category proactive-set (TABLE / STRUCTURE only — other types
 # ignore the token if it isn't present in their template).
 $content = $content -replace '%%ENHANCEMENT_CATEGORY%%','THE_ENH_CATEGORY'
@@ -680,7 +690,7 @@ $content = $content -replace '%%SESSION_PATH%%', $sessionPath
 $content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_se11_update_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
+[System.IO.File]::WriteAllText('{RUN_TEMP}\sap_se11_update_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 Replace `<TYPE>` with the lowercase object type (table, view, dataelement, structure, tabletype, typegroup, domain, searchhelp, lockobject). Replace all `THE_*` placeholders and `<SKILL_DIR>`. `THE_PACKAGE` and `THE_TRANSPORT` are optional — use empty string for local object.
@@ -710,7 +720,7 @@ ZCMST_RFC_PARAM create via `/sap-dev-init` Step 5.
 
 Run:
 ```bash
-powershell -ExecutionPolicy Bypass -File "{WORK_TEMP}\sap_se11_update_run.ps1"
+powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_se11_update_run.ps1"
 ```
 
 ### Execute (with SAP GUI Security guard)
@@ -728,7 +738,7 @@ watcher is skipped once a rule has been persisted. Run as one PowerShell block
 
 ```powershell
 $shared = '<SAP_DEV_CORE_SHARED_DIR>\scripts'
-$log    = '{WORK_TEMP}\THE_OBJECT_NAME.activation_log.txt'   # path the activation-log save would write
+$log    = '{RUN_TEMP}\THE_OBJECT_NAME.activation_log.txt'   # path the activation-log save would write
 # 1. Pre-check the allow-list (read-only; lets us skip the watcher once a rule exists).
 & "$shared\sap_gui_security_precheck.ps1" -Path $log -Access w -System 'THE_SID' -Client 'THE_CLIENT' -Transaction 'SE11' | Out-Host
 $allowed = ($LASTEXITCODE -eq 0)
@@ -744,7 +754,7 @@ if (-not $allowed) {
 # 3. Run the update + activate (32-bit cscript). If activation errors and the
 #    activation-log save raises the dialog, it blocks here until the watcher
 #    dismisses it; then the log is saved and the run completes.
-& 'C:/Windows/SysWOW64/cscript.exe' //NoLogo '{WORK_TEMP}\sap_se11_update_run.vbs'
+& 'C:/Windows/SysWOW64/cscript.exe' //NoLogo '{RUN_TEMP}\sap_se11_update_run.vbs'
 # 4. Reap the watcher.
 if ($watcher) { $watcher | Wait-Process -Timeout 45 -ErrorAction SilentlyContinue }
 ```
@@ -774,7 +784,7 @@ Select the appropriate create VBScript based on the object type:
 
 ### Generate the filled-in VBScript
 
-Write `{WORK_TEMP}\sap_se11_create_run.ps1`:
+Write `{RUN_TEMP}\sap_se11_create_run.ps1`:
 ```powershell
 $content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_se11_<TYPE>_create.vbs', [System.Text.Encoding]::UTF8)
 $content = $content -replace '%%OBJECT_NAME%%','THE_OBJECT_NAME'
@@ -784,7 +794,7 @@ $content = $content -replace '%%PACKAGE%%','THE_PACKAGE'
 $content = $content -replace '%%TRANSPORT%%','THE_TRANSPORT'
 $content = $content -replace '%%SESSION_LOCK_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_session_lock.vbs'
 $content = $content -replace '%%ACTIVATION_LOG_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_activation_log.vbs'
-$content = $content -replace '%%TEMP_DIR%%','{WORK_TEMP}'
+$content = $content -replace '%%TEMP_DIR%%','{RUN_TEMP}'
 # Enhancement-category proactive-set (TABLE / STRUCTURE only — other types
 # ignore the token if it isn't present in their template). See the
 # `THE_ENH_CATEGORY` table in Step 5a for accepted values.
@@ -795,7 +805,7 @@ $content = $content -replace '%%ENH_CATEGORY_VBS%%','<SKILL_DIR>\references\sap_
 > **`%%ACTIVATION_LOG_VBS%%` and `%%TEMP_DIR%%`** are required by the
 > activation-log capture helper invoked when `Activate (Ctrl+F3)` reports
 > errors. The helper writes `<OBJECT_NAME>.activation_log.txt` to
-> `{WORK_TEMP}` and echoes both the file path and the top error line so
+> `{RUN_TEMP}` and echoes both the file path and the top error line so
 > the operator sees the *specific* failing field/rule (e.g. "X-AMT
 > (specify reference table AND reference field)") instead of the generic
 > "refer to log" popup. Currently wired into `sap_se11_table_create.vbs`
@@ -845,7 +855,7 @@ $content = $content -replace '%%POST_ACTIVATE_VERIFY_VBS%%','<SAP_DEV_CORE_SHARE
 $content = $content -replace '%%POST_ACTIVATE_VERIFY_PS1%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_se11_post_activate_verify.ps1'
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_se11_create_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
+[System.IO.File]::WriteAllText('{RUN_TEMP}\sap_se11_create_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 
@@ -858,7 +868,7 @@ Replace all `THE_*` placeholders, `<TYPE>`, and `<SKILL_DIR>`. `THE_PACKAGE` and
 
 Run:
 ```bash
-powershell -ExecutionPolicy Bypass -File "{WORK_TEMP}\sap_se11_create_run.ps1"
+powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_se11_create_run.ps1"
 ```
 
 ### Execute (with SAP GUI Security guard)
@@ -876,7 +886,7 @@ watcher is skipped once a rule has been persisted. Run as one PowerShell block
 
 ```powershell
 $shared = '<SAP_DEV_CORE_SHARED_DIR>\scripts'
-$log    = '{WORK_TEMP}\THE_OBJECT_NAME.activation_log.txt'   # path the activation-log save would write
+$log    = '{RUN_TEMP}\THE_OBJECT_NAME.activation_log.txt'   # path the activation-log save would write
 # 1. Pre-check the allow-list (read-only; lets us skip the watcher once a rule exists).
 & "$shared\sap_gui_security_precheck.ps1" -Path $log -Access w -System 'THE_SID' -Client 'THE_CLIENT' -Transaction 'SE11' | Out-Host
 $allowed = ($LASTEXITCODE -eq 0)
@@ -892,7 +902,7 @@ if (-not $allowed) {
 # 3. Run the create + activate (32-bit cscript). If activation errors and the
 #    activation-log save raises the dialog, it blocks here until the watcher
 #    dismisses it; then the log is saved and the run completes.
-& 'C:/Windows/SysWOW64/cscript.exe' //NoLogo '{WORK_TEMP}\sap_se11_create_run.vbs'
+& 'C:/Windows/SysWOW64/cscript.exe' //NoLogo '{RUN_TEMP}\sap_se11_create_run.vbs'
 # 4. Reap the watcher.
 if ($watcher) { $watcher | Wait-Process -Timeout 45 -ErrorAction SilentlyContinue }
 ```
@@ -960,12 +970,12 @@ $ps = $ps -replace '%%SAP_LANGUAGE%%', ''
 $ps = $ps -replace '%%RFC_LIB_PS1%%',  '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_rfc_lib.ps1'
 $ps = $ps -replace '%%OBJECT_TYPE%%',  'STRUCTURE'
 $ps = $ps -replace '%%OBJECT_NAME%%',  'THE_OBJECT_NAME'
-[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_se11_verify.ps1', $ps, [System.Text.Encoding]::UTF8)
+[System.IO.File]::WriteAllText('{RUN_TEMP}\sap_se11_verify.ps1', $ps, [System.Text.Encoding]::UTF8)
 ```
 
 Run via 32-bit PowerShell:
 ```bash
-C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File "{WORK_TEMP}\sap_se11_verify.ps1"
+C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_se11_verify.ps1"
 ```
 
 **Parse the last line:**
@@ -1030,7 +1040,7 @@ The VBScript template is at `./references/sap_se11_change_package.vbs`.
 
 ### Generate the filled-in VBScript
 
-Write `{WORK_TEMP}\sap_se11_chgpkg_run.ps1`:
+Write `{RUN_TEMP}\sap_se11_chgpkg_run.ps1`:
 ```powershell
 $content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_se11_change_package.vbs', [System.Text.Encoding]::UTF8)
 $content = $content -replace '%%OBJECT_TYPE%%','THE_OBJECT_TYPE'
@@ -1044,7 +1054,7 @@ $content = $content -replace '%%SESSION_PATH%%', $sessionPath
 $content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_se11_chgpkg_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
+[System.IO.File]::WriteAllText('{RUN_TEMP}\sap_se11_chgpkg_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 Replace `THE_OBJECT_TYPE` (one of TABL/VIEW/DTEL/TTYP/DOMA/SHLP/ENQU), `THE_OBJECT_NAME`
@@ -1053,13 +1063,13 @@ Replace `THE_OBJECT_TYPE` (one of TABL/VIEW/DTEL/TTYP/DOMA/SHLP/ENQU), `THE_OBJE
 
 Run:
 ```bash
-powershell -ExecutionPolicy Bypass -File "{WORK_TEMP}\sap_se11_chgpkg_run.ps1"
+powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_se11_chgpkg_run.ps1"
 ```
 
 ### Execute
 
 ```bash
-cscript //NoLogo {WORK_TEMP}\sap_se11_chgpkg_run.vbs
+cscript //NoLogo {RUN_TEMP}\sap_se11_chgpkg_run.vbs
 ```
 
 **On success** (output contains `SUCCESS:`): report the package change to the user.
@@ -1133,7 +1143,7 @@ prompt (also Yes) and the post-delete TR popup (`ctxtKO008-TRKORR`).
 
 ### Generate the filled-in VBScript
 
-Write `{WORK_TEMP}\sap_se11_delete_run.ps1`:
+Write `{RUN_TEMP}\sap_se11_delete_run.ps1`:
 ```powershell
 $content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_se11_delete.vbs', [System.Text.Encoding]::UTF8)
 $content = $content -replace '%%OBJECT_TYPE%%','THE_OBJECT_TYPE'
@@ -1146,20 +1156,20 @@ $content = $content -replace '%%SESSION_PATH%%', $sessionPath
 $content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_se11_delete_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
+[System.IO.File]::WriteAllText('{RUN_TEMP}\sap_se11_delete_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 Replace `THE_OBJECT_TYPE`, `THE_OBJECT_NAME`, `THE_TRANSPORT`, and `<SKILL_DIR>`.
 
 Run:
 ```bash
-powershell -ExecutionPolicy Bypass -File "{WORK_TEMP}\sap_se11_delete_run.ps1"
+powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_se11_delete_run.ps1"
 ```
 
 ### Execute
 
 ```bash
-cscript //NoLogo {WORK_TEMP}\sap_se11_delete_run.vbs
+cscript //NoLogo {RUN_TEMP}\sap_se11_delete_run.vbs
 ```
 
 ### Behaviour Notes
@@ -1234,10 +1244,10 @@ manual cleanup via SE03.
 
 Delete all temporary files:
 ```bash
-cmd /c del {WORK_TEMP}\sap_se11_check_run.vbs & del {WORK_TEMP}\sap_se11_check_run.ps1 & del {WORK_TEMP}\sap_se11_create_run.vbs & del {WORK_TEMP}\sap_se11_create_run.ps1 & del {WORK_TEMP}\sap_se11_update_run.vbs & del {WORK_TEMP}\sap_se11_update_run.ps1 & del {WORK_TEMP}\sap_se11_chgpkg_run.vbs & del {WORK_TEMP}\sap_se11_chgpkg_run.ps1 & del {WORK_TEMP}\sap_se11_delete_run.vbs & del {WORK_TEMP}\sap_se11_delete_run.ps1 & del {WORK_TEMP}\sap_se11_normalize.ps1
+cmd /c del {RUN_TEMP}\sap_se11_check_run.vbs & del {RUN_TEMP}\sap_se11_check_run.ps1 & del {RUN_TEMP}\sap_se11_create_run.vbs & del {RUN_TEMP}\sap_se11_create_run.ps1 & del {RUN_TEMP}\sap_se11_update_run.vbs & del {RUN_TEMP}\sap_se11_update_run.ps1 & del {RUN_TEMP}\sap_se11_chgpkg_run.vbs & del {RUN_TEMP}\sap_se11_chgpkg_run.ps1 & del {RUN_TEMP}\sap_se11_delete_run.vbs & del {RUN_TEMP}\sap_se11_delete_run.ps1 & del {RUN_TEMP}\sap_se11_normalize.ps1
 ```
 
-Also delete `{WORK_TEMP}\<OBJECT_NAME>.def` if the user pasted definition data (not a user-supplied file).
+Also delete `{RUN_TEMP}\<OBJECT_NAME>.def` if the user pasted definition data (not a user-supplied file).
 
 ---
 
@@ -1248,13 +1258,13 @@ Log the run-end record. Best-effort.
 On success:
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_se11_run.json" -Status SUCCESS -ExitCode 0
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_se11_run.json" -Status SUCCESS -ExitCode 0
 ```
 
 On failure:
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_se11_run.json" -Status FAILED -ExitCode 1 -ErrorClass <CLASS> -ErrorMsg "<short>"
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_se11_run.json" -Status FAILED -ExitCode 1 -ErrorClass <CLASS> -ErrorMsg "<short>"
 ```
 
 Suggested `<CLASS>`: `SE11_FAILED`, `SE11_INACTIVE`, `SE11_LOCKED`, `TR_RESOLUTION_FAILED`, `GUI_TIMEOUT`.
@@ -1402,8 +1412,8 @@ re-encodes to a UTF-16 LE temp file before opening. No manual
 
 ```powershell
 # Both work — pick whichever is convenient.
-Set-Content '{WORK_TEMP}\mytable.def' $content                   # UTF-8 (default)
-Set-Content '{WORK_TEMP}\mytable.def' $content -Encoding Unicode # UTF-16 LE
+Set-Content '{RUN_TEMP}\mytable.def' $content                   # UTF-8 (default)
+Set-Content '{RUN_TEMP}\mytable.def' $content -Encoding Unicode # UTF-16 LE
 ```
 
 ---

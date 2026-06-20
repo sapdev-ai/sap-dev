@@ -44,6 +44,18 @@ SELECTION-SCREEN END OF BLOCK b_param.
 INITIALIZATION.
   gv_tit1 = '処理モード'.
   gv_tit2 = 'パラメータ'.
+* Selection texts are assigned at RUNTIME rather than maintained in the text
+* pool, because this program is deployed SOURCE-ONLY (/sap-dev-init Step 8 +
+* the /sap-update-addon PROG fallback) with NO text-pool upload. Without these
+* the selection screen shows the raw technical names (RB_UP / RB_DOWN /
+* P_TABLE / P_FILE) instead of readable labels. The %_<name>_%_app_%-text
+* fields are implicitly provided by the selection-screen processor and are
+* release-independent (activate cleanly on ECC 6.0 ~7.40 and S/4HANA alike) —
+* do NOT declare them with DATA.
+  %_rb_up_%_app_%-text   = 'アップロード'.
+  %_rb_down_%_app_%-text = 'ダウンロード'.
+  %_p_table_%_app_%-text = 'テーブル名'.
+  %_p_file_%_app_%-text  = 'ファイルパス'.
 
 *&---------------------------------------------------------------------*
 *& F4 Help for File Path

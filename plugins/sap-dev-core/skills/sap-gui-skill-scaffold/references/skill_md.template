@@ -28,10 +28,17 @@ Resolve `work_dir` via the shared helper — **do NOT read `settings.json`
 directly** (that ignores the `SAPDEV_AI_WORK_DIR` env var and `userconfig.json`).
 The helper applies env var > `settings.local.json` > `userconfig.json` > default
 `C:\sap_dev_work`. Take `{work_dir}` from the `WORK_DIR=` stdout line, then set
-`{WORK_TEMP}` = `{work_dir}\temp`.
+`{WORK_TEMP}` = `{work_dir}\temp`. Also take `{RUN_TEMP}` from the `RUN_TEMP=`
+line — a fresh per-run scratch dir `{work_dir}\temp\run_<id>` (already created by
+`Get-SapRunTemp`). Resolve `{RUN_TEMP}` **once here** and reuse it: write all of
+this skill's OWN scratch (generated `*_run.vbs` / `*_run.ps1`, the `_run.json`
+state file, scratch `.txt`) under `{RUN_TEMP}` so concurrent runs never collide.
+Keep `{WORK_TEMP}` (base) ONLY for `Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'`
+— the session-attach plumbing derives `{work_dir}\runtime` from its parent and
+must see the base path, not the run dir.
 
 ```bash
-powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('WORK_DIR=' + (Get-SapWorkDir))"
+powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('WORK_DIR=' + (Get-SapWorkDir)); Write-Output ('RUN_TEMP=' + (Get-SapRunTemp))"
 ```
 
 ```powershell
@@ -43,7 +50,7 @@ New-Item -Path '{WORK_TEMP}' -ItemType Directory -Force | Out-Null
 ## Step 0.5 — Start logging
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{WORK_TEMP}\{{SKILL_NAME}}_run.json" -Skill {{SKILL_NAME}} -ParamsJson "{\"mode\":\"<MODE>\"}"
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{RUN_TEMP}\{{SKILL_NAME}}_run.json" -Skill {{SKILL_NAME}} -ParamsJson "{\"mode\":\"<MODE>\"}"
 ```
 
 ---

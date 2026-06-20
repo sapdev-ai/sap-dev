@@ -60,7 +60,7 @@ This skill activates when the user says:
 /sap-se16n T001
 /sap-se16n T001 where LAND1 in CN,JP and WAERS = CNY
 /sap-se16n MARA where MATKL = 0001 select MATNR,MTART,MATKL,MEINS
-/sap-se16n VBAK where ERDAT between 2024.01.01 and 2024.12.31
+/sap-se16n VBAK where ERDAT between 20240101 and 20241231
 ```
 
 Conversational forms:
@@ -99,7 +99,10 @@ currency is CNY). `ROWS=<n>` printed on the last line; output written to
 - Output column order follows SAP's natural ordering, not the SELECT list order
 - Cluster / pooled tables that SE16N rejects produce `NO_DATA` with the SAP
   status text — pass this back to the user verbatim
-- Date and numeric literals must be in SAP internal format (`YYYY.MM.DD`)
+- Date literals must be 8-digit `YYYYMMDD` (e.g. `20240131`) — SAP DATS fields
+  accept this for any user date format (`USR01-DATFM`), so it is locale-independent;
+  a separator form like `YYYY.MM.DD` only works when it matches the user's DATFM.
+  Numeric literals must have no thousand separators
 - Only the first 8 values per multi-select are guaranteed visible without the
   popup needing scrolling; the VBS scrolls automatically beyond that
 

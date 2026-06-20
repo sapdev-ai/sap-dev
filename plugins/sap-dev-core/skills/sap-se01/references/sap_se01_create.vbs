@@ -10,7 +10,7 @@
 '
 ' After creating the request the script then resolves the new TRKORR by
 ' navigating to SE16N on table E070, filtering by AS4USER = current SAP user
-' and AS4DATE = workstation today (formatted YYYY.MM.DD), executing the query,
+' and AS4DATE = workstation today (formatted YYYYMMDD), executing the query,
 ' sorting the result grid by AS4TIME descending, and reading the TRKORR of the
 ' first row whose TRFUNCTION is "K" (Workbench) or "W" (Customizing).
 '
@@ -110,8 +110,14 @@ WScript.Echo "INFO: AS4USER=" & oSess.Info.User
 ' TRFUNCTION K/W to filter top-level requests directly.
 
 Dim sUser : sUser = UCase(oSess.Info.User)
+' AS4DATE filter: use the 8-digit YYYYMMDD form. SAP date fields interpret an
+' all-numeric 8-char entry as YYYYMMDD regardless of the logon user's date
+' personalization (USR01-DATFM), so it is locale-independent. A separator-bearing
+' form (e.g. YYYY.MM.DD) is only valid for the matching DATFM and otherwise yields
+' status-bar "Invalid date format" with no result grid (the pre-2026-06-19 bug;
+' verified 2026-06-19 on S/4HANA 754 with a YYYY/MM/DD user).
 Dim sToday
-sToday = Year(Now) & "." & Right("0" & Month(Now), 2) & "." & Right("0" & Day(Now), 2)
+sToday = Year(Now) & Right("0" & Month(Now), 2) & Right("0" & Day(Now), 2)
 WScript.Echo "INFO: SE16N lookup user=" & sUser & " date=" & sToday
 
 oSess.findById("wnd[0]/tbar[0]/okcd").text = "/nse16n"

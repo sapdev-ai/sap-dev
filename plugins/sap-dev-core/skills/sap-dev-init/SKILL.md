@@ -50,7 +50,7 @@ The settings note below covers the OTHER keys.
 
 **Settings reads/writes follow `shared/rules/settings_lookup.md`** — merge per-key on the `.value` field (env var → `settings.local.json` → `userconfig.json` → `settings.json`); non-per-connection writes go to `userconfig.json`. Resolve sap-dev-core paths: 2 levels up from `<SKILL_DIR>` to the plugin root, then `settings.json` and (if present) `settings.local.json`. Read `custom_url`, `sap_dev_mode`.
 
-**Per-connection keys (Phase 4.4)**: `sap_dev_mode` is SAP-system-specific (GUI/RFC/BDC capability varies per system). Per `settings_lookup.md` § Per-connection exception, read it from `connections.json[pinned-profile].dev_defaults` FIRST (resolve the pin via `{work_dir}\runtime\session_registry.json` `ai_sessions[<id>]`); only fall back to the two-file merge when `dev_defaults` is empty. Sub-steps that delegate to `/sap-transport-request`, `/sap-se21`, `/sap-function-group` inherit the same per-connection routing for TR/PKG/FG.
+**Per-connection keys (Phase 4.4)**: `sap_dev_mode` is SAP-system-specific (GUI/RFC/BDC capability varies per system). Per `settings_lookup.md` § Per-connection exception, read it from `connections.json[pinned-profile].dev_defaults` FIRST (resolve the pin via `{work_dir}\runtime\session_registry.json` `ai_sessions[<id>]`); only fall back to the two-file merge when `dev_defaults` is empty. Sub-steps that delegate to `/sap-transport-request`, `/sap-se21`, `/sap-function-group` inherit the same per-connection routing for TR/PKG/FG. **WRITES — standing dev defaults go in the connection block, not the global layer:** when this skill persists a standing default (TR / package / FG / `way_to_get_transport_request` / `rule_of_tr_description` / `tr_description_template`), write it **Connection-scoped** — `<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_dev_default.ps1 -Action set -Key <k> -Value <v> -Scope Connection` (or `Set-SapUserSetting … -Scope Connection`) — NOT `/update-config` (that writes the shared global layer, read only as a last-resort fallback, and not system-qualified). The delegated `/sap-transport-request` now persists the resolved TR **Session-scoped** (task default), so after it resolves the dev TR, ALSO persist that TR Connection-scoped here so the standing dev TR survives across conversations.
 
 | Setting | Default if blank |
 |---|---|
@@ -64,6 +64,22 @@ Ensure the temp directory exists:
 ```bash
 cmd /c if not exist "{WORK_TEMP}" mkdir "{WORK_TEMP}"
 ```
+
+Set `{RUN_TEMP}` = the per-run scratch dir from `Get-SapRunTemp` (env bridge applied):
+
+```bash
+powershell -NoProfile -ExecutionPolicy Bypass -Command "\$env:SAPDEV_AI_WORK_DIR='{work_dir}'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('RUN_TEMP=' + (Get-SapRunTemp))"
+```
+
+dev-init's OWN scratch (the `sap_dev_init_run.json` state file and the
+`sap_gui_security_warmup_*.vbs` it generates) goes under `{RUN_TEMP}`. **The
+cross-skill handoff files stay on `{WORK_TEMP}` (base), by design**: the `.def` /
+`.abap` sources this skill copies for `/sap-se11`, `/sap-se37`, `/sap-se38` are
+passed to those child skills as **absolute paths** and consumed there as
+user-supplied files (the child never deletes them and writes its own scratch in
+its own per-run dir). Keeping the handoffs on base avoids an rmdir-ordering hazard
+— dev-init does **NOT** `rmdir {RUN_TEMP}`; its existing per-file cleanup and
+`/sap-dev-clean` handle the handoff artifacts as before.
 
 Validate `sap_dev_mode`. Allowed values: `GUI`, `RFC`, `BDC` (case-insensitive). Anything else → fall back to `GUI` and warn the user.
 
@@ -114,12 +130,12 @@ Plan:
 ## Step 0.5 — Start Logging
 
 Start a structured log run. The helper persists `run_id` in a state file
-(`{WORK_TEMP}\sap_dev_init_run.json`) so subsequent steps and the final
+(`{RUN_TEMP}\sap_dev_init_run.json`) so subsequent steps and the final
 log-end call append to the same run. Best-effort: silently no-ops if
 `userConfig.log_enabled=false` or the lib can't load.
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{WORK_TEMP}\sap_dev_init_run.json" -Skill sap-dev-init -ParamsJson "{}"
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{RUN_TEMP}\sap_dev_init_run.json" -Skill sap-dev-init -ParamsJson "{}"
 ```
 
 ---
@@ -247,7 +263,7 @@ $warmupSrc = [System.IO.File]::ReadAllText('<SAP_DEV_CORE_SHARED_DIR>\scripts\sa
 #   C:\sap_dev_work\sap_gui_warmup_20260511115106\.bmp
 # Plain .Replace() is literal and safe.
 $warmupSrc = $warmupSrc.Replace('%%PROBE_FILE%%', $probe)
-[System.IO.File]::WriteAllText("{WORK_TEMP}\sap_gui_security_warmup_run.vbs", $warmupSrc, [System.Text.UnicodeEncoding]::new($false, $true))
+[System.IO.File]::WriteAllText("{RUN_TEMP}\sap_gui_security_warmup_run.vbs", $warmupSrc, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Output 'Generated'
 ```
 
@@ -273,7 +289,7 @@ Start-Sleep -Milliseconds 800
 
 # Foreground warmup. The Hardcopy call blocks until the sidecar dismisses
 # the dialog (or the customer clicks something manually).
-& cscript.exe //NoLogo "{WORK_TEMP}\sap_gui_security_warmup_run.vbs" *> $warmupOut
+& cscript.exe //NoLogo "{RUN_TEMP}\sap_gui_security_warmup_run.vbs" *> $warmupOut
 
 # Wait for the sidecar to exit (it exits as soon as it dismisses or times out).
 $sidecar | Wait-Process -Timeout 35
@@ -316,12 +332,12 @@ $probe2 = Join-Path "{work_dir}" ("sap_gui_warmup_verify_" + (Get-Date -Format y
 $warmupSrc2 = [System.IO.File]::ReadAllText('<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_gui_security_warmup.vbs', [System.Text.Encoding]::UTF8)
 # .Replace() (literal), not -replace (regex). See the first warmup block for why.
 $warmupSrc2 = $warmupSrc2.Replace('%%PROBE_FILE%%', $probe2)
-[System.IO.File]::WriteAllText("{WORK_TEMP}\sap_gui_security_warmup_verify.vbs", $warmupSrc2, [System.Text.UnicodeEncoding]::new($false, $true))
+[System.IO.File]::WriteAllText("{RUN_TEMP}\sap_gui_security_warmup_verify.vbs", $warmupSrc2, [System.Text.UnicodeEncoding]::new($false, $true))
 
 # No poller this time. If a dialog appears, this will hang for human input —
 # guard with a 5 s timeout (the second pass should complete in <1 s when trusted).
 $verify = Start-Process -FilePath "cscript.exe" `
-    -ArgumentList "//NoLogo", "{WORK_TEMP}\sap_gui_security_warmup_verify.vbs" `
+    -ArgumentList "//NoLogo", "{RUN_TEMP}\sap_gui_security_warmup_verify.vbs" `
     -RedirectStandardOutput (Join-Path $env:TEMP "sap_gui_verify.out") `
     -NoNewWindow -PassThru
 if (-not ($verify | Wait-Process -Timeout 5 -ErrorAction SilentlyContinue)) {
@@ -355,7 +371,7 @@ If the verify step reports `DIALOG_STILL_APPEARS` or any branch reports `ERROR:`
 ### Cleanup
 
 ```bash
-cmd /c del {WORK_TEMP}\sap_gui_security_warmup_run.vbs & del {WORK_TEMP}\sap_gui_security_warmup_verify.vbs
+cmd /c del {RUN_TEMP}\sap_gui_security_warmup_run.vbs & del {RUN_TEMP}\sap_gui_security_warmup_verify.vbs
 ```
 
 The sidecar log at `$env:TEMP\sap_gui_security_sidecar.log` is intentionally preserved for diagnostic purposes — delete manually if not investigating a failure.
@@ -391,8 +407,9 @@ Read `way_to_get_transport_request` from the merged sap-dev-core settings (per `
 > 2. `ASK` — Ask each time and (optionally) save your choice as the default.
 > 3. `CREATE_NEW` — Always create a brand-new TR via `/sap-se01`; never reuse.
 
-Persist the user's choice to `way_to_get_transport_request` via
-`/update-config`.
+Persist the user's choice to `way_to_get_transport_request`
+**Connection-scoped** (standing per-system policy — see the Step 0 WRITES note;
+`sap_dev_default.ps1 … -Scope Connection`, not `/update-config`).
 
 While asking the policy, also offer the description-rule settings if
 `rule_of_tr_description` is blank:
@@ -403,7 +420,8 @@ While asking the policy, also offer the description-rule settings if
 > - `FIXED` — use a fixed text I provide
 > - `RANDOM` — auto-generate a random one
 
-If `PATTERN` or `FIXED`, prompt for `tr_description_template` and persist.
+If `PATTERN` or `FIXED`, prompt for `tr_description_template` and persist it
+**Connection-scoped** (standing per-system formatting — see the Step 0 WRITES note).
 The template defaults to `{YYYYMMDD}_{OBJECT_TYPE}_{OBJECT_DESCRIPTION}` if
 the user just hits enter.
 
@@ -425,7 +443,10 @@ Now act per the policy chosen above. The persistence behaviour matches
    - `new` → run the **transport-request skill chosen in the Step 0 plan**
      (`/sap-se01` for GUI, `/sap-transport-request` for RFC) with
      `OBJECT_TYPE=BASIC OBJECT_DESCRIPTION=SAP_DEV_INIT`.
-3. Persist the resolved TR to `sap_dev_transport_request`.
+3. Persist the resolved TR to `sap_dev_transport_request` **Connection-scoped** —
+   it's the STANDING dev TR, and the delegated `/sap-transport-request` only
+   persisted it Session-scoped, so write the connection block here:
+   `<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_dev_default.ps1 -Action set -Key sap_dev_transport_request -Value <TR> -Scope Connection`.
 
 #### `ASK`
 1. Keep `sap_dev_transport_request` blank.
@@ -464,8 +485,10 @@ Only one implementation currently exists:
    > package name to use (e.g. `ZHKDEVAI`). Press Enter on its own to accept
    > the default `ZCMDEVAI`.
 
-   - If the user provides a name, persist it to `sap_dev_package` via
-     `/update-config` so subsequent runs reuse it without prompting.
+   - If the user provides a name, persist it to `sap_dev_package`
+     **Connection-scoped** (standing per-system default — see the Step 0 WRITES
+     note; `sap_dev_default.ps1 … -Scope Connection`, not `/update-config`) so
+     subsequent runs reuse it without prompting.
    - If the user accepts the default, persist `ZCMDEVAI`.
    - Validate the name against `<SAP_DEV_CORE_SHARED_DIR>/tables/sap_object_naming_rules.tsv`
      (`PACKAGE` row). If it fails the regex, show the rule and re-prompt.
@@ -505,8 +528,10 @@ through and let the skill honour it.
    > function group name to use (must start with `ZFG`, e.g. `ZFGHKDEV`).
    > Press Enter on its own to accept the default `ZFGDEVAI`.
 
-   - If the user provides a name, persist it to `sap_dev_function_group` via
-     `/update-config` so subsequent runs reuse it without prompting.
+   - If the user provides a name, persist it to `sap_dev_function_group`
+     **Connection-scoped** (standing per-system default — see the Step 0 WRITES
+     note; `sap_dev_default.ps1 … -Scope Connection`, not `/update-config`) so
+     subsequent runs reuse it without prompting.
    - If the user accepts the default, persist `ZFGDEVAI`.
    - Validate the name against `<SAP_DEV_CORE_SHARED_DIR>/tables/sap_object_naming_rules.tsv`
      (`FUNCTION_GROUP` row, `^ZFG[A-Z0-9_]*$`). If it fails the regex,
@@ -714,13 +739,13 @@ Log the run-end record. Best-effort: silently no-ops if logging disabled.
 On success:
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_dev_init_run.json" -Status SUCCESS -ExitCode 0
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_dev_init_run.json" -Status SUCCESS -ExitCode 0
 ```
 
 On failure (substitute `<CLASS>` and short message):
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_dev_init_run.json" -Status FAILED -ExitCode 1 -ErrorClass <CLASS> -ErrorMsg "<short>"
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_dev_init_run.json" -Status FAILED -ExitCode 1 -ErrorClass <CLASS> -ErrorMsg "<short>"
 ```
 
 Suggested `<CLASS>`: `DEV_INIT_FAILED`, `TR_RESOLUTION_FAILED`, `PACKAGE_FAILED`, `FUGR_FAILED`, `DEPLOY_FAILED`.

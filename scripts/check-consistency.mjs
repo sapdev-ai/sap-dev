@@ -521,6 +521,20 @@ const LEDGER_GATE_SKILLS = new Set([
 
 const ledgerWarnings = [];
 const step0Warnings = [];
+const runTempWarnings = [];
+
+// Bucket A (cross-session / cross-connection coordination) allowlist: artifacts a
+// DIFFERENT session must find by a predictable shared path, so they are NOT per-run
+// scratch and must never be flagged by the {WORK_TEMP} gate (d) below. Keep small +
+// explicit; mirror in the run-temp PreToolUse hook's SHARED_ALLOWLIST. Most live in
+// {work_dir}\runtime or shared/scripts (so they don't match {WORK_TEMP}\*.vbs|ps1
+// anyway) — listed for intent + future-proofing. See CLAUDE.md "Two-bucket temp model".
+const RUN_TEMP_SHARED_ALLOWLIST = new Set([
+  'session_registry.json',       // broker state (home: {work_dir}\runtime)
+  'sap_session_broker.ps1',      // shipped broker        (home: shared/scripts)
+  'sap_session_broker_com.vbs',  // shipped broker COM    (home: shared/scripts)
+  'sap_attach_lib.vbs',          // shipped attach helper (home: shared/scripts)
+].map(s => s.toLowerCase()));
 
 for (const plugin of mp.plugins) {
   const sourceRel = plugin.source.replace(/^\.\//, '').replace(/\/$/, '');
@@ -546,6 +560,31 @@ for (const plugin of mp.plugins) {
         && !/sap_workdir_setup\.ps1/.test(md)) {
       step0Warnings.push(`${plugin.name}: skills/${skillEntry}/SKILL.md has a Step 0 "Resolve Work Directory" but resolves work_dir via neither Get-SapWorkDir nor the env-aware onboarding helper sap_workdir_setup.ps1; resolve work_dir env-aware, not via a direct settings.json read (CLAUDE.md Rule 7)`);
     }
+
+    // (c) Run-scoped temp isolation ({RUN_TEMP}). HARD ERROR: never point the
+    //     session-attach plumbing at the per-run dir. Get-SapCurrentSessionPath
+    //     -WorkTemp derives the durable runtime dir ({work_dir}\runtime, home of
+    //     session_registry.json) from its PARENT, so passing {RUN_TEMP} there
+    //     relocates the broker registry and breaks parallel-session coordination.
+    //     Migrated skills keep the base '{WORK_TEMP}' on that call.
+    if (/Get-SapCurrentSessionPath\s+-WorkTemp\s+'?\{RUN_TEMP\}'?/.test(md)) {
+      errors.push(`${plugin.name}: skills/${skillEntry}/SKILL.md passes {RUN_TEMP} to Get-SapCurrentSessionPath -WorkTemp; that derives {work_dir}\\runtime from the parent and would relocate session_registry.json. Keep the base '{WORK_TEMP}' on that call; only the skill's own scratch goes under {RUN_TEMP}.`);
+    }
+    // (d) Ratcheting WARN: a skill writing a GENERATED script (.vbs/.ps1) to the
+    //     shared base {WORK_TEMP} root is unmigrated -- two concurrent runs collide
+    //     on that fixed name (generate-then-cscript TOCTOU -> wrong-object deploy;
+    //     the 2026-06-20 sap_se38_update_run.vbs cross-session clobber). Move per-run
+    //     scratch to {RUN_TEMP} (Get-SapRunTemp). Widened from the narrow *_run.*
+    //     pattern to ANY {WORK_TEMP}\<name>.vbs|ps1, minus the cross-session
+    //     RUN_TEMP_SHARED_ALLOWLIST (Bucket A). Informational until full coverage,
+    //     then promote to a hard error. See CLAUDE.md "Two-bucket temp model".
+    const workTempScripts = [...md.matchAll(/\{WORK_TEMP\}\\([^\s'"\\]+\.(?:vbs|ps1))/gi)]
+      .map(m => m[1])
+      .filter(name => !RUN_TEMP_SHARED_ALLOWLIST.has(name.toLowerCase()));
+    if (workTempScripts.length > 0) {
+      const uniq = [...new Set(workTempScripts)].sort();
+      runTempWarnings.push(`${plugin.name}: skills/${skillEntry}/SKILL.md writes generated script(s) under the shared base {WORK_TEMP} (${uniq.join(', ')}); move per-run scratch to {RUN_TEMP} (Get-SapRunTemp) so concurrent runs don't collide (CLAUDE.md "Two-bucket temp model")`);
+    }
   }
 }
 
@@ -563,12 +602,16 @@ if (errors.length === 0) {
   if (step0Warnings.length > 0) {
     summary += `, ${step0Warnings.length} Step-0 warning(s)`;
   }
+  if (runTempWarnings.length > 0) {
+    summary += `, ${runTempWarnings.length} run-temp warning(s)`;
+  }
   summary += `, ${baselineCoverage}`;
   console.log(summary);
   for (const w of phase4Warnings) console.warn('  WARN: ' + w);
   for (const w of encodingWarnings) console.warn('  WARN: ' + w);
   for (const w of ledgerWarnings) console.warn('  WARN: ' + w);
   for (const w of step0Warnings) console.warn('  WARN: ' + w);
+  for (const w of runTempWarnings) console.warn('  WARN: ' + w);
   for (const w of baselineWarnings) console.warn('  WARN: ' + w);
   process.exit(0);
 } else {
@@ -589,6 +632,10 @@ if (errors.length === 0) {
   if (step0Warnings.length > 0) {
     console.error(`\nStep-0 work_dir warnings (informational):`);
     for (const w of step0Warnings) console.error('  WARN: ' + w);
+  }
+  if (runTempWarnings.length > 0) {
+    console.error(`\nRun-scoped temp ({RUN_TEMP}) warnings (informational):`);
+    for (const w of runTempWarnings) console.error('  WARN: ' + w);
   }
   console.error(`\n${baselineCoverage}`);
   if (baselineWarnings.length > 0) {

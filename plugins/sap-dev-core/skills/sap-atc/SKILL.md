@@ -85,7 +85,7 @@ Final PASS / FAIL emitted with the findings.tsv path when available.
 **Resolve `work_dir` via the env-aware helper** — do NOT take `work_dir` from a direct `settings.json` read (that ignores the `SAPDEV_AI_WORK_DIR` env var and `userconfig.json`). Use the `WORK_DIR=` value printed by:
 
 ```bash
-powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('WORK_DIR=' + (Get-SapWorkDir))"
+powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('WORK_DIR=' + (Get-SapWorkDir)); Write-Output ('RUN_TEMP=' + (Get-SapRunTemp))"
 ```
 
 The settings note below still applies to the OTHER keys.
@@ -96,12 +96,22 @@ The settings note below still applies to the OTHER keys.
 cmd /c if not exist "{WORK_TEMP}" mkdir "{WORK_TEMP}"
 ```
 
+Set `{RUN_TEMP}` = the `RUN_TEMP=` value printed above — a fresh per-run scratch
+directory `{work_dir}\temp\run_<id>`, already created by `Get-SapRunTemp`.
+Resolve it **once here** and reuse the same value for the rest of this
+invocation; it isolates this run's generated wrappers / state / scratch files so
+concurrent runs (parallel sub-agents, multi-connection deploys) never collide.
+**`{WORK_TEMP}` stays the base temp dir** and is used ONLY for
+`Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'` (the session-attach plumbing
+derives `{work_dir}\runtime` from its parent, so it must see the base path, not
+the run dir). Everything the skill writes itself goes under `{RUN_TEMP}`.
+
 ---
 
 ## Step 0.5 — Start Logging
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{WORK_TEMP}\sap_atc_run.json" -Skill sap-atc -ParamsJson "{\"object_type\":\"<TYPE>\",\"object_name\":\"<NAME>\"}"
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{RUN_TEMP}\sap_atc_run.json" -Skill sap-atc -ParamsJson "{\"object_type\":\"<TYPE>\",\"object_name\":\"<NAME>\"}"
 ```
 
 ---
@@ -130,7 +140,7 @@ If neither brief nor argument supplies a value, default to `2`.
 | `--run-series=<NAME>` | no | auto | Run Series name. If omitted, generate `RUN_<YYYYMMDD>_<HHMMSS>` to avoid collisions. |
 | `--poll-interval=<sec>` | no | `15` | Stage 3 polling cadence. |
 | `--max-wait=<sec>` | no | `600` (10 min) | Stage 3 timeout. |
-| `--save-to=<PATH>` | no | `{WORK_TEMP}\ATC_<series>.txt` | Local path for the downloaded result TXT. |
+| `--save-to=<PATH>` | no | `{RUN_TEMP}\ATC_<series>.txt` | Local path for the downloaded result TXT. |
 | `--drill` | no | (off by default; auto when gate FAILS) | Force Stage 4b — drill into the run-series row and export per-finding ALV as TSV to `<save-to>.findings.tsv`. Use to see WHICH findings exist even when the gate passes (e.g. inspecting P3 informational findings). |
 | `--no-drill` | no | (off) | Disable Stage 4b even when the gate FAILS. Useful for CI runs where the operator only needs PASS/FAIL counts and will drill manually if needed. |
 
@@ -183,7 +193,7 @@ $content  = $content.Replace('%%SESSION_PATH%%',   $sessionPath)
 $content  = $content.Replace('%%ATTACH_LIB_VBS%%', "$shared\scripts\sap_attach_lib.vbs")
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_atc_stage1_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
+[System.IO.File]::WriteAllText('{RUN_TEMP}\sap_atc_stage1_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 ```
 
 > **Stages 2-4 use the same I/O pattern.** Always
@@ -239,7 +249,7 @@ $content  = $content.Replace('%%SESSION_PATH%%',   $sessionPath)
 $content  = $content.Replace('%%ATTACH_LIB_VBS%%', "$shared\scripts\sap_attach_lib.vbs")
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_atc_stage2_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
+[System.IO.File]::WriteAllText('{RUN_TEMP}\sap_atc_stage2_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 ```
 
 Run via cscript. Expected lines:
@@ -272,12 +282,12 @@ $content  = $content.Replace('%%SESSION_PATH%%',   $sessionPath)
 $content  = $content.Replace('%%ATTACH_LIB_VBS%%', "$shared\scripts\sap_attach_lib.vbs")
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_atc_stage3_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
+[System.IO.File]::WriteAllText('{RUN_TEMP}\sap_atc_stage3_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 ```
 
 Then loop:
 
-1. Run `{WORK_TEMP}\sap_atc_stage3_run.vbs` via cscript.
+1. Run `{RUN_TEMP}\sap_atc_stage3_run.vbs` via cscript.
 2. Parse the last line:
    - `STATE=COMPLETED` → break, proceed to Stage 4.
    - `STATE=RUNNING` → wait `--poll-interval` seconds, retry.
@@ -298,7 +308,7 @@ $pollInterval = 15
 $maxWait      = 600
 $elapsed      = 0
 do {
-  $out = & cscript //NoLogo "{WORK_TEMP}\sap_atc_stage3_run.vbs"
+  $out = & cscript //NoLogo "{RUN_TEMP}\sap_atc_stage3_run.vbs"
   $state = ($out -match '^STATE=(.+)$') | Out-Null; $Matches[1]
   if ($state -eq 'COMPLETED') { break }
   if ($state -eq 'FAILED')    { throw "ATC run failed" }
@@ -330,7 +340,7 @@ $content  = $content.Replace('%%SESSION_PATH%%',   $sessionPath)
 $content  = $content.Replace('%%ATTACH_LIB_VBS%%', "$shared\scripts\sap_attach_lib.vbs")
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_atc_stage4_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
+[System.IO.File]::WriteAllText('{RUN_TEMP}\sap_atc_stage4_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 ```
 
 **Run the Stage-4 VBS with the SAP GUI Security guard.** The result-file
@@ -359,7 +369,7 @@ if (-not $allowed) {
 }
 # 3. Run the results read + download (32-bit cscript). If the dialog appears it
 #    blocks here until the watcher dismisses it; then the download completes.
-& 'C:/Windows/SysWOW64/cscript.exe' //NoLogo '{WORK_TEMP}\sap_atc_stage4_run.vbs'
+& 'C:/Windows/SysWOW64/cscript.exe' //NoLogo '{RUN_TEMP}\sap_atc_stage4_run.vbs'
 # 4. Reap the watcher.
 if ($watcher) { $watcher | Wait-Process -Timeout 45 -ErrorAction SilentlyContinue }
 ```
@@ -431,7 +441,7 @@ $content  = $content.Replace('%%SESSION_PATH%%',   $sessionPath)
 $content  = $content.Replace('%%ATTACH_LIB_VBS%%', "$shared\scripts\sap_attach_lib.vbs")
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_atc_stage4b_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
+[System.IO.File]::WriteAllText('{RUN_TEMP}\sap_atc_stage4b_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 ```
 
 **Run with the SAP GUI Security guard** — the findings-TSV export is SAP-GUI-side
@@ -448,7 +458,7 @@ if (-not $allowed) {
         '-NoProfile','-ExecutionPolicy','Bypass','-File',"$shared\sap_gui_security_sidecar.ps1",'-TimeoutSeconds','40')
     Start-Sleep -Milliseconds 800
 }
-& 'C:/Windows/SysWOW64/cscript.exe' //NoLogo '{WORK_TEMP}\sap_atc_stage4b_run.vbs'
+& 'C:/Windows/SysWOW64/cscript.exe' //NoLogo '{RUN_TEMP}\sap_atc_stage4b_run.vbs'
 if ($watcher) { $watcher | Wait-Process -Timeout 45 -ErrorAction SilentlyContinue }
 ```
 
@@ -547,7 +557,7 @@ ATC > Manage Results > <series> screen.
 ## Step 8 — Clean Up
 
 ```bash
-cmd /c del {WORK_TEMP}\sap_atc_stage1_run.vbs & del {WORK_TEMP}\sap_atc_stage2_run.vbs & del {WORK_TEMP}\sap_atc_stage3_run.vbs & del {WORK_TEMP}\sap_atc_stage4_run.vbs & del {WORK_TEMP}\sap_atc_stage4b_run.vbs
+cmd /c del {RUN_TEMP}\sap_atc_stage1_run.vbs & del {RUN_TEMP}\sap_atc_stage2_run.vbs & del {RUN_TEMP}\sap_atc_stage3_run.vbs & del {RUN_TEMP}\sap_atc_stage4_run.vbs & del {RUN_TEMP}\sap_atc_stage4b_run.vbs
 ```
 
 Keep the downloaded result TXT (`--save-to`) and, when Stage 4b ran, the
@@ -558,7 +568,7 @@ findings TSV (`<save-to>.findings.tsv`) — both are operator artefacts.
 ## Final — Log End
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_atc_run.json" -Status SUCCESS -ExitCode 0 -MetricsJson '{"gate":"ATC","verdict":"PASS","p1":0,"p2":0,"p3":0}'
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_atc_run.json" -Status SUCCESS -ExitCode 0 -MetricsJson '{"gate":"ATC","verdict":"PASS","p1":0,"p2":0,"p3":0}'
 ```
 
 For gate FAIL, set `-Status FAILED -ExitCode 1 -ErrorClass ATC_GATE_FAIL`

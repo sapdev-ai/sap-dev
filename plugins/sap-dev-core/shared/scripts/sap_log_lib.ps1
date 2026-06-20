@@ -122,19 +122,68 @@ function Resolve-SapLogPath {
     }
     $now  = Get-Date
     $name = $cfg.Pattern
+
+    # AI-session + pinned SAP-connection identity, for per-(AI session x SAP
+    # connection) log files: one coherent file per build, so parallel builds
+    # (each a distinct conversation, usually on a distinct connection) never
+    # interleave -- while every JSONL record still carries run_id/skill for
+    # per-skill drill-down WITHIN the file. Resolved best-effort: env-var
+    # override first (SAPDEV_AI_SESSION_ID / SAPDEV_SID / SAPDEV_CLIENT, also
+    # the path VBS callers use), then the connection-lib functions IF they are
+    # loaded in this scope -- they are when invoked via sap_log_helper.ps1
+    # 'start', which dot-sources sap_connection_lib.ps1 before calling
+    # Start-SapLog -- else empty. Empty is safe: the segment just drops out.
+    # The path is pinned at run START and reused for step/end (persisted in the
+    # helper state file), so this resolves exactly once per run.
+    $aiSession = ''
+    try {
+        # Prefer the Claude-provided conversation id: it is stable for the whole
+        # conversation and -- unlike the parent-PID heuristic in
+        # Get-SapAiSessionId -- survives a Claude host-process restart, so a long
+        # build keeps writing to ONE file instead of splitting at the restart.
+        # SAPDEV_AI_SESSION_ID stays the explicit test / override hook.
+        if (-not [string]::IsNullOrWhiteSpace($env:SAPDEV_AI_SESSION_ID)) {
+            $aiSession = "$($env:SAPDEV_AI_SESSION_ID)"
+        } elseif (-not [string]::IsNullOrWhiteSpace($env:CLAUDE_CODE_SESSION_ID)) {
+            $aiSession = "$($env:CLAUDE_CODE_SESSION_ID)"
+        } elseif (Get-Command Get-SapAiSessionId -ErrorAction SilentlyContinue) {
+            $aiSession = "$(Get-SapAiSessionId)"
+        }
+    } catch {}
+    # Shorten the GUID-like id to 8 chars -- enough to disambiguate parallel
+    # conversations, short enough for a readable filename.
+    if ($aiSession.Length -gt 8) { $aiSession = $aiSession.Substring(0, 8) }
+
+    $sid = ''; $client = ''
+    try {
+        if (-not [string]::IsNullOrWhiteSpace($env:SAPDEV_SID))    { $sid    = "$($env:SAPDEV_SID)" }
+        if (-not [string]::IsNullOrWhiteSpace($env:SAPDEV_CLIENT)) { $client = "$($env:SAPDEV_CLIENT)" }
+        if ([string]::IsNullOrWhiteSpace($sid) -and (Get-Command Get-SapCurrentConnectionProfile -ErrorAction SilentlyContinue)) {
+            $prof = Get-SapCurrentConnectionProfile
+            if ($prof) {
+                if ([string]::IsNullOrWhiteSpace($sid))    { $sid    = "$($prof.system_name)" }
+                if ([string]::IsNullOrWhiteSpace($client)) { $client = "$($prof.client)" }
+            }
+        }
+    } catch {}
+
     # Date / time placeholders -- {HHMMSS} gives per-second uniqueness so a
     # pattern like 'sap-dev-{YYYYMMDD}-{HHMMSS}-{SKILL}.log' produces one
     # file per skill invocation. {RUN_ID} is the unique GUID assigned at
     # Start-SapLog; use it for absolute uniqueness even if two skills fire
-    # in the same second.
-    $name = $name.Replace('{YYYYMMDD}', $now.ToString('yyyyMMdd'))
-    $name = $name.Replace('{YYYYMM}',   $now.ToString('yyyyMM'))
-    $name = $name.Replace('{HHMMSS}',   $now.ToString('HHmmss'))
-    $name = $name.Replace('{HHMM}',     $now.ToString('HHmm'))
-    $name = $name.Replace('{RUN_ID}',   ($RunId   -replace '[^A-Za-z0-9_\-]', '_'))
-    $name = $name.Replace('{SKILL}',    ($Skill   -replace '[^A-Za-z0-9_\-]', '_'))
-    $name = $name.Replace('{USER}',     ($env:USERNAME -replace '[^A-Za-z0-9_\-]', '_'))
-    $name = $name.Replace('{SYSTEM}',   ($env:COMPUTERNAME -replace '[^A-Za-z0-9_\-]', '_'))
+    # in the same second. {AI_SESSION}/{SID}/{CLIENT} group a whole build
+    # (one conversation on one SAP connection) into a single file.
+    $name = $name.Replace('{YYYYMMDD}',   $now.ToString('yyyyMMdd'))
+    $name = $name.Replace('{YYYYMM}',     $now.ToString('yyyyMM'))
+    $name = $name.Replace('{HHMMSS}',     $now.ToString('HHmmss'))
+    $name = $name.Replace('{HHMM}',       $now.ToString('HHmm'))
+    $name = $name.Replace('{RUN_ID}',     ($RunId   -replace '[^A-Za-z0-9_\-]', '_'))
+    $name = $name.Replace('{SKILL}',      ($Skill   -replace '[^A-Za-z0-9_\-]', '_'))
+    $name = $name.Replace('{USER}',       ($env:USERNAME -replace '[^A-Za-z0-9_\-]', '_'))
+    $name = $name.Replace('{SYSTEM}',     ($env:COMPUTERNAME -replace '[^A-Za-z0-9_\-]', '_'))
+    $name = $name.Replace('{AI_SESSION}', ($aiSession -replace '[^A-Za-z0-9_\-]', '_'))
+    $name = $name.Replace('{SID}',        ($sid       -replace '[^A-Za-z0-9_\-]', '_'))
+    $name = $name.Replace('{CLIENT}',     ($client    -replace '[^A-Za-z0-9_\-]', '_'))
     return Join-Path $cfg.Dir $name
 }
 

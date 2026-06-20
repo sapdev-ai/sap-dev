@@ -41,7 +41,7 @@ Task: $ARGUMENTS
 **Resolve `work_dir` via the env-aware helper** — do NOT take `work_dir` from a direct `settings.json` read (that ignores the `SAPDEV_AI_WORK_DIR` env var and `userconfig.json`). Use the `WORK_DIR=` value printed by:
 
 ```bash
-powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('WORK_DIR=' + (Get-SapWorkDir))"
+powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('WORK_DIR=' + (Get-SapWorkDir)); Write-Output ('RUN_TEMP=' + (Get-SapRunTemp))"
 ```
 
 The settings note below still applies to the OTHER keys.
@@ -60,14 +60,25 @@ Ensure the temp directory exists:
 cmd /c if not exist "{WORK_TEMP}" mkdir "{WORK_TEMP}"
 ```
 
+Set `{RUN_TEMP}` = the `RUN_TEMP=` value printed above — a fresh per-run scratch
+directory `{work_dir}\temp\run_<id>`, already created by `Get-SapRunTemp`.
+Resolve it **once here** and reuse it; write this skill's OWN scratch (the
+generated `sap_tr_run.*` and the `sap_tr_run.json` log-state file) under
+`{RUN_TEMP}` so concurrent TR resolutions never collide on fixed names. When this
+skill calls `/sap-se16n` to read `E070`, it passes its own
+`{RUN_TEMP}\se16n_E070.txt` as the **explicit output path** so the producer
+(se16n) and this consumer agree on the same per-run location (se16n otherwise
+writes to ITS own run dir, which this skill cannot read). `{WORK_TEMP}` (base) is
+kept only for the Step-0 definition above.
+
 ---
 
 ## Step 0.5 — Start Logging
 
-Start a structured log run. State file: `{WORK_TEMP}\sap_tr_run.json`. Best-effort. Honours `SAPDEV_PARENT_RUN_ID` env var so parent skill calls can be linked.
+Start a structured log run. State file: `{RUN_TEMP}\sap_tr_run.json`. Best-effort. Honours `SAPDEV_PARENT_RUN_ID` env var so parent skill calls can be linked.
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{WORK_TEMP}\sap_tr_run.json" -Skill sap-transport-request -ParamsJson "{}"
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{RUN_TEMP}\sap_tr_run.json" -Skill sap-transport-request -ParamsJson "{}"
 ```
 
 ---
@@ -110,8 +121,14 @@ TR).
    - User supplies TR → candidate = that TR.
    - User types `new` → skip to **Create Path**.
 3. Verify candidate (Step 1b — mode-aware). If not modifiable, repeat the prompt above.
-4. On success, **persist** the resolved TR to `sap_dev_transport_request` via
-   `/update-config` (so future `DEFAULT` calls reuse it).
+4. On success, **persist** the resolved TR to `sap_dev_transport_request` as a
+   SESSION-scoped task default — so future `DEFAULT` calls in THIS conversation
+   reuse it WITHOUT clobbering other conversations on the same connection. Run
+   `<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_dev_default.ps1 -Action set -Key
+   sap_dev_transport_request -Value <TR>` (Session is its default), or
+   `Set-SapUserSetting -Key sap_dev_transport_request -Value <TR> -Scope Session`.
+   Do NOT use `/update-config` (that writes the global layer, shared across
+   conversations and systems). See `shared/rules/tr_resolution.md` §4.
 
 ### `ASK`
 
@@ -164,8 +181,11 @@ caller. Do NOT fall through to Steps 2-4 from the GUI branch.
 
 If during a session the user explicitly says e.g. "switch to ask mode",
 "always create new from now on", or "use the default TR every time", update
-`way_to_get_transport_request` immediately via `/update-config` and follow
-the new policy for the rest of the session.
+`way_to_get_transport_request` immediately and follow the new policy for the
+rest of the session. Because it applies to THIS conversation only, persist it
+SESSION-scoped (`Set-SapUserSetting -Key way_to_get_transport_request -Value
+<...> -Scope Session`), not `/update-config`. Use `-Scope Connection` only if the
+user says it should be the standing policy for that system from now on.
 
 ---
 
@@ -182,10 +202,10 @@ Invoke `/sap-se16n` to read the candidate TR's `TRSTATUS` directly from
 table `E070`:
 
 ```
-/sap-se16n TABLE=E070 WHERE: TRKORR=<candidate> SELECT: TRKORR TRSTATUS TRFUNCTION AS4USER
+/sap-se16n TABLE=E070 WHERE: TRKORR=<candidate> SELECT: TRKORR TRSTATUS TRFUNCTION AS4USER Output file={RUN_TEMP}\se16n_E070.txt
 ```
 
-Parse the resulting `{WORK_TEMP}\se16n_E070.txt`:
+Parse the resulting `{RUN_TEMP}\se16n_E070.txt`:
 
 | Observation | Outcome |
 |---|---|
@@ -237,7 +257,7 @@ create.
 
 The PowerShell template is at `<SKILL_DIR>/references/sap_transport_request.ps1`.
 
-Write `{WORK_TEMP}\sap_tr_run.ps1`:
+Write `{RUN_TEMP}\sap_tr_run.ps1`:
 ```powershell
 $content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_transport_request.ps1', [System.Text.Encoding]::UTF8)
 $content = $content.Replace('%%SAP_APPLICATION_SERVER%%', '')
@@ -249,7 +269,7 @@ $content = $content.Replace('%%SAP_LANGUAGE%%',           '')
 $content = $content.Replace('%%RFC_LIB_PS1%%',            '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_rfc_lib.ps1')
 $content = $content.Replace('%%TRANSPORT_REQUEST%%',      'THE_TR')
 $content = $content.Replace('%%SAP_DEV_MODE%%',           'THE_MODE')
-[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_tr_run.ps1', $content, [System.Text.Encoding]::UTF8)
+[System.IO.File]::WriteAllText('{RUN_TEMP}\sap_tr_run.ps1', $content, [System.Text.Encoding]::UTF8)
 Write-Host 'Done'
 ```
 Replace all `THE_*` placeholders with actual values from Steps 1-2.
@@ -270,7 +290,7 @@ dispatch in the caller, not the guardrail.
 
 Execute via **32-bit PowerShell** (SAP NCo 3.1 is registered in the 32-bit GAC):
 ```bash
-C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File "{WORK_TEMP}\sap_tr_run.ps1"
+C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_tr_run.ps1"
 ```
 
 ---
@@ -282,7 +302,7 @@ Parse the script output for `RESULT_TR:` and `RESULT_STATUS:` lines.
 | RESULT_STATUS | Meaning | Action |
 |---|---|---|
 | `EXISTING_MODIFIABLE` | Provided TR is still modifiable | Report: "Transport request `<TR>` is modifiable and ready to use." Persistence per Step 1a (policy-driven). |
-| `NEWLY_CREATED` | New TR was created | Report: "Created new transport request `<TR>`." Persistence per Step 1a: `DEFAULT` → save automatically; `ASK` → ask the user once; `CREATE_NEW` → do NOT save. Use `/update-config` to write `sap_dev_transport_request` when persisting. |
+| `NEWLY_CREATED` | New TR was created | Report: "Created new transport request `<TR>`." Persistence per Step 1a: `DEFAULT` → save automatically; `ASK` → ask the user once; `CREATE_NEW` → do NOT save. Persist via the SESSION writer (`sap_dev_default.ps1` / `Set-SapUserSetting -Scope Session`), NOT `/update-config`. |
 | `ERROR` | Something went wrong | Show full output and diagnose (see error table below). |
 
 ### Error Diagnosis
@@ -300,7 +320,7 @@ Parse the script output for `RESULT_TR:` and `RESULT_STATUS:` lines.
 ## Step 5 — Clean Up
 
 ```bash
-cmd /c del "{WORK_TEMP}\sap_tr_run.ps1"
+cmd /c del "{RUN_TEMP}\sap_tr_run.ps1"
 ```
 
 ---
@@ -312,13 +332,13 @@ Log the run-end record. Best-effort.
 On success:
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_tr_run.json" -Status SUCCESS -ExitCode 0
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_tr_run.json" -Status SUCCESS -ExitCode 0
 ```
 
 On failure:
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_tr_run.json" -Status FAILED -ExitCode 1 -ErrorClass <CLASS> -ErrorMsg "<short>"
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_tr_run.json" -Status FAILED -ExitCode 1 -ErrorClass <CLASS> -ErrorMsg "<short>"
 ```
 
 Suggested `<CLASS>`: `TR_RESOLUTION_FAILED`, `TR_NOT_MODIFIABLE`, `RFC_LOGON_FAILED`.

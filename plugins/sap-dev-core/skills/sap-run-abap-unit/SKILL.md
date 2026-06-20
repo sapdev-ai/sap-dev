@@ -84,7 +84,7 @@ release model as `/sap-atc`).
 Resolve `work_dir` via the env-aware helper (NOT a direct `settings.json` read):
 
 ```bash
-powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('WORK_DIR=' + (Get-SapWorkDir))"
+powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('WORK_DIR=' + (Get-SapWorkDir)); Write-Output ('RUN_TEMP=' + (Get-SapRunTemp))"
 ```
 
 `{WORK_TEMP} = work_dir\temp`. Settings reads follow `shared/rules/settings_lookup.md`.
@@ -93,12 +93,22 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_
 cmd /c if not exist "{WORK_TEMP}" mkdir "{WORK_TEMP}"
 ```
 
+Set `{RUN_TEMP}` = the `RUN_TEMP=` value printed above — a fresh per-run scratch
+directory `{work_dir}\temp\run_<id>`, already created by `Get-SapRunTemp`.
+Resolve it **once here** and reuse the same value for the rest of this
+invocation; it isolates this run's generated wrappers / state / scratch files so
+concurrent runs (parallel sub-agents, multi-connection deploys) never collide.
+**`{WORK_TEMP}` stays the base temp dir** and is used ONLY for
+`Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'` (the session-attach plumbing
+derives `{work_dir}\runtime` from its parent, so it must see the base path, not
+the run dir). Everything the skill writes itself goes under `{RUN_TEMP}`.
+
 ---
 
 ## Step 0.5 — Start Logging
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{WORK_TEMP}\sap_run_abap_unit_run.json" -Skill sap-run-abap-unit -ParamsJson "{\"object\":\"<NAME>\"}"
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{RUN_TEMP}\sap_run_abap_unit_run.json" -Skill sap-run-abap-unit -ParamsJson "{\"object\":\"<NAME>\"}"
 ```
 
 ---
@@ -113,7 +123,7 @@ powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_
 | `--min-coverage=<n>` | no | brief `MODE_MIN_COVERAGE` / blank | Coverage threshold (percent). **Implies `--with-coverage`.** Gates per `aunit_coverage_gate` (warn / block). |
 | `--risk-level=<L>` | no | `dangerous` | Cap on the AUnit risk level executed; the client's `SAUNIT_CLIENT_SETUP` is the real gate. |
 | `--mode=<M>` | no | `GUI` | Phase 1 implements `GUI` only. `RFC` / `ADT` resolve to GUI with an INFO note until Phase 2 / 3. |
-| `--save-to=<PATH>` | no | `{WORK_TEMP}\aunit_<NAME>.json` | JSON result file. |
+| `--save-to=<PATH>` | no | `{RUN_TEMP}\aunit_<NAME>.json` | JSON result file. |
 
 ---
 
@@ -146,13 +156,13 @@ $content  = $content.Replace('%%SESSION_PATH%%',   $sessionPath)
 $content  = $content.Replace('%%ATTACH_LIB_VBS%%', "$shared\scripts\sap_attach_lib.vbs")
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_run_abap_unit.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
+[System.IO.File]::WriteAllText('{RUN_TEMP}\sap_run_abap_unit.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 ```
 
 Run via 32-bit cscript:
 
 ```bash
-C:/Windows/SysWOW64/cscript.exe //NoLogo {WORK_TEMP}\sap_run_abap_unit.vbs
+C:/Windows/SysWOW64/cscript.exe //NoLogo {RUN_TEMP}\sap_run_abap_unit.vbs
 ```
 
 ---
@@ -209,7 +219,7 @@ gate outcome (ok / below-min warn-or-block).
 ## Final — Log End
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_run_abap_unit_run.json" -Status SUCCESS -ExitCode 0 -MetricsJson '{"gate":"AUNIT","verdict":"PASS","methods":0,"passed":0,"failed":0,"coverage":-1}'
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_run_abap_unit_run.json" -Status SUCCESS -ExitCode 0 -MetricsJson '{"gate":"AUNIT","verdict":"PASS","methods":0,"passed":0,"failed":0,"coverage":-1}'
 ```
 
 **Build-KPI enrichment (best-effort).** Include `-MetricsJson` on every end path,
