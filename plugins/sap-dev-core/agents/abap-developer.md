@@ -82,6 +82,24 @@ Then read the other keys per `shared/rules/settings_lookup.md` (merge env var �
 writes go to `userconfig.json`): `custom_url` (default `{work_dir}\custom`),
 `design_docs_url`, `source_code_url`. Set `{WORK_TEMP}` = `{work_dir}\temp`.
 
+Also mint a per-run scratch dir for the agent's OWN transient files — ad-hoc
+probes, verify scripts, material/input files, any generated `.vbs`/`.ps1`. Write
+them HERE, never into `{WORK_TEMP}` root, where a concurrent agent/run clobbers a
+fixed name (the 2026-06-20 cross-session `sap_se38_update_run.vbs` collision). The
+deploy skills the agent drives already mint their OWN `{RUN_TEMP}` internally — this
+one is for the files the agent writes directly (via PowerShell/Bash, which the
+Write-tool hook does not see):
+
+```bash
+powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('RUN_TEMP=' + (Get-SapRunTemp))"
+```
+
+Take `{RUN_TEMP}` from the `RUN_TEMP=` line and reuse that ONE value for every
+agent-authored scratch file. Keep `{WORK_TEMP}` only as the base anchor for
+`Get-SapCurrentSessionPath -WorkTemp` and for the persistent transcript (Step 0.5),
+which is a deliberate audit artifact (timestamped), not transient scratch. See
+CLAUDE.md "Two-bucket temp model".
+
 ### 0.2 Read the customer brief and set MODE flags
 
 Resolution chain (first hit wins):

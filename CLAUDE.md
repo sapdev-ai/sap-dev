@@ -449,6 +449,46 @@ fixed names. `{WORK_TEMP}` stays the **base** dir, used for the session broker a
 parent — passing them the run dir would relocate the registry). See
 `shared/scripts/sap_connection_lib.ps1` (`Get-SapRunTemp` / `Remove-SapStaleRunTemp`).
 
+**Two-bucket temp model — decide by SCOPE, not by "is it transient".** The
+mistake is "everything transient → `{RUN_TEMP}`": some scratch is genuinely
+cross-session and MUST stay at a shared, stable path or coordination breaks.
+Route every temp file to the bucket that matches *who needs to find it*:
+
+- **Bucket A — cross-session / cross-connection coordination → stable shared
+  path** (`{work_dir}\runtime\`): anything a *different* session must locate by
+  a *predictable* path — the broker registry (`session_registry.json`),
+  `connections.json`, the AI-session pins, the session-path anchor. These are
+  the **allowlisted** shared artifacts. `{WORK_TEMP}` (`{work_dir}\temp` root)
+  is itself only an *anchor* passed to `Get-SapCurrentSessionPath -WorkTemp` /
+  the broker (which derive `{work_dir}\runtime` from its parent) — it is **not**
+  a write target for generated scripts.
+- **Bucket B — per-run private scratch → `{RUN_TEMP}`** (`{work_dir}\temp\run_<id>`,
+  minted by `Get-SapRunTemp`): a skill's generated `*_run.vbs`/`.ps1`, the asXML
+  payload it pastes, `_run.json` state, the clipboard/title temp files, an input
+  file, AND any ad-hoc orchestrator/agent probe or verify script. Run-isolated so
+  concurrent runs — parallel sub-agents, multi-connection deploys, or **two
+  sessions of the same build** — never collide on a fixed name.
+
+**Decision rule:** *Will another session/connection ever read this exact file by
+a predictable path? Yes → Bucket A (shared coordination state in
+`{work_dir}\runtime\`, on the allowlist). No → Bucket B (`{RUN_TEMP}`).* Shipped
+helper scripts (`sap_session_broker*.{ps1,vbs}`, `sap_attach_lib.vbs`, …) live in
+`shared/scripts/`, never regenerated into temp. A cross-session helper can still
+*run* from `{RUN_TEMP}` and just point at the shared **state** by absolute path +
+the named mutex (`SapDevSessionBroker_v2`) + the global SAP GUI COM ROT — so even
+coordination work does not need its *script* in `{WORK_TEMP}`.
+
+**This applies to agents and ad-hoc orchestration scratch too, not just skills.**
+Writing a fixed-named file straight into `{WORK_TEMP}` root (or worse, the repo
+root) is the smell that caused the 2026-06-20 cross-session
+`sap_se38_update_run.vbs` collision (two concurrent v74 builds clobbered each
+other's generated VBS). Enforced two ways: `scripts/check-consistency.mjs` (static,
+catches the repo SKILL.md — note it does NOT see the running *cache* copy or
+ad-hoc scratch) + the `run-temp` PreToolUse hook in `.claude/settings.local.json`
+(runtime, catches the live tool call — cache-lagged skills and agent/orchestrator
+scratch included). The shared/allowlisted Bucket-A basenames are codified in both
+(`RUN_TEMP_SHARED_ALLOWLIST` in the checker; `SHARED_ALLOWLIST` in the hook).
+
 Every skill includes a **Step 0 — Resolve Work Directory**. It MUST resolve
 `work_dir` via `Get-SapWorkDir` (which applies the env-var → settings.local →
 settings → default precedence) — **NOT** by reading `settings.json` directly,
