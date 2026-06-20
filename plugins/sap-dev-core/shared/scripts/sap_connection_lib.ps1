@@ -1225,6 +1225,21 @@ function Get-SapAiSessionId {
         return $env:SAPDEV_AI_SESSION_ID
     }
 
+    # Prefer the Claude-provided conversation id. It is STABLE for the whole
+    # conversation and survives a Claude host-process restart -- unlike the
+    # parent-PID owner heuristic below, which mints a NEW id when the host PID
+    # changes, silently orphaning this AI session's broker pin / session
+    # dev-defaults and falling resolution back to the DEFAULT connection (a
+    # latent wrong-system risk for long-running or parallel builds across a
+    # host restart). Every consumer routes through this function (broker
+    # `acquire`, /sap-login `Resolve-AiSessionId`, Get-SapCurrentConnectionProfile,
+    # the log filename), so anchoring here fixes them all at once. Falls through
+    # to the parent-PID walk when unset (non-Claude-Code invocations, older
+    # hosts) -- behaviour outside Claude Code is unchanged.
+    if (-not [string]::IsNullOrWhiteSpace($env:CLAUDE_CODE_SESSION_ID)) {
+        return $env:CLAUDE_CODE_SESSION_ID
+    }
+
     if ([string]::IsNullOrWhiteSpace($RuntimeDir)) {
         $RuntimeDir = Get-SapWorkRuntimeDir
     }

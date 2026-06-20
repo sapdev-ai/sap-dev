@@ -49,7 +49,7 @@
 param(
     [Parameter(Mandatory = $true)]
     [ValidateSet('acquire', 'release', 'gc', 'list', 'discover',
-                 'stuck', 'pin', 'unpin', 'set-connection-id')]
+                 'stuck', 'pin', 'unpin', 'set-connection-id', 'ensure-own-session')]
     [string] $Action,
 
     [Parameter(Mandatory = $true)]
@@ -489,6 +489,57 @@ function Is-ProcessAlive {
     param([int] $ProcessId)
     if ($ProcessId -le 0) { return $false }
     try { $p = Get-Process -Id $ProcessId -ErrorAction Stop; return ($null -ne $p) } catch { return $false }
+}
+
+# ===========================================================================
+# AI-session liveness map (Phase 4.5: per-AI-session session ownership)
+# ---------------------------------------------------------------------------
+# {work_dir}\runtime\ai_session_by_pid\<pid>.txt holds the ai_session_id owned
+# by conversation process <pid>. These helpers read that directory to (a) list
+# the ai-session ids whose owning process is still alive (the contention check
+# in ensure-own-session) and (b) reverse-map a given ai-session id back to its
+# live owner PID, so an ownership claim is tied to the RIGHT conversation's
+# lifetime even when the claim is written on another conversation's behalf
+# (PID-death sweep then cleans it up automatically).
+# ===========================================================================
+
+function Get-AiSessionPidDir {
+    return (Join-Path $script:WorkRuntimeDir 'ai_session_by_pid')
+}
+
+function Get-LiveAiSessionIds {
+    $dir = Get-AiSessionPidDir
+    $live = @{}
+    if (Test-Path $dir) {
+        foreach ($f in (Get-ChildItem -Path $dir -Filter '*.txt' -File -ErrorAction SilentlyContinue)) {
+            $pidName = [System.IO.Path]::GetFileNameWithoutExtension($f.Name)
+            $n = 0
+            if ([int]::TryParse($pidName, [ref]$n) -and (Is-ProcessAlive -ProcessId $n)) {
+                $aid = ''
+                try { $aid = (Get-Content -Path $f.FullName -Raw -ErrorAction Stop) } catch {}
+                $aid = ("" + $aid).Trim()
+                if ($aid -ne '') { $live[$aid] = $true }
+            }
+        }
+    }
+    return $live
+}
+
+function Get-PidForAiSession {
+    param([string] $AiId)
+    if ([string]::IsNullOrWhiteSpace($AiId)) { return 0 }
+    $dir = Get-AiSessionPidDir
+    if (-not (Test-Path $dir)) { return 0 }
+    foreach ($f in (Get-ChildItem -Path $dir -Filter '*.txt' -File -ErrorAction SilentlyContinue)) {
+        $aid = ''
+        try { $aid = (Get-Content -Path $f.FullName -Raw -ErrorAction Stop) } catch {}
+        if (("" + $aid).Trim() -eq $AiId) {
+            $pidName = [System.IO.Path]::GetFileNameWithoutExtension($f.Name)
+            $n = 0
+            if ([int]::TryParse($pidName, [ref]$n)) { return $n }
+        }
+    }
+    return 0
 }
 
 # ===========================================================================
@@ -1369,6 +1420,144 @@ function Invoke-Unpin {
 }
 
 # ===========================================================================
+# Action: ensure-own-session (Phase 4.5 -- parallel-conversation isolation)
+# ---------------------------------------------------------------------------
+# Guarantee that THIS ai-session owns a dedicated SAP session on its pinned
+# connection, so two conversations sharing one SAP connection never drive the
+# same /app/con[N]/ses[M]. Idempotent and non-disruptive: it never navigates a
+# session another conversation may be mid-task in -- it only writes an ownership
+# claim, and when this ai-session's resolved target is already claimed by a
+# DIFFERENT LIVE ai-session it spawns a NEW session and resets only that
+# newcomer to Easy Access.
+#
+# Resolution (mirrors Get-SapCurrentSessionPath within the pinned connection):
+#   1. Already claim an entry here -> refresh + done.
+#   2. Compute the entry this ai-session currently resolves to (first 'free',
+#      else first entry). If it is NOT explicitly claimed by a different live
+#      ai-session -> formalize: claim it in place (no GUI navigation). This is
+#      the "first conversation keeps ses[0]" / "formalize an existing owner"
+#      path.
+#   3. Otherwise (target taken by a live other) -> spawn a fresh session,
+#      verify Easy Access, and claim it. This is the "second conversation gets
+#      its own ses[1]" path.
+#
+# The claim's owner_pid is the AI-session's conversation PID (reverse-looked-up
+# from ai_session_by_pid), so the existing PID-death sweep auto-releases it when
+# that conversation ends. Wired into /sap-login finalize; also callable
+# standalone to formalize an existing session's owner.
+# ===========================================================================
+
+function Invoke-EnsureOwnSession {
+    if ([string]::IsNullOrWhiteSpace($AiSessionId)) {
+        Write-Host 'NO_PIN: ai_session_id could not be resolved; nothing to isolate'
+        return
+    }
+    $stableTask = if ($TaskId -ne '') { $TaskId } else { "ownsession-$AiSessionId" }
+    $ttl = if ($TtlSeconds -gt 0) { $TtlSeconds } else { 600 }
+    $claimPid = Get-PidForAiSession -AiId $AiSessionId
+    if ($claimPid -le 0 -and $OwnerPid -gt 0) { $claimPid = $OwnerPid }
+
+    $script:Result = ''
+    With-RegistryLock {
+        $reg = Read-Registry
+        $swept = Sweep-StaleEntries -Registry $reg -VerboseDrops $false
+
+        # Resolve this ai-session's pinned connection block.
+        $pinConnId = ''
+        if ($reg.ai_sessions.ContainsKey($AiSessionId)) { $pinConnId = "$($reg.ai_sessions[$AiSessionId].connection_id)" }
+        if (-not $pinConnId) {
+            Persist-IfSwept -Registry $reg -Swept $swept
+            $script:Result = "NO_PIN: ai_session $AiSessionId is not pinned to a connection; run /sap-login first"
+            return
+        }
+        $cb = $reg.connections | Where-Object { "$($_.connection_id)" -eq $pinConnId } | Select-Object -First 1
+        if (-not $cb) {
+            Persist-IfSwept -Registry $reg -Swept $swept
+            $script:Result = "NO_PIN: pinned connection_id=$pinConnId is not currently live; nothing to isolate"
+            return
+        }
+        $targetCon = "$($cb.connection_path)"
+        $now = (Get-Date).ToString('yyyy-MM-ddTHH:mm:ss')
+
+        # 1. Already own a session here -> refresh + done (idempotent).
+        $mine = $cb.entries | Where-Object { "$($_.ai_session_id)" -eq $AiSessionId } | Select-Object -First 1
+        if ($mine) {
+            $mine.status      = 'claimed'
+            $mine.task_id     = $stableTask
+            $mine.owner_skill = $OwnerSkill
+            if ($claimPid -gt 0) { $mine.owner_pid = $claimPid }
+            $mine.claim_time  = $now
+            $mine.ttl_seconds = $ttl
+            $reg.ai_sessions[$AiSessionId].last_seen_at = $now
+            Write-Registry -Registry $reg
+            $script:Result = "OWN_SESSION: path=$($mine.path) connection=$targetCon reused=true spawned=false"
+            return
+        }
+
+        # 2. Compute the entry this ai-session currently resolves to (mirror of
+        #    Get-SapCurrentSessionPath within a connection: first 'free', else
+        #    first entry). Formalize it unless a different LIVE ai-session owns it.
+        $liveAi = Get-LiveAiSessionIds
+        $target = $cb.entries | Where-Object { "$($_.status)" -eq 'free' } | Select-Object -First 1
+        if (-not $target) { $target = $cb.entries | Select-Object -First 1 }
+
+        if ($target) {
+            $owner = "$($target.ai_session_id)"
+            $takenByLiveOther = ($owner -ne '' -and $owner -ne $AiSessionId -and $liveAi.ContainsKey($owner))
+            if (-not $takenByLiveOther) {
+                $target.status        = 'claimed'
+                $target.task_id       = $stableTask
+                $target.ai_session_id = $AiSessionId
+                $target.owner_skill   = $OwnerSkill
+                if ($claimPid -gt 0) { $target.owner_pid = $claimPid }
+                $target.claim_time    = $now
+                $target.ttl_seconds   = $ttl
+                $reg.ai_sessions[$AiSessionId].last_seen_at = $now
+                Write-Registry -Registry $reg
+                $script:Result = "OWN_SESSION: path=$($target.path) connection=$targetCon reused=false spawned=false formalized=true"
+                return
+            }
+        }
+
+        # 3. Our resolved target is taken by a different live ai-session (or no
+        #    entry exists) -> spawn a fresh session and claim it.
+        $newSes = Spawn-NewSession -TargetConnectionPath $targetCon
+        if (-not $newSes) {
+            Persist-IfSwept -Registry $reg -Swept $swept
+            $script:Result = "DENIED: contended connection $targetCon and spawn failed (session cap reached or SAP GUI unreachable)"
+            return
+        }
+        # Reset only the NEWCOMER to Easy Access (never touches the other
+        # conversation's session).
+        $snap = Resolve-SapSessionSnap -Path $newSes.path
+        if (-not (Is-SessionAtEasyAccess -Snap $snap)) {
+            [void](Reset-SessionToEasyAccess -Path $newSes.path)
+        }
+        $cb.entries += @{
+            path           = "$($newSes.path)"
+            session_number = [int]$newSes.session_number
+            task_id        = $stableTask
+            ai_session_id  = $AiSessionId
+            owner_pid      = $claimPid
+            owner_skill    = $OwnerSkill
+            status         = 'claimed'
+            claim_time     = $now
+            ttl_seconds    = $ttl
+            discovered     = $false
+            stuck_program  = ''
+            stuck_screen   = ''
+            was_created    = $true
+        }
+        $reg.ai_sessions[$AiSessionId].last_seen_at = $now
+        Write-Registry -Registry $reg
+        $script:Result = "OWN_SESSION: path=$($newSes.path) connection=$targetCon reused=false spawned=true"
+    }
+
+    Write-Host $script:Result
+    if ($script:Result.StartsWith('DENIED')) { exit 1 }
+}
+
+# ===========================================================================
 # Dispatch
 # ===========================================================================
 
@@ -1382,5 +1571,6 @@ switch ($Action) {
     'pin'               { Invoke-Pin }
     'unpin'             { Invoke-Unpin }
     'set-connection-id' { Invoke-SetConnectionId }
+    'ensure-own-session' { Invoke-EnsureOwnSession }
 }
 exit 0

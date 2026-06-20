@@ -231,6 +231,39 @@ identity (and `set-connection-id` re-binds the profile).
 
 ---
 
+### `ensure-own-session`
+
+```
+pwsh -File sap_session_broker.ps1 -Action ensure-own-session -WorkTemp "<abs-path>" [-TtlSeconds <n>] [-OwnerSkill <name>]
+```
+
+Guarantees the calling **AI session** owns a dedicated session on its
+pinned connection, so two conversations logged into the **same** SAP
+connection never drive the same `/app/con[N]/ses[M]` (the
+`Get-SapCurrentSessionPath` resolver otherwise hands both the connection's
+first session). Auto-resolves the AI-session id (parent-PID walk) and:
+
+1. already claims a session here → refresh + return it;
+2. else the session it currently *resolves to* (mirror of
+   `Get-SapCurrentSessionPath`: first `free`, else first entry) is
+   **formalized** — claimed in place, no GUI navigation — UNLESS that
+   session is claimed by a *different live* AI session;
+3. else (resolved target taken by a live other) → **spawn** a fresh
+   session, reset only the newcomer to Easy Access, and claim it.
+
+The claim's `owner_pid` is the AI session's conversation PID (reverse-
+mapped from `runtime\ai_session_by_pid\`), so the PID-death sweep releases
+it when that conversation ends. Idempotent and non-disruptive (never
+navigates another conversation's session). Wired into `/sap-login`
+**Step 6.7** so isolation is automatic for every parallel login. Output:
+```
+OWN_SESSION: path=<p> connection=<c> reused=<bool> spawned=<bool> [formalized=true]
+NO_PIN: <reason>     # this AI session is not pinned to a live connection yet
+DENIED: <reason>     # contended connection + spawn failed (exit 1)
+```
+
+---
+
 ## Registry schema
 
 `{WORK_TEMP}\session_registry.json`, UTF-8 no BOM. Schema v2 (multi-

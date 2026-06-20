@@ -175,6 +175,26 @@ Function LogResolvePath(sSkill, sRunId)
     Dim oWsh : Set oWsh = CreateObject("WScript.Shell")
     sName = Replace(sName, "{USER}",     LogSanitize(oWsh.ExpandEnvironmentStrings("%USERNAME%")))
     sName = Replace(sName, "{SYSTEM}",   LogSanitize(oWsh.ExpandEnvironmentStrings("%COMPUTERNAME%")))
+    ' {AI_SESSION}/{SID}/{CLIENT}: per-(AI session x SAP connection) grouping so
+    ' parallel builds never interleave. VBS cannot call the PowerShell resolvers
+    ' (Get-SapAiSessionId / Get-SapCurrentConnectionProfile), so it reads the
+    ' values from env vars the launching PowerShell wrapper exports. Empty when
+    ' unset -- the segment just drops out. (No operational VBS logs to file
+    ' today; this keeps parity with the PowerShell logger for any future caller.)
+    ' Prefer SAPDEV_AI_SESSION_ID (explicit override), then CLAUDE_CODE_SESSION_ID
+    ' (Claude-provided, stable across host restarts). ExpandEnvironmentStrings
+    ' returns the literal "%VAR%" when a var is unset, so an InStr "%" check = unset.
+    Dim sAi : sAi = oWsh.ExpandEnvironmentStrings("%SAPDEV_AI_SESSION_ID%")
+    If InStr(sAi, "%") > 0 Then sAi = oWsh.ExpandEnvironmentStrings("%CLAUDE_CODE_SESSION_ID%")
+    If InStr(sAi, "%") > 0 Then sAi = ""   ' both unset
+    If Len(sAi) > 8 Then sAi = Left(sAi, 8)
+    sName = Replace(sName, "{AI_SESSION}", LogSanitize(sAi))
+    Dim sSid : sSid = oWsh.ExpandEnvironmentStrings("%SAPDEV_SID%")
+    If InStr(sSid, "%") > 0 Then sSid = ""
+    sName = Replace(sName, "{SID}",        LogSanitize(sSid))
+    Dim sCli : sCli = oWsh.ExpandEnvironmentStrings("%SAPDEV_CLIENT%")
+    If InStr(sCli, "%") > 0 Then sCli = ""
+    sName = Replace(sName, "{CLIENT}",     LogSanitize(sCli))
     LogResolvePath = cfg("Dir") & "\" & sName
 End Function
 

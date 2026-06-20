@@ -709,6 +709,41 @@ Access and free for the user or another AI session.
 
 ---
 
+### Step 6.7 — Ensure a dedicated session (parallel-conversation isolation)
+
+After the pin is set, claim a **dedicated SAP session** for this
+conversation so two conversations logged into the **same** SAP connection
+never drive the same `/app/con[N]/ses[M]` (without this,
+`Get-SapCurrentSessionPath` hands both the connection's first session and
+they trample each other). Best-effort — do **not** fail the login if this
+step errors:
+
+```bash
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_session_broker.ps1" -Action ensure-own-session -WorkTemp "{WORK_TEMP}" -TtlSeconds 2592000 -OwnerSkill sap-login
+```
+
+The broker auto-resolves this conversation's AI-session id (parent-PID
+walk) and prints one of:
+
+- `OWN_SESSION: … formalized=true` — **first / sole** conversation on the
+  connection: it claims the session it already resolves to (usually
+  `ses[0]`); no new window opens.
+- `OWN_SESSION: … spawned=true` — **a second live conversation** is already
+  on this connection: it opens a fresh `ses[1]` (resetting only that
+  newcomer to Easy Access — the other conversation's session is never
+  touched) and claims it. Tell the user a second SAP session window opened
+  for this conversation.
+- `NO_PIN: …` — nothing pinned yet (e.g. an RFC-only flow); nothing to
+  isolate, continue.
+
+The claim's `owner_pid` is this conversation's process, so the broker's
+PID-death sweep releases it automatically when the conversation ends. From
+here on `Get-SapCurrentSessionPath` returns this conversation's own session
+and every downstream skill wrapper picks it up via
+`$env:SAPDEV_SESSION_PATH` (see the resolution contract below).
+
+---
+
 ## Consumer-skill resolution contract (unchanged interface, Phase-4 enriched)
 
 Every downstream skill resolves its target session like this:
