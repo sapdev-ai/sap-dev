@@ -1206,6 +1206,93 @@ function _Invoke-AiSessionGc {
     }
 }
 
+# ---------------------------------------------------------------------------
+# AI-session HEARTBEAT (stable-id liveness) -- complements the pid->id
+# breadcrumb below. When Get-SapAiSessionId resolves the id from a stable env
+# var (CLAUDE_CODE_SESSION_ID / SAPDEV_AI_SESSION_ID), the owner-PID anchor
+# (_Get-AiOwnerPid) can land on a PER-TURN ephemeral process -- e.g. the Claude
+# Code Electron host spawns a short-lived worker per turn (the durable top-level
+# process is SHARED across conversations, so it cannot be the per-conversation
+# anchor). That worker dies between turns, so the pid breadcrumb goes stale and
+# the broker wrongly treats a still-running conversation as dead -- collapsing
+# parallel sessions onto one (the recurring 2026-06-20 multi-session contention).
+# The heartbeat decouples liveness from the PID: a file keyed by the STABLE id,
+# whose mtime is refreshed on every Get-SapAiSessionId call; "live" = refreshed
+# within the TTL. PID liveness stays the fast path / non-env-host fallback; the
+# broker UNIONs both (Get-LiveAiSessionIds) and the sweep keeps a dead-pid claim
+# alive while its heartbeat is fresh.
+# ---------------------------------------------------------------------------
+$script:_SapAi_HeartbeatTtlResolved = $null
+
+function Get-SapAiHeartbeatTtlMinutes {
+    if ($null -ne $script:_SapAi_HeartbeatTtlResolved) { return $script:_SapAi_HeartbeatTtlResolved }
+    $ttl = 30
+    try {
+        if (Get-Command Get-SapSettingValue -ErrorAction SilentlyContinue) {
+            $v = Get-SapSettingValue 'ai_liveness_ttl_minutes' ''
+            $n = 0
+            if ($v -and [int]::TryParse(("" + $v), [ref]$n) -and $n -gt 0) { $ttl = $n }
+        }
+    } catch {}
+    $script:_SapAi_HeartbeatTtlResolved = $ttl
+    return $ttl
+}
+
+function Get-SapAiHeartbeatDir {
+    param([string]$RuntimeDir = '')
+    if ([string]::IsNullOrWhiteSpace($RuntimeDir)) { $RuntimeDir = Get-SapWorkRuntimeDir }
+    return (Join-Path $RuntimeDir 'ai_session_alive')
+}
+
+function _Get-AiHeartbeatFileName {
+    param([string]$AiId)
+    return ((($AiId -replace '[^A-Za-z0-9._-]', '_')) + '.txt')
+}
+
+function Set-SapAiHeartbeat {
+    # Best-effort: refresh (mtime) the stable-id heartbeat file. Never throws.
+    param([string]$RuntimeDir = '', [string]$AiId)
+    if ([string]::IsNullOrWhiteSpace($AiId)) { return }
+    try {
+        $dir = Get-SapAiHeartbeatDir -RuntimeDir $RuntimeDir
+        if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
+        $file = Join-Path $dir (_Get-AiHeartbeatFileName -AiId $AiId)
+        # ALWAYS write (even if content is identical) so the mtime advances = heartbeat.
+        [System.IO.File]::WriteAllText($file, $AiId, [System.Text.UTF8Encoding]::new($false))
+        # Opportunistic GC: drop heartbeats older than 2x TTL.
+        $cutoff = (Get-Date).AddMinutes(-2 * (Get-SapAiHeartbeatTtlMinutes))
+        foreach ($f in (Get-ChildItem $dir -Filter '*.txt' -File -ErrorAction SilentlyContinue)) {
+            if ($f.LastWriteTime -lt $cutoff) { try { Remove-Item $f.FullName -Force -ErrorAction SilentlyContinue } catch {} }
+        }
+    } catch {}
+}
+
+function Get-SapLiveHeartbeatIds {
+    # Map ai_session_id -> $true for every heartbeat refreshed within the TTL.
+    param([string]$RuntimeDir = '')
+    $live = @{}
+    try {
+        $dir = Get-SapAiHeartbeatDir -RuntimeDir $RuntimeDir
+        if (-not (Test-Path $dir)) { return $live }
+        $cutoff = (Get-Date).AddMinutes(-1 * (Get-SapAiHeartbeatTtlMinutes))
+        foreach ($f in (Get-ChildItem $dir -Filter '*.txt' -File -ErrorAction SilentlyContinue)) {
+            if ($f.LastWriteTime -ge $cutoff) {
+                $aid = ''
+                try { $aid = (Get-Content $f.FullName -Raw -Encoding UTF8) } catch {}
+                $aid = ("" + $aid).Trim()
+                if ($aid -ne '') { $live[$aid] = $true }
+            }
+        }
+    } catch {}
+    return $live
+}
+
+function Test-SapAiHeartbeatLive {
+    param([string]$AiId, [string]$RuntimeDir = '')
+    if ([string]::IsNullOrWhiteSpace($AiId)) { return $false }
+    return ((Get-SapLiveHeartbeatIds -RuntimeDir $RuntimeDir).ContainsKey($AiId))
+}
+
 function _Set-AiLivenessBreadcrumb {
     <#
     .SYNOPSIS
@@ -1237,6 +1324,10 @@ function _Set-AiLivenessBreadcrumb {
     #>
     param([string]$RuntimeDir, [string]$AiId)
     if ([string]::IsNullOrWhiteSpace($AiId)) { return }
+    # Stable-id heartbeat: liveness that survives the per-turn owner PID dying
+    # between turns (see the heartbeat helpers above). Independent of the pid
+    # breadcrumb below; has its own try/catch so it never breaks id resolution.
+    Set-SapAiHeartbeat -RuntimeDir $RuntimeDir -AiId $AiId
     try {
         if ([string]::IsNullOrWhiteSpace($RuntimeDir)) { $RuntimeDir = Get-SapWorkRuntimeDir }
         $dir = Join-Path $RuntimeDir 'ai_session_by_pid'

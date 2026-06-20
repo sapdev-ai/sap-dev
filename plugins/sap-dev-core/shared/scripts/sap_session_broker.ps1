@@ -532,6 +532,17 @@ function Get-LiveAiSessionIds {
             }
         }
     }
+    # Union: ai-session ids whose STABLE-ID heartbeat is fresh. On hosts where
+    # Get-SapAiSessionId resolves the id from an env var, the per-turn owner PID
+    # is ephemeral and dies between turns, so the pid-file loop above misses a
+    # still-running conversation. Heartbeat liveness (Get-SapLiveHeartbeatIds,
+    # sap_connection_lib.ps1) covers that. Additive -- can only ADD live ids,
+    # never remove -- so isolation fails SAFE (an extra spawned session is
+    # harmless; a collapsed shared session is the bug we are preventing).
+    try {
+        $hb = Get-SapLiveHeartbeatIds -RuntimeDir $script:WorkRuntimeDir
+        foreach ($k in $hb.Keys) { $live[$k] = $true }
+    } catch {}
     return $live
 }
 
@@ -727,7 +738,17 @@ function Sweep-StaleEntries {
             }
             if (-not $drop -and $e.status -eq 'claimed' -and $e.owner_pid -gt 0) {
                 if (-not (Is-ProcessAlive -ProcessId $e.owner_pid)) {
-                    $drop = $true; $reason = "pid_dead (pid=$($e.owner_pid))"
+                    # Don't drop a dead-owner_pid claim while the owning
+                    # conversation is still HEARTBEAT-live: on env-id hosts the
+                    # claim's owner_pid is a per-turn worker that dies between
+                    # turns even though the conversation is alive. Without this
+                    # guard an active conversation's session claim is reclaimed
+                    # mid-conversation and a parallel one collapses onto it.
+                    $hbLive = $false
+                    try { if ($e.ai_session_id) { $hbLive = Test-SapAiHeartbeatLive -AiId ("" + $e.ai_session_id) -RuntimeDir $script:WorkRuntimeDir } } catch {}
+                    if (-not $hbLive) {
+                        $drop = $true; $reason = "pid_dead (pid=$($e.owner_pid))"
+                    }
                 }
             }
             if (-not $drop -and $e.status -eq 'claimed' -and $e.claim_time) {

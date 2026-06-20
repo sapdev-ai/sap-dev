@@ -271,6 +271,72 @@ Assert-True (-not ($outB2 -match 'formalized=true')) 'and does NOT formalize the
 Remove-Item -Recurse -Force $wsB2 -ErrorAction SilentlyContinue
 Write-Host ""
 
+# =============================================================================
+# PART C -- stable-id HEARTBEAT liveness (the 2026-06-20 *79 follow-up fix).
+# On hosts where Get-SapAiSessionId resolves the id from CLAUDE_CODE_SESSION_ID,
+# the owner-PID anchor (_Get-AiOwnerPid) lands on a PER-TURN process that dies
+# between turns -- so the Part A/B pid breadcrumb goes stale and a conversation
+# that logged in a turn earlier looks dead, collapsing onto the shared ses[0].
+# The heartbeat decouples liveness from the PID; the broker UNIONs both and the
+# sweep keeps a dead-pid claim while the heartbeat is fresh.
+# =============================================================================
+Write-Host "Part C: stable-id heartbeat keeps a conversation live across turns"
+Write-Host ""
+. $ConnLib   # bring Set-SapAiHeartbeat / Get-SapLiveHeartbeatIds / Test-SapAiHeartbeatLive into scope
+
+# --- C1: a fresh heartbeat is live + counted.
+Write-Host "C1: fresh heartbeat -> live + in the live map"
+$wsC = New-Workspace
+$rtC = Join-Path $wsC 'runtime'
+Set-SapAiHeartbeat -RuntimeDir $rtC -AiId 'HB-ONE'
+Assert-True (Test-SapAiHeartbeatLive -AiId 'HB-ONE' -RuntimeDir $rtC)           'fresh heartbeat is live'
+Assert-True ((Get-SapLiveHeartbeatIds -RuntimeDir $rtC).ContainsKey('HB-ONE')) 'fresh heartbeat appears in the live map'
+
+# --- C2: a heartbeat older than the TTL is not live.
+Write-Host "C2: heartbeat older than the TTL -> not live"
+$hbFile = Join-Path (Get-SapAiHeartbeatDir -RuntimeDir $rtC) 'HB-ONE.txt'
+[System.IO.File]::SetLastWriteTime($hbFile, (Get-Date).AddMinutes(-1440))
+Assert-True (-not (Test-SapAiHeartbeatLive -AiId 'HB-ONE' -RuntimeDir $rtC)) 'an aged heartbeat is not live'
+Remove-Item -Recurse -Force $wsC -ErrorAction SilentlyContinue
+Write-Host ""
+
+# --- C3: OTHER conversation alive via HEARTBEAT ONLY (no pid crumb) -> spawn.
+#     The exact *79 scenario: the two logins were in different turns, so the
+#     other conversation's pid crumb is dead, but its heartbeat is fresh -> the
+#     broker must STILL isolate (spawn ses[1]), not collapse onto ses[0].
+Write-Host "C3: other live via heartbeat only (no pid crumb) -> broker spawns"
+$wsC3 = New-Workspace
+[System.IO.File]::WriteAllText((Join-Path $wsC3 'runtime\session_registry.json'), $Registry, [System.Text.UTF8Encoding]::new($false))
+Set-SapAiHeartbeat -RuntimeDir (Join-Path $wsC3 'runtime') -AiId 'AISESS-OTHER'
+$outC3 = Invoke-EnsureOwn -Root $wsC3 -FakeInfoJson $LiveInfoSes01 -FakeSpawnPath '/app/con[0]/ses[1]' -LiveCrumbs @()
+$lineC3 = ($outC3 -split "`r?`n" | Where-Object { $_ -match 'OWN_SESSION:' } | Select-Object -First 1)
+Assert-True ($outC3 -match 'spawned=true')          "heartbeat-only liveness still spawns ('$($lineC3.Trim())')"
+Assert-True (-not ($outC3 -match 'formalized=true')) 'and does NOT collapse onto the shared ses[0]'
+Remove-Item -Recurse -Force $wsC3 -ErrorAction SilentlyContinue
+Write-Host ""
+
+# --- C3b / C3c: the sweep guard -- a dead owner_pid claim survives the sweep
+#     IFF its conversation is still heartbeat-live.
+$RegistryDeadPid = $Registry -replace '"owner_pid":0', '"owner_pid":999990'
+
+Write-Host "C3b: dead owner_pid + fresh heartbeat -> claim survives the sweep"
+$wsC3b = New-Workspace
+[System.IO.File]::WriteAllText((Join-Path $wsC3b 'runtime\session_registry.json'), $RegistryDeadPid, [System.Text.UTF8Encoding]::new($false))
+Set-SapAiHeartbeat -RuntimeDir (Join-Path $wsC3b 'runtime') -AiId 'AISESS-OTHER'
+$null = Invoke-EnsureOwn -Root $wsC3b -FakeInfoJson $LiveInfoSes01 -FakeSpawnPath '/app/con[0]/ses[1]' -LiveCrumbs @()
+$regAfterB = Get-Content (Join-Path $wsC3b 'runtime\session_registry.json') -Raw
+Assert-True (@(($regAfterB | ConvertFrom-Json).connections[0].entries | Where-Object { "$($_.ai_session_id)" -eq 'AISESS-OTHER' }).Count -ge 1) 'dead-pid claim with a fresh heartbeat is NOT swept'
+Remove-Item -Recurse -Force $wsC3b -ErrorAction SilentlyContinue
+
+Write-Host "C3c: dead owner_pid + NO heartbeat -> claim reclaimed (guard inactive)"
+$wsC3c = New-Workspace
+[System.IO.File]::WriteAllText((Join-Path $wsC3c 'runtime\session_registry.json'), $RegistryDeadPid, [System.Text.UTF8Encoding]::new($false))
+$null = Invoke-EnsureOwn -Root $wsC3c -FakeInfoJson $LiveInfoSes01 -FakeSpawnPath '/app/con[0]/ses[1]' -LiveCrumbs @()
+$regAfterC = Get-Content (Join-Path $wsC3c 'runtime\session_registry.json') -Raw
+Assert-True (@(($regAfterC | ConvertFrom-Json).connections[0].entries | Where-Object { "$($_.ai_session_id)" -eq 'AISESS-OTHER' }).Count -eq 0) 'dead-pid claim without a heartbeat is swept (pid_dead)'
+Remove-Item -Recurse -Force $wsC3c -ErrorAction SilentlyContinue
+Write-Host ""
+
 # --- Summary -----------------------------------------------------------------
 Write-Host "================================================================"
 if ($script:Failures -eq 0) {
