@@ -530,8 +530,9 @@ keys (`sap_dev_transport_request`, `sap_dev_package`, `sap_dev_function_group`,
 Then the global settings file. **Writers:** a task TR/package → **Session** scope
 (`Set-SapUserSetting … -Scope Session`, or the CLI `shared/scripts/sap_dev_default.ps1`
 whose default is Session) — never a hand-edit of `connections.json`. A deliberate
-standing default (onboarding: `/sap-dev-init`, `/sap-login`) → **Connection** scope
-(the default of `Set-SapCurrentDevDefault`). Reads go through `Get-SapCurrentDevDefault`
+STANDING default (onboarding: `/sap-dev-init`, `/sap-login`) must pass
+**`-Scope Connection`** explicitly — **Session is now the writers' default**, so a
+task TR/package is isolated without opting in. Reads go through `Get-SapCurrentDevDefault`
 (centralized), so all callers get the layered resolution for free. Session entries
 are age-pruned (7 days) — task defaults are ephemeral.
 

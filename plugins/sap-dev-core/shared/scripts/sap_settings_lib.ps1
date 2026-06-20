@@ -333,12 +333,13 @@ function Set-SapUserSetting {
         [Parameter(Mandatory)] [string] $Key,
         [Parameter(Mandatory)] [AllowEmptyString()] [string] $Value,
         [switch] $SkipPerConnRouting,
-        [ValidateSet('Connection','Session')] [string] $Scope = 'Connection'
+        [ValidateSet('Connection','Session')] [string] $Scope = 'Session'
     )
 
-    # Phase 4.4 write-path routing. -Scope Session targets the per-(AI-session x
-    # connection) layer (task-scoped, no cross-conversation clobber); default
-    # Connection keeps the standing per-connection default (zero regression).
+    # Phase 4.4 write-path routing (per-conn keys only). DEFAULT = Session: a
+    # task TR/package is scoped per (AI-session x connection), so concurrent
+    # conversations on one connection don't clobber. Pass -Scope Connection for a
+    # deliberate STANDING per-connection default (onboarding).
     if (-not $SkipPerConnRouting -and (Get-Command Get-SapPerConnectionDevKeys -ErrorAction SilentlyContinue)) {
         $perConnKeys = Get-SapPerConnectionDevKeys
         if ($perConnKeys -contains $Key) {

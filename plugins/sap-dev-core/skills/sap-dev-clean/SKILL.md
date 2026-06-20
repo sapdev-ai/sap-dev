@@ -203,7 +203,16 @@ With `--force`, additionally:
 
 If `--settings` was passed, after Steps 3a-3f finish, clear the
 `sap_dev_transport_request`, `sap_dev_package`, and
-`sap_dev_function_group` keys via `/update-config`:
+`sap_dev_function_group` standing defaults. Since `/sap-dev-init` now persists
+them **Connection-scoped** (the pinned connection's `dev_defaults` block), clear
+them THERE — an empty value reads as "unset", so reads fall through:
+
+```bash
+powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; foreach ($k in 'sap_dev_transport_request','sap_dev_package','sap_dev_function_group') { Set-SapUserSetting -Key $k -Value '' -Scope Connection }"
+```
+
+Also clear the legacy global layer (for any pre-migration values that may still
+linger there):
 
 ```
 /update-config userConfig.sap_dev_transport_request = ""
@@ -211,7 +220,8 @@ If `--settings` was passed, after Steps 3a-3f finish, clear the
 /update-config userConfig.sap_dev_function_group    = ""
 ```
 
-The next `/sap-dev-init` will then ask the operator for fresh names
+(The Session layer is per-conversation and age-pruned, so it needs no explicit
+clear here.) The next `/sap-dev-init` will then ask the operator for fresh names
 (or pick defaults if defaults are configured).
 
 ---

@@ -1719,14 +1719,16 @@ function Set-SapCurrentDevDefault {
     param(
         [Parameter(Mandatory)][string]$Key,
         [Parameter(Mandatory)][AllowEmptyString()][string]$Value,
-        [ValidateSet('Connection','Session')][string]$Scope = 'Connection'
+        [ValidateSet('Connection','Session')][string]$Scope = 'Session'
     )
     $profile = $null
     try { $profile = Get-SapDevDefaultProfile } catch {}
-    # Session scope -> task-scoped (AI-session x connection); never touches
-    # connections.json, so concurrent conversations on the same connection don't
-    # clobber. Needs an unambiguous connection (for the system-qualifying
-    # ConnId); with none, fall through to the connection/global write (best effort).
+    # DEFAULT = Session: a write is task-scoped (per AI-session x connection) and
+    # never touches connections.json, so concurrent conversations on the same
+    # connection don't clobber. Pass -Scope Connection for a deliberate STANDING
+    # default (onboarding). Session needs an unambiguous connection (the
+    # system-qualifying ConnId); with none, fall through to the connection/global
+    # write below (best effort).
     if ($Scope -eq 'Session' -and $profile -and (_NotEmpty "$($profile.id)")) {
         Set-SapSessionDevDefault -Key $Key -Value $Value -ConnId "$($profile.id)"
         return

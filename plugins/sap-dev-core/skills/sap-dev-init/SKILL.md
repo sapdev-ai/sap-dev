@@ -50,7 +50,7 @@ The settings note below covers the OTHER keys.
 
 **Settings reads/writes follow `shared/rules/settings_lookup.md`** — merge per-key on the `.value` field (env var → `settings.local.json` → `userconfig.json` → `settings.json`); non-per-connection writes go to `userconfig.json`. Resolve sap-dev-core paths: 2 levels up from `<SKILL_DIR>` to the plugin root, then `settings.json` and (if present) `settings.local.json`. Read `custom_url`, `sap_dev_mode`.
 
-**Per-connection keys (Phase 4.4)**: `sap_dev_mode` is SAP-system-specific (GUI/RFC/BDC capability varies per system). Per `settings_lookup.md` § Per-connection exception, read it from `connections.json[pinned-profile].dev_defaults` FIRST (resolve the pin via `{work_dir}\runtime\session_registry.json` `ai_sessions[<id>]`); only fall back to the two-file merge when `dev_defaults` is empty. Sub-steps that delegate to `/sap-transport-request`, `/sap-se21`, `/sap-function-group` inherit the same per-connection routing for TR/PKG/FG.
+**Per-connection keys (Phase 4.4)**: `sap_dev_mode` is SAP-system-specific (GUI/RFC/BDC capability varies per system). Per `settings_lookup.md` § Per-connection exception, read it from `connections.json[pinned-profile].dev_defaults` FIRST (resolve the pin via `{work_dir}\runtime\session_registry.json` `ai_sessions[<id>]`); only fall back to the two-file merge when `dev_defaults` is empty. Sub-steps that delegate to `/sap-transport-request`, `/sap-se21`, `/sap-function-group` inherit the same per-connection routing for TR/PKG/FG. **WRITES — standing dev defaults go in the connection block, not the global layer:** when this skill persists a standing default (TR / package / FG / `way_to_get_transport_request` / `rule_of_tr_description` / `tr_description_template`), write it **Connection-scoped** — `<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_dev_default.ps1 -Action set -Key <k> -Value <v> -Scope Connection` (or `Set-SapUserSetting … -Scope Connection`) — NOT `/update-config` (that writes the shared global layer, read only as a last-resort fallback, and not system-qualified). The delegated `/sap-transport-request` now persists the resolved TR **Session-scoped** (task default), so after it resolves the dev TR, ALSO persist that TR Connection-scoped here so the standing dev TR survives across conversations.
 
 | Setting | Default if blank |
 |---|---|
@@ -407,8 +407,9 @@ Read `way_to_get_transport_request` from the merged sap-dev-core settings (per `
 > 2. `ASK` — Ask each time and (optionally) save your choice as the default.
 > 3. `CREATE_NEW` — Always create a brand-new TR via `/sap-se01`; never reuse.
 
-Persist the user's choice to `way_to_get_transport_request` via
-`/update-config`.
+Persist the user's choice to `way_to_get_transport_request`
+**Connection-scoped** (standing per-system policy — see the Step 0 WRITES note;
+`sap_dev_default.ps1 … -Scope Connection`, not `/update-config`).
 
 While asking the policy, also offer the description-rule settings if
 `rule_of_tr_description` is blank:
@@ -419,7 +420,8 @@ While asking the policy, also offer the description-rule settings if
 > - `FIXED` — use a fixed text I provide
 > - `RANDOM` — auto-generate a random one
 
-If `PATTERN` or `FIXED`, prompt for `tr_description_template` and persist.
+If `PATTERN` or `FIXED`, prompt for `tr_description_template` and persist it
+**Connection-scoped** (standing per-system formatting — see the Step 0 WRITES note).
 The template defaults to `{YYYYMMDD}_{OBJECT_TYPE}_{OBJECT_DESCRIPTION}` if
 the user just hits enter.
 
@@ -441,7 +443,10 @@ Now act per the policy chosen above. The persistence behaviour matches
    - `new` → run the **transport-request skill chosen in the Step 0 plan**
      (`/sap-se01` for GUI, `/sap-transport-request` for RFC) with
      `OBJECT_TYPE=BASIC OBJECT_DESCRIPTION=SAP_DEV_INIT`.
-3. Persist the resolved TR to `sap_dev_transport_request`.
+3. Persist the resolved TR to `sap_dev_transport_request` **Connection-scoped** —
+   it's the STANDING dev TR, and the delegated `/sap-transport-request` only
+   persisted it Session-scoped, so write the connection block here:
+   `<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_dev_default.ps1 -Action set -Key sap_dev_transport_request -Value <TR> -Scope Connection`.
 
 #### `ASK`
 1. Keep `sap_dev_transport_request` blank.
@@ -480,8 +485,10 @@ Only one implementation currently exists:
    > package name to use (e.g. `ZHKDEVAI`). Press Enter on its own to accept
    > the default `ZCMDEVAI`.
 
-   - If the user provides a name, persist it to `sap_dev_package` via
-     `/update-config` so subsequent runs reuse it without prompting.
+   - If the user provides a name, persist it to `sap_dev_package`
+     **Connection-scoped** (standing per-system default — see the Step 0 WRITES
+     note; `sap_dev_default.ps1 … -Scope Connection`, not `/update-config`) so
+     subsequent runs reuse it without prompting.
    - If the user accepts the default, persist `ZCMDEVAI`.
    - Validate the name against `<SAP_DEV_CORE_SHARED_DIR>/tables/sap_object_naming_rules.tsv`
      (`PACKAGE` row). If it fails the regex, show the rule and re-prompt.
@@ -521,8 +528,10 @@ through and let the skill honour it.
    > function group name to use (must start with `ZFG`, e.g. `ZFGHKDEV`).
    > Press Enter on its own to accept the default `ZFGDEVAI`.
 
-   - If the user provides a name, persist it to `sap_dev_function_group` via
-     `/update-config` so subsequent runs reuse it without prompting.
+   - If the user provides a name, persist it to `sap_dev_function_group`
+     **Connection-scoped** (standing per-system default — see the Step 0 WRITES
+     note; `sap_dev_default.ps1 … -Scope Connection`, not `/update-config`) so
+     subsequent runs reuse it without prompting.
    - If the user accepts the default, persist `ZFGDEVAI`.
    - Validate the name against `<SAP_DEV_CORE_SHARED_DIR>/tables/sap_object_naming_rules.tsv`
      (`FUNCTION_GROUP` row, `^ZFG[A-Z0-9_]*$`). If it fails the regex,

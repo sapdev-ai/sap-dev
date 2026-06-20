@@ -121,8 +121,14 @@ TR).
    - User supplies TR → candidate = that TR.
    - User types `new` → skip to **Create Path**.
 3. Verify candidate (Step 1b — mode-aware). If not modifiable, repeat the prompt above.
-4. On success, **persist** the resolved TR to `sap_dev_transport_request` via
-   `/update-config` (so future `DEFAULT` calls reuse it).
+4. On success, **persist** the resolved TR to `sap_dev_transport_request` as a
+   SESSION-scoped task default — so future `DEFAULT` calls in THIS conversation
+   reuse it WITHOUT clobbering other conversations on the same connection. Run
+   `<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_dev_default.ps1 -Action set -Key
+   sap_dev_transport_request -Value <TR>` (Session is its default), or
+   `Set-SapUserSetting -Key sap_dev_transport_request -Value <TR> -Scope Session`.
+   Do NOT use `/update-config` (that writes the global layer, shared across
+   conversations and systems). See `shared/rules/tr_resolution.md` §4.
 
 ### `ASK`
 
@@ -175,8 +181,11 @@ caller. Do NOT fall through to Steps 2-4 from the GUI branch.
 
 If during a session the user explicitly says e.g. "switch to ask mode",
 "always create new from now on", or "use the default TR every time", update
-`way_to_get_transport_request` immediately via `/update-config` and follow
-the new policy for the rest of the session.
+`way_to_get_transport_request` immediately and follow the new policy for the
+rest of the session. Because it applies to THIS conversation only, persist it
+SESSION-scoped (`Set-SapUserSetting -Key way_to_get_transport_request -Value
+<...> -Scope Session`), not `/update-config`. Use `-Scope Connection` only if the
+user says it should be the standing policy for that system from now on.
 
 ---
 
@@ -293,7 +302,7 @@ Parse the script output for `RESULT_TR:` and `RESULT_STATUS:` lines.
 | RESULT_STATUS | Meaning | Action |
 |---|---|---|
 | `EXISTING_MODIFIABLE` | Provided TR is still modifiable | Report: "Transport request `<TR>` is modifiable and ready to use." Persistence per Step 1a (policy-driven). |
-| `NEWLY_CREATED` | New TR was created | Report: "Created new transport request `<TR>`." Persistence per Step 1a: `DEFAULT` → save automatically; `ASK` → ask the user once; `CREATE_NEW` → do NOT save. Use `/update-config` to write `sap_dev_transport_request` when persisting. |
+| `NEWLY_CREATED` | New TR was created | Report: "Created new transport request `<TR>`." Persistence per Step 1a: `DEFAULT` → save automatically; `ASK` → ask the user once; `CREATE_NEW` → do NOT save. Persist via the SESSION writer (`sap_dev_default.ps1` / `Set-SapUserSetting -Scope Session`), NOT `/update-config`. |
 | `ERROR` | Something went wrong | Show full output and diagnose (see error table below). |
 
 ### Error Diagnosis
