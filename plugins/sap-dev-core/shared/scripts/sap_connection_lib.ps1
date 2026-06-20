@@ -1206,6 +1206,64 @@ function _Invoke-AiSessionGc {
     }
 }
 
+function _Set-AiLivenessBreadcrumb {
+    <#
+    .SYNOPSIS
+        Write/refresh the pid->ai_session_id liveness breadcrumb at
+        {RuntimeDir}\ai_session_by_pid\<owner_pid>.txt that the SAP session
+        broker's contention check reads (Get-LiveAiSessionIds /
+        Get-PidForAiSession in sap_session_broker.ps1).
+    .DESCRIPTION
+        When the conversation id is supplied by an env var
+        (CLAUDE_CODE_SESSION_ID / SAPDEV_AI_SESSION_ID) the id itself needs no
+        file -- but the broker still needs this breadcrumb to know the
+        conversation is ALIVE. Without it the directory stays empty,
+        Get-LiveAiSessionIds returns @{}, ensure-own-session never sees that a
+        parallel conversation already holds ses[0], and every conversation
+        adopts the SAME session -- parallel-session isolation silently collapses
+        (and the conversations then also share the work_dir / memory dir).
+
+        The owner PID (parent-process walk past script hosts) is the liveness
+        anchor: it is the long-lived Claude conversation process, so it stays
+        alive for the whole conversation and dies with it (PID-death GC then
+        reclaims the file). The short-lived per-skill PowerShell process ($PID)
+        would be useless here -- it exits the instant the skill returns.
+
+        Fully best-effort: ANY failure is swallowed so id resolution is never
+        made more fragile than a plain env-var read. The env id is
+        authoritative, so the file is overwritten unconditionally -- it
+        supersedes any stale GUID a prior (env-less) run wrote for this same,
+        possibly OS-reused, owner PID.
+    #>
+    param([string]$RuntimeDir, [string]$AiId)
+    if ([string]::IsNullOrWhiteSpace($AiId)) { return }
+    try {
+        if ([string]::IsNullOrWhiteSpace($RuntimeDir)) { $RuntimeDir = Get-SapWorkRuntimeDir }
+        $dir = Join-Path $RuntimeDir 'ai_session_by_pid'
+        if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
+        $ownerPid = _Get-AiOwnerPid -StartPid $PID
+        $file = Join-Path $dir "$ownerPid.txt"
+
+        $mutex = [System.Threading.Mutex]::new($false, $script:_SapAi_MutexName)
+        $acquired = $false
+        try {
+            try { $acquired = $mutex.WaitOne(5000) }
+            catch [System.Threading.AbandonedMutexException] { $acquired = $true }
+            if (-not $acquired) { return }   # another writer holds it; breadcrumb is best-effort
+
+            $existing = ''
+            if (Test-Path $file) { try { $existing = (Get-Content $file -Raw -Encoding UTF8).Trim() } catch {} }
+            if ($existing -ne $AiId) {
+                [System.IO.File]::WriteAllText($file, $AiId, [System.Text.UTF8Encoding]::new($false))
+            }
+            _Invoke-AiSessionGc -Dir $dir
+        } finally {
+            if ($acquired) { try { $mutex.ReleaseMutex() } catch {} }
+            try { $mutex.Dispose() } catch {}
+        }
+    } catch {}
+}
+
 function Get-SapAiSessionId {
     <#
     .SYNOPSIS
@@ -1222,6 +1280,10 @@ function Get-SapAiSessionId {
 
     # Honor an explicit env var if set (tests + manual overrides).
     if (-not [string]::IsNullOrWhiteSpace($env:SAPDEV_AI_SESSION_ID)) {
+        # Drop the pid->id liveness breadcrumb (see _Set-AiLivenessBreadcrumb)
+        # so the broker can still tell this conversation apart under an
+        # explicit-id override too.
+        _Set-AiLivenessBreadcrumb -RuntimeDir $RuntimeDir -AiId $env:SAPDEV_AI_SESSION_ID
         return $env:SAPDEV_AI_SESSION_ID
     }
 
@@ -1237,6 +1299,15 @@ function Get-SapAiSessionId {
     # to the parent-PID walk when unset (non-Claude-Code invocations, older
     # hosts) -- behaviour outside Claude Code is unchanged.
     if (-not [string]::IsNullOrWhiteSpace($env:CLAUDE_CODE_SESSION_ID)) {
+        # CRITICAL for parallel-session isolation: this early return used to skip
+        # the pid->id breadcrumb write further below, leaving
+        # {RuntimeDir}\ai_session_by_pid empty. The broker's ensure-own-session
+        # then read an EMPTY live-session set (Get-LiveAiSessionIds), never
+        # detected that another conversation already held ses[0], and every
+        # parallel conversation adopted the SAME session -- silently collapsing
+        # isolation. Drop the breadcrumb here so the stable env id and the
+        # broker's liveness detection coexist.
+        _Set-AiLivenessBreadcrumb -RuntimeDir $RuntimeDir -AiId $env:CLAUDE_CODE_SESSION_ID
         return $env:CLAUDE_CODE_SESSION_ID
     }
 

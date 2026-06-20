@@ -421,6 +421,16 @@ function Is-SessionAtEasyAccess {
 
 function Spawn-NewSession {
     param([Parameter(Mandatory)][string] $TargetConnectionPath)
+    # Test seam (mirrors SAPDEV_BROKER_FAKE_INFO): SAPDEV_BROKER_FAKE_SPAWN lets
+    # an offline regression test simulate a successful spawn without a live SAP
+    # GUI / COM helper. Value = the new session path (e.g. /app/con[0]/ses[1]);
+    # session_number is derived from its trailing ses[N]. Never set in production.
+    if (-not [string]::IsNullOrWhiteSpace($env:SAPDEV_BROKER_FAKE_SPAWN)) {
+        $fakePath = $env:SAPDEV_BROKER_FAKE_SPAWN
+        $sn = 0
+        if ($fakePath -match 'ses\[(\d+)\]') { $sn = [int]$Matches[1] + 1 }
+        return @{ connection_path = $TargetConnectionPath; path = $fakePath; session_number = $sn }
+    }
     $result = Invoke-ComHelper -Args @('SPAWN', $TargetConnectionPath)
     Invalidate-SapStateCache
     if (-not $result.ok) { return $null }
@@ -1505,6 +1515,16 @@ function Invoke-EnsureOwnSession {
             $owner = "$($target.ai_session_id)"
             $takenByLiveOther = ($owner -ne '' -and $owner -ne $AiSessionId -and $liveAi.ContainsKey($owner))
             if (-not $takenByLiveOther) {
+                if ($owner -ne '' -and $owner -ne $AiSessionId) {
+                    # Adopting a session whose recorded owner is a DIFFERENT
+                    # ai-session not currently detected as live. Either that
+                    # conversation ended (correct to reuse its session) OR its
+                    # liveness breadcrumb under runtime\ai_session_by_pid is
+                    # missing -- in which case isolation is silently degrading
+                    # (the 2026-06-20 parallel-session collapse). Surface it
+                    # instead of formalizing quietly.
+                    Write-Host "INFO: formalizing $($target.path) previously claimed by ai_session '$owner' (not detected live; if that conversation is still active, its ai_session_by_pid breadcrumb is missing)"
+                }
                 $target.status        = 'claimed'
                 $target.task_id       = $stableTask
                 $target.ai_session_id = $AiSessionId
