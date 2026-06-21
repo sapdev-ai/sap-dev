@@ -322,6 +322,11 @@ $tpl      = "$skillDir\references\sap_se21_delete.vbs"
 $content  = [System.IO.File]::ReadAllText($tpl, [System.Text.Encoding]::UTF8)
 $content  = $content.Replace('%%PACKAGE%%',         'THE_PACKAGE')
 $content  = $content.Replace('%%TRANSPORT%%',       'THE_TRANSPORT')
+# se21's %%PACKAGE%% above = the package being deleted; the ECC6 Object Directory
+# Entry orphan-fill uses a SEPARATE token %%PACKAGE2%% (empty for a package delete
+# => Local Object if that popup ever appears). %%ORIG_LANG%% '' => VBS uses 'E'.
+$content  = $content.Replace('%%PACKAGE2%%',        '')
+$content  = $content.Replace('%%ORIG_LANG%%',       '')
 $content  = $content.Replace('%%SESSION_LOCK_VBS%%', '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_session_lock.vbs')
 # Phase 3.5 session-attach plumbing.
 $sessionPath = ''

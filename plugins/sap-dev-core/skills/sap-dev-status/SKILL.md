@@ -49,6 +49,14 @@ The settings note below still applies to the OTHER keys.
 
 **Per-connection keys (Phase 4.4)**: `sap_dev_transport_request`, `sap_dev_package`, `sap_dev_function_group` are SAP-system-specific. Per `settings_lookup.md` § Per-connection exception, read them from `connections.json[pinned-profile].dev_defaults` FIRST (resolve the pin via `{work_dir}\runtime\session_registry.json` `ai_sessions[<id>]`); only fall back to the two-file merge when `dev_defaults` is empty.
 
+**Target the connection named in the Task argument.** If the Task argument names a SAP connection (SID / description substring / UUID), resolve it and pin this AI session to it so the RFC checker (and the per-connection `dev_defaults` read above) target the *named* system, not whatever is currently pinned (the default). This skill is read-only, so a mismatch only mis-reports the wrong system — but `/sap-dev-clean` calls this as its pre-flight, where targeting the wrong system is a safety issue.
+
+```bash
+powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; $m=@(Resolve-SapProfileHint -Hint '<TASK_ARG>'); if($m.Count -ne 1){ Write-Output ('TARGET=NEEDS_USER count='+$m.Count); return }; $rt=Join-Path (Get-SapWorkDir) 'runtime'; $aid=Get-SapAiSessionId -RuntimeDir $rt; & '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_session_broker.ps1' -Action pin -WorkTemp ((Get-SapWorkDir)+'\temp') -AiSessionId $aid -ConnectionId $m[0].id -PinReason user_switched | Out-Null; Write-Output ('TARGET='+$m[0].system_name+'/'+$m[0].client)"
+```
+
+If `TARGET=NEEDS_USER`, ask the user which connection (the hint matched 0 or several profiles).
+
 Set `{WORK_TEMP}` = `{work_dir}\temp`. Ensure it exists:
 
 ```bash

@@ -35,6 +35,16 @@ Const SESSION_PATH  = "%%SESSION_PATH%%"   ' empty / unsubstituted = use default
 Const VKEY_ENTER    = 0
 Const VKEY_SHIFT_F2 = 14
 
+' Optional fill for the ECC6 "Create Object Directory Entry" (SAPLSTRD) popup.
+' Empty / unsubstituted => accept SAP's pre-filled package (Continue), or press
+' Local Object when the package field is required-empty. OBJDIR_LANG is the
+' 1-character original language used only when filling an empty package field.
+Dim OBJDIR_PKG  : OBJDIR_PKG  = "%%PACKAGE%%"
+Dim OBJDIR_LANG : OBJDIR_LANG = "%%ORIG_LANG%%"
+If Left(OBJDIR_PKG, 2)  = Chr(37) & Chr(37) Then OBJDIR_PKG  = ""
+If Left(OBJDIR_LANG, 2) = Chr(37) & Chr(37) Then OBJDIR_LANG = ""
+If OBJDIR_LANG = "" Then OBJDIR_LANG = "E"
+
 ' Include shared helpers (attach first; session-lock's pre-unlock sweep
 ' reads from oSession).
 ExecuteGlobal CreateObject("Scripting.FileSystemObject") _
@@ -145,7 +155,42 @@ For iPop = 1 To 8
     Err.Clear
     On Error GoTo 0
 
+    ' (a3) "Create Object Directory Entry" (SAPLSTRD / KO007) popup -- ECC6
+    ' raises this when the object's directory entry must be (re)created on
+    ' delete. Fill an empty package from OBJDIR_PKG (+ 1-char original
+    ' language), else accept the pre-filled entry; press Continue. If the
+    ' package is required-empty and none supplied, press Local Object (btn[7]).
+    Dim bObjDirHandled : bObjDirHandled = False
     If Not bSetxHandled Then
+        On Error Resume Next
+        Dim oDevc : Set oDevc = Nothing
+        Set oDevc = oSession.findById(sActPrefix & "/usr/ctxtKO007-L_DEVCLASS")
+        If Err.Number = 0 And Not (oDevc Is Nothing) Then
+            If oDevc.Text = "" And OBJDIR_PKG <> "" Then
+                oDevc.Text = OBJDIR_PKG
+                Dim oObjLang : Set oObjLang = Nothing
+                Set oObjLang = oSession.findById(sActPrefix & "/usr/ctxtKO007-L_MSTLANG")
+                If Err.Number = 0 And Not (oObjLang Is Nothing) Then
+                    If oObjLang.Text = "" Then oObjLang.Text = OBJDIR_LANG
+                End If
+                Err.Clear
+                oSession.findById(sActPrefix & "/tbar[0]/btn[0]").press
+                WScript.Echo "INFO: Object Directory Entry on " & sActPrefix & " -- package " & OBJDIR_PKG & ", Continue."
+            ElseIf oDevc.Text = "" Then
+                oSession.findById(sActPrefix & "/tbar[0]/btn[7]").press
+                WScript.Echo "INFO: Object Directory Entry on " & sActPrefix & " -- empty package, none supplied; Local Object."
+            Else
+                oSession.findById(sActPrefix & "/tbar[0]/btn[0]").press
+                WScript.Echo "INFO: Object Directory Entry on " & sActPrefix & " -- accepted pre-filled package, Continue."
+            End If
+            WScript.Sleep 1500
+            bObjDirHandled = True
+        End If
+        Err.Clear
+        On Error GoTo 0
+    End If
+
+    If (Not bSetxHandled) And (Not bObjDirHandled) Then
     ' (b) TR-prompt popup?
     On Error Resume Next
     Dim oTr : Set oTr = Nothing

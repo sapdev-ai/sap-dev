@@ -1149,6 +1149,11 @@ $content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_se11_delete
 $content = $content -replace '%%OBJECT_TYPE%%','THE_OBJECT_TYPE'
 $content = $content -replace '%%OBJECT_NAME%%','THE_OBJECT_NAME'
 $content = $content -replace '%%TRANSPORT%%','THE_TRANSPORT'
+# Optional ECC6 "Create Object Directory Entry" orphan-fill (default '' =>
+# accept pre-filled package / Local Object; /sap-dev-clean passes sap_dev_package).
+# THE_OBJDIR_LANG default '' => the VBS uses 'E'.
+$content = $content -replace '%%PACKAGE%%','THE_OBJDIR_PACKAGE'
+$content = $content -replace '%%ORIG_LANG%%','THE_OBJDIR_LANG'
 $content = $content -replace '%%SESSION_LOCK_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_session_lock.vbs'
 # Phase 3.5 session-attach plumbing.
 $sessionPath = ''

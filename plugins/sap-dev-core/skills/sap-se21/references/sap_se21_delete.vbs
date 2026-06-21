@@ -48,6 +48,13 @@ Const VKEY_ENTER    = 0
 Const VKEY_F3_BACK  = 3
 Const VKEY_SHIFT_F2 = 14   ' Delete on SE21 initial screen
 
+' Optional fill for the ECC6 "Create Object Directory Entry" (SAPLSTRD) popup.
+Dim OBJDIR_PKG  : OBJDIR_PKG  = "%%PACKAGE2%%"
+Dim OBJDIR_LANG : OBJDIR_LANG = "%%ORIG_LANG%%"
+If Left(OBJDIR_PKG, 2)  = Chr(37) & Chr(37) Then OBJDIR_PKG  = ""
+If Left(OBJDIR_LANG, 2) = Chr(37) & Chr(37) Then OBJDIR_LANG = ""
+If OBJDIR_LANG = "" Then OBJDIR_LANG = "E"
+
 ' Include shared helpers (attach first; session-lock's pre-unlock sweep
 ' reads from oSession).
 ExecuteGlobal CreateObject("Scripting.FileSystemObject") _
@@ -130,6 +137,42 @@ For iPop = 1 To 6
         sActPrefix = "wnd[1]"
     End If
 
+    ' (pre) ECC6: SAPLSETX language popup + "Create Object Directory Entry",
+    ' handled before the existing TR / button cascade (locale-independent IDs).
+    Dim bHandled : bHandled = False
+    On Error Resume Next
+    Dim oSetx : Set oSetx = Nothing
+    Set oSetx = oSess.findById(sActPrefix & "/usr/ctxtRSETX-MASTERLANG")
+    If Err.Number = 0 And Not (oSetx Is Nothing) Then
+        oSess.findById(sActPrefix & "/usr/btnPUSH1").press
+        WScript.Sleep 1500 : bHandled = True
+    End If
+    Err.Clear
+    If Not bHandled Then
+        Dim oDc : Set oDc = Nothing
+        Set oDc = oSess.findById(sActPrefix & "/usr/ctxtKO007-L_DEVCLASS")
+        If Err.Number = 0 And Not (oDc Is Nothing) Then
+            If oDc.Text = "" And OBJDIR_PKG <> "" Then
+                oDc.Text = OBJDIR_PKG
+                Dim oLg : Set oLg = Nothing
+                Set oLg = oSess.findById(sActPrefix & "/usr/ctxtKO007-L_MSTLANG")
+                If Err.Number = 0 And Not (oLg Is Nothing) Then
+                    If oLg.Text = "" Then oLg.Text = OBJDIR_LANG
+                End If
+                Err.Clear
+                oSess.findById(sActPrefix & "/tbar[0]/btn[0]").press
+            ElseIf oDc.Text = "" Then
+                oSess.findById(sActPrefix & "/tbar[0]/btn[7]").press
+            Else
+                oSess.findById(sActPrefix & "/tbar[0]/btn[0]").press
+            End If
+            WScript.Sleep 1500 : bHandled = True
+        End If
+        Err.Clear
+    End If
+    On Error GoTo 0
+
+    If Not bHandled Then
     ' (a) TR popup?
     On Error Resume Next
     Dim oTr : Set oTr = Nothing
@@ -188,6 +231,7 @@ For iPop = 1 To 6
             End If
         End If
         On Error GoTo 0
+    End If
     End If
 Next
 

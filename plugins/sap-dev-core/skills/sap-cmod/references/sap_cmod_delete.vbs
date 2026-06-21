@@ -28,6 +28,13 @@ Const SESSION_PATH  = "%%SESSION_PATH%%"
 
 Const VKEY_ENTER = 0
 
+' Optional fill for the ECC6 "Create Object Directory Entry" (SAPLSTRD) popup.
+Dim OBJDIR_PKG  : OBJDIR_PKG  = "%%PACKAGE%%"
+Dim OBJDIR_LANG : OBJDIR_LANG = "%%ORIG_LANG%%"
+If Left(OBJDIR_PKG, 2)  = Chr(37) & Chr(37) Then OBJDIR_PKG  = ""
+If Left(OBJDIR_LANG, 2) = Chr(37) & Chr(37) Then OBJDIR_LANG = ""
+If OBJDIR_LANG = "" Then OBJDIR_LANG = "E"
+
 ExecuteGlobal CreateObject("Scripting.FileSystemObject") _
     .OpenTextFile("%%ATTACH_LIB_VBS%%", 1).ReadAll()
 ExecuteGlobal CreateObject("Scripting.FileSystemObject") _
@@ -75,6 +82,35 @@ If Not (oPop Is Nothing) Then
     End If
 Else
     WScript.Echo "INFO: No confirmation popup appeared (project may not exist)."
+End If
+
+' ------ ECC6: SAPLSETX language popup + Object Directory Entry (if any) ------
+Set oPop = oSession.findById("wnd[1]", False)
+If Not (oPop Is Nothing) Then
+    Dim oSetx : Set oSetx = oSession.findById("wnd[1]/usr/ctxtRSETX-MASTERLANG", False)
+    If Not (oSetx Is Nothing) Then
+        WScript.Echo "INFO: SAPLSETX original-language popup -- 'Maint. in orig. lang.'"
+        oSession.findById("wnd[1]/usr/btnPUSH1").press
+        WScript.Sleep 1500
+    Else
+        Dim oDevc2 : Set oDevc2 = oSession.findById("wnd[1]/usr/ctxtKO007-L_DEVCLASS", False)
+        If Not (oDevc2 Is Nothing) Then
+            If oDevc2.Text = "" And OBJDIR_PKG <> "" Then
+                oDevc2.Text = OBJDIR_PKG
+                Dim oLang2 : Set oLang2 = oSession.findById("wnd[1]/usr/ctxtKO007-L_MSTLANG", False)
+                If Not (oLang2 Is Nothing) Then
+                    If oLang2.Text = "" Then oLang2.Text = OBJDIR_LANG
+                End If
+                oSession.findById("wnd[1]/tbar[0]/btn[0]").press
+            ElseIf oDevc2.Text = "" Then
+                oSession.findById("wnd[1]/tbar[0]/btn[7]").press   ' Local Object
+            Else
+                oSession.findById("wnd[1]/tbar[0]/btn[0]").press
+            End If
+            WScript.Echo "INFO: Object Directory Entry popup handled."
+            WScript.Sleep 1500
+        End If
+    End If
 End If
 
 ' ------ Handle optional post-delete transport popup (KO008-TRKORR) ----------

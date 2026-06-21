@@ -196,6 +196,10 @@ $c = $c -replace '%%IMP_TEXT%%','<IMP_TEXT>'
 $c = $c -replace '%%SET_ACTIVE%%','<X-or-empty>'
 $c = $c -replace '%%DEVCLASS%%','<DEVCLASS-or-empty>'
 $c = $c -replace '%%TRKORR%%','<TRKORR-or-empty>'
+# Optional ECC6 "Create Object Directory Entry" orphan-fill (delete VBS only;
+# default '' => accept pre-filled package / Local Object; '' lang => VBS uses 'E').
+$c = $c -replace '%%PACKAGE%%','<OBJDIR_PKG-or-empty>'
+$c = $c -replace '%%ORIG_LANG%%','<OBJDIR_LANG-or-empty>'
 # --- shared attach plumbing (Phase 3.5 / 4.2) ---
 $c = $c -replace '%%SESSION_PATH%%',''
 $c = $c -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'

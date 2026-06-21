@@ -54,6 +54,14 @@ The settings note below still applies to the OTHER keys.
 
 **Per-connection keys (Phase 4.4)**: `sap_dev_transport_request`, `sap_dev_package`, `sap_dev_function_group` are SAP-system-specific. Per `settings_lookup.md` § Per-connection exception, read them from `connections.json[pinned-profile].dev_defaults` FIRST (resolve the pin via `{work_dir}\runtime\session_registry.json` `ai_sessions[<id>]`); only fall back to the two-file merge when `dev_defaults` is empty. Critical for `clean` since deleting an artefact named in one system's dev_defaults must NOT touch a different system's artefacts.
 
+**Target the connection named in the Task argument — MANDATORY before any delete (safety).** The Task argument may name a SAP connection (SID / description substring / UUID). Both the per-connection `dev_defaults` read above AND the GUI deletes in Step 3 resolve against the *currently pinned* connection — which is **not** necessarily the one you named — so a destructive clean can silently hit the wrong system. Resolve the argument and compare to the current pin:
+
+```bash
+powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; $m=@(Resolve-SapProfileHint -Hint '<TASK_ARG>'); if($m.Count -ne 1){ Write-Output ('TARGET=NEEDS_USER count='+$m.Count); return }; $cur=Get-SapCurrentConnectionProfile; Write-Output ('NAMED='+$m[0].system_name+'/'+$m[0].client+' id='+$m[0].id); Write-Output ('CURPIN='+$cur.system_name+'/'+$cur.client+' id='+$cur.id)"
+```
+
+If `TARGET=NEEDS_USER`, STOP and ask which connection. If the NAMED id ≠ the CURPIN id, switch to the named connection (pin **and** attach a live GUI session) via `/sap-login --switch <TASK_ARG>` BEFORE Step 2 — the GUI deletes must run on the right system. **Do NOT proceed to Step 3 unless the active connection is confirmed to be the named one.**
+
 Set `{WORK_TEMP}` = `{work_dir}\temp`. Ensure it exists.
 
 Set `{RUN_TEMP}` = the per-run scratch dir (`Get-SapRunTemp` mints + creates `{work_dir}\temp\run_<id>`):
@@ -113,6 +121,14 @@ For each step below: confirm with the operator, showing the artefact
 name and (where applicable) what depends on it. If the operator
 declines, log the choice and continue with the rest. Failures of one
 step do not abort subsequent steps.
+
+**Append `PACKAGE=<sap_dev_package>` (from Step 0) to each `/sap-se37`,
+`/sap-se11`, and `/sap-se38` delete delegation below.** On ECC6 a delete can
+raise the "Create Object Directory Entry" popup with an EMPTY package field
+when the object's directory entry was orphaned by a prior half-delete; passing
+the package lets the sub-skill fill it and record the deletion on the TR
+instead of falling back to a local (non-transported) delete. When the field is
+pre-filled (the normal case) the value is ignored, so it is always safe to pass.
 
 ### Step 3a — Wrapper FM (`Z_GENERIC_RFC_WRAPPER_TBL`)
 
@@ -263,6 +279,29 @@ Post-clean:
   ZCMPKG018                  PKG     NON_EMPTY
   S4DK941132                 TR      MODIFIABLE
 ```
+
+**Also check for TADIR orphans (ECC6).** The per-artefact checker compares
+DEFINITION state, but on ECC6 a successful SE-delete commonly removes the
+definition while leaving the object's `TADIR` directory row behind (only the
+object that happened to get a transport deletion entry clears it). Such an
+orphan reads as `MISSING` in the checker (definition gone) yet still blocks
+the **package** delete (Step 3e) — `SE21` refuses a package whose `TADIR`
+still has children. So after the comparison, RFC-check `TADIR` for every
+deleted artefact (`PGMID=R3TR`, `OBJECT` ∈ {`PROG`,`TABL`,`TTYP`,`DTEL`,
+`DOMA`,`FUGR`}, `OBJ_NAME=<name>`); a row that survives while the definition
+is gone is a TADIR orphan. Report each orphan explicitly (do NOT fold it into
+"cleaned") with the remediation:
+
+- **Clear the directory entries** — `SE03 → Object Directory → Change Object
+  Directory Entries` (report `RSWBO052`; ECC6 has no dedicated "Delete Object
+  Directory Entries" node): select the orphan rows → delete.
+- **or release/delete the transport** holding the objects — releasing
+  finalizes the recorded deletions and clears their `TADIR`; deleting the TR
+  (once it holds only deleted objects) unlocks them so the SE03 step / a
+  re-run of Step 3e can complete.
+
+Until the orphans are cleared the package CANNOT be dropped — surface this as
+a follow-up rather than reporting the clean as fully complete.
 
 ---
 

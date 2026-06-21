@@ -883,6 +883,11 @@ $tpl      = "$skillDir\references\sap_se38_delete.vbs"
 $content  = [System.IO.File]::ReadAllText($tpl, [System.Text.Encoding]::UTF8)
 $content  = $content.Replace('%%PROGRAM_NAME%%',    'THE_PROGRAM_NAME')
 $content  = $content.Replace('%%TRANSPORT%%',       'THE_TRANSPORT')
+# Optional ECC6 "Create Object Directory Entry" orphan-fill (default '' =>
+# accept pre-filled package / Local Object; /sap-dev-clean passes sap_dev_package).
+# THE_OBJDIR_LANG default '' => the VBS uses 'E'.
+$content  = $content.Replace('%%PACKAGE%%',         'THE_OBJDIR_PACKAGE')
+$content  = $content.Replace('%%ORIG_LANG%%',       'THE_OBJDIR_LANG')
 $content  = $content.Replace('%%SESSION_LOCK_VBS%%', '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_session_lock.vbs')
 $sessionPath = ''
 $content  = $content.Replace('%%SESSION_PATH%%',     $sessionPath)

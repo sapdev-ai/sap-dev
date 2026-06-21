@@ -20,6 +20,12 @@ Const IMP_NAME     = "%%IMP_NAME%%"
 Const TRKORR       = "%%TRKORR%%"
 Const SESSION_PATH = "%%SESSION_PATH%%"
 Const VKEY_ENTER = 0
+' Optional fill for the ECC6 "Create Object Directory Entry" (SAPLSTRD) popup.
+Dim OBJDIR_PKG  : OBJDIR_PKG  = "%%PACKAGE%%"
+Dim OBJDIR_LANG : OBJDIR_LANG = "%%ORIG_LANG%%"
+If Left(OBJDIR_PKG, 2)  = Chr(37) & Chr(37) Then OBJDIR_PKG  = ""
+If Left(OBJDIR_LANG, 2) = Chr(37) & Chr(37) Then OBJDIR_LANG = ""
+If OBJDIR_LANG = "" Then OBJDIR_LANG = "E"
 ExecuteGlobal CreateObject("Scripting.FileSystemObject").OpenTextFile("%%ATTACH_LIB_VBS%%", 1).ReadAll()
 Dim oSession
 Set oSession = AttachSapSession(SESSION_PATH)
@@ -71,6 +77,24 @@ For pass = 1 To 4
         WScript.Sleep 1500
     ElseIf CtrlExists(w & "/usr/btnBUTTON_1") Then
         oSession.findById(w & "/usr/btnBUTTON_1").Press
+        WScript.Sleep 1500
+    ElseIf CtrlExists(w & "/usr/ctxtRSETX-MASTERLANG") Then
+        ' SAPLSETX original-vs-logon language popup (ECC6 / master<>logon).
+        oSession.findById(w & "/usr/btnPUSH1").Press
+        WScript.Sleep 1500
+    ElseIf CtrlExists(w & "/usr/ctxtKO007-L_DEVCLASS") Then
+        ' "Create Object Directory Entry" (SAPLSTRD) popup -- ECC6.
+        If oSession.findById(w & "/usr/ctxtKO007-L_DEVCLASS").Text = "" And OBJDIR_PKG <> "" Then
+            oSession.findById(w & "/usr/ctxtKO007-L_DEVCLASS").Text = OBJDIR_PKG
+            If CtrlExists(w & "/usr/ctxtKO007-L_MSTLANG") Then
+                If oSession.findById(w & "/usr/ctxtKO007-L_MSTLANG").Text = "" Then oSession.findById(w & "/usr/ctxtKO007-L_MSTLANG").Text = OBJDIR_LANG
+            End If
+            oSession.findById(w & "/tbar[0]/btn[0]").Press
+        ElseIf oSession.findById(w & "/usr/ctxtKO007-L_DEVCLASS").Text = "" Then
+            oSession.findById(w & "/tbar[0]/btn[7]").Press   ' Local Object
+        Else
+            oSession.findById(w & "/tbar[0]/btn[0]").Press
+        End If
         WScript.Sleep 1500
     Else
         Exit For

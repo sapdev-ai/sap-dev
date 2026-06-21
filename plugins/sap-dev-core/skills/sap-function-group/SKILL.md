@@ -327,6 +327,21 @@ There is no clean standard RFC API for FG deletion
 (`RS_FUNCTION_POOL_DELETE` exists in some releases but is
 undocumented and dangerous), so GUI is the only path.
 
+> **ECC 6.0 / NW 7.31 (and any release whose SE80 uses the classic,
+> non-HTML object navigator): skip SE80 — go straight to the
+> "SE38 SAPL\<FUGR\> fallback" below.** `sap_function_group_gui_delete.vbs`
+> drives the SE80 *HTML* type/name control (`sapEvent "Frame0"` +
+> `shellcont[...]` paths), which is absent on these releases — it aborts
+> with `ERROR: SE80 type/name control not found` *before* WB_DELETE (so
+> there is no half-state). The SE38 path now also clears the ECC6 "Create
+> Object Directory Entry" (SAPLSTRD / `ctxtKO007-L_DEVCLASS`) popup via the
+> shared `/sap-se38` delete walker, so on ECC6 it cascades the FG delete
+> cleanly — verified 2026-06-21 on EC2/ERP (`TLIBG`=0, `PROGDIR SAPL<FG>`=0
+> after deleting an empty FG). Detect ECC from the pinned connection
+> (kernel/release 7.x or a classic-ECC `system_id`); if unsure, attempt
+> SE80 and fall through automatically on the `type/name control not found`
+> error.
+
 **Pre-checks (do these BEFORE confirming with the user):**
 
 1. **Confirm the FG exists.** `RFC_READ_TABLE` on `TLIBG` filtered by
