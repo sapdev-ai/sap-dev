@@ -100,8 +100,8 @@ FUNCTION Z_GENERIC_RFC_WRAPPER_TBL.
   TRANSLATE lv_funcname TO UPPER CASE.
 
   SELECT SINGLE funcname FROM tfdir
-         INTO @lv_check
-         WHERE funcname = @lv_funcname.
+         INTO lv_check
+         WHERE funcname = lv_funcname.    " unescaped host vars: 7.31-safe (@-escape is 7.40+)
   IF sy-subrc <> 0.
     RAISE fm_not_found.
   ENDIF.
@@ -120,6 +120,7 @@ FUNCTION Z_GENERIC_RFC_WRAPPER_TBL.
 
       DATA: lv_tabname  TYPE tabname,
             lv_fldname  TYPE fieldname,
+            lv_typename TYPE string,
             lv_dash     TYPE i,
             lo_struct   TYPE REF TO cl_abap_structdescr,
             lo_comp     TYPE REF TO cl_abap_datadescr,
@@ -139,7 +140,8 @@ FUNCTION Z_GENERIC_RFC_WRAPPER_TBL.
             lv_fldname = <fs_param>-ptypename+lv_dash.
             SHIFT lv_fldname LEFT BY 1 PLACES.
             TRY.
-                lo_struct ?= cl_abap_typedescr=>describe_by_name( CONV string( lv_tabname ) ).
+                lv_typename = lv_tabname.    " avoid CONV (7.40+); string-assign is 7.31-safe
+                lo_struct ?= cl_abap_typedescr=>describe_by_name( lv_typename ).
                 lo_comp    = lo_struct->get_component_type( lv_fldname ).
                 CREATE DATA lr_data TYPE HANDLE lo_comp.
                 lv_create_ok = abap_true.

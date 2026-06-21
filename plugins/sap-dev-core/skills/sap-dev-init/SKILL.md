@@ -199,6 +199,42 @@ settings (may be blank — Steps 2-5 will create them as needed):
 
 ---
 
+## Step 1.4 — Self-heal stale dev-defaults
+
+A stored `sap_dev_*` default can point at an artefact that no longer exists —
+most often a transport request that was released or hand-deleted (its TRKORR is
+gone from `E070`), but also a package or function group dropped by a prior
+`/sap-dev-clean`. Reusing a dead TR makes the create/deploy steps below fail
+("transport request does not exist / not modifiable"). So before resolving
+anything, validate each non-blank stored default and **clear only the ones that
+are provably stale** — healthy defaults are kept, so this stays idempotent (a
+good setup is reused, never churned into a new TR every run).
+
+Run `/sap-dev-status` (RFC, read-only) and read its per-artefact `STATE`:
+
+- **TR** — if the stored `sap_dev_transport_request` is non-blank and
+  `/sap-dev-status` reports it `RELEASED`, **or** an `E070` lookup returns no
+  row for that TRKORR (hand-deleted, the case `DEFAULT`-policy verification
+  alone may not catch), it is dead. **Clear it** at both the Session and
+  Connection scope so Step 2b resolves a fresh TR instead of choking on the
+  corpse:
+  ```bash
+  powershell -NoProfile -ExecutionPolicy Bypass -Command "\$env:SAPDEV_AI_WORK_DIR='{work_dir}'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; foreach (\$s in 'Session','Connection') { Set-SapUserSetting -Key 'sap_dev_transport_request' -Value '' -Scope \$s }"
+  ```
+  Log `INFO: cleared stale dev TR <TRKORR> (state=<RELEASED|NOT_FOUND>)` and let
+  Step 2b resolve a fresh one.
+- **Package / Function group** — if non-blank but `/sap-dev-status` reports
+  `MISSING`, that's fine: keep the stored NAME — Step 3 / Step 4 recreate the
+  artefact under it. Only clear the stored value if it is *malformed* (fails the
+  `sap_object_naming_rules.tsv` regex); then Step 3 / Step 4 re-prompt for a
+  valid name.
+
+Do **not** clear a TR that is merely `MODIFIABLE` (healthy) — that would mint a
+new TR on every init (TR sprawl) and defeat idempotency. Self-heal touches only
+provably-dead references; everything else flows through to Steps 2–4 unchanged.
+
+---
+
 ## Step 1b — Trust `{work_dir}` in SAP GUI Security (one-time per workstation)
 
 **Why this step exists.** Whenever an SAP GUI script (or SAP GUI itself) accesses a local file for read or write — Save spool, Save activation log, Upload source, BDC record upload, SE16N download — SAP GUI shows a "SAP GUI Security" modal dialog. The dialog title is translated per logon language (EN: "SAP GUI Security", JA: "SAP GUI セキュリティ", ZH: "SAP GUI 安全"). If the script doesn't dismiss it, every downstream skill that touches `{work_dir}` will block waiting for human input — and on customer machines we cannot pre-configure SAP GUI Options manually.

@@ -13,10 +13,14 @@ description: |
   passed, so a follow-up /sap-dev-init re-creates the same names.
   The canonical "blow away and rebuild" sequence is:
   /sap-dev-clean ; /sap-dev-init.
+  Pass --reset for a full, truly-clean reset: it implies --force + --settings,
+  additionally clears the dev-default settings keys and deletes the dev
+  transport request (delegating to /sap-se01) so nothing is left behind for
+  the next /sap-dev-init to choke on.
   Prerequisites: Active SAP GUI session (use /sap-login first); SAP NCo 3.1
   (32-bit, .NET 4.0) in GAC. Clean delegates to GUI-driven delete skills
   like /sap-se37, /sap-se11, /sap-se38, /sap-function-group, /sap-se21.
-argument-hint: "[--settings] [--force] [--dry-run]"
+argument-hint: "[--reset] [--settings] [--force] [--dry-run]"
 ---
 
 # SAP Dev Environment Clean Skill
@@ -84,9 +88,16 @@ powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_
 
 | Flag | Meaning |
 |---|---|
-| `--settings` | After SAP-side cleanup, clear the `sap_dev_*` keys via `/update-config` so the next `/sap-dev-init` picks fresh names. Default: keys preserved. |
+| `--reset` | **Full, truly-clean reset.** Implies `--force` **and** `--settings`, and additionally **deletes the dev transport request** (Step 3f) so no husk is left behind. Use for the `/sap-dev-clean --reset ; /sap-dev-init` rebuild. Still per-step confirmed; combine with `--dry-run` to preview first. |
+| `--settings` | After SAP-side cleanup, clear the `sap_dev_*` keys so the next `/sap-dev-init` picks fresh names. Default: keys preserved. |
 | `--force` | Skip the "extras-present, skip" guards on FG and package. Use only when you're absolutely sure no operator content depends on these artefacts. |
 | `--dry-run` | Pre-flight only. Print what would be deleted, prompt for nothing, change nothing. |
+
+**`--reset` is the umbrella destructive flag.** When it is set, treat `--force`
+and `--settings` as also set for every step below (the extras-skip guards are
+bypassed, the settings keys are cleared in Step 4), and run the TR-delete path
+in Step 3f. It does **not** make deletes silent — each artefact step still
+confirms with the operator (use `--dry-run` for a no-prompt preview).
 
 **Trigger phrases:**
 
@@ -208,22 +219,38 @@ those objects manually.
 
 ### Step 3f — Transport request
 
-**By default, leave it alone.** Other work may live in it. The TR
-deletion path requires SE01 release-and-delete which is risky.
+**By default (no `--reset` / `--force`), leave it alone.** Other work may live
+in it.
 
-With `--force`, additionally:
+**With `--reset`** — delete the dev transport request itself, so the reset
+leaves no husk. By this point Steps 3a–3e have removed every object the dev TR
+held, so it now carries only those (now-deleted) entries and is safe to drop:
 
-1. Confirm with the operator showing the TR's E071 child list (one
-   line per object) — **let them read it first**.
-2. If the operator approves, delegate to `/sap-se01` to release and
-   delete the TR (skill must implement that path; if not, surface
-   "TR cleanup not supported — handle manually in SE01").
+1. Confirm with the operator, showing the TR's `E071` child list (one line per
+   object) — **let them read it first**. If the list contains objects the
+   operator added that are NOT sap-dev-init artefacts, STOP and surface them —
+   do not delete a TR holding unrelated work, even under `--reset`.
+2. Delete the (unreleased) TR via `/sap-se01`:
+   ```
+   /sap-se01 delete <TR>
+   ```
+   This deletes the request **object** — NOT release (releasing would transport
+   the throwaway dev objects onward). A released TR cannot be deleted (only
+   reimported); if SE01 reports it is released, surface that and skip.
+3. **Interim (until the `/sap-se01` delete mode ships):** if `/sap-se01`
+   reports the delete mode is unavailable, do NOT fail the clean — Step 4
+   clears the TR reference (so the next `/sap-dev-init` self-heals and never
+   reuses it), leaving only a harmless empty husk. Report the TR for manual
+   deletion in SE01.
+
+**With `--force` but not `--reset`** (legacy opt-in): same confirm-then-delete
+flow as the `--reset` path above.
 
 ---
 
 ## Step 4 — Optional: clear settings keys
 
-If `--settings` was passed, after Steps 3a-3f finish, clear the
+If `--settings` **or** `--reset` was passed, after Steps 3a-3f finish, clear the
 `sap_dev_transport_request`, `sap_dev_package`, and
 `sap_dev_function_group` standing defaults. Since `/sap-dev-init` now persists
 them **Connection-scoped** (the pinned connection's `dev_defaults` block), clear
@@ -242,9 +269,16 @@ linger there):
 /update-config userConfig.sap_dev_function_group    = ""
 ```
 
-(The Session layer is per-conversation and age-pruned, so it needs no explicit
-clear here.) The next `/sap-dev-init` will then ask the operator for fresh names
-(or pick defaults if defaults are configured).
+Also clear the **Session** layer for this conversation × connection, so the
+current chat doesn't retain a stale task-scoped TR/package/FG after the reset
+(the Session layer is otherwise age-pruned, but a reset should drop it now):
+
+```bash
+powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; foreach ($k in 'sap_dev_transport_request','sap_dev_package','sap_dev_function_group') { Set-SapUserSetting -Key $k -Value '' -Scope Session }"
+```
+
+The next `/sap-dev-init` will then ask the operator for fresh names (or pick
+defaults if defaults are configured).
 
 ---
 
@@ -351,6 +385,14 @@ To also wipe settings (so the next init asks fresh names):
 /sap-dev-init
 ```
 
+For a full, truly-clean reset — also deletes the dev TR and clears the
+dev-default settings so nothing dangles for the next init:
+
+```
+/sap-dev-clean --reset
+/sap-dev-init         # self-heals any stale refs, then recreates fresh
+```
+
 The chain is two slash commands, not one — atomicity isn't a real
 benefit of merging since the failure modes (TR locked, package not
 modifiable, wrapper-FM activation refused) are identical either way.
@@ -361,9 +403,12 @@ trivial one-step operation.
 
 ## Limitations
 
-- **No automatic TR deletion by default.** The TR is presumed to host
-  other work; cleaning the TR is opt-in via `--force` and still
-  requires explicit per-call confirmation.
+- **TR deletion is opt-in.** By default the TR is presumed to host other work
+  and is left alone. `--reset` (or legacy `--force`) deletes the dev TR via
+  `/sap-se01`, still with explicit per-call confirmation of its `E071` contents,
+  and refuses if the TR holds non-sap-dev-init objects. (The `/sap-se01` delete
+  mode is a pending follow-up; until it ships, `--reset` clears the TR reference
+  and reports the empty husk for manual SE01 deletion — see Step 3f.)
 - **Conservative guards stop at the first user object.** A package
   with one Z table the operator added is left intact even if the rest
   is sap-dev-init detritus. Use `--force` to override, but read the
