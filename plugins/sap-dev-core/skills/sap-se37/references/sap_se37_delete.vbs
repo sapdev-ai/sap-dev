@@ -45,6 +45,12 @@ ExecuteGlobal CreateObject("Scripting.FileSystemObject") _
 ExecuteGlobal CreateObject("Scripting.FileSystemObject") _
     .OpenTextFile("%%SESSION_LOCK_VBS%%", 1).ReadAll()
 
+' Shared post-delete popup walker (same dir as the attach lib).
+Dim oDpFso, sDpDir
+Set oDpFso = CreateObject("Scripting.FileSystemObject")
+sDpDir = oDpFso.GetParentFolderName("%%ATTACH_LIB_VBS%%")
+ExecuteGlobal oDpFso.OpenTextFile(oDpFso.BuildPath(sDpDir, "sap_delete_popups.vbs"), 1).ReadAll()
+
 ' ------ 1. Attach to existing SAP GUI session (via shared attach helper) ----
 Dim oSession
 Set oSession = AttachSapSession(SESSION_PATH)
@@ -85,117 +91,15 @@ Err.Clear
 On Error GoTo 0
 
 ' ------ 5. Walk the post-delete popup chain (locale-independent) ------------
-' After Shift+F2 SAP can chain several modals depending on object + system:
-'   * Yes/No confirm                          -> btnSPOP-OPTION1
-'   * SAPLSETX original-vs-logon language      -> ctxtRSETX-MASTERLANG / btnPUSH1
-'   * "Create Object Directory Entry"          -> ctxtKO007-L_DEVCLASS (ECC6;
-'        raised when the directory entry must be (re)created on delete)
-'   * Transport-request prompt                -> ctxtKO008-TRKORR
-'   * "Delete object" confirm                  -> tbar[0]/btn[0] / Enter
-' Dispatch by DDIC control id only (never title/text). Capped at 10 iterations.
-Dim iPop, sActWnd, sActPrefix, posWnd, bHandled
-Dim oML, oDevc, oObjLang, oTr, oYes, oCont
-For iPop = 1 To 10
-    sActWnd = ""
-    On Error Resume Next
-    sActWnd = oSession.ActiveWindow.Id
-    On Error GoTo 0
-    If sActWnd = "" Then Exit For
-    If Right(sActWnd, 6) = "wnd[0]" Then Exit For
-    posWnd = InStrRev(sActWnd, "/wnd[")
-    If posWnd > 0 Then sActPrefix = Mid(sActWnd, posWnd + 1) Else sActPrefix = "wnd[1]"
-    bHandled = False
-
-    ' (a) SAPLSETX original-vs-logon-language popup.
-    On Error Resume Next
-    Set oML = Nothing
-    Set oML = oSession.findById(sActPrefix & "/usr/ctxtRSETX-MASTERLANG")
-    If Err.Number = 0 And Not (oML Is Nothing) Then
-        oSession.findById(sActPrefix & "/usr/btnPUSH1").press
-        WScript.Echo "INFO: SAPLSETX original-language popup on " & sActPrefix & " -- 'Maint. in orig. lang.'"
-        WScript.Sleep 1500 : bHandled = True
-    End If
-    Err.Clear
-    On Error GoTo 0
-
-    ' (b) "Create Object Directory Entry" (SAPLSTRD / KO007) -- ECC6.
-    If Not bHandled Then
-        On Error Resume Next
-        Set oDevc = Nothing
-        Set oDevc = oSession.findById(sActPrefix & "/usr/ctxtKO007-L_DEVCLASS")
-        If Err.Number = 0 And Not (oDevc Is Nothing) Then
-            If oDevc.Text = "" And OBJDIR_PKG <> "" Then
-                oDevc.Text = OBJDIR_PKG
-                Set oObjLang = Nothing
-                Set oObjLang = oSession.findById(sActPrefix & "/usr/ctxtKO007-L_MSTLANG")
-                If Err.Number = 0 And Not (oObjLang Is Nothing) Then
-                    If oObjLang.Text = "" Then oObjLang.Text = OBJDIR_LANG
-                End If
-                Err.Clear
-                oSession.findById(sActPrefix & "/tbar[0]/btn[0]").press
-                WScript.Echo "INFO: Object Directory Entry on " & sActPrefix & " -- package " & OBJDIR_PKG & ", Continue."
-            ElseIf oDevc.Text = "" Then
-                oSession.findById(sActPrefix & "/tbar[0]/btn[7]").press
-                WScript.Echo "INFO: Object Directory Entry on " & sActPrefix & " -- empty package, none supplied; Local Object."
-            Else
-                oSession.findById(sActPrefix & "/tbar[0]/btn[0]").press
-                WScript.Echo "INFO: Object Directory Entry on " & sActPrefix & " -- accepted pre-filled package, Continue."
-            End If
-            WScript.Sleep 1500 : bHandled = True
-        End If
-        Err.Clear
-        On Error GoTo 0
-    End If
-
-    ' (c) Transport-request prompt.
-    If Not bHandled Then
-        On Error Resume Next
-        Set oTr = Nothing
-        Set oTr = oSession.findById(sActPrefix & "/usr/ctxtKO008-TRKORR")
-        If Err.Number = 0 And Not (oTr Is Nothing) Then
-            If SAP_TRANSPORT = "" Then
-                WScript.Echo "ERROR: SAP prompted for a transport request but TRANSPORT is empty."
-                WScript.Echo "       Resolve a TR via /sap-transport-request and re-run."
-                ReleaseSession oSession, wasLocked
-                WScript.Quit 1
-            End If
-            oTr.Text = SAP_TRANSPORT
-            oSession.findById(sActPrefix).sendVKey VKEY_ENTER
-            WScript.Echo "INFO: Filled transport " & SAP_TRANSPORT & " on " & sActPrefix & "."
-            WScript.Sleep 1500 : bHandled = True
-        End If
-        Err.Clear
-        On Error GoTo 0
-    End If
-
-    ' (d) Generic confirm: Yes -> popup Continue -> Enter.
-    If Not bHandled Then
-        On Error Resume Next
-        Set oYes = Nothing
-        Set oYes = oSession.findById(sActPrefix & "/usr/btnSPOP-OPTION1")
-        If Err.Number = 0 And Not (oYes Is Nothing) Then
-            oYes.press
-            WScript.Echo "INFO: Confirmed popup " & iPop & " on " & sActPrefix & " (Yes)."
-        Else
-            Err.Clear
-            Set oCont = Nothing
-            Set oCont = oSession.findById(sActPrefix & "/tbar[0]/btn[0]")
-            If Err.Number = 0 And Not (oCont Is Nothing) Then
-                oCont.press
-                WScript.Echo "INFO: Confirmed popup " & iPop & " on " & sActPrefix & " (Continue)."
-            Else
-                Err.Clear
-                oSession.findById(sActPrefix).sendVKey VKEY_ENTER
-                WScript.Echo "INFO: Confirmed popup " & iPop & " on " & sActPrefix & " (Enter)."
-            End If
-        End If
-        Err.Clear
-        On Error GoTo 0
-        WScript.Sleep 1200
-    End If
-Next
-If iPop > 10 Then
-    WScript.Echo "WARN: Popup loop hit cap; SAP may have left a modal on screen."
+' SAPLSETX language / KO007 Object-Directory (ECC6) / TR prompt / confirm, all
+' dispatched by DDIC control id in the shared walker
+' (shared/scripts/sap_delete_popups.vbs).
+Dim dpRes : dpRes = WalkDeletePopups(oSession, OBJDIR_PKG, OBJDIR_LANG, SAP_TRANSPORT)
+If dpRes = "ABORT_EMPTY_TR" Then
+    WScript.Echo "ERROR: SAP prompted for a transport request but TRANSPORT is empty."
+    WScript.Echo "       Resolve a TR via /sap-transport-request and re-run."
+    ReleaseSession oSession, wasLocked
+    WScript.Quit 1
 End If
 
 ' ------ 7. Verify deletion via Display --------------------------------------
