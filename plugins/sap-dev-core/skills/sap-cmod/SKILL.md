@@ -69,12 +69,18 @@ Set `{WORK_TEMP}` = `{work_dir}\temp`. Ensure it exists:
 cmd /c if not exist "{WORK_TEMP}" mkdir "{WORK_TEMP}"
 ```
 
+Set `{RUN_TEMP}` = the per-run scratch dir (`Get-SapRunTemp` mints + creates `{work_dir}\temp\run_<id>`):
+```bash
+powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('RUN_TEMP=' + (Get-SapRunTemp))"
+```
+Per the CLAUDE.md "Two-bucket temp model" write this skill's generated scratch (`*_run.ps1` / `*_run.vbs`) under `{RUN_TEMP}`; keep `{WORK_TEMP}` (base) only for `Get-SapCurrentSessionPath -WorkTemp`.
+
 ---
 
 ## Step 0.5 — Start Logging
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{WORK_TEMP}\sap_cmod_run.json" -Skill sap-cmod -ParamsJson "{\"project\":\"<PROJECT>\",\"op\":\"<OPERATION>\"}"
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{RUN_TEMP}\sap_cmod_run.json" -Skill sap-cmod -ParamsJson "{\"project\":\"<PROJECT>\",\"op\":\"<OPERATION>\"}"
 ```
 
 ---
@@ -132,7 +138,7 @@ Use the returned modifiable TRKORR as the `%%TRANSPORT%%` token. See
 ## Running a reference VBS (shared wrapper)
 
 Every GUI operation uses the same token-substitution + execute pattern. Write
-`{WORK_TEMP}\<TEMPLATE>_run.ps1`, then run it, then run the generated `.vbs`
+`{RUN_TEMP}\<TEMPLATE>_run.ps1`, then run it, then run the generated `.vbs`
 with **32-bit** cscript.
 
 ```powershell
@@ -146,13 +152,13 @@ $content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scr
 $content = $content -replace '%%SESSION_LOCK_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_session_lock.vbs'
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-[System.IO.File]::WriteAllText('{WORK_TEMP}\<TEMPLATE>_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
+[System.IO.File]::WriteAllText('{RUN_TEMP}\<TEMPLATE>_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "{WORK_TEMP}\<TEMPLATE>_run.ps1"
-C:/Windows/SysWOW64/cscript.exe //NoLogo {WORK_TEMP}\<TEMPLATE>_run.vbs
+powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\<TEMPLATE>_run.ps1"
+C:/Windows/SysWOW64/cscript.exe //NoLogo {RUN_TEMP}\<TEMPLATE>_run.vbs
 ```
 
 > **Encoding:** always `-Encoding Unicode` (UTF-16 LE) — what `cscript`
@@ -416,7 +422,7 @@ live session to discover the actual ids, then update the template.
 ## Step 14 — Clean Up
 
 ```bash
-cmd /c del {WORK_TEMP}\sap_cmod_*_run.vbs & del {WORK_TEMP}\sap_cmod_*_run.ps1
+cmd /c del {RUN_TEMP}\sap_cmod_*_run.vbs & del {RUN_TEMP}\sap_cmod_*_run.ps1
 ```
 
 ---
@@ -425,11 +431,11 @@ cmd /c del {WORK_TEMP}\sap_cmod_*_run.vbs & del {WORK_TEMP}\sap_cmod_*_run.ps1
 
 On success:
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_cmod_run.json" -Status SUCCESS -ExitCode 0
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_cmod_run.json" -Status SUCCESS -ExitCode 0
 ```
 On failure (substitute `<CLASS>` + short message):
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_cmod_run.json" -Status FAILED -ExitCode 1 -ErrorClass <CLASS> -ErrorMsg "<short>"
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_cmod_run.json" -Status FAILED -ExitCode 1 -ErrorClass <CLASS> -ErrorMsg "<short>"
 ```
 Suggested `<CLASS>`: `CMOD_FAILED`, `TR_RESOLUTION_FAILED`, `GUI_TIMEOUT`, `RFC_FAILED`.
 

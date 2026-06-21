@@ -52,14 +52,20 @@ Ensure the temp directory exists:
 cmd /c if not exist "{WORK_TEMP}" mkdir "{WORK_TEMP}"
 ```
 
+Set `{RUN_TEMP}` = the per-run scratch dir (`Get-SapRunTemp` mints + creates `{work_dir}\temp\run_<id>`):
+```bash
+powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('RUN_TEMP=' + (Get-SapRunTemp))"
+```
+Per the CLAUDE.md "Two-bucket temp model" write this skill's generated scratch (`*_run.ps1` / `*_run.vbs` and the `_run.json` state) under `{RUN_TEMP}`; keep `{WORK_TEMP}` (base) only for `Get-SapCurrentSessionPath -WorkTemp`.
+
 ---
 
 ## Step 0.5 — Start Logging
 
-Start a structured log run. State file: `{WORK_TEMP}\sap_bp_run.json`. Best-effort.
+Start a structured log run. State file: `{RUN_TEMP}\sap_bp_run.json`. Best-effort.
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{WORK_TEMP}\sap_bp_run.json" -Skill sap-bp -ParamsJson "{\"bp_number\":\"<BP>\"}"
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{RUN_TEMP}\sap_bp_run.json" -Skill sap-bp -ParamsJson "{\"bp_number\":\"<BP>\"}"
 ```
 
 ---
@@ -158,7 +164,7 @@ The check VBScript template is at `./references/sap_bp_check.vbs`.
 
 ### Generate the filled-in VBScript
 
-Write `{WORK_TEMP}\sap_bp_check_run.ps1`:
+Write `{RUN_TEMP}\sap_bp_check_run.ps1`:
 ```powershell
 $content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_bp_check.vbs', [System.Text.Encoding]::UTF8)
 $content = $content -replace '%%BP_NUMBER%%','THE_BP_NUMBER'
@@ -168,20 +174,20 @@ $content = $content -replace '%%SESSION_PATH%%', $sessionPath
 $content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_bp_check_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
+[System.IO.File]::WriteAllText('{RUN_TEMP}\sap_bp_check_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 Replace `THE_BP_NUMBER` with the actual BP number and `<SKILL_DIR>` with the absolute path to this skill directory.
 
 Run:
 ```bash
-powershell -ExecutionPolicy Bypass -File "{WORK_TEMP}\sap_bp_check_run.ps1"
+powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_bp_check_run.ps1"
 ```
 
 ### Execute
 
 ```bash
-cscript //NoLogo {WORK_TEMP}\sap_bp_check_run.vbs
+cscript //NoLogo {RUN_TEMP}\sap_bp_check_run.vbs
 ```
 
 **Parse the last line of output:**
@@ -197,7 +203,7 @@ The update VBScript template is at `./references/sap_bp_update.vbs`.
 
 ### Generate the filled-in VBScript
 
-Write `{WORK_TEMP}\sap_bp_update_run.ps1`:
+Write `{RUN_TEMP}\sap_bp_update_run.ps1`:
 ```powershell
 $content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_bp_update.vbs', [System.Text.Encoding]::UTF8)
 $content = $content -replace '%%BP_NUMBER%%','THE_BP_NUMBER'
@@ -208,20 +214,20 @@ $content = $content -replace '%%SESSION_PATH%%', $sessionPath
 $content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_bp_update_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
+[System.IO.File]::WriteAllText('{RUN_TEMP}\sap_bp_update_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 Replace `THE_BP_NUMBER`, `THE_DEFINITION_FILE` (absolute path with backslashes), and `<SKILL_DIR>`.
 
 Run:
 ```bash
-powershell -ExecutionPolicy Bypass -File "{WORK_TEMP}\sap_bp_update_run.ps1"
+powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_bp_update_run.ps1"
 ```
 
 ### Execute
 
 ```bash
-cscript //NoLogo {WORK_TEMP}\sap_bp_update_run.vbs
+cscript //NoLogo {RUN_TEMP}\sap_bp_update_run.vbs
 ```
 
 Proceed to Step 6 to evaluate the result.
@@ -251,7 +257,7 @@ The create VBScript template is at `./references/sap_bp_create.vbs`.
 
 ### Generate the filled-in VBScript
 
-Write `{WORK_TEMP}\sap_bp_create_run.ps1`:
+Write `{RUN_TEMP}\sap_bp_create_run.ps1`:
 ```powershell
 $content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_bp_create.vbs', [System.Text.Encoding]::UTF8)
 $content = $content -replace '%%BP_NUMBER%%','THE_BP_NUMBER'
@@ -265,7 +271,7 @@ $content = $content -replace '%%SESSION_PATH%%', $sessionPath
 $content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_bp_create_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
+[System.IO.File]::WriteAllText('{RUN_TEMP}\sap_bp_create_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 Replace all `THE_*` placeholders and `<SKILL_DIR>`.
@@ -275,13 +281,13 @@ Replace all `THE_*` placeholders and `<SKILL_DIR>`.
 
 Run:
 ```bash
-powershell -ExecutionPolicy Bypass -File "{WORK_TEMP}\sap_bp_create_run.ps1"
+powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_bp_create_run.ps1"
 ```
 
 ### Execute
 
 ```bash
-cscript //NoLogo {WORK_TEMP}\sap_bp_create_run.vbs
+cscript //NoLogo {RUN_TEMP}\sap_bp_create_run.vbs
 ```
 
 Proceed to Step 6 to evaluate the result.
@@ -316,7 +322,7 @@ Proceed to Step 6 to evaluate the result.
 
 Delete all temporary files (including the field definition file):
 ```bash
-cmd /c del {WORK_TEMP}\sap_bp_check_run.vbs & del {WORK_TEMP}\sap_bp_check_run.ps1 & del {WORK_TEMP}\sap_bp_create_run.vbs & del {WORK_TEMP}\sap_bp_create_run.ps1 & del {WORK_TEMP}\sap_bp_update_run.vbs & del {WORK_TEMP}\sap_bp_update_run.ps1 & del {WORK_TEMP}\*_fields.txt
+cmd /c del {RUN_TEMP}\sap_bp_check_run.vbs & del {RUN_TEMP}\sap_bp_check_run.ps1 & del {RUN_TEMP}\sap_bp_create_run.vbs & del {RUN_TEMP}\sap_bp_create_run.ps1 & del {RUN_TEMP}\sap_bp_update_run.vbs & del {RUN_TEMP}\sap_bp_update_run.ps1 & del {WORK_TEMP}\*_fields.txt
 ```
 
 ---
@@ -328,13 +334,13 @@ Log the run-end record. Best-effort.
 On success:
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_bp_run.json" -Status SUCCESS -ExitCode 0
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_bp_run.json" -Status SUCCESS -ExitCode 0
 ```
 
 On failure:
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_bp_run.json" -Status FAILED -ExitCode 1 -ErrorClass <CLASS> -ErrorMsg "<short>"
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_bp_run.json" -Status FAILED -ExitCode 1 -ErrorClass <CLASS> -ErrorMsg "<short>"
 ```
 
 Suggested `<CLASS>`: `BP_FAILED`, `GUI_TIMEOUT`.

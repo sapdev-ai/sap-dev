@@ -55,6 +55,12 @@ Set `{WORK_TEMP}` = `{work_dir}\temp`
 cmd /c if not exist "{WORK_TEMP}" mkdir "{WORK_TEMP}"
 ```
 
+Set `{RUN_TEMP}` = the per-run scratch dir (`Get-SapRunTemp` mints + creates `{work_dir}\temp\run_<id>`):
+```bash
+powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('RUN_TEMP=' + (Get-SapRunTemp))"
+```
+Per the CLAUDE.md "Two-bucket temp model" write this skill's generated scratch (`*_run.ps1` / `*_run.vbs` and the `_run.json` state) under `{RUN_TEMP}`; keep `{WORK_TEMP}` (base) only for `Get-SapCurrentSessionPath -WorkTemp`.
+
 ---
 
 ## Step 0.5 — Start Logging
@@ -92,7 +98,7 @@ If connection settings are missing, stop and ask the user to run `/sap-login` fi
 
 Fill `sap_rfc_read_fm_params.ps1` from the template and run it to retrieve the parameter interface.
 
-Write `{WORK_TEMP}\sap_rfc_read_fm_params_run.ps1`:
+Write `{RUN_TEMP}\sap_rfc_read_fm_params_run.ps1`:
 ```powershell
 $ps = Get-Content '<SKILL_DIR>\references\sap_rfc_read_fm_params.ps1' -Raw -Encoding UTF8
 $ps = $ps -replace '%%SAP_SERVER%%',   ''
@@ -103,13 +109,13 @@ $ps = $ps -replace '%%SAP_PASSWORD%%', ''
 $ps = $ps -replace '%%SAP_LANGUAGE%%', ''
 $ps = $ps -replace '%%RFC_LIB_PS1%%',  '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_rfc_lib.ps1'
 $ps = $ps -replace '%%FM_NAME%%',      'THE_FM_NAME'
-[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_rfc_read_fm_params_run.ps1', $ps, [System.Text.Encoding]::UTF8)
+[System.IO.File]::WriteAllText('{RUN_TEMP}\sap_rfc_read_fm_params_run.ps1', $ps, [System.Text.Encoding]::UTF8)
 Write-Host 'Done'
 ```
 
 Run:
 ```bash
-C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File "{WORK_TEMP}\sap_rfc_read_fm_params_run.ps1"
+C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_rfc_read_fm_params_run.ps1"
 ```
 
 **Parse output** — each parameter appears as a pipe-delimited line:
@@ -201,7 +207,7 @@ Confirm the file was written correctly by reading back the first few lines.
 
 Fill `sap_rfc_wrapper_fm.ps1` from the template and run it.
 
-Write `{WORK_TEMP}\sap_rfc_wrapper_fm_run.ps1`:
+Write `{RUN_TEMP}\sap_rfc_wrapper_fm_run.ps1`:
 ```powershell
 $ps = Get-Content '<SKILL_DIR>\references\sap_rfc_wrapper_fm.ps1' -Raw -Encoding UTF8
 $ps = $ps -replace '%%SAP_SERVER%%',   ''
@@ -214,13 +220,13 @@ $ps = $ps -replace '%%RFC_LIB_PS1%%',  '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_rf
 $ps = $ps -replace '%%TARGET_FM%%',    'THE_FM_NAME'
 $ps = $ps -replace '%%PARAMS_FILE%%',  '{WORK_TEMP}\{FM_NAME}_params.txt'
 $ps = $ps -replace '%%WORK_TEMP%%',    '{WORK_TEMP}'
-[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_rfc_wrapper_fm_run.ps1', $ps, [System.Text.Encoding]::UTF8)
+[System.IO.File]::WriteAllText('{RUN_TEMP}\sap_rfc_wrapper_fm_run.ps1', $ps, [System.Text.Encoding]::UTF8)
 Write-Host 'Done'
 ```
 
 Run:
 ```bash
-C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File "{WORK_TEMP}\sap_rfc_wrapper_fm_run.ps1"
+C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_rfc_wrapper_fm_run.ps1"
 ```
 
 **Parse output:**
@@ -267,7 +273,7 @@ For table parameters with many rows, show the first 20 rows and note the total c
 ## Step 7 — Clean Up
 
 ```bash
-cmd /c del {WORK_TEMP}\sap_rfc_read_fm_params_run.ps1 & del {WORK_TEMP}\sap_rfc_wrapper_fm_run.ps1 & del {WORK_TEMP}\{FM_NAME}_params.txt
+cmd /c del {RUN_TEMP}\sap_rfc_read_fm_params_run.ps1 & del {RUN_TEMP}\sap_rfc_wrapper_fm_run.ps1 & del {WORK_TEMP}\{FM_NAME}_params.txt
 ```
 
 Also delete `{WORK_TEMP}\out_*.xml` if the user confirms they no longer need the output files.

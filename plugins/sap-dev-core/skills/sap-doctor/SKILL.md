@@ -63,6 +63,12 @@ Set `{WORK_TEMP}` = `{work_dir}\temp` and ensure it exists:
 cmd /c if not exist "{WORK_TEMP}" mkdir "{WORK_TEMP}"
 ```
 
+Set `{RUN_TEMP}` = the per-run scratch dir (`Get-SapRunTemp` mints + creates `{work_dir}\temp\run_<id>`):
+```bash
+powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('RUN_TEMP=' + (Get-SapRunTemp))"
+```
+Per the CLAUDE.md "Two-bucket temp model" write this skill's generated scratch (`*_run.ps1` / `*_run.vbs` and the `_run.json` state) under `{RUN_TEMP}`; keep `{WORK_TEMP}` (base) only for `Get-SapCurrentSessionPath -WorkTemp`.
+
 ---
 
 ## Step 0.5 — Start Logging
@@ -117,14 +123,14 @@ $ps     = $ps.Replace('%%SAP_CLIENT%%',   '')
 $ps     = $ps.Replace('%%SAP_USER%%',     '')
 $ps     = $ps.Replace('%%SAP_PASSWORD%%', '')
 $ps     = $ps.Replace('%%SAP_LANGUAGE%%', '')
-[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_doctor_checks_run.ps1', $ps, [System.Text.Encoding]::UTF8)
+[System.IO.File]::WriteAllText('{RUN_TEMP}\sap_doctor_checks_run.ps1', $ps, [System.Text.Encoding]::UTF8)
 Write-Host 'Done'
 ```
 
 Run via **32-bit PowerShell** (NCo 3.1 lives in `GAC_32`):
 
 ```bash
-C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File "{WORK_TEMP}\sap_doctor_checks_run.ps1"
+C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_doctor_checks_run.ps1"
 ```
 
 Each output line is:
@@ -190,7 +196,7 @@ by collapsing PASS rows and printing only WARN/FAIL/SKIP plus the verdict.
 ## Step 5 — Clean Up
 
 ```bash
-cmd /c del "{WORK_TEMP}\sap_doctor_checks_run.ps1"
+cmd /c del "{RUN_TEMP}\sap_doctor_checks_run.ps1"
 ```
 
 ---

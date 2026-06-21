@@ -54,17 +54,23 @@ Set `{WORK_TEMP}` = `{work_dir}\temp`. Ensure it exists:
 cmd /c if not exist "{WORK_TEMP}" mkdir "{WORK_TEMP}"
 ```
 
+Set `{RUN_TEMP}` = the per-run scratch dir (`Get-SapRunTemp` mints + creates `{work_dir}\temp\run_<id>`):
+```bash
+powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('RUN_TEMP=' + (Get-SapRunTemp))"
+```
+Per the CLAUDE.md "Two-bucket temp model" write this skill's generated scratch (`*_run.ps1` / `*_run.vbs` and the `_run.json` state) under `{RUN_TEMP}`; keep `{WORK_TEMP}` (base) only for `Get-SapCurrentSessionPath -WorkTemp`.
+
 ---
 
 ## Step 0.5 — Start Logging
 
 Start a structured log run. The helper persists `run_id` in a state file
-(`{WORK_TEMP}\sap_gui_object_details_run.json`) so subsequent steps and
+(`{RUN_TEMP}\sap_gui_object_details_run.json`) so subsequent steps and
 the final log-end call append to the same run. Best-effort: silently
 no-ops if `userConfig.log_enabled=false` or the lib can't load.
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{WORK_TEMP}\sap_gui_object_details_run.json" -Skill sap-gui-object-details -ParamsJson "{\"object_type\":\"<TYPE>\",\"object_name\":\"<NAME>\"}"
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{RUN_TEMP}\sap_gui_object_details_run.json" -Skill sap-gui-object-details -ParamsJson "{\"object_type\":\"<TYPE>\",\"object_name\":\"<NAME>\"}"
 ```
 
 ---
@@ -116,7 +122,7 @@ Template: `./references/sap_gui_object_details.vbs`. Tokens:
 
 Default output file: `{WORK_TEMP}\sap_gui_objects_<MODE>.txt`.
 
-Write `{WORK_TEMP}\sap_gui_object_details_run.ps1`:
+Write `{RUN_TEMP}\sap_gui_object_details_run.ps1`:
 ```powershell
 $skillDir = '<SKILL_DIR>'
 $workTemp = '{WORK_TEMP}'
@@ -132,8 +138,8 @@ Write-Host 'Done'
 
 Run via 32-bit cscript:
 ```bash
-powershell -ExecutionPolicy Bypass -File "{WORK_TEMP}\sap_gui_object_details_run.ps1"
-C:/Windows/SysWOW64/cscript.exe //NoLogo {WORK_TEMP}\sap_gui_object_details_run.vbs
+powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_gui_object_details_run.ps1"
+C:/Windows/SysWOW64/cscript.exe //NoLogo {RUN_TEMP}\sap_gui_object_details_run.vbs
 ```
 
 ---
@@ -192,13 +198,13 @@ Log the run-end record. Best-effort: silently no-ops if logging disabled.
 On success:
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_gui_object_details_run.json" -Status SUCCESS -ExitCode 0
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_gui_object_details_run.json" -Status SUCCESS -ExitCode 0
 ```
 
 On failure (substitute `<CLASS>` and short message):
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_gui_object_details_run.json" -Status FAILED -ExitCode 1 -ErrorClass <CLASS> -ErrorMsg "<short>"
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_gui_object_details_run.json" -Status FAILED -ExitCode 1 -ErrorClass <CLASS> -ErrorMsg "<short>"
 ```
 
 Suggested `<CLASS>`: `OBJECT_DETAILS_FAILED`, `GUI_TIMEOUT`.

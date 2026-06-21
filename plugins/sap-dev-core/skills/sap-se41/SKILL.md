@@ -76,6 +76,12 @@ Ensure the temp directory exists:
 cmd /c if not exist "{WORK_TEMP}" mkdir "{WORK_TEMP}"
 ```
 
+Set `{RUN_TEMP}` = the per-run scratch dir (`Get-SapRunTemp` mints + creates `{work_dir}\temp\run_<id>`):
+```bash
+powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('RUN_TEMP=' + (Get-SapRunTemp))"
+```
+Per the CLAUDE.md "Two-bucket temp model" write this skill's generated scratch (`*_run.ps1` / `*_run.vbs` and the `_run.json` state) under `{RUN_TEMP}`; keep `{WORK_TEMP}` (base) only for `Get-SapCurrentSessionPath -WorkTemp`.
+
 ---
 
 ## Step 0.5 — Start Logging
@@ -208,7 +214,7 @@ This skill requires an active SAP GUI session. If not already logged in, use the
 
 ### 4a. Write the VBScript
 
-Copy the VBScript below **verbatim** into `{WORK_TEMP}\sap_se41_ops.vbs`
+Copy the VBScript below **verbatim** into `{RUN_TEMP}\sap_se41_ops.vbs`
 (use the Write tool). It is the single source of truth for all operations.
 
 ```vbscript
@@ -737,12 +743,12 @@ End Select
 
 ### 4b. Substitute Tokens and Run
 
-Write `{WORK_TEMP}\sap_se41_ops_run.ps1`, replacing the `THE_*` placeholders
+Write `{RUN_TEMP}\sap_se41_ops_run.ps1`, replacing the `THE_*` placeholders
 below with the values from Step 1 (UPPERCASE program/status). Leave a token's
 replacement value as an empty string when the operation does not use it.
 
 ```powershell
-$content = [System.IO.File]::ReadAllText('{WORK_TEMP}\sap_se41_ops.vbs', [System.Text.Encoding]::UTF8)
+$content = [System.IO.File]::ReadAllText('{RUN_TEMP}\sap_se41_ops.vbs', [System.Text.Encoding]::UTF8)
 $content = $content -replace '%%OPERATION%%','THE_OPERATION'
 $content = $content -replace '%%PROGRAM%%','THE_PROGRAM'
 $content = $content -replace '%%STATUS%%','THE_STATUS'
@@ -756,19 +762,19 @@ $content = $content -replace '%%SESSION_PATH%%', ''
 $content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_se41_ops_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
+[System.IO.File]::WriteAllText('{RUN_TEMP}\sap_se41_ops_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 
 Run:
 ```bash
-powershell -ExecutionPolicy Bypass -File "{WORK_TEMP}\sap_se41_ops_run.ps1"
+powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_se41_ops_run.ps1"
 ```
 
 ### Execute
 
 ```bash
-cscript //NoLogo {WORK_TEMP}\sap_se41_ops_run.vbs
+cscript //NoLogo {RUN_TEMP}\sap_se41_ops_run.vbs
 ```
 
 ---
@@ -847,7 +853,7 @@ reference from the program that uses it.
 
 Delete temporary files:
 ```bash
-cmd /c del {WORK_TEMP}\sap_se41_ops.vbs & del {WORK_TEMP}\sap_se41_ops_run.vbs & del {WORK_TEMP}\sap_se41_ops_run.ps1
+cmd /c del {RUN_TEMP}\sap_se41_ops.vbs & del {RUN_TEMP}\sap_se41_ops_run.vbs & del {RUN_TEMP}\sap_se41_ops_run.ps1
 ```
 
 For CREATE / UPDATE also delete the definition file `{WORK_TEMP}\<STATUS_NAME>.def`.

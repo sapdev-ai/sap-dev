@@ -75,6 +75,12 @@ non-per-connection writes go to `userconfig.json`. Set `{WORK_TEMP}` =
 cmd /c if not exist "{WORK_TEMP}" mkdir "{WORK_TEMP}"
 ```
 
+Set `{RUN_TEMP}` = the per-run scratch dir (`Get-SapRunTemp` mints + creates `{work_dir}\temp\run_<id>`):
+```bash
+powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('RUN_TEMP=' + (Get-SapRunTemp))"
+```
+Per the CLAUDE.md "Two-bucket temp model" write this skill's generated scratch (`*_run.ps1` / `*_run.vbs` and the `_run.json` state) under `{RUN_TEMP}`; keep `{WORK_TEMP}` (base) only for `Get-SapCurrentSessionPath -WorkTemp`.
+
 `{LEDGER}` = `{WORK_TEMP}\se19_created_ledger.jsonl` (safety ledger — see Step 6).
 
 ---
@@ -169,7 +175,7 @@ for transported objects — the VBS handles it).
 
 ## Step 5 — Execute the operation
 
-All VBS share one **fill-and-run** wrapper. Write `{WORK_TEMP}\se19_run.ps1`,
+All VBS share one **fill-and-run** wrapper. Write `{RUN_TEMP}\se19_run.ps1`,
 substituting the per-mode tokens plus the two shared tokens, then run via 32-bit
 cscript:
 
@@ -195,13 +201,13 @@ $c = $c -replace '%%SESSION_PATH%%',''
 $c = $c -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-[System.IO.File]::WriteAllText('{WORK_TEMP}\se19_run.vbs', $c, [System.Text.UnicodeEncoding]::new($false, $true))
+[System.IO.File]::WriteAllText('{RUN_TEMP}\se19_run.vbs', $c, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "{WORK_TEMP}\se19_run.ps1"
-C:/Windows/SysWOW64/cscript.exe //NoLogo {WORK_TEMP}\se19_run.vbs
+powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\se19_run.ps1"
+C:/Windows/SysWOW64/cscript.exe //NoLogo {RUN_TEMP}\se19_run.vbs
 ```
 
 Always write the VBS with **`-Encoding Unicode`** (UTF-16 LE) — cscript needs it.
@@ -332,7 +338,7 @@ TR (if any), the implementing-class status (and whether class source still needs
 
 Delete temp VBS/PS:
 ```bash
-cmd /c del {WORK_TEMP}\se19_run.vbs & del {WORK_TEMP}\se19_run.ps1
+cmd /c del {RUN_TEMP}\se19_run.vbs & del {RUN_TEMP}\se19_run.ps1
 ```
 Also delete `{WORK_TEMP}\<IMPL_CLASS>.abap` if you wrote pasted source.
 

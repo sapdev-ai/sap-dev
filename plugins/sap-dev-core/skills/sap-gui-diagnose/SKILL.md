@@ -88,6 +88,12 @@ Set `{WORK_TEMP}` = `{work_dir}\temp`. Ensure it exists:
 cmd /c if not exist "{WORK_TEMP}" mkdir "{WORK_TEMP}"
 ```
 
+Set `{RUN_TEMP}` = the per-run scratch dir (`Get-SapRunTemp` mints + creates `{work_dir}\temp\run_<id>`):
+```bash
+powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('RUN_TEMP=' + (Get-SapRunTemp))"
+```
+Per the CLAUDE.md "Two-bucket temp model" write this skill's generated scratch (`*_run.ps1` / `*_run.vbs` and the `_run.json` state) under `{RUN_TEMP}`; keep `{WORK_TEMP}` (base) only for `Get-SapCurrentSessionPath -WorkTemp`.
+
 Generate a per-run output directory using a sortable timestamp:
 
 ```
@@ -102,7 +108,7 @@ its summary back to the user.
 ## Step 0.5 — Start Logging
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{WORK_TEMP}\sap_gui_diagnose_run.json" -Skill sap-gui-diagnose -ParamsJson "{\"mode\":\"<MODE>\"}"
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{RUN_TEMP}\sap_gui_diagnose_run.json" -Skill sap-gui-diagnose -ParamsJson "{\"mode\":\"<MODE>\"}"
 ```
 
 Best-effort: silently no-ops if `userConfig.log_enabled=false`.
@@ -150,7 +156,7 @@ $content    = $content.Replace('%%SESSION_PATH%%',   $sessionPath)
 $content    = $content.Replace('%%ATTACH_LIB_VBS%%', '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs')
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-[System.IO.File]::WriteAllText("{WORK_TEMP}\sap_gui_diagnose_capture_run.vbs", $content, [System.Text.UnicodeEncoding]::new($false, $true))
+[System.IO.File]::WriteAllText("{RUN_TEMP}\sap_gui_diagnose_capture_run.vbs", $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 
@@ -168,11 +174,11 @@ ticks Remember, persisting the rule so later runs are clean):
 ```powershell
 $shared  = '<SAP_DEV_CORE_SHARED_DIR>\scripts'
 $watcher = Start-Process powershell -PassThru -WindowStyle Hidden `
-    -RedirectStandardOutput "{WORK_TEMP}\sap_gui_diagnose_sidecar.out" `
+    -RedirectStandardOutput "{RUN_TEMP}\sap_gui_diagnose_sidecar.out" `
     -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File',
                     "$shared\sap_gui_security_sidecar.ps1",'-TimeoutSeconds','45')
 Start-Sleep -Milliseconds 800
-& 'C:\Windows\SysWOW64\cscript.exe' //NoLogo "{WORK_TEMP}\sap_gui_diagnose_capture_run.vbs"
+& 'C:\Windows\SysWOW64\cscript.exe' //NoLogo "{RUN_TEMP}\sap_gui_diagnose_capture_run.vbs"
 if (-not $watcher.HasExited) { Stop-Process -Id $watcher.Id -Force -ErrorAction SilentlyContinue }
 ```
 
@@ -198,7 +204,7 @@ $content        = Get-Content "$skillDir\references\sap_gui_diagnose_compose.ps1
 $content        = $content.Replace('%%MANIFEST%%',      $manifest)
 $content        = $content.Replace('%%COMPOSITE_PNG%%', $compositePng)
 $content        = $content.Replace('%%TOPMOST_PNG%%',   $topmostPng)
-[System.IO.File]::WriteAllText("{WORK_TEMP}\sap_gui_diagnose_compose_run.ps1", $content, [System.Text.Encoding]::UTF8)
+[System.IO.File]::WriteAllText("{RUN_TEMP}\sap_gui_diagnose_compose_run.ps1", $content, [System.Text.Encoding]::UTF8)
 Write-Host 'Done'
 ```
 
@@ -206,7 +212,7 @@ Run via Windows PowerShell (composition uses `System.Drawing` which is
 available in both 32-bit and 64-bit, no preference needed):
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "{WORK_TEMP}\sap_gui_diagnose_compose_run.ps1"
+powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_gui_diagnose_compose_run.ps1"
 ```
 
 | Last line | Meaning |
@@ -269,7 +275,7 @@ the orchestrator may still want to attach the PNGs to its final summary.
 Delete the per-invocation generated scripts:
 
 ```bash
-cmd /c del {WORK_TEMP}\sap_gui_diagnose_capture_run.vbs & del {WORK_TEMP}\sap_gui_diagnose_compose_run.ps1 & del {WORK_TEMP}\sap_gui_diagnose_sidecar.out
+cmd /c del {RUN_TEMP}\sap_gui_diagnose_capture_run.vbs & del {RUN_TEMP}\sap_gui_diagnose_compose_run.ps1 & del {RUN_TEMP}\sap_gui_diagnose_sidecar.out
 ```
 
 ---
@@ -277,7 +283,7 @@ cmd /c del {WORK_TEMP}\sap_gui_diagnose_capture_run.vbs & del {WORK_TEMP}\sap_gu
 ## Final — Log End
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_gui_diagnose_run.json" -Status SUCCESS -ExitCode 0
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_gui_diagnose_run.json" -Status SUCCESS -ExitCode 0
 ```
 
 Suggested failure `ErrorClass`: `DIAGNOSE_NO_SESSION`,

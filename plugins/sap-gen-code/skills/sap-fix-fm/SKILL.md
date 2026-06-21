@@ -44,6 +44,12 @@ Ensure the temp directory exists:
 cmd /c if not exist "{WORK_TEMP}" mkdir "{WORK_TEMP}"
 ```
 
+Set `{RUN_TEMP}` = the per-run scratch dir (`Get-SapRunTemp` mints + creates `{work_dir}\temp\run_<id>`):
+```bash
+powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('RUN_TEMP=' + (Get-SapRunTemp))"
+```
+Per the CLAUDE.md "Two-bucket temp model" write this skill's generated scratch (`*_run.ps1` / `*_run.vbs` and the `_run.json` state) under `{RUN_TEMP}`; keep `{WORK_TEMP}` (base) only for `Get-SapCurrentSessionPath -WorkTemp`.
+
 ---
 
 ## Step 0.5 — Start Logging
@@ -141,7 +147,7 @@ Build a one-name-per-line file of the unique FM names with fixable issues (from 
 'FM1','FM2','FM3' | Set-Content '{WORK_TEMP}\sap_getfmparams_names.txt' -Encoding UTF8
 ```
 
-Then write `{WORK_TEMP}\sap_getfmparams_run.ps1`:
+Then write `{RUN_TEMP}\sap_getfmparams_run.ps1`:
 ```powershell
 $content = Get-Content '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_rfc_lookup_fm.ps1' -Raw
 $content = $content -replace '%%SAP_SERVER%%',     ''
@@ -158,14 +164,14 @@ $content = $content -replace '%%SYSTEM_ID%%',      '{SYSTEM_ID}'
 $content = $content -replace '%%TTL_STD_DAYS%%',   '30'      # or userConfig.fm_cache_ttl_std_days
 $content = $content -replace '%%TTL_Z_DAYS%%',     '1'       # or userConfig.fm_cache_ttl_z_days
 $content = $content -replace '%%REFRESH_CACHE%%',  'false'   # 'true' to bypass cache for this run
-[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_getfmparams_run.ps1', $content, [System.Text.Encoding]::UTF8)
+[System.IO.File]::WriteAllText('{RUN_TEMP}\sap_getfmparams_run.ps1', $content, [System.Text.Encoding]::UTF8)
 Write-Host 'Done'
 ```
 Replace all `THE_*` placeholders and `<SAP_DEV_CORE_SHARED_DIR>` with absolute paths.
 
 Run:
 ```bash
-C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File "{WORK_TEMP}\sap_getfmparams_run.ps1"
+C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_getfmparams_run.ps1"
 ```
 
 Read `{WORK_TEMP}\getfmparams_result.txt`. Each line is:
@@ -179,7 +185,7 @@ Where:
 
 Delete the filled-in PowerShell (contains credentials):
 ```bash
-cmd /c del {WORK_TEMP}\sap_getfmparams_run.ps1
+cmd /c del {RUN_TEMP}\sap_getfmparams_run.ps1
 ```
 
 ---

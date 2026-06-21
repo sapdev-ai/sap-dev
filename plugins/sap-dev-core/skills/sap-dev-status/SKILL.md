@@ -55,6 +55,12 @@ Set `{WORK_TEMP}` = `{work_dir}\temp`. Ensure it exists:
 cmd /c if not exist "{WORK_TEMP}" mkdir "{WORK_TEMP}"
 ```
 
+Set `{RUN_TEMP}` = the per-run scratch dir (`Get-SapRunTemp` mints + creates `{work_dir}\temp\run_<id>`):
+```bash
+powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('RUN_TEMP=' + (Get-SapRunTemp))"
+```
+Per the CLAUDE.md "Two-bucket temp model" write this skill's generated scratch (`*_run.ps1` / `*_run.vbs` and the `_run.json` state) under `{RUN_TEMP}`; keep `{WORK_TEMP}` (base) only for `Get-SapCurrentSessionPath -WorkTemp`.
+
 ---
 
 ## Step 0.5 — Start Logging
@@ -86,7 +92,7 @@ $ps       = $ps.Replace('%%WRAPPER_FM%%',     '')
 $ps       = $ps.Replace('%%WRAPPER_STRUCT%%', '')
 $ps       = $ps.Replace('%%WRAPPER_TT%%',     '')
 $ps       = $ps.Replace('%%UTIL_PROGRAM%%',   '')
-[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_dev_status_run.ps1', $ps, [System.Text.Encoding]::UTF8)
+[System.IO.File]::WriteAllText('{RUN_TEMP}\sap_dev_status_run.ps1', $ps, [System.Text.Encoding]::UTF8)
 Write-Host 'Done'
 ```
 
@@ -97,7 +103,7 @@ defaults built into the shared script (`Z_GENERIC_RFC_WRAPPER_TBL`,
 Run via **32-bit PowerShell** (NCo 3.1 is in `GAC_32`):
 
 ```bash
-C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File "{WORK_TEMP}\sap_dev_status_run.ps1"
+C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_dev_status_run.ps1"
 ```
 
 ---
@@ -172,7 +178,7 @@ remediation:
 ## Step 4 — Clean Up
 
 ```bash
-cmd /c del "{WORK_TEMP}\sap_dev_status_run.ps1"
+cmd /c del "{RUN_TEMP}\sap_dev_status_run.ps1"
 ```
 
 ---

@@ -70,14 +70,20 @@ cmd /c if not exist "{WORK_TEMP}" mkdir "{WORK_TEMP}"
 cmd /c if not exist "{TRACE_OUT}" mkdir "{TRACE_OUT}"
 ```
 
+Set `{RUN_TEMP}` = the per-run scratch dir (`Get-SapRunTemp` mints + creates `{work_dir}\temp\run_<id>`):
+```bash
+powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('RUN_TEMP=' + (Get-SapRunTemp))"
+```
+Per the CLAUDE.md "Two-bucket temp model" write this skill's generated scratch (`*_run.ps1` / `*_run.vbs`) under `{RUN_TEMP}`; keep `{WORK_TEMP}` / `{TRACE_OUT}` (base) for outputs, log state, and `Get-SapCurrentSessionPath -WorkTemp`.
+
 ---
 
 ## Step 0.5 — Start Logging
 
-Start a structured log run. State file: `{WORK_TEMP}\sap_trace_run.json`. Best-effort.
+Start a structured log run. State file: `{RUN_TEMP}\sap_trace_run.json`. Best-effort.
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{WORK_TEMP}\sap_trace_run.json" -Skill sap-trace -ParamsJson "{\"source\":\"<SOURCE>\"}"
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{RUN_TEMP}\sap_trace_run.json" -Skill sap-trace -ParamsJson "{\"source\":\"<SOURCE>\"}"
 ```
 
 ---
@@ -136,7 +142,7 @@ IDs.
 ### Generate the filled-in VBScript
 
 Pick the template by source: `sap_trace_st05.vbs` or `sap_trace_sat.vbs`.
-Write `{WORK_TEMP}\sap_trace_run.ps1`:
+Write `{RUN_TEMP}\sap_trace_run.ps1`:
 
 ```powershell
 $tpl = '<SKILL_DIR>\references\sap_trace_st05.vbs'   # or ..._sat.vbs
@@ -155,7 +161,7 @@ $content = $content -replace '%%SESSION_PATH%%',   $sessionPath
 $content = $content -replace '%%ATTACH_LIB_VBS%%', '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_trace_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
+[System.IO.File]::WriteAllText('{RUN_TEMP}\sap_trace_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 
@@ -165,7 +171,7 @@ Replace `RUNTS` / `THE_USER` / `HH:MM:SS` / `THE_MEASUREMENT` and the
 Run:
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "{WORK_TEMP}\sap_trace_run.ps1"
+powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_trace_run.ps1"
 ```
 
 ### Execute (with SAP GUI Security guard)
@@ -185,7 +191,7 @@ if (-not $allowed) {
         '-NoProfile','-ExecutionPolicy','Bypass','-File',"$shared\sap_gui_security_sidecar.ps1",'-TimeoutSeconds','40')
     Start-Sleep -Milliseconds 800
 }
-& 'C:/Windows/SysWOW64/cscript.exe' //NoLogo '{WORK_TEMP}\sap_trace_run.vbs'
+& 'C:/Windows/SysWOW64/cscript.exe' //NoLogo '{RUN_TEMP}\sap_trace_run.vbs'
 if ($watcher) { $watcher | Wait-Process -Timeout 45 -ErrorAction SilentlyContinue }
 ```
 
@@ -264,13 +270,13 @@ Echo the analyzer's report verbatim, then summarize for the user:
 Best-effort. On success:
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_trace_run.json" -Status SUCCESS -ExitCode 0
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_trace_run.json" -Status SUCCESS -ExitCode 0
 ```
 
 On failure:
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_trace_run.json" -Status FAILED -ExitCode 1 -ErrorClass <CLASS> -ErrorMsg "<short>"
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_trace_run.json" -Status FAILED -ExitCode 1 -ErrorClass <CLASS> -ErrorMsg "<short>"
 ```
 
 Suggested `<CLASS>`: `TRACE_QUERY_FAILED` (GUI display/export), `TRACE_PARSE_FAILED`

@@ -60,6 +60,12 @@ Set `{WORK_TEMP}` = `{work_dir}\temp` and `{OUT}` = `{WORK_TEMP}\explain\{OBJECT
 cmd /c if not exist "{OUT}" mkdir "{OUT}"
 ```
 
+Set `{RUN_TEMP}` = the per-run scratch dir (`Get-SapRunTemp` mints + creates `{work_dir}\temp\run_<id>`):
+```bash
+powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('RUN_TEMP=' + (Get-SapRunTemp))"
+```
+Write this run's generated scratch (`explain_dl.vbs`) under `{RUN_TEMP}`; keep `{WORK_TEMP}` (base) for `{OUT}`, the log state, and `Get-SapCurrentSessionPath -WorkTemp`.
+
 ## Step 0.5 — Start Logging (best-effort)
 
 ```bash
@@ -133,10 +139,10 @@ $vbs = ([System.IO.File]::ReadAllText("$skillSe24\references\sap_se24_check_and_
   Replace('%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs')
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-[System.IO.File]::WriteAllText('{WORK_TEMP}\explain_dl.vbs', $vbs, [System.Text.UnicodeEncoding]::new($false, $true))
+[System.IO.File]::WriteAllText('{RUN_TEMP}\explain_dl.vbs', $vbs, [System.Text.UnicodeEncoding]::new($false, $true))
 ```
 ```bash
-"C:/Windows/SysWOW64/cscript.exe" //NoLogo "{WORK_TEMP}\explain_dl.vbs"
+"C:/Windows/SysWOW64/cscript.exe" //NoLogo "{RUN_TEMP}\explain_dl.vbs"
 ```
 > Note: GUI download returns the pretty-printed *display* view (local `TYPES`
 > may appear at outer scope). Adequate for comprehension; flag it in the dossier.

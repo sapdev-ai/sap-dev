@@ -77,6 +77,12 @@ Ensure the temp directory exists:
 cmd /c if not exist "{WORK_TEMP}" mkdir "{WORK_TEMP}"
 ```
 
+Set `{RUN_TEMP}` = the per-run scratch dir (`Get-SapRunTemp` mints + creates `{work_dir}\temp\run_<id>`):
+```bash
+powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('RUN_TEMP=' + (Get-SapRunTemp))"
+```
+Per the CLAUDE.md "Two-bucket temp model" write this skill's generated scratch (`*_run.ps1` / `*_run.vbs` and the `_run.json` state) under `{RUN_TEMP}`; keep `{WORK_TEMP}` (base) only for `Get-SapCurrentSessionPath -WorkTemp`.
+
 ---
 
 ## Step 0.5 — Start Logging
@@ -198,13 +204,13 @@ For each step (using SE38 as the example), generate a per-probe PS1, run it, the
 # Example for probe 1 (SE38):
 $content = [System.IO.File]::ReadAllText('<SKILL_DIR>\..\sap-se38\references\sap_se38_check.vbs', [System.Text.Encoding]::UTF8)
 $content = $content -replace '%%PROGRAM_NAME%%','THE_OBJECT_NAME'
-[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_check_fix_probe_se38.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
+[System.IO.File]::WriteAllText('{RUN_TEMP}\sap_check_fix_probe_se38.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 ```
 
 Then:
 ```bash
-powershell -ExecutionPolicy Bypass -File "{WORK_TEMP}\sap_check_fix_probe_se38.ps1"
-cscript //NoLogo "{WORK_TEMP}\sap_check_fix_probe_se38.vbs"
+powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_check_fix_probe_se38.ps1"
+cscript //NoLogo "{RUN_TEMP}\sap_check_fix_probe_se38.vbs"
 ```
 
 Token names per probe:

@@ -53,6 +53,12 @@ Ensure the temp directory exists:
 cmd /c if not exist "{WORK_TEMP}" mkdir "{WORK_TEMP}"
 ```
 
+Set `{RUN_TEMP}` = the per-run scratch dir (`Get-SapRunTemp` mints + creates `{work_dir}\temp\run_<id>`):
+```bash
+powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('RUN_TEMP=' + (Get-SapRunTemp))"
+```
+Per the CLAUDE.md "Two-bucket temp model" write this skill's generated scratch (`*_run.vbs` and the `_run.json` state) under `{RUN_TEMP}`; keep `{WORK_TEMP}` (base) only for `Get-SapCurrentSessionPath -WorkTemp`.
+
 ---
 
 ## Step 0.5 — Start Logging
@@ -96,7 +102,7 @@ Present these instructions to the user:
    - OR press **Alt+F12** (Customize Local Layout) and select **"Script Recording and Playback..."**
 
 3. **In the Record and Playback dialog:**
-   - Under **Record**, set **"Save To:"** to `{WORK_TEMP}\sap_recording.vbs`
+   - Under **Record**, set **"Save To:"** to `{RUN_TEMP}\sap_recording.vbs`
      (or any preferred path)
    - Set **Encoding** to **Unicode**
    - Click the **red circle button** (Record) to start recording
@@ -107,7 +113,7 @@ Present these instructions to the user:
 5. **Stop recording** — click the **orange square button** (Stop Recording) in the
    Record and Playback dialog.
 
-6. Tell me the path to the saved recording file (or confirm `{WORK_TEMP}\sap_recording.vbs`).
+6. Tell me the path to the saved recording file (or confirm `{RUN_TEMP}\sap_recording.vbs`).
 
 Wait for the user to provide the file path before continuing.
 

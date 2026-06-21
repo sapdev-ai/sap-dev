@@ -59,6 +59,12 @@ Set `{WORK_TEMP}` = `{work_dir}\temp`
 cmd /c if not exist "{WORK_TEMP}" mkdir "{WORK_TEMP}"
 ```
 
+Set `{RUN_TEMP}` = the per-run scratch dir (`Get-SapRunTemp` mints + creates `{work_dir}\temp\run_<id>`):
+```bash
+powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('RUN_TEMP=' + (Get-SapRunTemp))"
+```
+Per the CLAUDE.md "Two-bucket temp model" write this skill's generated scratch (`*_run.ps1` / `*_run.vbs` and the `_run.json` state) under `{RUN_TEMP}`; keep `{WORK_TEMP}` (base) only for `Get-SapCurrentSessionPath -WorkTemp`.
+
 ---
 
 ## Step 0.5 — Start Logging
@@ -122,7 +128,7 @@ case. Workaround: deploy a small RFC-enabled helper FM that uses RTTI
 
 Fill `sap_rfc_read_class_method.ps1` from the template and run it.
 
-Write `{WORK_TEMP}\sap_rfc_read_cls_run.ps1`:
+Write `{RUN_TEMP}\sap_rfc_read_cls_run.ps1`:
 ```powershell
 $ps = Get-Content '<SKILL_DIR>\references\sap_rfc_read_class_method.ps1' -Raw -Encoding UTF8
 $ps = $ps -replace '%%SAP_SERVER%%',   ''
@@ -134,13 +140,13 @@ $ps = $ps -replace '%%SAP_LANGUAGE%%', ''
 $ps = $ps -replace '%%RFC_LIB_PS1%%',  '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_rfc_lib.ps1'
 $ps = $ps -replace '%%CLASS_NAME%%',   'THE_CLASS_NAME'
 $ps = $ps -replace '%%METHOD_NAME%%',  'THE_METHOD_NAME'
-[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_rfc_read_cls_run.ps1', $ps, [System.Text.Encoding]::UTF8)
+[System.IO.File]::WriteAllText('{RUN_TEMP}\sap_rfc_read_cls_run.ps1', $ps, [System.Text.Encoding]::UTF8)
 Write-Host 'Done'
 ```
 
 Run:
 ```bash
-C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File "{WORK_TEMP}\sap_rfc_read_cls_run.ps1"
+C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_rfc_read_cls_run.ps1"
 ```
 
 **Parse output** — each parameter appears as:
@@ -319,7 +325,7 @@ To call this FM via /sap-rfc-wrapper-fm:
 ## Step 6 — Clean Up
 
 ```bash
-cmd /c del {WORK_TEMP}\sap_rfc_read_cls_run.ps1
+cmd /c del {RUN_TEMP}\sap_rfc_read_cls_run.ps1
 ```
 
 The generated `.abap` file is kept (it is the source of record for the FM).

@@ -43,6 +43,12 @@ The settings note below still applies to the OTHER keys.
 cmd /c if not exist "{WORK_TEMP}" mkdir "{WORK_TEMP}"
 ```
 
+Set `{RUN_TEMP}` = the per-run scratch dir (`Get-SapRunTemp` mints + creates `{work_dir}\temp\run_<id>`):
+```bash
+powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('RUN_TEMP=' + (Get-SapRunTemp))"
+```
+Per the CLAUDE.md "Two-bucket temp model" write this skill's generated scratch (`*_run.ps1` / `*_run.vbs` and the `_run.json` state) under `{RUN_TEMP}`; keep `{WORK_TEMP}` (base) only for `Get-SapCurrentSessionPath -WorkTemp`.
+
 ---
 
 ## Step 0.5 — Start Logging
@@ -175,12 +181,12 @@ $content = $content.Replace('%%REQUEST_FILE%%',    '{WORK_TEMP}\spec_refs_reques
 $content = $content.Replace('%%STRUCT_SIG_FILE%%', '{work_folder}\_struct_signatures.txt')
 $content = $content.Replace('%%RESULT_FILE%%',     '{work_folder}\check_result_process.txt')
 $content = $content.Replace('%%STARTING_NO%%',     'THE_NEXT_NO')
-Set-Content '{WORK_TEMP}\sap_check_spec_refs_run.ps1' $content -Encoding UTF8
+Set-Content '{RUN_TEMP}\sap_check_spec_refs_run.ps1' $content -Encoding UTF8
 ```
 
 Run:
 ```bash
-powershell -ExecutionPolicy Bypass -File "{WORK_TEMP}\sap_check_spec_refs_run.ps1"
+powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_check_spec_refs_run.ps1"
 ```
 
 The validator appends rows in the same `No\tCategory\tLocation\tDescription\tSeverity\tStatus`
@@ -194,7 +200,7 @@ format the rest of this skill uses. New error/warning classes added by 3.5:
 
 Clean up:
 ```bash
-cmd /c del {WORK_TEMP}\sap_check_spec_refs_run.ps1
+cmd /c del {RUN_TEMP}\sap_check_spec_refs_run.ps1
 cmd /c del {WORK_TEMP}\spec_refs_request.txt
 cmd /c del {WORK_TEMP}\struct_request.txt
 ```

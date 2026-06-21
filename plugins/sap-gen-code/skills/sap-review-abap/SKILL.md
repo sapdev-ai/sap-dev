@@ -96,6 +96,12 @@ Set `{WORK_TEMP}` = `{work_dir}\temp` and `{OUT}` = `{WORK_TEMP}\review\{OBJECT}
 cmd /c if not exist "{OUT}" mkdir "{OUT}"
 ```
 
+Set `{RUN_TEMP}` = the per-run scratch dir (`Get-SapRunTemp` mints + creates `{work_dir}\temp\run_<id>`):
+```bash
+powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('RUN_TEMP=' + (Get-SapRunTemp))"
+```
+Write this run's generated scratch (`review_dl.vbs`) under `{RUN_TEMP}`; keep `{WORK_TEMP}` (base) for `{OUT}`, the log state, and `Get-SapCurrentSessionPath -WorkTemp`.
+
 ---
 
 ## Step 0.5 — Start Logging (best-effort)
@@ -162,7 +168,7 @@ download VBS exactly as `/sap-explain-object` does — substitute
 `$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'`,
 write UTF-16, and run via 32-bit cscript:
 ```bash
-"C:/Windows/SysWOW64/cscript.exe" //NoLogo "{WORK_TEMP}\review_dl.vbs"
+"C:/Windows/SysWOW64/cscript.exe" //NoLogo "{RUN_TEMP}\review_dl.vbs"
 ```
 If `--no-gui` and `{TYPE}=class`: skip the body, note "class body not acquired
 (--no-gui) — reviewed signature only", and run only the dimensions that work on
@@ -377,7 +383,7 @@ place (they are the deliverable and are registered for `/sap-evidence-pack`).
 Remove only scratch files:
 
 ```bash
-cmd /c del "{WORK_TEMP}\review_dl.vbs" 2>nul
+cmd /c del "{RUN_TEMP}\review_dl.vbs" 2>nul
 ```
 
 ---

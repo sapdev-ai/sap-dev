@@ -45,6 +45,12 @@ Ensure the temp directory exists:
 cmd /c if not exist "{WORK_TEMP}" mkdir "{WORK_TEMP}"
 ```
 
+Set `{RUN_TEMP}` = the per-run scratch dir (`Get-SapRunTemp` mints + creates `{work_dir}\temp\run_<id>`):
+```bash
+powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('RUN_TEMP=' + (Get-SapRunTemp))"
+```
+Per the CLAUDE.md "Two-bucket temp model" write this skill's generated scratch (`*_run.ps1` / `*_run.vbs` and the `_run.json` state) under `{RUN_TEMP}`; keep `{WORK_TEMP}` (base) only for `Get-SapCurrentSessionPath -WorkTemp`.
+
 ---
 
 ## Step 0.5 — Start Logging
@@ -200,14 +206,14 @@ $h = $h -replace '%%SAP_USER%%',       ''
 $h = $h -replace '%%SAP_PASSWORD%%',   ''
 $h = $h -replace '%%SAP_LANGUAGE%%',   ''
 $h = $h -replace '%%RFC_LIB_PS1%%',    '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_rfc_lib.ps1'
-$h = $h -replace '%%REQUEST_FILE%%',   '{WORK_TEMP}\sap_checkfm_fm_names.txt'
-$h = $h -replace '%%RESULT_FILE%%',    '{WORK_TEMP}\sap_checkfm_fm_result.tsv'
+$h = $h -replace '%%REQUEST_FILE%%',   '{RUN_TEMP}\sap_checkfm_fm_names.txt'
+$h = $h -replace '%%RESULT_FILE%%',    '{RUN_TEMP}\sap_checkfm_fm_result.tsv'
 $h = $h -replace '%%CACHE_DIR%%',      '{FM_CACHE_DIR}'
 $h = $h -replace '%%SYSTEM_ID%%',      '{SYSTEM_ID}'
 $h = $h -replace '%%TTL_STD_DAYS%%',   '30'      # or userConfig.fm_cache_ttl_std_days
 $h = $h -replace '%%TTL_Z_DAYS%%',     '1'       # or userConfig.fm_cache_ttl_z_days
 $h = $h -replace '%%REFRESH_CACHE%%',  'false'   # 'true' to bypass cache for this run
-Set-Content '{WORK_TEMP}\sap_checkfm_fm_helper.ps1' $h -Encoding UTF8
+Set-Content '{RUN_TEMP}\sap_checkfm_fm_helper.ps1' $h -Encoding UTF8
 ```
 
 The cache layer means: if a customer ran `sap-gen-abap` (which now also pre-fetches signatures) and `sap-check-fm` against the same SAP system, the second skill reuses the first skill's cached signatures — no redundant RFC roundtrips.
@@ -223,14 +229,14 @@ $d = $d -replace '%%SAP_USER%%',     ''
 $d = $d -replace '%%SAP_PASSWORD%%', ''
 $d = $d -replace '%%SAP_LANGUAGE%%', ''
 $d = $d -replace '%%RFC_LIB_PS1%%',  '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_rfc_lib.ps1'
-$d = $d -replace '%%REQUEST_FILE%%', '{WORK_TEMP}\sap_checkfm_ddic_request.txt'
-$d = $d -replace '%%RESULT_FILE%%',  '{WORK_TEMP}\sap_checkfm_ddic_result.tsv'
-Set-Content '{WORK_TEMP}\sap_checkfm_ddic_helper.ps1' $d -Encoding UTF8
+$d = $d -replace '%%REQUEST_FILE%%', '{RUN_TEMP}\sap_checkfm_ddic_request.txt'
+$d = $d -replace '%%RESULT_FILE%%',  '{RUN_TEMP}\sap_checkfm_ddic_result.tsv'
+Set-Content '{RUN_TEMP}\sap_checkfm_ddic_helper.ps1' $d -Encoding UTF8
 ```
 
 ### 3c. Generate the filled VBScript
 
-Write `{WORK_TEMP}\sap_checkfm_run.ps1`:
+Write `{RUN_TEMP}\sap_checkfm_run.ps1`:
 ```powershell
 $content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_check_fm.vbs', [System.Text.Encoding]::UTF8)
 $content = $content -replace '%%SAP_SERVER%%',         'THE_SERVER'
@@ -241,36 +247,36 @@ $content = $content -replace '%%SAP_PASSWORD%%',       'THE_PASSWORD'
 $content = $content -replace '%%SAP_LANGUAGE%%',       'THE_LANGUAGE'
 $content = $content -replace '%%ABAP_FILE%%',          'THE_ABAP_FILE'
 $content = $content -replace '%%RESULT_FILE%%',        '{WORK_TEMP}\checkfm_result.txt'
-$content = $content -replace '%%FM_HELPER_PS1%%',      '{WORK_TEMP}\sap_checkfm_fm_helper.ps1'
-$content = $content -replace '%%FM_NAMES_FILE%%',      '{WORK_TEMP}\sap_checkfm_fm_names.txt'
-$content = $content -replace '%%FM_RESULT_FILE%%',     '{WORK_TEMP}\sap_checkfm_fm_result.tsv'
-$content = $content -replace '%%DDIC_HELPER_PS1%%',    '{WORK_TEMP}\sap_checkfm_ddic_helper.ps1'
-$content = $content -replace '%%DDIC_REQUEST_FILE%%',  '{WORK_TEMP}\sap_checkfm_ddic_request.txt'
-$content = $content -replace '%%DDIC_RESULT_FILE%%',   '{WORK_TEMP}\sap_checkfm_ddic_result.tsv'
-[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_checkfm_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
+$content = $content -replace '%%FM_HELPER_PS1%%',      '{RUN_TEMP}\sap_checkfm_fm_helper.ps1'
+$content = $content -replace '%%FM_NAMES_FILE%%',      '{RUN_TEMP}\sap_checkfm_fm_names.txt'
+$content = $content -replace '%%FM_RESULT_FILE%%',     '{RUN_TEMP}\sap_checkfm_fm_result.tsv'
+$content = $content -replace '%%DDIC_HELPER_PS1%%',    '{RUN_TEMP}\sap_checkfm_ddic_helper.ps1'
+$content = $content -replace '%%DDIC_REQUEST_FILE%%',  '{RUN_TEMP}\sap_checkfm_ddic_request.txt'
+$content = $content -replace '%%DDIC_RESULT_FILE%%',   '{RUN_TEMP}\sap_checkfm_ddic_result.tsv'
+[System.IO.File]::WriteAllText('{RUN_TEMP}\sap_checkfm_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 Replace all `THE_*` placeholders and `<SKILL_DIR>` / `<SAP_DEV_CORE_SHARED_DIR>` / `<FM_HELPER_TEMPLATE>` with absolute paths.
 
 Run:
 ```bash
-powershell -ExecutionPolicy Bypass -File "{WORK_TEMP}\sap_checkfm_run.ps1"
+powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_checkfm_run.ps1"
 ```
 
 ### 3d. Execute the VBScript
 
 Run via standard cscript (the helpers internally invoke 32-bit PowerShell):
 ```bash
-cscript.exe //NoLogo {WORK_TEMP}\sap_checkfm_run.vbs
+cscript.exe //NoLogo {RUN_TEMP}\sap_checkfm_run.vbs
 ```
 
 Show the full script output as it runs. Then read and display `{WORK_TEMP}\checkfm_result.txt`.
 
 Delete the filled scripts (they contain plaintext credentials):
 ```bash
-cmd /c del {WORK_TEMP}\sap_checkfm_run.vbs
-cmd /c del {WORK_TEMP}\sap_checkfm_fm_helper.ps1
-cmd /c del {WORK_TEMP}\sap_checkfm_ddic_helper.ps1
+cmd /c del {RUN_TEMP}\sap_checkfm_run.vbs
+cmd /c del {RUN_TEMP}\sap_checkfm_fm_helper.ps1
+cmd /c del {RUN_TEMP}\sap_checkfm_ddic_helper.ps1
 ```
 
 ---
@@ -322,7 +328,7 @@ Read `{WORK_TEMP}\checkfm_result.txt`. The result file has a status line followe
 ## Step 5 — Clean Up
 
 ```bash
-cmd /c del {WORK_TEMP}\sap_checkfm_run.ps1
+cmd /c del {RUN_TEMP}\sap_checkfm_run.ps1
 ```
 
 Keep `{WORK_TEMP}\checkfm_result.txt` so the user can review it. To remove:

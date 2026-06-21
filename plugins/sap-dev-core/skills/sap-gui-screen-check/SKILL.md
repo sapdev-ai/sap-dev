@@ -69,6 +69,12 @@ Set `{WORK_TEMP}` = `{work_dir}\temp` and ensure it exists:
 cmd /c if not exist "{WORK_TEMP}" mkdir "{WORK_TEMP}"
 ```
 
+Set `{RUN_TEMP}` = the per-run scratch dir (`Get-SapRunTemp` mints + creates `{work_dir}\temp\run_<id>`):
+```bash
+powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('RUN_TEMP=' + (Get-SapRunTemp))"
+```
+Per the CLAUDE.md "Two-bucket temp model" write this skill's generated scratch (`*_run.ps1` / `*_run.vbs` and the `_run.json` state) under `{RUN_TEMP}`; keep `{WORK_TEMP}` (base) only for `Get-SapCurrentSessionPath -WorkTemp`.
+
 ---
 
 ## Step 0.5 — Start Logging
@@ -98,7 +104,7 @@ running the probe once with an empty OK-code (assess-only, no navigation):
 $skill = '<SKILL_DIR>'
 $vbs = ([System.IO.File]::ReadAllText("$skill\references\sap_screen_check_probe.vbs", [System.Text.Encoding]::UTF8)) `
        -replace '%%SESSION_PATH%%','' -replace '%%OKCODE%%','' -replace '%%REQUIRED_IDS%%',''
-$run = '{WORK_TEMP}\sap_screen_check_guard.vbs'
+$run = '{RUN_TEMP}\sap_screen_check_guard.vbs'
 [System.IO.File]::WriteAllText($run, $vbs, [System.Text.UnicodeEncoding]::new($false, $true))
 & C:\Windows\SysWOW64\cscript.exe //NoLogo $run
 Remove-Item $run -ErrorAction SilentlyContinue

@@ -82,14 +82,20 @@ Ensure the temp directory exists:
 cmd /c if not exist "{WORK_TEMP}" mkdir "{WORK_TEMP}"
 ```
 
+Set `{RUN_TEMP}` = the per-run scratch dir (`Get-SapRunTemp` mints + creates `{work_dir}\temp\run_<id>`):
+```bash
+powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('RUN_TEMP=' + (Get-SapRunTemp))"
+```
+Per the CLAUDE.md "Two-bucket temp model" write this skill's generated scratch (`*_run.ps1` / `*_run.vbs` and the `_run.json` state) under `{RUN_TEMP}`; keep `{WORK_TEMP}` (base) only for `Get-SapCurrentSessionPath -WorkTemp`.
+
 ---
 
 ## Step 0.5 — Start Logging
 
-Start a structured log run. State file: `{WORK_TEMP}\sap_se51_run.json`. Best-effort.
+Start a structured log run. State file: `{RUN_TEMP}\sap_se51_run.json`. Best-effort.
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{WORK_TEMP}\sap_se51_run.json" -Skill sap-se51 -ParamsJson "{\"program\":\"<PROGRAM>\",\"screen\":\"<SCREEN>\"}"
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{RUN_TEMP}\sap_se51_run.json" -Skill sap-se51 -ParamsJson "{\"program\":\"<PROGRAM>\",\"screen\":\"<SCREEN>\"}"
 ```
 
 ---
@@ -139,7 +145,7 @@ The check VBScript template is at `./references/sap_se51_check.vbs`.
 
 ### Generate the filled-in VBScript
 
-Write `{WORK_TEMP}\sap_se51_check_run.ps1`:
+Write `{RUN_TEMP}\sap_se51_check_run.ps1`:
 ```powershell
 $content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_se51_check.vbs', [System.Text.Encoding]::UTF8)
 $content = $content -replace '%%PROGRAM_NAME%%','THE_PROGRAM_NAME'
@@ -150,20 +156,20 @@ $content = $content -replace '%%SESSION_PATH%%', $sessionPath
 $content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_se51_check_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
+[System.IO.File]::WriteAllText('{RUN_TEMP}\sap_se51_check_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 Replace `THE_PROGRAM_NAME` (UPPERCASE), `THE_SCREEN_NUMBER`, and `<SKILL_DIR>`.
 
 Run:
 ```bash
-powershell -ExecutionPolicy Bypass -File "{WORK_TEMP}\sap_se51_check_run.ps1"
+powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_se51_check_run.ps1"
 ```
 
 ### Execute
 
 ```bash
-cscript //NoLogo {WORK_TEMP}\sap_se51_check_run.vbs
+cscript //NoLogo {RUN_TEMP}\sap_se51_check_run.vbs
 ```
 
 **Parse the last line of output:**
@@ -187,7 +193,7 @@ Windows clipboard. This requires:
 
 ### Generate the filled-in VBScript
 
-Write `{WORK_TEMP}\sap_se51_update_run.ps1`:
+Write `{RUN_TEMP}\sap_se51_update_run.ps1`:
 ```powershell
 $content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_se51_update.vbs', [System.Text.Encoding]::UTF8)
 $content = $content -replace '%%PROGRAM_NAME%%','THE_PROGRAM_NAME'
@@ -200,14 +206,14 @@ $content = $content -replace '%%SESSION_PATH%%', $sessionPath
 $content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_se51_update_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
+[System.IO.File]::WriteAllText('{RUN_TEMP}\sap_se51_update_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 Replace `THE_PROGRAM_NAME` (UPPERCASE), `THE_SCREEN_NUMBER`, and `<SKILL_DIR>`.
 
 Run:
 ```bash
-powershell -ExecutionPolicy Bypass -File "{WORK_TEMP}\sap_se51_update_run.ps1"
+powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_se51_update_run.ps1"
 ```
 
 ### Execute with clipboard paste
@@ -220,10 +226,10 @@ $flowLogic = Get-Content '{WORK_TEMP}\THE_PROGRAM_THE_SCREEN.txt' -Raw
 Set-Clipboard -Value $flowLogic
 
 # Run the VBS with wscript.exe (GUI mode required for AppActivate)
-Start-Process wscript.exe -ArgumentList '{WORK_TEMP}\sap_se51_update_run.vbs' -Wait
+Start-Process wscript.exe -ArgumentList '{RUN_TEMP}\sap_se51_update_run.vbs' -Wait
 
 # Read the log file for results
-Get-Content '{WORK_TEMP}\sap_se51_update.log'
+Get-Content '{RUN_TEMP}\sap_se51_update.log'
 ```
 Replace the flow logic file path with the actual path from Step 2.
 
@@ -245,7 +251,7 @@ from the Windows clipboard.
 
 ### Generate the filled-in VBScript
 
-Write `{WORK_TEMP}\sap_se51_create_run.ps1`:
+Write `{RUN_TEMP}\sap_se51_create_run.ps1`:
 ```powershell
 $content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_se51_create.vbs', [System.Text.Encoding]::UTF8)
 $content = $content -replace '%%PROGRAM_NAME%%','THE_PROGRAM_NAME'
@@ -259,14 +265,14 @@ $content = $content -replace '%%SESSION_PATH%%', $sessionPath
 $content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_se51_create_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
+[System.IO.File]::WriteAllText('{RUN_TEMP}\sap_se51_create_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 Replace all `THE_*` placeholders and `<SKILL_DIR>`.
 
 Run:
 ```bash
-powershell -ExecutionPolicy Bypass -File "{WORK_TEMP}\sap_se51_create_run.ps1"
+powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_se51_create_run.ps1"
 ```
 
 ### Execute with clipboard paste
@@ -277,10 +283,10 @@ $flowLogic = Get-Content '{WORK_TEMP}\THE_PROGRAM_THE_SCREEN.txt' -Raw
 Set-Clipboard -Value $flowLogic
 
 # Run the VBS with wscript.exe (GUI mode required for AppActivate)
-Start-Process wscript.exe -ArgumentList '{WORK_TEMP}\sap_se51_create_run.vbs' -Wait
+Start-Process wscript.exe -ArgumentList '{RUN_TEMP}\sap_se51_create_run.vbs' -Wait
 
 # Read the log file for results
-Get-Content '{WORK_TEMP}\sap_se51_create.log'
+Get-Content '{RUN_TEMP}\sap_se51_create.log'
 ```
 Replace the flow logic file path with the actual path from Step 2.
 
@@ -323,12 +329,12 @@ Proceed to Step 6 to evaluate the result.
 
 Delete all temporary files:
 ```bash
-cmd /c del {WORK_TEMP}\sap_se51_check_run.vbs & del {WORK_TEMP}\sap_se51_check_run.ps1 & del {WORK_TEMP}\sap_se51_create_run.vbs & del {WORK_TEMP}\sap_se51_create_run.ps1 & del {WORK_TEMP}\sap_se51_update_run.vbs & del {WORK_TEMP}\sap_se51_update_run.ps1 & del {WORK_TEMP}\sap_se51_create.log & del {WORK_TEMP}\sap_se51_update.log
+cmd /c del {RUN_TEMP}\sap_se51_check_run.vbs & del {RUN_TEMP}\sap_se51_check_run.ps1 & del {RUN_TEMP}\sap_se51_create_run.vbs & del {RUN_TEMP}\sap_se51_create_run.ps1 & del {RUN_TEMP}\sap_se51_update_run.vbs & del {RUN_TEMP}\sap_se51_update_run.ps1 & del {RUN_TEMP}\sap_se51_create.log & del {RUN_TEMP}\sap_se51_update.log
 ```
 
 For the **Add Layout Element** mode, also delete:
 ```bash
-cmd /c del {WORK_TEMP}\sap_se51_add_element_run.vbs & del {WORK_TEMP}\sap_se51_add_element_run.ps1 & del {WORK_TEMP}\sap_se51_add_element.log & del {WORK_TEMP}\se51_elements.txt & del {WORK_TEMP}\sap_se51_layout_rebuild_run.vbs & del {WORK_TEMP}\sap_se51_layout_rebuild_run.ps1 & del {WORK_TEMP}\sap_se51_layout_rebuild.log & del {WORK_TEMP}\se51_lines.txt
+cmd /c del {RUN_TEMP}\sap_se51_add_element_run.vbs & del {RUN_TEMP}\sap_se51_add_element_run.ps1 & del {RUN_TEMP}\sap_se51_add_element.log & del {WORK_TEMP}\se51_elements.txt & del {RUN_TEMP}\sap_se51_layout_rebuild_run.vbs & del {RUN_TEMP}\sap_se51_layout_rebuild_run.ps1 & del {RUN_TEMP}\sap_se51_layout_rebuild.log & del {WORK_TEMP}\se51_lines.txt
 ```
 
 Also delete `{WORK_TEMP}\<PROGRAM_NAME>_<SCREEN_NUMBER>.txt` if the user pasted code (not a user-supplied file).
@@ -342,13 +348,13 @@ Log the run-end record. Best-effort.
 On success:
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_se51_run.json" -Status SUCCESS -ExitCode 0
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_se51_run.json" -Status SUCCESS -ExitCode 0
 ```
 
 On failure:
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_se51_run.json" -Status FAILED -ExitCode 1 -ErrorClass <CLASS> -ErrorMsg "<short>"
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_se51_run.json" -Status FAILED -ExitCode 1 -ErrorClass <CLASS> -ErrorMsg "<short>"
 ```
 
 Suggested `<CLASS>`: `SE51_FAILED`, `TR_RESOLUTION_FAILED`, `GUI_TIMEOUT`.
@@ -518,7 +524,7 @@ TEXT	WERKS	WERKS	5	8	2
 ### Step L3 — Generate and run the reference VBS
 
 Template: `./references/sap_se51_add_element.vbs`. Write
-`{WORK_TEMP}\sap_se51_add_element_run.ps1`:
+`{RUN_TEMP}\sap_se51_add_element_run.ps1`:
 
 ```powershell
 $ref    = '<SKILL_DIR>\references\sap_se51_add_element.vbs'
@@ -529,7 +535,7 @@ $c = $c -replace '%%SCREEN_NUMBER%%','THE_SCREEN'
 $c = $c -replace '%%TRANSPORT%%','THE_TR'
 $c = $c -replace '%%PACKAGE%%','THE_PACKAGE'
 $c = $c -replace '%%ELEMENT_FILE%%','{WORK_TEMP}\se51_elements.txt'
-$c = $c -replace '%%LOG_FILE%%','{WORK_TEMP}\sap_se51_add_element.log'
+$c = $c -replace '%%LOG_FILE%%','{RUN_TEMP}\sap_se51_add_element.log'
 # SESSION_PATH: leave '' for the single-session case (the attach lib resolves
 # via SAPDEV_SESSION_PATH below). If multiple sessions are open on the
 # connection the lib refuses — pass an explicit '/app/con[0]/ses[0]' here.
@@ -537,7 +543,7 @@ $c = $c -replace '%%SESSION_PATH%%',''
 $c = $c -replace '%%ATTACH_LIB_VBS%%',"$shared\sap_attach_lib.vbs"
 . "$shared\sap_connection_lib.ps1"
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_se51_add_element_run.vbs', $c, [System.Text.UnicodeEncoding]::new($false, $true))
+[System.IO.File]::WriteAllText('{RUN_TEMP}\sap_se51_add_element_run.vbs', $c, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 
@@ -545,11 +551,11 @@ Run with **`cscript`** (this VBS writes to a log file, not the clipboard, so no
 `wscript`/foreground guard is needed):
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "{WORK_TEMP}\sap_se51_add_element_run.ps1"
-cscript //NoLogo {WORK_TEMP}\sap_se51_add_element_run.vbs
+powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_se51_add_element_run.ps1"
+cscript //NoLogo {RUN_TEMP}\sap_se51_add_element_run.vbs
 ```
 
-Read `{WORK_TEMP}\sap_se51_add_element.log`. Last line:
+Read `{RUN_TEMP}\sap_se51_add_element.log`. Last line:
 - `SUCCESS: <n> element(s) added to <PROG> <DYNNR>.` → proceed to verify.
   **Check `<n>` equals the number of element rows** — a per-element `WARNING:`
   means that element was skipped (re-run with just the skipped rows).
@@ -695,7 +701,7 @@ test	MYNAME	18
 #### Step R3 — Generate and run the reference VBS
 
 Template: `./references/sap_se51_layout_rebuild.vbs`. Write
-`{WORK_TEMP}\sap_se51_layout_rebuild_run.ps1`:
+`{RUN_TEMP}\sap_se51_layout_rebuild_run.ps1`:
 
 ```powershell
 $ref    = '<SKILL_DIR>\references\sap_se51_layout_rebuild.vbs'
@@ -706,7 +712,7 @@ $c = $c -replace '%%SCREEN_NUMBER%%','THE_SCREEN'
 $c = $c -replace '%%TRANSPORT%%','THE_TR'
 $c = $c -replace '%%PACKAGE%%','THE_PACKAGE'
 $c = $c -replace '%%LINESPEC_FILE%%','{WORK_TEMP}\se51_lines.txt'
-$c = $c -replace '%%LOG_FILE%%','{WORK_TEMP}\sap_se51_layout_rebuild.log'
+$c = $c -replace '%%LOG_FILE%%','{RUN_TEMP}\sap_se51_layout_rebuild.log'
 # SESSION_PATH: leave '' for the single-session case (the attach lib resolves
 # via SAPDEV_SESSION_PATH below). If multiple sessions are open on the
 # connection the lib refuses — pass an explicit '/app/con[0]/ses[0]' here.
@@ -714,7 +720,7 @@ $c = $c -replace '%%SESSION_PATH%%',''
 $c = $c -replace '%%ATTACH_LIB_VBS%%',"$shared\sap_attach_lib.vbs"
 . "$shared\sap_connection_lib.ps1"
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_se51_layout_rebuild_run.vbs', $c, [System.Text.UnicodeEncoding]::new($false, $true))
+[System.IO.File]::WriteAllText('{RUN_TEMP}\sap_se51_layout_rebuild_run.vbs', $c, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 
@@ -722,11 +728,11 @@ Run with **`cscript`** (writes to a log file; no clipboard/foreground guard
 needed):
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "{WORK_TEMP}\sap_se51_layout_rebuild_run.ps1"
-cscript //NoLogo {WORK_TEMP}\sap_se51_layout_rebuild_run.vbs
+powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_se51_layout_rebuild_run.ps1"
+cscript //NoLogo {RUN_TEMP}\sap_se51_layout_rebuild_run.vbs
 ```
 
-Read `{WORK_TEMP}\sap_se51_layout_rebuild.log`. Last line:
+Read `{RUN_TEMP}\sap_se51_layout_rebuild.log`. Last line:
 - `SUCCESS: rebuilt <PROG> <DYNNR> with <n> line(s).` → proceed to verify (Step L4).
 - `ERROR: NOT_ALPHANUMERIC …` → graphical editor is ON; flip the setting and re-run.
 - `ERROR: not all elements created …` → the VBS already backed out **without

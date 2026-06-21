@@ -46,6 +46,12 @@ Ensure the temp directory exists:
 cmd /c if not exist "{WORK_TEMP}" mkdir "{WORK_TEMP}"
 ```
 
+Set `{RUN_TEMP}` = the per-run scratch dir (`Get-SapRunTemp` mints + creates `{work_dir}\temp\run_<id>`):
+```bash
+powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('RUN_TEMP=' + (Get-SapRunTemp))"
+```
+Per the CLAUDE.md "Two-bucket temp model" write this skill's generated scratch (`*_run.ps1` / `*_run.vbs` and the `_run.json` state) under `{RUN_TEMP}`; keep `{WORK_TEMP}` (base) only for `Get-SapCurrentSessionPath -WorkTemp`.
+
 ---
 
 ## Step 0.5 — Start Logging
@@ -169,7 +175,7 @@ RFC type lookups are delegated to the sidecar PowerShell helper at
 ### 3a. Generate the filled DDIC helper PS1
 
 The helper template has tokens: `%%SAP_*%%`, `%%REQUEST_FILE%%`, `%%RESULT_FILE%%`.
-Token-substitute and write to `{WORK_TEMP}\sap_checkabap_ddic_helper.ps1`:
+Token-substitute and write to `{RUN_TEMP}\sap_checkabap_ddic_helper.ps1`:
 
 ```powershell
 $h = Get-Content '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_rfc_lookup_ddic.ps1' -Raw
@@ -180,14 +186,14 @@ $h = $h -replace '%%SAP_USER%%',     ''
 $h = $h -replace '%%SAP_PASSWORD%%', ''
 $h = $h -replace '%%SAP_LANGUAGE%%', ''
 $h = $h -replace '%%RFC_LIB_PS1%%',  '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_rfc_lib.ps1'
-$h = $h -replace '%%REQUEST_FILE%%', '{WORK_TEMP}\sap_checkabap_ddic_request.txt'
-$h = $h -replace '%%RESULT_FILE%%',  '{WORK_TEMP}\sap_checkabap_ddic_result.tsv'
-Set-Content '{WORK_TEMP}\sap_checkabap_ddic_helper.ps1' $h -Encoding UTF8
+$h = $h -replace '%%REQUEST_FILE%%', '{RUN_TEMP}\sap_checkabap_ddic_request.txt'
+$h = $h -replace '%%RESULT_FILE%%',  '{RUN_TEMP}\sap_checkabap_ddic_result.tsv'
+Set-Content '{RUN_TEMP}\sap_checkabap_ddic_helper.ps1' $h -Encoding UTF8
 ```
 
 ### 3b. Generate the filled VBScript
 
-Write `{WORK_TEMP}\sap_checkabap_run.ps1`:
+Write `{RUN_TEMP}\sap_checkabap_run.ps1`:
 ```powershell
 $content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_check_abap.vbs', [System.Text.Encoding]::UTF8)
 $content = $content -replace '%%SAP_SERVER%%',         'THE_SERVER'
@@ -199,11 +205,11 @@ $content = $content -replace '%%SAP_LANGUAGE%%',       'THE_LANGUAGE'
 $content = $content -replace '%%ABAP_FILE%%',          'THE_ABAP_FILE'
 $content = $content -replace '%%RESULT_FILE%%',        'THE_RESULT_FILE'
 $content = $content -replace '%%NAMING_RULES%%',       'THE_NAMING_RULES_PATH'
-$content = $content -replace '%%DDIC_HELPER_PS1%%',    '{WORK_TEMP}\sap_checkabap_ddic_helper.ps1'
-$content = $content -replace '%%DDIC_REQUEST_FILE%%',  '{WORK_TEMP}\sap_checkabap_ddic_request.txt'
-$content = $content -replace '%%DDIC_RESULT_FILE%%',   '{WORK_TEMP}\sap_checkabap_ddic_result.tsv'
+$content = $content -replace '%%DDIC_HELPER_PS1%%',    '{RUN_TEMP}\sap_checkabap_ddic_helper.ps1'
+$content = $content -replace '%%DDIC_REQUEST_FILE%%',  '{RUN_TEMP}\sap_checkabap_ddic_request.txt'
+$content = $content -replace '%%DDIC_RESULT_FILE%%',   '{RUN_TEMP}\sap_checkabap_ddic_result.tsv'
 $content = $content -replace '%%MAX_METHOD_LINES%%',   'THE_MAX_METHOD_LINES'
-[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_checkabap_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
+[System.IO.File]::WriteAllText('{RUN_TEMP}\sap_checkabap_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 Replace all `THE_*` placeholders and `<SKILL_DIR>` / `<SAP_DEV_CORE_SHARED_DIR>` with absolute paths.
@@ -213,22 +219,22 @@ For **offline mode**, set `THE_SERVER` to empty string (`''`); the VBS will skip
 
 Run:
 ```bash
-powershell -ExecutionPolicy Bypass -File "{WORK_TEMP}\sap_checkabap_run.ps1"
+powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_checkabap_run.ps1"
 ```
 
 ### 3c. Execute the VBScript
 
 Run via standard cscript (the VBS itself no longer needs 32-bit; the helper PS1 runs 32-bit PowerShell internally):
 ```bash
-cscript.exe //NoLogo {WORK_TEMP}\sap_checkabap_run.vbs
+cscript.exe //NoLogo {RUN_TEMP}\sap_checkabap_run.vbs
 ```
 
 Show the full script output as it runs. Then read the result file.
 
 Delete the filled scripts (they contain plaintext credentials):
 ```bash
-cmd /c del {WORK_TEMP}\sap_checkabap_run.vbs
-cmd /c del {WORK_TEMP}\sap_checkabap_ddic_helper.ps1
+cmd /c del {RUN_TEMP}\sap_checkabap_run.vbs
+cmd /c del {RUN_TEMP}\sap_checkabap_ddic_helper.ps1
 ```
 
 ---
@@ -280,14 +286,14 @@ $content = $content.Replace('%%ABAP_FILE%%',       'THE_ABAP_FILE')
 $content = $content.Replace('%%STRUCT_SIG_FILE%%', 'THE_STRUCT_SIG')   # may be '' if absent
 $content = $content.Replace('%%AUTHZ_SIG_FILE%%',  'THE_AUTHZ_SIG')    # may be '' if absent
 $content = $content.Replace('%%RESULT_FILE%%',     'THE_RESULT_FILE')  # SAME file Step 3 wrote
-Set-Content '{WORK_TEMP}\sap_checkabap_signatures.ps1' $content -Encoding UTF8
+Set-Content '{RUN_TEMP}\sap_checkabap_signatures.ps1' $content -Encoding UTF8
 ```
 
 Run via standard PowerShell (no SAP / no NCo — pure file I/O over cached
 TSVs):
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "{WORK_TEMP}\sap_checkabap_signatures.ps1"
+powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_checkabap_signatures.ps1"
 ```
 
 Expected stdout (when caches are present):
@@ -313,7 +319,7 @@ These are emitted by the signature validator (in addition to the codes Step 3 pr
 
 Clean up:
 ```bash
-cmd /c del {WORK_TEMP}\sap_checkabap_signatures.ps1
+cmd /c del {RUN_TEMP}\sap_checkabap_signatures.ps1
 ```
 
 ---
@@ -346,13 +352,13 @@ Template at `<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_check_spec_coverage.ps1`.
 $content = Get-Content '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_check_spec_coverage.ps1' -Raw
 $content = $content.Replace('%%ABAP_FILE%%',   'THE_ABAP_FILE')
 $content = $content.Replace('%%RESULT_FILE%%', 'THE_RESULT_FILE')   # SAME file Step 3 wrote
-Set-Content '{WORK_TEMP}\sap_checkabap_speccov.ps1' $content -Encoding UTF8
+Set-Content '{RUN_TEMP}\sap_checkabap_speccov.ps1' $content -Encoding UTF8
 ```
 
 Run via standard PowerShell (no SAP — pure file I/O over the work folder):
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "{WORK_TEMP}\sap_checkabap_speccov.ps1"
+powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_checkabap_speccov.ps1"
 ```
 
 If the work folder has no `*_deps.txt` / `*_errorMsgs.txt` / `*_textElements.txt`
@@ -376,7 +382,7 @@ check is purely additive.
 
 Clean up:
 ```bash
-cmd /c del {WORK_TEMP}\sap_checkabap_speccov.ps1
+cmd /c del {RUN_TEMP}\sap_checkabap_speccov.ps1
 ```
 
 ---
@@ -395,13 +401,13 @@ Template at `<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_check_conversion.ps1`.
 $content = Get-Content '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_check_conversion.ps1' -Raw
 $content = $content.Replace('%%ABAP_FILE%%',   'THE_ABAP_FILE')
 $content = $content.Replace('%%RESULT_FILE%%', 'THE_RESULT_FILE')   # SAME file Step 3 wrote
-Set-Content '{WORK_TEMP}\sap_checkabap_conv.ps1' $content -Encoding UTF8
+Set-Content '{RUN_TEMP}\sap_checkabap_conv.ps1' $content -Encoding UTF8
 ```
 
 Run via standard PowerShell (no SAP — pure file I/O over the work folder):
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "{WORK_TEMP}\sap_checkabap_conv.ps1"
+powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_checkabap_conv.ps1"
 ```
 
 It cross-checks the spec `*_file_mapping_in.txt` / `*_file_mapping_out.txt`
@@ -421,7 +427,7 @@ nothing — purely additive.
 
 Clean up:
 ```bash
-cmd /c del {WORK_TEMP}\sap_checkabap_conv.ps1
+cmd /c del {RUN_TEMP}\sap_checkabap_conv.ps1
 ```
 
 ---
@@ -501,8 +507,8 @@ For each finding, show: Line, Variable, Detail, Fix Advice.
 ## Step 5 — Clean Up
 
 ```bash
-cmd /c del {WORK_TEMP}\sap_checkabap_run.ps1
-cmd /c del {WORK_TEMP}\sap_checkabap_conv.ps1
+cmd /c del {RUN_TEMP}\sap_checkabap_run.ps1
+cmd /c del {RUN_TEMP}\sap_checkabap_conv.ps1
 ```
 
 Keep the result TSV so the user can review it or pass it to `sap-fix-abap`. To remove:

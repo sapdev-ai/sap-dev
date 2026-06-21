@@ -53,14 +53,20 @@ Ensure the temp directory exists:
 cmd /c if not exist "{WORK_TEMP}" mkdir "{WORK_TEMP}"
 ```
 
+Set `{RUN_TEMP}` = the per-run scratch dir (`Get-SapRunTemp` mints + creates `{work_dir}\temp\run_<id>`):
+```bash
+powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('RUN_TEMP=' + (Get-SapRunTemp))"
+```
+Per the CLAUDE.md "Two-bucket temp model" write this skill's generated scratch (`*_run.ps1` / `*_run.vbs` and the `_run.json` state) under `{RUN_TEMP}`; keep `{WORK_TEMP}` (base) only for `Get-SapCurrentSessionPath -WorkTemp`.
+
 ---
 
 ## Step 0.5 — Start Logging
 
-Start a structured log run. State file: `{WORK_TEMP}\sap_se54_run.json`. Best-effort.
+Start a structured log run. State file: `{RUN_TEMP}\sap_se54_run.json`. Best-effort.
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{WORK_TEMP}\sap_se54_run.json" -Skill sap-se54 -ParamsJson "{\"table\":\"<TABLE>\"}"
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{RUN_TEMP}\sap_se54_run.json" -Skill sap-se54 -ParamsJson "{\"table\":\"<TABLE>\"}"
 ```
 
 ---
@@ -91,7 +97,7 @@ The check VBScript template is at `./references/sap_se54_check.vbs`.
 
 ### Generate the filled-in VBScript
 
-Write `{WORK_TEMP}\sap_se54_check_run.ps1`:
+Write `{RUN_TEMP}\sap_se54_check_run.ps1`:
 ```powershell
 $content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_se54_check.vbs', [System.Text.Encoding]::UTF8)
 $content = $content -replace '%%TABLE_NAME%%','THE_TABLE_NAME'
@@ -101,20 +107,20 @@ $content = $content -replace '%%SESSION_PATH%%', $sessionPath
 $content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_se54_check_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
+[System.IO.File]::WriteAllText('{RUN_TEMP}\sap_se54_check_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 Replace `THE_TABLE_NAME` with the actual table name (UPPERCASE) and `<SKILL_DIR>` with the absolute path to this skill directory.
 
 Run:
 ```bash
-powershell -ExecutionPolicy Bypass -File "{WORK_TEMP}\sap_se54_check_run.ps1"
+powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_se54_check_run.ps1"
 ```
 
 ### Execute
 
 ```bash
-cscript //NoLogo {WORK_TEMP}\sap_se54_check_run.vbs
+cscript //NoLogo {RUN_TEMP}\sap_se54_check_run.vbs
 ```
 
 **Parse the last line of output:**
@@ -130,7 +136,7 @@ The generate VBScript template is at `./references/sap_se54_generate.vbs`.
 
 ### Generate the filled-in VBScript
 
-Write `{WORK_TEMP}\sap_se54_generate_run.ps1`:
+Write `{RUN_TEMP}\sap_se54_generate_run.ps1`:
 ```powershell
 $content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_se54_generate.vbs', [System.Text.Encoding]::UTF8)
 $content = $content -replace '%%TABLE_NAME%%','THE_TABLE_NAME'
@@ -144,20 +150,20 @@ $content = $content -replace '%%SESSION_PATH%%', $sessionPath
 $content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
-[System.IO.File]::WriteAllText('{WORK_TEMP}\sap_se54_generate_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
+[System.IO.File]::WriteAllText('{RUN_TEMP}\sap_se54_generate_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 Replace all `THE_*` placeholders and `<SKILL_DIR>`.
 
 Run:
 ```bash
-powershell -ExecutionPolicy Bypass -File "{WORK_TEMP}\sap_se54_generate_run.ps1"
+powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_se54_generate_run.ps1"
 ```
 
 ### Execute
 
 ```bash
-cscript //NoLogo {WORK_TEMP}\sap_se54_generate_run.vbs
+cscript //NoLogo {RUN_TEMP}\sap_se54_generate_run.vbs
 ```
 
 Proceed to Step 5 to evaluate the result.
@@ -190,7 +196,7 @@ Proceed to Step 5 to evaluate the result.
 
 Delete all temporary files:
 ```bash
-cmd /c del {WORK_TEMP}\sap_se54_check_run.vbs & del {WORK_TEMP}\sap_se54_check_run.ps1 & del {WORK_TEMP}\sap_se54_generate_run.vbs & del {WORK_TEMP}\sap_se54_generate_run.ps1
+cmd /c del {RUN_TEMP}\sap_se54_check_run.vbs & del {RUN_TEMP}\sap_se54_check_run.ps1 & del {RUN_TEMP}\sap_se54_generate_run.vbs & del {RUN_TEMP}\sap_se54_generate_run.ps1
 ```
 
 ---
@@ -202,13 +208,13 @@ Log the run-end record. Best-effort.
 On success:
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_se54_run.json" -Status SUCCESS -ExitCode 0
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_se54_run.json" -Status SUCCESS -ExitCode 0
 ```
 
 On failure:
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_se54_run.json" -Status FAILED -ExitCode 1 -ErrorClass <CLASS> -ErrorMsg "<short>"
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_se54_run.json" -Status FAILED -ExitCode 1 -ErrorClass <CLASS> -ErrorMsg "<short>"
 ```
 
 Suggested `<CLASS>`: `SE54_FAILED`, `TR_RESOLUTION_FAILED`, `GUI_TIMEOUT`.
