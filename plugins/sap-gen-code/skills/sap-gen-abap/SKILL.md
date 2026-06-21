@@ -38,7 +38,7 @@ Task: $ARGUMENTS
 **Resolve `work_dir` via the env-aware helper** — do NOT take `work_dir` from a direct `settings.json` read (that ignores the `SAPDEV_AI_WORK_DIR` env var and `userconfig.json`). Use the `WORK_DIR=` value printed by:
 
 ```bash
-powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('WORK_DIR=' + (Get-SapWorkDir))"
+powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('WORK_DIR=' + (Get-SapWorkDir)); Write-Output ('RUN_TEMP=' + (Get-SapRunTemp))"
 ```
 
 The settings note below still applies to the OTHER keys.
@@ -50,9 +50,15 @@ The settings note below still applies to the OTHER keys.
 | `work_dir` | `C:\sap_dev_work` |
 | `custom_url` | `{work_dir}\custom` |
 
-Set `{WORK_TEMP}` = `{work_dir}\temp`
+Set `{WORK_TEMP}` = `{work_dir}\temp` and `{RUN_TEMP}` = the `RUN_TEMP=` value
+printed above (`Get-SapRunTemp` mints + creates a fresh per-run dir
+`{work_dir}\temp\run_<id>`). Per the CLAUDE.md "Two-bucket temp model": keep
+`{WORK_TEMP}` (base) only for the log state file; write this run's generated
+scratch — the filled `*_run.ps1` lookup scripts AND their `*_request.txt`
+inputs — under `{RUN_TEMP}` so concurrent runs (parallel sub-agents, multi-build)
+never collide on a fixed name.
 
-Ensure the temp directory exists:
+Ensure the base temp directory exists:
 ```bash
 cmd /c if not exist "{WORK_TEMP}" mkdir "{WORK_TEMP}"
 ```
@@ -245,7 +251,7 @@ match:
 De-duplicate; uppercase. Filter out obvious non-FMs (anything containing
 spaces, anything < 3 chars, ABAP keywords like `WRITE`, `SELECT`, etc.).
 
-Write the de-duplicated list to `{WORK_TEMP}\fm_request.txt`, one name per
+Write the de-duplicated list to `{RUN_TEMP}\fm_request.txt`, one name per
 line. If the list is empty, skip the rest of Step 1.5.
 
 ### 1.5b — Resolve cache directory and system ID
@@ -274,7 +280,7 @@ Tokens to replace:
 | Token | Source |
 |---|---|
 | `%%SAP_SERVER%%` / `%%SAP_SYSNR%%` / `%%SAP_CLIENT%%` / `%%SAP_USER%%` / `%%SAP_PASSWORD%%` / `%%SAP_LANGUAGE%%` | sap-dev-core `settings.json` |
-| `%%REQUEST_FILE%%` | `{WORK_TEMP}\fm_request.txt` (from 1.5a) |
+| `%%REQUEST_FILE%%` | `{RUN_TEMP}\fm_request.txt` (from 1.5a) |
 | `%%RESULT_FILE%%` | `{work_folder}\_fm_signatures.txt` |
 | `%%CACHE_DIR%%` | `{FM_CACHE_DIR}` from 1.5b |
 | `%%SYSTEM_ID%%` | `{SYSTEM_ID}` from 1.5b |
@@ -283,11 +289,11 @@ Tokens to replace:
 | `%%REFRESH_CACHE%%` | `{REFRESH_CACHE}` from Step 1 (`"true"` if user passed `--refresh-cache`, else `"false"`) |
 | `%%RFC_LIB_PS1%%` | `<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_rfc_lib.ps1` |
 
-Write the filled template to `{WORK_TEMP}\sap_rfc_lookup_fm_run.ps1` and run
+Write the filled template to `{RUN_TEMP}\sap_rfc_lookup_fm_run.ps1` and run
 with **32-bit** PowerShell:
 
 ```bash
-C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File {WORK_TEMP}\sap_rfc_lookup_fm_run.ps1
+C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File {RUN_TEMP}\sap_rfc_lookup_fm_run.ps1
 ```
 
 Expected stdout:
@@ -318,7 +324,7 @@ every authz-object name the generator will reference. Patterns:
 - Spec text "AUTHORITY-CHECK OBJECT 'M_MATE_…'" or "auth object"
 - Reusable utilities catalogue if it routes through specific objects
 
-De-duplicate; uppercase. Write to `{WORK_TEMP}\authz_request.txt`, one
+De-duplicate; uppercase. Write to `{RUN_TEMP}\authz_request.txt`, one
 name per line. Skip the rest of 1.5b' when empty.
 
 **1.5b'.b — Run the lookup script**
@@ -329,7 +335,7 @@ Tokens to replace:
 | Token | Source |
 |---|---|
 | `%%SAP_SERVER%%` / `%%SAP_SYSNR%%` / `%%SAP_CLIENT%%` / `%%SAP_USER%%` / `%%SAP_PASSWORD%%` / `%%SAP_LANGUAGE%%` | sap-dev-core `settings.json` |
-| `%%REQUEST_FILE%%` | `{WORK_TEMP}\authz_request.txt` |
+| `%%REQUEST_FILE%%` | `{RUN_TEMP}\authz_request.txt` |
 | `%%RESULT_FILE%%` | `{work_folder}\_authz_signatures.txt` |
 | `%%CACHE_DIR%%` | `userConfig.authz_cache_dir` if set, else `{work_dir}\cache\authz_signatures` |
 | `%%SYSTEM_ID%%` | `{sap_application_server}_{sap_system_number}_{sap_client}` (lowercase server) |
@@ -469,7 +475,7 @@ De-duplicate, uppercase, filter:
 - Drop primitive ABAP type tokens (`C`, `N`, `STRING`, etc.) that
   occasionally leak in from spec free-text.
 
-Write to `{WORK_TEMP}\struct_request.txt`, one TABNAME per line. Skip
+Write to `{RUN_TEMP}\struct_request.txt`, one TABNAME per line. Skip
 the rest of 1.5e when empty.
 
 When `/sap-docs-check-process` or `/sap-docs-check-ddic` ran earlier in
@@ -486,7 +492,7 @@ Tokens to replace:
 | Token | Source |
 |---|---|
 | `%%SAP_SERVER%%` / `%%SAP_SYSNR%%` / `%%SAP_CLIENT%%` / `%%SAP_USER%%` / `%%SAP_PASSWORD%%` / `%%SAP_LANGUAGE%%` | sap-dev-core `settings.json` |
-| `%%REQUEST_FILE%%` | `{WORK_TEMP}\struct_request.txt` |
+| `%%REQUEST_FILE%%` | `{RUN_TEMP}\struct_request.txt` |
 | `%%RESULT_FILE%%` | `{work_folder}\_struct_signatures.txt` |
 | `%%CACHE_DIR%%` | `userConfig.struct_cache_dir` if set, else `{work_dir}\cache\struct_signatures` |
 | `%%SYSTEM_ID%%` | `{sap_application_server}_{sap_system_number}_{sap_client}` (lowercase server) — same as 1.5b |
@@ -515,8 +521,11 @@ is a silent data-loss defect, not an acceptable optimisation.
 The TSV columns are:
 
 ```
-TABNAME    POSITION   FIELDNAME   ROLLNAME   DOMNAME   INTTYPE   LENG   DECIMALS   KEYFLAG
+TABNAME  POSITION  FIELDNAME  ROLLNAME  DOMNAME  INTTYPE  LENG  DECIMALS  KEYFLAG  DATATYPE  CONVEXIT  REFTABLE  REFFIELD
 ```
+
+`DATATYPE` / `CONVEXIT` / `REFTABLE` / `REFFIELD` (last four) drive internal/external
+conversion at file boundaries — see **1.5e.d** below.
 
 Special rows:
 - `TABNAME  NOT_FOUND  ...`   — Structure doesn't exist on this server.
@@ -540,6 +549,43 @@ When matching a spec source field to a struct target field, prefer:
 The audit copy at `_struct_signatures.txt` stays in the work folder for
 debugging.
 
+### 1.5e.d — Internal/external conversion at file boundaries
+
+> Canonical rule: `abap_code_quality_rules.md` §28. Apply it during emission:
+
+When the program reads or writes a flat file (`GUI_UPLOAD` / `GUI_DOWNLOAD`,
+`READ DATASET` / `TRANSFER … TO DATASET`), file values are in **external**
+representation while DB / BAPI / SELECT values are **internal**. Convert at the
+boundary, once, using the struct columns above:
+
+- **Conversion-exit fields (`CONVEXIT` non-blank).** On read, after parsing the
+  field, call `CONVERSION_EXIT_<CONVEXIT>_INPUT` (external → internal) BEFORE any
+  SELECT / BAPI / WHERE. On write, call `…_OUTPUT` before placing the value in the
+  file. `CUNIT` (units) and `ISOLA` (language) additionally take
+  `LANGUAGE = sy-langu`. Wrap the call and route failures through the message
+  class — never let a conversion FM dump. Common: `MATN1` (MATNR), `ALPHA`
+  (KUNNR / LIFNR / …), `CUNIT` (MEINS / units), `ISOLA` (SPRAS).
+- **Amount / quantity fields (`DATATYPE = CURR` or `QUAN`).** These carry **no**
+  CONVEXIT; the trap is the currency / unit **decimal shift** (TCURX-CURRDEC /
+  T006-DECAN) — invisible with 2-decimal currencies (USD / EUR) but 100× wrong
+  for JPY (0 dec) and 10× for BHD / KWD (3 dec). Rules:
+  - The amount's reference field (`REFTABLE` / `REFFIELD` — a `CUKY` currency or a
+    `UNIT`) MUST also be mapped and populated; if the spec omits it, surface it as
+    a spec gap (an amount without its currency / unit is uninterpretable).
+  - **BAPI amount field** (`BAPICURR` / `BAPICUREXT` / `BAPICURR_D`): pass the
+    parsed **external** value straight in — the BAPI applies the shift. Do NOT
+    call `CURRENCY_AMOUNT_DISPLAY_TO_SAP` first (double shift).
+  - **Raw DDIC CURR / QUAN write** (e.g. a custom Z-table or classic FM): convert
+    with `CURRENCY_AMOUNT_DISPLAY_TO_SAP` (CURR, with the currency) inbound /
+    `…_SAP_TO_DISPLAY` outbound; for QUAN use `WRITE … UNIT`.
+
+This is distinct from §25's `SPLIT`-into-numeric trap: §25 gets the *digits* into a
+packed field (char→packed parse); this step gets the *representation* right
+(external↔internal). Do the parse first, then the conversion. The machine-readable
+mirror of these rules ships as `STMT` rows in `frequently_errors.tsv` (read at
+Step 1.5f), so they inject even when RFC is unavailable and the `CONVEXIT` column
+could not be fetched.
+
 ---
 
 ## Step 1.5f — Load frequently_errors Hints (always, OFFLINE)
@@ -558,12 +604,12 @@ Skip only when `userConfig.frequently_errors_enabled` is `false`.
 ### 1.5f.a — Collect the objects this spec references
 
 Union, de-duplicate, uppercase:
-1. Every FM in `{WORK_TEMP}\fm_request.txt` (from 1.5a) — or, if 1.5 was
+1. Every FM in `{RUN_TEMP}\fm_request.txt` (from 1.5a) — or, if 1.5 was
    skipped, every `CALL FUNCTION '<FM>'` and `BAPI_*` / `RFC_*` mention in
    `_process.txt`.
 2. Every global class / interface referenced as `CL_*=>`, `ZCL_*=>`,
    `IF_*=>`, `<obj>->meth(` in `_process.txt` / `_interface.txt`.
-3. Every auth object in `{WORK_TEMP}\authz_request.txt` (from 1.5b').
+3. Every auth object in `{RUN_TEMP}\authz_request.txt` (from 1.5b').
 
 Write them comma-joined (or one per line to a file). Empty list is fine —
 the resolver still returns the general statement-level (`OBJECT_NAME=*`)

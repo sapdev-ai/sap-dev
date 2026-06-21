@@ -131,6 +131,7 @@ Exit code `0` = OK (no row written). Exit code `2` = UNKNOWN_TYPE / RULES_NOT_FO
 | `sap-dev-core/shared/scripts/sap_check_object_name.ps1` | *(helper)* | Shared validator invoked in Step 1.5 |
 | `sap-dev-core/shared/scripts/sap_check_signatures.ps1` | *(helper)* | Step 3.5 signature validator — struct-field + AUTHORITY-CHECK shape vs the live-SAP caches |
 | `sap-dev-core/shared/scripts/sap_check_spec_coverage.ps1` | *(helper)* | Step 3.6 spec-coverage validator — confirms the generated manifests cover the spec's deps / messages / text elements / selection fields |
+| `sap-dev-core/shared/scripts/sap_check_conversion.ps1` | *(helper)* | Step 3.7 conversion validator — flags CURR/QUAN file columns mapped without their currency/unit reference, and `CURRENCY_AMOUNT_DISPLAY_TO_SAP` feeding a BAPI amount type (double-shift). Reads `*_file_mapping_*.txt` + `_struct_signatures.txt` (§28). |
 | `sap-dev-core/shared/rules/abap_code_quality_rules.md` | *(rule)* | **Mandatory** ABAP code-quality rules. The VBS engine emits the offline-checkable rules in two phases. **Phase 5f** (per-line): `LITERAL_MESSAGE` + `MESSAGE_NUM_UNDECLARED` (§20), `TEXT_NNN_ASSIGN` + `TEXT_SYMBOL_UNDECLARED` (§21), `CLASS_DEF_AFTER_EVENT` (§10), `LOOP_WHERE_EXIT` (§19), `SPLIT_INTO_NUMERIC` (§25), `SELECT_STAR` (§12), `LINE_TOO_LONG`/`LINE_HARD_LIMIT`, plus `SQL_STRICT_COMMA` (§9). **Phase 5g** (scope-tracked): `MESSAGE_E_IN_METHOD` (§11), `SELECT_IN_LOOP` + `FOR_ALL_ENTRIES_NO_GUARD` (§12), `METHOD_TOO_LONG` (§18). These mirror the CI gate `scripts/lint-abap-contract.mjs` (same contract, two engines). The remaining heuristic rules — `MISSING_AT_HOST_VAR`/`STRING_CONCAT_SQL` (§13), `MISSING_AUTHZ_CHECK` (§14) — carry a higher false-positive risk and are reviewed by the orchestrator against this rule file rather than emitted by the engine. |
 | `sap-dev-core/shared/templates/customer_brief.md` | *(config)* | Project Profile — used to set the quality bar (e.g. method length limit, modern-ABAP required, ATC priority gating) |
 
@@ -380,6 +381,51 @@ cmd /c del {WORK_TEMP}\sap_checkabap_speccov.ps1
 
 ---
 
+## Step 3.7 — Internal/external conversion checks (CONVEXIT + CURR/QUAN)
+
+**Why:** amounts / quantities and external-key fields convert between internal and
+external representation at file boundaries (`GUI_UPLOAD` / `GUI_DOWNLOAD`,
+`READ` / `TRANSFER DATASET`). Getting it wrong survives syntax + activation + ATC
+and only shows as wrong data at runtime — the class `abap_code_quality_rules.md`
+§28 governs. This step flags two such defects offline.
+
+Template at `<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_check_conversion.ps1`.
+
+```powershell
+$content = Get-Content '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_check_conversion.ps1' -Raw
+$content = $content.Replace('%%ABAP_FILE%%',   'THE_ABAP_FILE')
+$content = $content.Replace('%%RESULT_FILE%%', 'THE_RESULT_FILE')   # SAME file Step 3 wrote
+Set-Content '{WORK_TEMP}\sap_checkabap_conv.ps1' $content -Encoding UTF8
+```
+
+Run via standard PowerShell (no SAP — pure file I/O over the work folder):
+
+```bash
+powershell -ExecutionPolicy Bypass -File "{WORK_TEMP}\sap_checkabap_conv.ps1"
+```
+
+It cross-checks the spec `*_file_mapping_in.txt` / `*_file_mapping_out.txt`
+(`/sap-docs-extract`) against `_struct_signatures.txt`. With the 13-column struct
+signatures (`DATATYPE` / `CONVEXIT` / `REFTABLE` / `REFFIELD` — present after an RFC
+run) the reference check is PRECISE (names the exact missing currency / unit
+field); without them it falls back to a coarse program-level check. If neither the
+mapping nor the struct cache is present it prints one INFO line and appends
+nothing — purely additive.
+
+### 3.7a — New finding classes
+
+| Code | Severity | Meaning |
+|---|---|---|
+| `CONV_CURR_MISSING_REF` | WARNING | A `CURR` / `QUAN` file column is mapped to a SAP field but its reference currency (`CUKY`) / unit (`UNIT`) field is not — the amount's decimal count is undefined (TCURX-CURRDEC / T006-DECAN). e.g. `VBAP-NETPR` needs `VBAP-WAERK`. |
+| `CONV_CURR_DISPLAY_TO_BAPI` | WARNING | `CURRENCY_AMOUNT_DISPLAY_TO_SAP` co-occurs with a BAPI amount type (`BAPICURR` / `BAPICUREXT` / `BAPICURR_D`) — verify the converted *internal* amount is not fed into a BAPI amount field (double-shift, e.g. 100× for JPY). |
+
+Clean up:
+```bash
+cmd /c del {WORK_TEMP}\sap_checkabap_conv.ps1
+```
+
+---
+
 ## Step 4 — Interpret and Report Results
 
 Read the result TSV file. The file has a header section (STATUS, ABAP_FILE, NAMING_RULES, TIMESTAMP, TOTAL_DECLARATIONS, TOTAL_SQL_STATEMENTS, TOTAL_ISSUES) followed by a column header row and tab-delimited findings.
@@ -429,6 +475,8 @@ Read the result TSV file. The file has a header section (STATUS, ABAP_FILE, NAMI
 | `AUTHZ_OBJECT_MISSING` | ERROR | (Step 3.5) AUTHORITY-CHECK OBJECT name `NOT_FOUND` in SU21 cache. |
 | `AUTHZ_FIELD_COUNT` | ERROR | (Step 3.5) AUTHORITY-CHECK ID-clause count ≠ SU21 field count. Pre-empts SLIN P2 "Wrong number of authorization fields". |
 | `AUTHZ_FIELD_NAME` | ERROR | (Step 3.5) AUTHORITY-CHECK ID-clause names don't match SU21. Pre-empts SLIN P2 "Authorization field missing". |
+| `CONV_CURR_MISSING_REF` | WARNING | (Step 3.7) A CURR/QUAN file column is mapped without its currency (CUKY) / unit (UNIT) reference — decimal count undefined (TCURX-CURRDEC / T006-DECAN) (§28). |
+| `CONV_CURR_DISPLAY_TO_BAPI` | WARNING | (Step 3.7) `CURRENCY_AMOUNT_DISPLAY_TO_SAP` co-occurs with a BAPI amount type — double-shift smell; pass external amounts to BAPI fields (§28). |
 
 ### Detail — show all WARNING and ERROR findings:
 
@@ -454,6 +502,7 @@ For each finding, show: Line, Variable, Detail, Fix Advice.
 
 ```bash
 cmd /c del {WORK_TEMP}\sap_checkabap_run.ps1
+cmd /c del {WORK_TEMP}\sap_checkabap_conv.ps1
 ```
 
 Keep the result TSV so the user can review it or pass it to `sap-fix-abap`. To remove:

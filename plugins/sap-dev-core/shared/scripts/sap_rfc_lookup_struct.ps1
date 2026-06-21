@@ -3,7 +3,8 @@
 #
 # Reads a request file (one DDIC structure / table / view / table-type name
 # per line, e.g. BAPI_MARA), returns the live field list (FIELDNAME / ROLLNAME
-# / DOMNAME / INTTYPE / LENG / DECIMALS / KEYFLAG) via DDIF_FIELDINFO_GET.
+# / DOMNAME / INTTYPE / LENG / DECIMALS / KEYFLAG / DATATYPE / CONVEXIT /
+# REFTABLE / REFFIELD) via DDIF_FIELDINFO_GET.
 #
 # Why this exists: sap_rfc_lookup_fm.ps1 returns FM parameter signatures
 # (parameter name + STRUCTURE TYPE name). That tells the generator
@@ -39,7 +40,18 @@
 #   %%RFC_LIB_PS1%%    Absolute path to sap_rfc_lib.ps1
 #
 # Output TSV row format (one row per field):
-#   TABNAME<TAB>POSITION<TAB>FIELDNAME<TAB>ROLLNAME<TAB>DOMNAME<TAB>INTTYPE<TAB>LENG<TAB>DECIMALS<TAB>KEYFLAG
+#   TABNAME<TAB>POSITION<TAB>FIELDNAME<TAB>ROLLNAME<TAB>DOMNAME<TAB>INTTYPE<TAB>LENG<TAB>DECIMALS<TAB>KEYFLAG<TAB>DATATYPE<TAB>CONVEXIT<TAB>REFTABLE<TAB>REFFIELD
+#
+#   The trailing DATATYPE / CONVEXIT / REFTABLE / REFFIELD columns (added
+#   2026-06-21; positions 0-8 are unchanged, so older positional consumers keep
+#   working) drive internal<->external handling at file boundaries:
+#     * CONVEXIT  = the field's conversion exit (ALPHA / MATN1 / CUNIT / ISOLA ...).
+#                   Non-blank => the field needs CONVERSION_EXIT_<x>_INPUT on read
+#                   (GUI_UPLOAD / READ DATASET) and _OUTPUT on write (GUI_DOWNLOAD
+#                   / TRANSFER). CUNIT / ISOLA additionally need LANGUAGE.
+#     * DATATYPE  = distinguishes CURR vs QUAN vs DEC (INTTYPE is 'P' for all three).
+#     * REFTABLE / REFFIELD = the currency(CUKY) / unit(UNIT) reference field a
+#                   CURR / QUAN amount needs for correct decimal handling.
 #
 # Plus a special row when the structure doesn't exist on the server:
 #   TABNAME<TAB>NOT_FOUND<TAB>
@@ -59,6 +71,11 @@ $SYSTEM_ID     = "%%SYSTEM_ID%%"
 $TTL_STD_DAYS  = [int]"%%TTL_STD_DAYS%%"
 $TTL_Z_DAYS    = [int]"%%TTL_Z_DAYS%%"
 $REFRESH_CACHE = ("%%REFRESH_CACHE%%" -eq "true")
+
+# Cache schema version: bump $STRUCT_SCHEMA_COLS whenever the output row layout
+# changes, so cache files written by an older script version are treated as misses
+# and re-fetched instead of silently serving blank columns.
+$script:STRUCT_SCHEMA_COLS = 13   # TABNAME..KEYFLAG (9) + DATATYPE + CONVEXIT + REFTABLE + REFFIELD
 
 if (-not (Test-Path $REQUEST_FILE)) {
     Write-Host "ERROR: Request file not found: $REQUEST_FILE"
@@ -97,7 +114,18 @@ function Test-CacheHit($structName) {
     if (-not (Test-Path $path)) { return $false }
     $age  = (Get-Date) - (Get-Item $path).LastWriteTime
     $ttl  = Get-TtlDays $structName
-    return ($age.TotalDays -lt $ttl)
+    if ($age.TotalDays -ge $ttl) { return $false }
+    # Schema-version guard: a cache file written by an older script version has
+    # fewer columns (no DATATYPE/CONVEXIT/REFTABLE/REFFIELD). Treat it as a miss
+    # so it is re-fetched in the current schema. Negative-cache markers
+    # (col 2 = NOT_FOUND) are short by design -- keep honouring them within TTL.
+    $first = Get-Content -LiteralPath $path -TotalCount 1
+    if ($first) {
+        $cols = $first -split "`t"
+        if ($cols.Count -ge 2 -and $cols[1] -eq 'NOT_FOUND') { return $true }
+        if ($cols.Count -lt $script:STRUCT_SCHEMA_COLS) { return $false }
+    }
+    return $true
 }
 
 # ---- Triage: cache hits vs. misses ------------------------------------------
@@ -155,8 +183,19 @@ if ($misses.Count -gt 0) {
                 $decimals  = Get-FieldStr $dfies "DECIMALS"
                 $keyflag   = Get-FieldStr $dfies "KEYFLAG"
                 if ($keyflag -eq "") { $keyflag = " " }
+                # Appended columns (2026-06-21) for internal<->external handling.
+                # Default blanks to " " (like KEYFLAG) so a trailing-empty field
+                # is never trimmed away -> every data row keeps all 13 columns.
+                $datatype  = Get-FieldStr $dfies "DATATYPE"   # CURR / QUAN / DEC / CHAR ...
+                $convexit  = Get-FieldStr $dfies "CONVEXIT"   # ALPHA / MATN1 / CUNIT / ISOLA ...
+                $reftable  = Get-FieldStr $dfies "REFTABLE"   # currency/unit reference table
+                $reffield  = Get-FieldStr $dfies "REFFIELD"   # currency(CUKY)/unit(UNIT) field
+                if ($datatype -eq "") { $datatype = " " }
+                if ($convexit -eq "") { $convexit = " " }
+                if ($reftable -eq "") { $reftable = " " }
+                if ($reffield -eq "") { $reffield = " " }
                 [void]$structContent.AppendLine(
-                    "$structName`t$position`t$fieldname`t$rollname`t$domname`t$inttype`t$leng`t$decimals`t$keyflag")
+                    "$structName`t$position`t$fieldname`t$rollname`t$domname`t$inttype`t$leng`t$decimals`t$keyflag`t$datatype`t$convexit`t$reftable`t$reffield")
                 $foundAny = $true
             }
         } catch {

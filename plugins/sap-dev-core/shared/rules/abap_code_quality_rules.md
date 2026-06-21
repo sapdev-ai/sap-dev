@@ -810,6 +810,75 @@ exact failure mode this rule forbids.
 
 ---
 
+## 28. Internal/external conversion at file boundaries (CONVEXIT + CURR/QUAN)
+
+A flat file carries values in **external** representation; the database, BAPIs,
+and `SELECT … WHERE` use **internal** representation. Convert at the boundary —
+once — whenever the program reads or writes a file (`GUI_UPLOAD` / `GUI_DOWNLOAD`,
+`READ DATASET` / `TRANSFER … TO DATASET`). Getting this wrong passes syntax,
+activation, and ATC, and only surfaces as wrong data at runtime. Two distinct
+mechanisms:
+
+### 28.1 Conversion-exit fields (the `CONVEXIT` family)
+
+A field whose domain carries a conversion routine (`DFIES-CONVEXIT`, resolved
+field → data-element → domain) needs the routine applied at the boundary:
+
+| Direction | Statement | Call |
+|---|---|---|
+| inbound (file → internal) | `GUI_UPLOAD`, `READ DATASET` | `CONVERSION_EXIT_<exit>_INPUT` |
+| outbound (internal → file) | `GUI_DOWNLOAD`, `TRANSFER` | `CONVERSION_EXIT_<exit>_OUTPUT` |
+
+- Apply INPUT after parsing, BEFORE any `SELECT` / BAPI / `WHERE`; apply OUTPUT
+  immediately before writing. Never convert twice (e.g. ALPHA-padding an
+  already-padded key) — that is a silent data bug.
+- `CUNIT` (units) and `ISOLA` (language) take `LANGUAGE = sy-langu`; handle the
+  `UNIT_NOT_FOUND` / `OTHERS` exceptions through the message class — never let a
+  conversion FM dump.
+- Resolve `<exit>` from the live DDIC (`DFIES-CONVEXIT`, surfaced in the
+  `_struct_signatures.txt` cache); do not hand-roll. Common: `MATN1` (MATNR),
+  `ALPHA` (KUNNR / LIFNR / KOSTL …), `CUNIT` (MEINS / units), `ISOLA` (SPRAS).
+
+### 28.2 Amount / quantity fields (`CURR` / `QUAN` — the decimal shift)
+
+`CURR` / `QUAN` fields carry **no** conversion exit. Their trap is the
+currency- / unit-dependent **decimal shift**: a CURR amount is stored with the
+field's fixed DDIC decimals (2 for classic amounts), but the real decimal count
+comes from `TCURX-CURRDEC` (default 2); when they differ the stored value is
+shifted by `10^(CURRDEC − 2)`. Invisible for 2-decimal currencies (USD / EUR),
+**100× wrong for JPY (0 dec)**, 10× for BHD / KWD (3 dec). `QUAN` is the same,
+unit-driven via `T006-DECAN`.
+
+Rules:
+
+- **Always carry the reference field.** A `CURR` field requires its currency
+  (`CUKY`) and a `QUAN` its unit (`UNIT`), resolved via `DD03L-REFTABLE/REFFIELD`
+  (surfaced as `REFTABLE` / `REFFIELD` in `_struct_signatures.txt`). The file
+  must supply it, or the program must default it before the write — an amount
+  without its reference is uninterpretable. e.g. `VBAP-NETPR` needs `VBAP-WAERK`.
+- **Choose handling by the write target:**
+  - **BAPI amount field** (`BAPICURR` / `BAPICUREXT` / `BAPICURR_D`): pass the
+    parsed **external** value straight in (plus the currency key); the BAPI
+    applies the shift. Do NOT call `CURRENCY_AMOUNT_DISPLAY_TO_SAP` first — that
+    double-shifts.
+  - **Raw DDIC `CURR` / `QUAN` write** (custom Z-table, classic non-BAPI FM,
+    direct DB write): convert with `CURRENCY_AMOUNT_DISPLAY_TO_SAP` (with the
+    currency) inbound / `CURRENCY_AMOUNT_SAP_TO_DISPLAY` outbound; for `QUAN` use
+    `WRITE … UNIT`.
+- This is distinct from §25 (`SPLIT`-into-numeric): §25 gets the *digits* into a
+  packed field (char → packed parse); §28 gets the *magnitude / representation*
+  right. Parse first, then convert.
+- **Test data must exercise it:** a golden test for any in-scope `CURR` field
+  should use a 0-decimal currency (JPY); with only USD / EUR the shift is `×10^0`
+  and the bug is structurally untestable.
+
+Enforcement: the generator (`sap-gen-abap` §1.5e.d) emits the conversions; the
+checker (`sap-check-abap` Step 3.7) flags `CONV_CURR_MISSING_REF` and
+`CONV_CURR_DISPLAY_TO_BAPI`; `frequently_errors.tsv` carries the machine-readable
+`STMT` seeds (`CONV_EXIT_*` / `CURR_*`).
+
+---
+
 ## How a SKILL.md uses this file
 
 Add to the `## Shared Resources` block:
