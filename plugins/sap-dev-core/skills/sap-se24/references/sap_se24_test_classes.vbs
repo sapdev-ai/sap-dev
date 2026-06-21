@@ -281,9 +281,9 @@ If Err.Number = 0 And Not (oGrid Is Nothing) Then
         Dim r
         For r = 0 To nRows - 1
             Dim mt, ln, tx
-            mt = oGrid.getCellValue(r, "MSGTYPE") : Err.Clear
-            ln = oGrid.getCellValue(r, "LINE")    : Err.Clear
-            tx = oGrid.getCellValue(r, "TEXT")    : Err.Clear
+            mt = SafeGetCell(oGrid, r, "MSGTYPE")
+            ln = SafeGetCell(oGrid, r, "LINE")
+            tx = SafeGetCell(oGrid, r, "TEXT")
             If IsErrorMsgType(mt, sLang) Then
                 nErr = nErr + 1
                 WScript.Echo "  [ERROR] Line " & ln & ": " & tx

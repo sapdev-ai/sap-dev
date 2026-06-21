@@ -3,4 +3,4 @@ PNAME	RS38L_PAR_				Parameter name
 PSEQ	INT4				Chunk sequence (1-based) - PVALUE chunks reassembled in PSEQ order per PNAME
 PTYPE	CHAR1				Parameter type: I=Importing E=Exporting C=Changing T=Tables
 PTYPENAME	DDOBJNAME				ABAP Dictionary type name (e.g. PROGNAME, BAPI_RETURN, ABAPTXT255_TAB)
-PVALUE	GENE_KEY_VALUES				XML-serialized data payload chunk (asXML via CALL TRANSFORMATION id) - CHAR 1333 via standard DE GENE_KEY_VALUES on domain CHAR1333
+PVALUE	ZCMDE_RFCVAL				asXML payload chunk (CALL TRANSFORMATION id) - CHAR 1333 via custom DE ZCMDE_RFCVAL on domain ZCMD_RFCVAL

@@ -17,12 +17,14 @@
 #   %%PACKAGE%%      sap_dev_package
 #   %%FUGR%%         sap_dev_function_group
 #   %%WRAPPER_FM%%   default "Z_GENERIC_RFC_WRAPPER_TBL"
+#   %%WRAPPER_DOMAIN%% default "ZCMD_RFCVAL"
+#   %%WRAPPER_DTEL%% default "ZCMDE_RFCVAL"
 #   %%WRAPPER_STRUCT%% default "ZCMST_RFC_PARAM"
 #   %%WRAPPER_TT%%   default "ZCMCT_RFC_PARAM"
 #   %%UTIL_PROGRAM%% default "ZCMRUPDATE_ADDON_TABLE"
 #
 # Output format (one line per artefact):
-#   ARTEFACT: <NAME> | KIND: <TR|PKG|FG|FM|STRUCT|TT|PGM> | STATE: <state> | DETAIL: <free text>
+#   ARTEFACT: <NAME> | KIND: <TR|PKG|FG|FM|DOMA|DTEL|STRUCT|TT|PGM> | STATE: <state> | DETAIL: <free text>
 #
 #   <state> in ACTIVE | INACTIVE | MISSING | MODIFIABLE | RELEASED |
 #             EMPTY | NON_EMPTY | NOT_CONFIGURED | ERROR
@@ -47,6 +49,11 @@ $wrapperFm = if ([string]::IsNullOrWhiteSpace("%%WRAPPER_FM%%"))     { "Z_GENERI
 $structName= if ([string]::IsNullOrWhiteSpace("%%WRAPPER_STRUCT%%")) { "ZCMST_RFC_PARAM"           } else { "%%WRAPPER_STRUCT%%" }
 $ttName    = if ([string]::IsNullOrWhiteSpace("%%WRAPPER_TT%%"))     { "ZCMCT_RFC_PARAM"           } else { "%%WRAPPER_TT%%" }
 $utilPgm   = if ([string]::IsNullOrWhiteSpace("%%UTIL_PROGRAM%%"))   { "ZCMRUPDATE_ADDON_TABLE"    } else { "%%UTIL_PROGRAM%%" }
+# Wrapper payload domain + data element (single-source DDIC). Default to the
+# shipped names; also fall back to the default when the token is left
+# unsubstituted, so existing callers need no change to pick these up.
+$domName   = if ("%%WRAPPER_DOMAIN%%" -like "*WRAPPER_DOMAIN*" -or [string]::IsNullOrWhiteSpace("%%WRAPPER_DOMAIN%%")) { "ZCMD_RFCVAL"  } else { "%%WRAPPER_DOMAIN%%" }
+$dtelName  = if ("%%WRAPPER_DTEL%%"   -like "*WRAPPER_DTEL*"   -or [string]::IsNullOrWhiteSpace("%%WRAPPER_DTEL%%"))   { "ZCMDE_RFCVAL" } else { "%%WRAPPER_DTEL%%" }
 
 $g_dest = Connect-SapRfc -Server   "%%SAP_SERVER%%"   `
                          -Sysnr    "%%SAP_SYSNR%%"    `
@@ -204,6 +211,34 @@ if ($null -eq $rows) {
         Emit $wrapperFm "FM" "INACTIVE" "TFDIR ok but FMODE != 'R' (Regular FM) -- run /sap-dev-init Step 7b to set Remote-Enabled"
         $gaps++
     }
+}
+
+# ---------------------------------------------------------------------------
+# 4a. Wrapper payload domain -- DD01L AS4LOCAL='A'
+# ---------------------------------------------------------------------------
+$rows = Q-RfcReadTable "DD01L" "DOMNAME = '$domName' AND AS4LOCAL = 'A'" @("DOMNAME")
+if ($null -eq $rows) {
+    Emit $domName "DOMA" "ERROR" "RFC_READ_TABLE on DD01L failed"
+    $gaps++
+} elseif ($rows.Count -eq 0) {
+    Emit $domName "DOMA" "MISSING" "no active DD01L row -- run /sap-dev-init"
+    $gaps++
+} else {
+    Emit $domName "DOMA" "ACTIVE" "DD01L AS4LOCAL=A"
+}
+
+# ---------------------------------------------------------------------------
+# 4b. Wrapper payload data element -- DD04L AS4LOCAL='A'
+# ---------------------------------------------------------------------------
+$rows = Q-RfcReadTable "DD04L" "ROLLNAME = '$dtelName' AND AS4LOCAL = 'A'" @("ROLLNAME")
+if ($null -eq $rows) {
+    Emit $dtelName "DTEL" "ERROR" "RFC_READ_TABLE on DD04L failed"
+    $gaps++
+} elseif ($rows.Count -eq 0) {
+    Emit $dtelName "DTEL" "MISSING" "no active DD04L row -- run /sap-dev-init"
+    $gaps++
+} else {
+    Emit $dtelName "DTEL" "ACTIVE" "DD04L AS4LOCAL=A"
 }
 
 # ---------------------------------------------------------------------------

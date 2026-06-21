@@ -155,16 +155,23 @@ TFDIR.
 
 ### Step 3b — Wrapper DDIC objects
 
-Delegate to `/sap-se11` delete mode, table type first (depends on the
-structure):
+Delegate to `/sap-se11` delete mode in strict reverse-dependency order —
+table type (depends on the structure), then the structure, then the data
+element and domain it is built on:
 
 ```
-/sap-se11 delete TABLETYPE  ZCMCT_RFC_PARAM  TRANSPORT=<TR-or-empty>
-/sap-se11 delete STRUCTURE  ZCMST_RFC_PARAM  TRANSPORT=<TR-or-empty>
+/sap-se11 delete TABLETYPE    ZCMCT_RFC_PARAM  TRANSPORT=<TR-or-empty>
+/sap-se11 delete STRUCTURE    ZCMST_RFC_PARAM  TRANSPORT=<TR-or-empty>
+/sap-se11 delete DATAELEMENT  ZCMDE_RFCVAL     TRANSPORT=<TR-or-empty>
+/sap-se11 delete DOMAIN       ZCMD_RFCVAL      TRANSPORT=<TR-or-empty>
 ```
 
-If 3a failed (wrapper FM still references the structure), 3b will
-error out — surface that and stop the DDIC sub-step.
+`ZCMDE_RFCVAL` / `ZCMD_RFCVAL` are the wrapper family's own payload data
+element + domain (single-source DDIC, created by `/sap-dev-init` Steps 4b and
+4c). Order matters: the structure must be gone before the DE delete (the
+structure references it), and the DE before the domain. If 3a failed (wrapper
+FM still references the structure) — or a delete fails because its dependent is
+still present — surface the error and stop the DDIC sub-step.
 
 ### Step 3c — Utility program (`ZCMRUPDATE_ADDON_TABLE`)
 
@@ -237,11 +244,11 @@ held, so it now carries only those (now-deleted) entries and is safe to drop:
    This deletes the request **object** — NOT release (releasing would transport
    the throwaway dev objects onward). A released TR cannot be deleted (only
    reimported); if SE01 reports it is released, surface that and skip.
-3. **Interim (until the `/sap-se01` delete mode ships):** if `/sap-se01`
-   reports the delete mode is unavailable, do NOT fail the clean — Step 4
+3. **If the delete cannot complete** (e.g. `/sap-se01` reports the TR is
+   already released, or the delete errors), do NOT fail the clean — Step 4
    clears the TR reference (so the next `/sap-dev-init` self-heals and never
-   reuses it), leaving only a harmless empty husk. Report the TR for manual
-   deletion in SE01.
+   reuses it), leaving only a harmless husk. Report the TR for manual handling
+   in SE01.
 
 **With `--force` but not `--reset`** (legacy opt-in): same confirm-then-delete
 flow as the `--reset` path above.
@@ -299,6 +306,8 @@ Pre-clean:
   Z_GENERIC_RFC_WRAPPER_TBL  FM      ACTIVE
   ZCMCT_RFC_PARAM            TT      ACTIVE
   ZCMST_RFC_PARAM            STRUCT  ACTIVE
+  ZCMDE_RFCVAL               DTEL    ACTIVE
+  ZCMD_RFCVAL                DOMA    ACTIVE
   ZCMRUPDATE_ADDON_TABLE     PGM     ACTIVE
   ZFG018                     FG      ACTIVE
   ZCMPKG018                  PKG     NON_EMPTY  (skipped, --force not set)
@@ -308,6 +317,8 @@ Post-clean:
   Z_GENERIC_RFC_WRAPPER_TBL  FM      MISSING
   ZCMCT_RFC_PARAM            TT      MISSING
   ZCMST_RFC_PARAM            STRUCT  MISSING
+  ZCMDE_RFCVAL               DTEL    MISSING
+  ZCMD_RFCVAL                DOMA    MISSING
   ZCMRUPDATE_ADDON_TABLE     PGM     MISSING
   ZFG018                     FG      ACTIVE  (skipped — extras present)
   ZCMPKG018                  PKG     NON_EMPTY

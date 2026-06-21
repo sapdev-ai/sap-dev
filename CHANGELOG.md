@@ -4,6 +4,34 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **False VBScript crash on a CLEAN ABAP syntax check after activation
+  (`getCellValue … "parameter is incorrect"` / E_INVALIDARG).** The SE37/SE24
+  update + create syntax-grid parse closed the narrow per-`Info.Language` guard
+  with `On Error GoTo 0`, which in VBScript cancels the *block-level*
+  `On Error Resume Next` entirely (one error-handling flag per procedure — there
+  is no handler stack). The following `getCellValue(row,"LINE")` loop then ran
+  UNguarded and its `Err.Clear` calls were dead code, so when
+  `FindSyntaxErrorGrid` mis-latched onto a non-syntax ALV that has a `MSGTYPE`
+  column but no `LINE` column, the read threw and aborted the whole script
+  *after* the object had already activated cleanly (2026-06-22 S4D wrapper-FM
+  deploy: false error tail on a verified-clean activation). Fixed by (a) a new
+  shared `SafeGetCell(oGrid, iRow, sCol)` in `sap_syntax_check_lib.vbs` that
+  wraps the read in its OWN `On Error Resume Next` and returns `""` on a missing
+  column / out-of-range row / any COM failure — immune to the caller's
+  error-handling mode; and (b) re-arming the cancelled block guard
+  (`On Error GoTo 0` → `Err.Clear`) in the three affected files. A clean check
+  that mis-latches now degrades to empty cells (classified "no error") instead
+  of raising. Primary fix: `sap_se37_update.vbs` (the reported crash),
+  `sap_se37_create.vbs`, `sap_se24_update.vbs`. All nine syntax-grid readers
+  (additionally `sap_se38_create/update.vbs` incl. their post-activate gate,
+  `sap_se24_test_classes.vbs`, and the three `*_check_and_download.vbs`) were
+  migrated to `SafeGetCell` for one bulletproof read path — this also fixes a
+  latent stale-variable bug in `sap_se24_test_classes.vbs` (loop-scoped `Dim`
+  vars were not re-initialised, so a failed read reused the prior row's value).
+  Offline-validated against a mock grid whose `LINE` column throws.
+
 ## [0.6.6] — 2026-06-20
 
 ### Added

@@ -143,12 +143,9 @@ If Err.Number = 0 And Not (oSyntaxGrid Is Nothing) Then
             sSynType = ""
             sSynLine = ""
             sSynText = ""
-            sSynType = oSyntaxGrid.getCellValue(iSynRow, "MSGTYPE")
-            Err.Clear
-            sSynLine = oSyntaxGrid.getCellValue(iSynRow, "LINE")
-            Err.Clear
-            sSynText = oSyntaxGrid.getCellValue(iSynRow, "TEXT")
-            Err.Clear
+            sSynType = SafeGetCell(oSyntaxGrid, iSynRow, "MSGTYPE")
+            sSynLine = SafeGetCell(oSyntaxGrid, iSynRow, "LINE")
+            sSynText = SafeGetCell(oSyntaxGrid, iSynRow, "TEXT")
             If sSynText <> "" Then
                 If sSynLine <> "" Then
                     WScript.Echo "  Line " & sSynLine & ": " & sSynText

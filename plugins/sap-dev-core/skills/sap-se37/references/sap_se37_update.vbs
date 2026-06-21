@@ -443,7 +443,7 @@ If Err.Number = 0 And Not (oSyntaxGrid Is Nothing) Then
         Dim sLogonLang
         On Error Resume Next
         sLogonLang = UCase(CStr(oSession.Info.Language))
-        On Error GoTo 0
+        Err.Clear   ' keep On Error Resume Next active across the grid read below
         If Len(sLogonLang) = 0 Then sLogonLang = "E"
         WScript.Echo "INFO: Logon language = '" & sLogonLang & _
                      "'; matching syntax-error word = '" & GetSyntaxErrorWord(sLogonLang) & "'."
@@ -453,12 +453,9 @@ If Err.Number = 0 And Not (oSyntaxGrid Is Nothing) Then
             sSynType = ""
             sSynLine = ""
             sSynText = ""
-            sSynType = oSyntaxGrid.getCellValue(iSynRow, "MSGTYPE")
-            Err.Clear
-            sSynLine = oSyntaxGrid.getCellValue(iSynRow, "LINE")
-            Err.Clear
-            sSynText = oSyntaxGrid.getCellValue(iSynRow, "TEXT")
-            Err.Clear
+            sSynType = SafeGetCell(oSyntaxGrid, iSynRow, "MSGTYPE")
+            sSynLine = SafeGetCell(oSyntaxGrid, iSynRow, "LINE")
+            sSynText = SafeGetCell(oSyntaxGrid, iSynRow, "TEXT")
             Dim bIsError
             bIsError = IsErrorMsgType(sSynType, sLogonLang)
             If bIsError Then nErrorCount = nErrorCount + 1

@@ -100,6 +100,8 @@ For each step below, pick the **first skill in the active fallback chain** for w
 | Create / verify transport request | `/sap-se01` | `/sap-transport-request` | *(none)* |
 | Create / verify package | *(none)* | *(none)* | `/sap-se21` |
 | Create / verify function group | `/sap-function-group` (GUI sub-flow) | `/sap-function-group` (RFC sub-flow) | *(none)* |
+| Create / update DDIC domain | `/sap-se11` | *(none)* | *(none)* |
+| Create / update DDIC data element | `/sap-se11` | *(none)* | *(none)* |
 | Create / update DDIC structure | `/sap-se11` | *(none)* | *(none)* |
 | Create / update DDIC table type | `/sap-se11` | *(none)* | *(none)* |
 | Deploy function module | `/sap-se37` | *(none)* | *(none)* |
@@ -119,6 +121,8 @@ Plan:
   Transport request : /<chosen-skill>
   Package           : /<chosen-skill>
   Function group    : /<chosen-skill>
+  ZCMD_RFCVAL       : /sap-se11
+  ZCMDE_RFCVAL      : /sap-se11
   ZCMST_RFC_PARAM   : /sap-se11
   ZCMCT_RFC_PARAM   : /sap-se11
   RFC wrapper FM    : /sap-se37
@@ -584,7 +588,76 @@ After this step, `sap_dev_function_group` must contain a valid function group na
 
 ---
 
+## Step 4b — Create ZCMD_RFCVAL Domain
+
+The wrapper's `PVALUE` payload field is CHAR 1333. Instead of depending on a
+standard wide data element — the stock `GENE_KEY_VALUES` exists on S/4HANA but
+**not** on AS ABAP 7.31 / ECC6 — the wrapper family ships and creates its own
+domain + data element, so the DDIC is single-source across every release.
+
+The definition file is at:
+`<SKILL_DIR>/../sap-rfc-wrapper-fm/references/ZCMD_RFCVAL.def`
+
+Copy and re-encode as Unicode (UTF-16 LE — required by sap-se11 templates):
+```powershell
+Copy-Item '<SKILL_DIR>\..\sap-rfc-wrapper-fm\references\ZCMD_RFCVAL.def' '{WORK_TEMP}\ZCMD_RFCVAL.def'
+$c = [System.IO.File]::ReadAllText('{WORK_TEMP}\ZCMD_RFCVAL.def', [System.Text.Encoding]::UTF8)
+[System.IO.File]::WriteAllText('{WORK_TEMP}\ZCMD_RFCVAL.def', $c, [System.Text.UnicodeEncoding]::new($false, $true))
+```
+
+Run:
+```
+/sap-se11 DOMAIN ZCMD_RFCVAL {WORK_TEMP}\ZCMD_RFCVAL.def {sap_dev_package} {RESOLVED_TR}
+```
+
+Short description: `RFC wrapper payload domain (CHAR 1333)`
+
+The domain caps **output length at 132** so the structure later activates
+without SAP's "output length > 255" warning, while still storing the full
+1333-char chunk. If ZCMD_RFCVAL already exists, sap-se11 will update it.
+If sap-se11 reports an error, show it to the user and suggest manual creation in SE11.
+
+---
+
+## Step 4c — Create ZCMDE_RFCVAL Data Element
+
+**ZCMD_RFCVAL must be active** before this step — the data element references it.
+
+The definition file is at:
+`<SKILL_DIR>/../sap-rfc-wrapper-fm/references/ZCMDE_RFCVAL.def`
+
+Copy and re-encode:
+```powershell
+Copy-Item '<SKILL_DIR>\..\sap-rfc-wrapper-fm\references\ZCMDE_RFCVAL.def' '{WORK_TEMP}\ZCMDE_RFCVAL.def'
+$c = [System.IO.File]::ReadAllText('{WORK_TEMP}\ZCMDE_RFCVAL.def', [System.Text.Encoding]::UTF8)
+[System.IO.File]::WriteAllText('{WORK_TEMP}\ZCMDE_RFCVAL.def', $c, [System.Text.UnicodeEncoding]::new($false, $true))
+```
+
+Run:
+```
+/sap-se11 DATAELEMENT ZCMDE_RFCVAL {WORK_TEMP}\ZCMDE_RFCVAL.def {sap_dev_package} {RESOLVED_TR}
+```
+
+Short description: `RFC wrapper XML payload chunk`
+
+If ZCMDE_RFCVAL already exists, sap-se11 will update it.
+If sap-se11 reports an error, show it to the user and suggest manual creation in SE11.
+
+---
+
 ## Step 5 — Create ZCMST_RFC_PARAM Structure
+
+**ZCMDE_RFCVAL must be active** before this step — the structure's `PVALUE`
+field references it (single-source DDIC; no dependency on the S/4-only
+`GENE_KEY_VALUES`).
+
+> **Migrating an existing install** (structure already exists on the old
+> `GENE_KEY_VALUES`): the `/sap-se11` structure *update* path only appends new
+> components — it cannot change an existing field's data element — so an
+> in-place re-run leaves `PVALUE` on the old DE (and may report a misleading
+> success). To migrate, run `/sap-dev-clean` then `/sap-dev-init`: clean drops
+> the structure so init recreates it fresh on `ZCMDE_RFCVAL`. Fresh installs
+> are unaffected.
 
 The definition file is at:
 `<SKILL_DIR>/../sap-rfc-wrapper-fm/references/ZCMST_RFC_PARAM.def`
@@ -757,6 +830,8 @@ SAP Dev Environment Initialization Complete
 Transport Request          : {RESOLVED_TR}  (policy: {way_to_get_transport_request})
 Package                    : {sap_dev_package}
 Function Group             : {sap_dev_function_group}
+ZCMD_RFCVAL                : Created/Updated ✓
+ZCMDE_RFCVAL               : Created/Updated ✓
 ZCMST_RFC_PARAM            : Created/Updated ✓
 ZCMCT_RFC_PARAM            : Created/Updated ✓
 Z_GENERIC_RFC_WRAPPER_TBL  : Deployed ✓
@@ -801,7 +876,9 @@ Suggested `<CLASS>`: `DEV_INIT_FAILED`, `TR_RESOLUTION_FAILED`, `PACKAGE_FAILED`
 | Transport request creation failed | Missing S_CTS_ADMI authorization | Ask SAP admin for CTS authorization |
 | Package creation failed | Missing S_DEVELOP authorization | Ask SAP admin for development authorization |
 | Function group creation failed | Package or transport invalid | Verify Steps 2-3 completed successfully |
-| ZCMST_RFC_PARAM creation failed | SE11 authorization or data element RS38L_PNAM/DDOBJNAME missing | Create manually in SE11 or check ABAP Dictionary |
+| ZCMD_RFCVAL domain creation failed | SE11 authorization | Create manually in SE11 (CHAR 1333, output length 132) |
+| ZCMDE_RFCVAL data element creation failed | ZCMD_RFCVAL domain not active | Ensure Step 4b succeeded; the DE references domain ZCMD_RFCVAL |
+| ZCMST_RFC_PARAM creation failed | SE11 authorization, or referenced data element (ZCMDE_RFCVAL / RS38L_PAR_ / DDOBJNAME) not active | Ensure Step 4c succeeded; create manually in SE11 or check ABAP Dictionary |
 | ZCMCT_RFC_PARAM creation failed | ZCMST_RFC_PARAM not active | Ensure Step 5 succeeded before Step 6 |
 | Z_GENERIC_RFC_WRAPPER_TBL deploy failed | ZCMCT_RFC_PARAM not active or SE37 authorization missing | Ensure Step 6 succeeded; deploy manually via SE37 |
 | ZCMRUPDATE_ADDON_TABLE deploy failed | SE38 authorization missing | Deploy manually via SE38 |

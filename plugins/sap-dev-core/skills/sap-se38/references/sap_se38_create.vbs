@@ -678,10 +678,9 @@ If Not (oChkGrid Is Nothing) Then
     If lChkRows > 0 Then
         WScript.Echo "INFO: " & lChkRows & " syntax finding(s) for program " & UCase(PROGRAM_NAME) & ":"
         For iChk = 0 To lChkRows - 1
-            sChkType = oChkGrid.getCellValue(iChk, "MSGTYPE")
-            sChkLine = oChkGrid.getCellValue(iChk, "LINE")
-            sChkText = oChkGrid.getCellValue(iChk, "TEXT")
-            If Err.Number <> 0 Then Err.Clear: Exit For
+            sChkType = SafeGetCell(oChkGrid, iChk, "MSGTYPE")
+            sChkLine = SafeGetCell(oChkGrid, iChk, "LINE")
+            sChkText = SafeGetCell(oChkGrid, iChk, "TEXT")
             WScript.Echo "  [" & sChkType & "] Line " & sChkLine & ": " & sChkText
             If IsErrorMsgType(sChkType, sLogonLang) Then
                 bHasErrors = True
@@ -810,10 +809,10 @@ Set oPostGrid = FindSyntaxErrorGrid(oSession)
 If Not (oPostGrid Is Nothing) Then
     lPostRows = oPostGrid.RowCount
     For iPost = 0 To lPostRows - 1
-        sPostType = oPostGrid.getCellValue(iPost, "MSGTYPE")
+        sPostType = SafeGetCell(oPostGrid, iPost, "MSGTYPE")
         If IsErrorMsgType(sPostType, sLogonLang) Then
             bPostErr = True
-            WScript.Echo "  [" & sPostType & "] Line " & oPostGrid.getCellValue(iPost, "LINE") & ": " & oPostGrid.getCellValue(iPost, "TEXT")
+            WScript.Echo "  [" & sPostType & "] Line " & SafeGetCell(oPostGrid, iPost, "LINE") & ": " & SafeGetCell(oPostGrid, iPost, "TEXT")
         End If
     Next
 End If

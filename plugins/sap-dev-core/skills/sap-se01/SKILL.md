@@ -14,8 +14,13 @@ description: |
         any open tasks) via SE01 Transport Organizer (Display + F9 loop).
         Asks the user for explicit confirmation before releasing — release
         is irreversible.
+    (c) DELETE -- invoked as `/sap-se01 delete <TR>`. Deletes an UNRELEASED
+        request object (Display + Delete tbar[1]/btn[13], confirm via the
+        shared popup walker) and verifies removal via E070. Asks for explicit
+        confirmation; refuses a released TR or one holding non-dev objects.
+        Used by /sap-dev-clean --reset to drop the dev TR.
   Prerequisites: Active SAP GUI session (use /sap-login first).
-argument-hint: "[create [W|C] [\"<desc>\"]] | [release <TR>]"
+argument-hint: "[create [W|C] [\"<desc>\"]] | [release <TR>] | [delete <TR>]"
 ---
 
 # SAP SE01 — Transport Request Management Skill
@@ -32,6 +37,7 @@ Look at `$ARGUMENTS` to pick the mode:
 | First token (case-insensitive) | Mode | Skip to |
 |---|---|---|
 | `release` followed by a TR (e.g. `release ER1K900234`) | RELEASE | "Release Mode" section below |
+| `delete` followed by a TR (e.g. `delete ER1K900234`) | DELETE | "Delete Mode" section below |
 | `create` (or no first-token keyword) | CREATE | continue with Step 1 |
 
 Direct callers (`/sap-transport-request`) typically use the bare CREATE form.
@@ -413,6 +419,111 @@ Released TR <TR>. Verified E070-TRSTATUS = R.
 The VBS scans `wnd[0]/usr.Children` for the first `GuiLabel` each iteration
 instead of using fixed positions like `lbl[24,11]` — those positions in the
 recording are list-layout dependent and break when the list reshuffles.
+
+---
+
+# Delete Mode
+
+Use this section when `$ARGUMENTS` starts with `delete` (e.g.
+`/sap-se01 delete ER1K900234`). Delete removes the **request object** itself --
+NOT release (releasing would transport its objects onward). **Deletion is
+irreversible**, and only an **unreleased** request can be deleted.
+
+This mode is the back end for `/sap-dev-clean --reset` Step 3f: by the time it
+runs, the dev TR's objects have already been deleted, so the request carries
+only those (now-removed) entries and is safe to drop.
+
+## D0 -- Resolve work directory
+
+Same as Step 0 above: resolve `work_dir`, set `{WORK_TEMP}` and `{RUN_TEMP}`.
+
+## D1 -- Parse the TR
+
+Extract the TR number from `$ARGUMENTS` (the token after `delete`). Validate the
+format (`<SID>K<digits>`, e.g. `ER1K900234`). If missing / malformed:
+
+> "Which transport request should I delete? (e.g. `ER1K900234`)"
+
+## D2 -- Inspect contents + confirm (mandatory)
+
+Deletion is irreversible. Show the operator what's inside, then confirm:
+
+1. Read the TR's object list -- `/sap-se16n E071` filtering `TRKORR EQ <TR>`
+   (or RFC `RFC_READ_TABLE` on `E071`), one line per object; also read
+   `E070-TRSTATUS`.
+2. **Refuse a released TR.** If `TRSTATUS` is `R` (Released) or `O` (release
+   started), stop: a released request cannot be deleted (only reimported).
+3. **Refuse unrelated work.** If E071 holds objects that are NOT sap-dev-init
+   artefacts and the caller did not explicitly authorize a full delete, stop
+   and surface the list -- do not delete a TR holding the operator's own work.
+4. Ask:
+   > "About to DELETE transport request `<TR>` (status `<TRSTATUS>`, `<N>`
+   > objects shown above) via SE01. This is irreversible. Proceed? (yes / no)"
+
+Only proceed on explicit `yes`. (When called from `/sap-dev-clean --reset`,
+that skill has already shown the E071 list and confirmed -- it may pass the
+confirmation through.)
+
+## D3 -- Ensure SAP GUI login
+
+Same as Step 2: requires an active SAP GUI session.
+
+## D4 -- Run the SE01 delete VBS
+
+Template: `./references/sap_se01_delete.vbs`. Token: `%%TRANSPORT%%`.
+
+Write `{RUN_TEMP}\sap_se01_delete_run.ps1`:
+```powershell
+$content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_se01_delete.vbs', [System.Text.Encoding]::UTF8)
+$content = $content -replace '%%TRANSPORT%%','THE_TR'
+$content = $content -replace '%%SESSION_LOCK_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_session_lock.vbs'
+$sessionPath = ''
+$content = $content -replace '%%SESSION_PATH%%', $sessionPath
+$content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
+[System.IO.File]::WriteAllText('{RUN_TEMP}\sap_se01_delete_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
+Write-Host 'Done'
+```
+The VBS derives the shared `sap_delete_popups.vbs` path from the substituted
+`%%ATTACH_LIB_VBS%%` directory (same `shared/scripts` folder) -- no extra token.
+
+Run:
+```bash
+powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_se01_delete_run.ps1"
+C:/Windows/SysWOW64/cscript.exe //NoLogo {RUN_TEMP}\sap_se01_delete_run.vbs
+```
+
+## D5 -- Interpret VBS output
+
+| Last line | Meaning |
+|---|---|
+| `SUCCESS: Transport request <TR> deleted.` | The request object is gone (the VBS re-displayed it and the request screen no longer opened). Verify authoritatively in D6. |
+| `ERROR: Request display did not open ...` | The TR did not exist to begin with (already gone) -- treat as success once the D6 RFC check confirms absence. |
+| `ERROR: TR <TR> still exists after delete ...` | Delete did not take (a confirm-popup style the walker didn't match, or the TR was actually released). Show the SAP sbar line; recheck status and retry, or finish in SE01 manually. |
+
+## D6 -- Verify + housekeeping
+
+1. **RFC-verify** the TR is gone: `RFC_READ_TABLE` on `E070` filtering
+   `TRKORR = '<TR>'` -> expect 0 rows. (The VBS's own verify is a
+   language-independent `Info.Program` check; this RFC read is authoritative.)
+2. Report: `Deleted TR <TR>. Verified E070 row absent.`
+3. If the caller is `/sap-dev-clean --reset`, it clears the dev-default TR
+   reference (its Step 4). A direct `/sap-se01 delete` does not touch settings.
+
+## D7 -- Component IDs (delete flow, for reference)
+
+| Element | ID |
+|---|---|
+| TR input field | `.../ssubCOMMONSUBSCREEN:RDDM0001:0210/ctxtTRDYSE01SN-TR_TRKORR` |
+| Display button | `.../btn%_AUTOTEXT028` (auto-name) |
+| Request-display program | `SAPMSSY0` (screen 120) |
+| Delete button | `wnd[0]/tbar[1]/btn[13]` (Shift+F1 -- stable id; alt menu `mbar/menu[0]/menu[5]`) |
+| Confirm popups | handled by the shared `sap_delete_popups.vbs` walker (`btnBUTTON_1` / `btnSPOP-OPTION1` / Enter) |
+| Status bar | `wnd[0]/sbar` |
+
+Live-verified on EC2/ERP (ECC6) 2026-06-22: created throwaway `ERPK900031` ->
+`/sap-se01 delete` -> walker confirmed via `btnBUTTON_1` -> RFC E070 ROWS=0.
 
 ---
 

@@ -187,3 +187,35 @@ Function GridHasColumn_(oGrid, sCol)
     Next
     Err.Clear
 End Function
+
+' -----------------------------------------------------------------------------
+' SafeGetCell(oGrid, iRow, sCol)
+'   Read ONE ALV cell defensively — returns "" instead of raising a runtime
+'   error when the column id does not exist on this grid, the row is out of
+'   range, or the Scripting engine otherwise refuses the read.
+'
+'   WHY THIS EXISTS: FindSyntaxErrorGrid only guarantees a MSGTYPE column. After
+'   a CLEAN syntax check SAP may leave a DIFFERENT ALV on screen that also
+'   carries a MSGTYPE column but NOT a LINE / TEXT column; an unguarded
+'   getCellValue(row, "LINE") then throws "SAP Frontend Server: parameter is
+'   incorrect" (Win32 0x80070057 / E_INVALIDARG). On the SE37/SE24 update +
+'   create paths the block-level "On Error Resume Next" had already been
+'   cancelled by a stray "On Error GoTo 0" (left over from closing the narrow
+'   per-Info.Language guard), so that throw aborted the whole script AFTER the
+'   object had already activated cleanly — a FALSE error on a clean check
+'   (2026-06-22 S4D wrapper-FM deploy). This helper carries its OWN
+'   On Error Resume Next, so the read is immune to the caller's current
+'   error-handling mode: a missing column can never turn a clean check into a
+'   crash, and a mis-latched non-syntax grid degrades to all-empty cells
+'   (classified by IsErrorMsgType as "no error") instead of failing. Use this
+'   in place of a bare getCellValue + Err.Clear in every syntax-grid read loop.
+' -----------------------------------------------------------------------------
+Function SafeGetCell(oGrid, iRow, sCol)
+    SafeGetCell = ""
+    On Error Resume Next
+    Dim v
+    v = oGrid.getCellValue(iRow, sCol)
+    If Err.Number = 0 Then SafeGetCell = "" & v
+    Err.Clear
+    On Error GoTo 0
+End Function
