@@ -205,7 +205,13 @@ Err.Clear
 On Error GoTo 0
 
 ' ------ 3. Update description (if provided) ------------------------------------
-If OBJECT_DESCRIPTION <> "" Then
+' Treat an unsubstituted %%OBJECT_DESCRIPTION%% token as "no change" (empty).
+' The SKILL.md update fill block substitutes this token with '' by default; the
+' Chr(37) sentinel guards a left-unsubstituted token (e.g. an older cached
+' build) so the literal token never lands in the short text (fix 2026-06-22).
+Dim sUnsubDesc
+sUnsubDesc = Chr(37) & Chr(37) & "OBJECT_DESCRIPTION" & Chr(37) & Chr(37)
+If OBJECT_DESCRIPTION <> "" And OBJECT_DESCRIPTION <> sUnsubDesc Then
     On Error Resume Next
     oSession.findById("wnd[0]/usr/txtDD04D-DDTEXT").Text = OBJECT_DESCRIPTION
     Err.Clear

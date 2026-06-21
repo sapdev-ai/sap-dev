@@ -64,26 +64,30 @@ try {
     $fn.Invoke($g_dest)
     $data = $fn.GetTable("DATA")
 
-    $hasActive = $false
-    $hasInactive = $false
+    $hasActive  = $false
+    $hasPending = $false   # saved-but-not-activated version present (AS4LOCAL <> 'A': 'N', 'L', ...)
     for ($i = 0; $i -lt $data.RowCount; $i++) {
         $data.CurrentIndex = $i
         $row = $data.GetString("WA")
         $cols = $row.Split('|') | ForEach-Object { $_.Trim() }
         if ($cols.Count -ge 2) {
             $loc = $cols[1].Trim()
-            if ($loc -eq "A") { $hasActive   = $true }
-            if ($loc -eq "N") { $hasInactive = $true }
+            if ($loc -eq "A") { $hasActive = $true }
+            elseif (-not [string]::IsNullOrEmpty($loc)) { $hasPending = $true }
         }
     }
 
-    if ($hasActive) {
-        Write-Host "ACTIVE"
-        exit 0
-    }
-    elseif ($hasInactive) {
+    # A pending (non-active) version means activation did NOT complete -- even
+    # when an active version coexists. An UPDATE always leaves the prior active
+    # version in place, so checking only "an active version exists" false-passes
+    # a non-activated update. Fail-closed whenever a pending version is present.
+    if ($hasPending) {
         Write-Host "INACTIVE"
         exit 2
+    }
+    elseif ($hasActive) {
+        Write-Host "ACTIVE"
+        exit 0
     }
     else {
         Write-Host "MISSING"

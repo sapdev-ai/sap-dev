@@ -654,6 +654,33 @@ is empty, the VBS aborts; the caller must run `/sap-transport-request`
 `DEVCLASS` (starts with `$` → local), `E071` for object→TR linkage,
 `E070-TRSTATUS` for TR modifiable state.
 
+**Update flow (data-element migration — STRUCTURE):** The structure update
+template no longer only *appends* new components. When the definition file
+names a **different data element** for an **existing** field, the template
+overwrites that field's `ctxtDD03P_D-ROLLNAME` cell in place (read-back
+verified) and reports `Migrated existing component … data element X -> Y`. If
+a requested data-element change cannot be applied, the template prints `ERROR:`
+and exits non-zero instead of a false `SUCCESS:`. (Direct-type changes on an
+existing field — a DATATYPE with no data element — stay unsupported: those grid
+cells are `Changeable=False`, and the template rejects such rows up front.)
+This makes in-place single-source-DDIC migration work without a
+`/sap-dev-clean` + `/sap-dev-init` recreate.
+
+**Update flow (post-activate RFC gate — DOMAIN / STRUCTURE / TABLETYPE):**
+These three update templates now shell out to
+`sap_se11_post_activate_verify.ps1` AFTER Activate and **fail closed** if the
+object is left non-activated — the same gate the create templates use, with one
+update-specific refinement: an UPDATE always leaves the prior **active**
+version in place, so the verifier flags **any pending (non-active) DDIC
+version** (`AS4LOCAL <> 'A'`, e.g. the `'L'` saved-but-not-activated row) as a
+failure rather than passing just because *an* active version exists. This
+catches the silent false-success where Activate reported success on the status
+bar but the change stayed inactive (observed on 7.31 + 1909, 2026-06-22). The
+gate is best-effort: if RFC creds / NCo are unavailable it soft-warns and
+relies on the GUI status bar. The other six update templates ignore the
+`%%POST_ACTIVATE_VERIFY_*%%` tokens (no gate yet — adopt the same pattern when
+needed).
+
 
 Select the appropriate update VBScript based on the object type:
 
@@ -678,6 +705,12 @@ $content = $content -replace '%%OBJECT_NAME%%','THE_OBJECT_NAME'
 $content = $content -replace '%%DEFINITION_FILE%%','THE_DEFINITION_FILE_PATH'
 $content = $content -replace '%%PACKAGE%%','THE_PACKAGE'
 $content = $content -replace '%%TRANSPORT%%','THE_TRANSPORT'
+# Object short text. Update leaves the short text UNCHANGED by default (empty =
+# no change). Only DOMAIN and DATAELEMENT update templates reference this token;
+# the others ignore it. Substituting '' (not leaving the literal token) keeps
+# the literal "%%OBJECT_DESCRIPTION%%" out of the short text (fix 2026-06-22).
+# To change the short text on an update, set a non-empty value here.
+$content = $content -replace '%%OBJECT_DESCRIPTION%%',''
 $content = $content -replace '%%ACTIVATION_LOG_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_activation_log.vbs'
 $content = $content -replace '%%TEMP_DIR%%','{RUN_TEMP}'
 # Enhancement-category proactive-set (TABLE / STRUCTURE only — other types
@@ -688,6 +721,13 @@ $content = $content -replace '%%ENH_CATEGORY_VBS%%','<SKILL_DIR>\references\sap_
 $sessionPath = ''
 $content = $content -replace '%%SESSION_PATH%%', $sessionPath
 $content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
+# Post-activate RFC verify plumbing (parity with create, Step 5b). The DOMAIN,
+# STRUCTURE and TABLETYPE update templates shell out to the verify PS1 AFTER
+# activation and FAIL CLOSED if a pending (non-active) DDIC version remains --
+# this catches a non-activated update that the GUI status bar reported as
+# success. Other update templates ignore these tokens.
+$content = $content -replace '%%POST_ACTIVATE_VERIFY_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_se11_post_activate_verify.vbs'
+$content = $content -replace '%%POST_ACTIVATE_VERIFY_PS1%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_se11_post_activate_verify.ps1'
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 [System.IO.File]::WriteAllText('{RUN_TEMP}\sap_se11_update_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
@@ -980,9 +1020,13 @@ C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypas
 
 **Parse the last line:**
 - `ACTIVE`   → object is active in DDIC; proceed to Step 6 with confirmed success.
-- `INACTIVE` → object exists only in inactive workspace; treat as failure and
-  surface the activation log to the operator (open SE11, Utilities >
-  Activation Log).
+- `INACTIVE` → a pending (non-active) DDIC version is present — the object is
+  not active, or (on an **update**) the change was saved but not activated
+  while the prior active version remains. Both verifiers treat **any**
+  `AS4LOCAL <> 'A'` version as INACTIVE, so a non-activated update fails here
+  even though an active version still exists. Treat as failure and surface the
+  activation log (open SE11, Utilities > Activation Log) or re-activate via
+  `/sap-activate-object`.
 - `MISSING`  → silent half-deploy (TADIR exists but DDIC catalog is empty);
   treat as failure and ask the operator to clean up via SE03 or
   `RS_DD_DELETE_OBJ` before retrying.

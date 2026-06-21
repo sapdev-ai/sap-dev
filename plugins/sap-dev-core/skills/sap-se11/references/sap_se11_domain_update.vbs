@@ -32,6 +32,7 @@ Const DEFINITION_FILE      = "%%DEFINITION_FILE%%"
 Const SAP_PACKAGE          = "%%PACKAGE%%"
 Const SAP_TRANSPORT        = "%%TRANSPORT%%"
 Const SESSION_PATH         = "%%SESSION_PATH%%"   ' empty / unsubstituted = use default
+Const POST_ACTIVATE_VERIFY_PS1 = "%%POST_ACTIVATE_VERIFY_PS1%%"   ' empty = skip verify
 
 Const VKEY_ENTER    = 0
 Const VKEY_F3_BACK  = 3
@@ -40,6 +41,10 @@ Const VKEY_F11_SAVE = 11
 ' Include shared attach helper.
 ExecuteGlobal CreateObject("Scripting.FileSystemObject") _
     .OpenTextFile("%%ATTACH_LIB_VBS%%", 1).ReadAll()
+
+' Include shared post-activate RFC verify helper (PostActivateVerifyOrFail).
+ExecuteGlobal CreateObject("Scripting.FileSystemObject") _
+    .OpenTextFile("%%POST_ACTIVATE_VERIFY_VBS%%", 1).ReadAll()
 
 ' Valid DATATYPE values for domains
 Const VALID_DATATYPES = "ACCP,CHAR,CLNT,CUKY,CURR,DATN,DATS,DEC,DECFLOAT16,DECFLOAT34,DF16_DEC,DF16_RAW,DF16_SCL,DF34_DEC,DF34_RAW,DF34_SCL,FLTP,GEOM_EWKB,INT1,INT2,INT4,INT8,LANG,LCHR,LRAW,NUMC,PREC,QUAN,RAW,RAWSTRING,SSTRING,TIMN,TIMS,UNIT,UTCLONG,VARC"
@@ -352,7 +357,13 @@ Err.Clear
 On Error GoTo 0
 
 ' ------ 3. Update description and definition properties ---------------------
-If OBJECT_DESCRIPTION <> "" Then
+' Treat an unsubstituted %%OBJECT_DESCRIPTION%% token as "no change" (empty).
+' The SKILL.md update fill block substitutes this token with '' by default; the
+' Chr(37) sentinel guards a left-unsubstituted token (e.g. an older cached
+' build) so the literal token never lands in the short text (fix 2026-06-22).
+Dim sUnsubDesc
+sUnsubDesc = Chr(37) & Chr(37) & "OBJECT_DESCRIPTION" & Chr(37) & Chr(37)
+If OBJECT_DESCRIPTION <> "" And OBJECT_DESCRIPTION <> sUnsubDesc Then
     On Error Resume Next
     oSession.findById("wnd[0]/usr/txtDD01D-DDTEXT").Text = OBJECT_DESCRIPTION
     Err.Clear
@@ -674,6 +685,12 @@ If sFinalType = "E" Or sFinalType = "A" Then
 Else
     WScript.Echo "INFO: SAP status: " & sFinalMsg
 End If
+
+' Post-activate RFC verify (fail-closed). An UPDATE keeps the prior active
+' version, so this gate treats any pending (non-active) DD01L version as a
+' failure -- catching the 2026-06-22 false-success where the domain update
+' reported SUCCESS but the new attributes stayed in an inactive version.
+PostActivateVerifyOrFail POST_ACTIVATE_VERIFY_PS1, "DOMAIN", OBJECT_NAME
 
 WScript.Echo "SUCCESS: Domain " & UCase(OBJECT_NAME) & " updated and activated in SAP."
 WScript.Quit 0
