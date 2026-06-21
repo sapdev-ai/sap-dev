@@ -188,18 +188,23 @@ On Error GoTo 0
 ReleaseSession oSession, wasLocked
 If wasLocked Then WScript.Echo "INFO: Session UI lock released."
 
-' Decide success: if the SE11 editor opened (title changed away from
-' "Initial Screen"), the object still exists and deletion FAILED. Otherwise
-' the object is gone and sbar typically shows an error/info "does not exist".
+' Decide success by CONTROL PRESENCE (language-independent; never branch on the
+' localized window title -- CLAUDE.md rule #5). After Display, if the SE11
+' initial-screen name field (sNameId) is still findable we did NOT navigate into
+' the object editor -> the object is gone. If Display opened the editor that
+' field is absent -> the object still exists (delete failed). The window title
+' is localized (JA/ZH/etc. differ from the English phrase), so the old
+' InStr("Initial Screen"/"ABAP Dictionary") test false-failed on non-EN logons.
 On Error Resume Next
+Dim oNameField : Set oNameField = Nothing
+Set oNameField = oSession.findById(sNameId)
+Dim bStillOnInitial : bStillOnInitial = (Err.Number = 0) And Not (oNameField Is Nothing)
+Err.Clear
+' Title captured for the diagnostic line ONLY (never the decision).
 Dim sTitle : sTitle = ""
 sTitle = oSession.findById("wnd[0]/titl").Text
 If Err.Number <> 0 Then sTitle = "" : Err.Clear
 On Error GoTo 0
-
-Dim bStillOnInitial
-bStillOnInitial = (InStr(1, sTitle, "Initial Screen", vbTextCompare) > 0) Or _
-                  (InStr(1, sTitle, "ABAP Dictionary", vbTextCompare) > 0)
 
 If Not bStillOnInitial Then
     WScript.Echo "ERROR: Object still exists after delete (title=" & sTitle & ")."
