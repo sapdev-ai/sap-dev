@@ -30,6 +30,7 @@ Const ABAP_SOURCE_FILE = "%%ABAP_SOURCE_FILE%%"
 Const SAP_PACKAGE      = "%%PACKAGE%%"
 Const SAP_TRANSPORT    = "%%TRANSPORT%%"
 Const SESSION_PATH     = "%%SESSION_PATH%%"   ' empty / unsubstituted = use default
+Const POST_ACTIVATE_VERIFY_PS1 = "%%POST_ACTIVATE_VERIFY_PS1%%"   ' empty = skip verify
 
 Const VKEY_ENTER    = 0
 Const VKEY_F3_BACK  = 3
@@ -43,6 +44,10 @@ ExecuteGlobal CreateObject("Scripting.FileSystemObject") _
 ' IsErrorMsgType) - locale-aware MSGTYPE match for the Ctrl+F2 grid.
 ExecuteGlobal CreateObject("Scripting.FileSystemObject") _
     .OpenTextFile("%%SYNTAX_CHECK_LIB_VBS%%", 1).ReadAll()
+' Post-activate RFC verify helper (generic PostActivateVerifyOrFail Sub; the
+' se37 PS1 resolves FM -> FG and checks SAPL<FG> is active in PROGDIR).
+ExecuteGlobal CreateObject("Scripting.FileSystemObject") _
+    .OpenTextFile("%%POST_ACTIVATE_VERIFY_VBS%%", 1).ReadAll()
 
 ' ----------------------------------------------------------------------------
 ' FindFunctionEditorShell(oSess) -> the SE37 Source-code editor shell, or Nothing
@@ -678,6 +683,12 @@ If sFinalType = "E" Then
 Else
     WScript.Echo "INFO: SAP status: " & sFinalMsg
 End If
+
+' Post-activate RFC gate (mandatory, like se38/se11): confirm the FM's function
+' group main program SAPL<FG> is ACTIVE. Catches the false-success where the FG
+' framework stayed inactive (FM not RFC-usable) despite a clean GUI status bar /
+' passing Ctrl+F2 grid (the 2026-06-22 EC2 finding). INACTIVE/MISSING -> Quit 1.
+PostActivateVerifyOrFail POST_ACTIVATE_VERIFY_PS1, "FM", FM_NAME
 
 WScript.Echo "SUCCESS: Function module " & UCase(FM_NAME) & " created and activated in SAP."
 WScript.Quit 0

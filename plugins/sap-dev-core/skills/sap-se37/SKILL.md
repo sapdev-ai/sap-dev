@@ -506,6 +506,10 @@ $content = $content.Replace('%%ATTACH_LIB_VBS%%',   '<SAP_DEV_CORE_SHARED_DIR>\s
 # OS-level foreground guard for the clipboard paste (Source tab editor is loaded
 # via clipboard + SendKeys now, not the S/4-only Utilities>Upload menu).
 $content = $content.Replace('%%FOREGROUND_GUARD_PS1%%', '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_gui_foreground_guard.ps1')
+# Post-activate RFC gate (FM -> FG -> SAPL<FG> active in PROGDIR): se37 PS1 + the
+# generic se11 verify VBS Sub. Catches the inactive-FG-framework false-success.
+$content = $content.Replace('%%POST_ACTIVATE_VERIFY_PS1%%', '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_se37_post_activate_verify.ps1')
+$content = $content.Replace('%%POST_ACTIVATE_VERIFY_VBS%%', '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_se11_post_activate_verify.vbs')
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp $workTemp
 [System.IO.File]::WriteAllText("{RUN_TEMP}\sap_se37_update_run.vbs", $content, [System.Text.UnicodeEncoding]::new($false, $true))
@@ -807,6 +811,11 @@ $content = $content -replace '%%ATTACH_LIB_VBS%%', '<SAP_DEV_CORE_SHARED_DIR>\sc
 # OS-level foreground guard for the clipboard paste (the Source tab editor is
 # loaded via clipboard + SendKeys now, not the S/4-only Utilities>Upload menu).
 $content = $content -replace '%%FOREGROUND_GUARD_PS1%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_gui_foreground_guard.ps1'
+# Post-activate RFC gate (FM -> FG -> SAPL<FG> active in PROGDIR): the se37 PS1
+# + the generic se11 verify VBS Sub. Catches the inactive-FG-framework false-
+# success (clean Ctrl+F2 grid + GUI sbar but FM not RFC-usable).
+$content = $content -replace '%%POST_ACTIVATE_VERIFY_PS1%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_se37_post_activate_verify.ps1'
+$content = $content -replace '%%POST_ACTIVATE_VERIFY_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_se11_post_activate_verify.vbs'
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp $workTemp
 [System.IO.File]::WriteAllText("{RUN_TEMP}\sap_se37_create_run.vbs", $content, [System.Text.UnicodeEncoding]::new($false, $true))
