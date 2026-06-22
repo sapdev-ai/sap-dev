@@ -129,6 +129,15 @@ Plan:
   Update-addon PGM  : /sap-se38
 ```
 
+**Invoke each planned skill via the Skill tool — never substitute its reference
+VBS.** The plan above is a list of **skills to invoke**, not VBS to run. Each
+sub-skill's SKILL.md holds its mode dispatch, release-specific fallbacks, TR
+resolution and verification (e.g. `/sap-function-group` delete self-selects the
+SE80 vs SE38 `SAPL<FG>` path; `/sap-se11` resolves the TR and RFC-verifies).
+Reading a sub-skill's `references/*.vbs` and running it directly to save context
+silently drops all of that. Driving a reference VBS directly is legitimate only
+for skill development/debugging — never in this orchestration. (CLAUDE.md Rule 6.)
+
 ---
 
 ## Step 0.5 — Start Logging

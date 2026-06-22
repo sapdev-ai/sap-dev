@@ -315,32 +315,26 @@ FG ⇒ FMs ⇒ includes ⇒ screens cascade, surfaces a single
 `sap_function_group_gui_delete.vbs`'s reference screenshot), and asks
 for the transport assignment in one server round.
 
-The legacy path was `/sap-se38 delete SAPL<FUGR_ID>`. That trips the
-SAPLSETX "Different original and logon languages" info popup on
-installations where the install master language differs from the
-logon language (verified 2026-05-11 on S4D / install=ZH / logon=EN),
-hits the popup-loop cap, and emits a **false SUCCESS while the FG is
-still alive**. SE80's WB_DELETE avoids that entirely. SE38 fallback
-is documented at the bottom of this section.
-
 There is no clean standard RFC API for FG deletion
 (`RS_FUNCTION_POOL_DELETE` exists in some releases but is
 undocumented and dangerous), so GUI is the only path.
 
-> **ECC 6.0 / NW 7.31 (and any release whose SE80 uses the classic,
-> non-HTML object navigator): skip SE80 — go straight to the
-> "SE38 SAPL\<FUGR\> fallback" below.** `sap_function_group_gui_delete.vbs`
-> drives the SE80 *HTML* type/name control (`sapEvent "Frame0"` +
-> `shellcont[...]` paths), which is absent on these releases — it aborts
-> with `ERROR: SE80 type/name control not found` *before* WB_DELETE (so
-> there is no half-state). The SE38 path now also clears the ECC6 "Create
-> Object Directory Entry" (SAPLSTRD / `ctxtKO007-L_DEVCLASS`) popup via the
-> shared `/sap-se38` delete walker, so on ECC6 it cascades the FG delete
-> cleanly — verified 2026-06-21 on EC2/ERP (`TLIBG`=0, `PROGDIR SAPL<FG>`=0
-> after deleting an empty FG). Detect ECC from the pinned connection
-> (kernel/release 7.x or a classic-ECC `system_id`); if unsure, attempt
-> SE80 and fall through automatically on the `type/name control not found`
-> error.
+**Release dispatch is handled INSIDE the VBS — you do not choose it.** Just run
+`sap_function_group_gui_delete.vbs`; it self-selects:
+> - **S/4HANA** → the SE80 `WB_DELETE` path (drives the HTML type/name control +
+>   repository-tree context menu).
+> - **ECC 6.0 / NW 7.31 (classic, non-HTML navigator)** → the HTML type/name
+>   control is absent, so the VBS **auto-falls-through to `DeleteFgViaSe38()`** =
+>   delete the function-pool program `SAPL<FUGR>` via SE38 (Shift+F2) + the
+>   shared `sap_delete_popups.vbs` walker (which clears the SAPLSETX original-
+>   language, KO007 Object-Directory, and TR popups). Deleting `SAPL<FUGR>`
+>   cascades the FG delete on ECC6 — verified 2026-06-21 on EC2/ERP (`TLIBG`=0,
+>   `PROGDIR SAPL<FG>`=0). The old "SE38 → false SUCCESS while the FG is still
+>   alive" caveat predates the shared walker and **no longer applies**.
+
+A bare run therefore no longer aborts on ECC6. Still **invoke the skill** (this
+Step) rather than the VBS directly — it adds the TR resolution above + the RFC
+verification below, neither of which the VBS does on its own.
 
 **Pre-checks (do these BEFORE confirming with the user):**
 
@@ -372,6 +366,8 @@ Template: `<SKILL_DIR>/references/sap_function_group_gui_delete.vbs`.
 |---|---|
 | `%%FUGR_ID%%` | Function group name (UPPERCASE) |
 | `%%TRANSPORT%%` | TR for the post-delete prompt — empty when local (`$TMP`) or already locked to a modifiable TR |
+| `%%PACKAGE%%` | FG `DEVCLASS` (pre-check 3) — used only by the ECC6 SE38 fallback's KO007 popup. Empty = Local Object / accept pre-filled. Safe to leave empty. |
+| `%%ORIG_LANG%%` | 1-char original language for an empty KO007 package field (default `E`). Usually left empty. |
 | `%%SESSION_LOCK_VBS%%` | path to `sap_session_lock.vbs` |
 
 Write `{RUN_TEMP}\sap_function_group_gui_delete_run.ps1`:
@@ -380,6 +376,8 @@ Write `{RUN_TEMP}\sap_function_group_gui_delete_run.ps1`:
 $content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_function_group_gui_delete.vbs', [System.Text.Encoding]::UTF8)
 $content = $content -replace '%%FUGR_ID%%','THE_FG'
 $content = $content -replace '%%TRANSPORT%%','THE_TR'
+$content = $content -replace '%%PACKAGE%%','THE_PACKAGE'   # FG DEVCLASS (pre-check 3); only used by the ECC6 SE38 fallback's KO007 popup. Empty = Local Object.
+$content = $content -replace '%%ORIG_LANG%%',''            # 1-char orig lang for an empty KO007 package; VBS defaults to E
 $content = $content -replace '%%SESSION_LOCK_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_session_lock.vbs'
 # Phase 3.5 session-attach plumbing.
 $sessionPath = ''
