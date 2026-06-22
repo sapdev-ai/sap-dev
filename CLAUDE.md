@@ -139,6 +139,19 @@ Common anti-patterns to avoid:
 - ❌ Crafting `RFC_READ_TABLE` calls inline when `sap_rfc_lib.ps1` plus a
   domain skill (e.g. `/sap-check-abap`, `/sap-docs-check-ddic`) is the
   intended path.
+- ❌ **Substituting a sub-skill's `references/*.vbs` for the skill itself.**
+  Delegation is skill→skill: when a SKILL.md says "delegate to `/sap-X`" (e.g.
+  `/sap-dev-clean` and `/sap-dev-init` → `/sap-function-group`, `/sap-se11`,
+  `/sap-se38`, `/sap-se21`, `/sap-se01`), **invoke `/sap-X` via the Skill tool**
+  and read its result — do NOT open and run its reference VBS directly to save
+  context. Mode dispatch, release-specific fallbacks, TR resolution and
+  post-action verification live in the **SKILL.md**; a reference VBS is only one
+  implementation branch. The canonical failure (field, 2026-06-22): running
+  `sap_function_group_gui_delete.vbs` bare on ECC6, where it aborts *by design*
+  so `/sap-function-group` can fall through to `/sap-se38 delete SAPL<FG>` —
+  bypassing the skill turns that fallback-trigger into a false "FG blocked"
+  report. (Driving a reference VBS directly is legitimate only for skill
+  development/debugging — see the closing paragraph.)
 
 The discipline is "skills first, raw tools second" — not "skills only."
 Direct tooling remains valid for genuinely novel problems, exploratory

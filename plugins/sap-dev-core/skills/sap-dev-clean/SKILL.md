@@ -168,6 +168,22 @@ the package lets the sub-skill fill it and record the deletion on the TR
 instead of falling back to a local (non-transported) delete. When the field is
 pre-filled (the normal case) the value is ignored, so it is always safe to pass.
 
+**Invoke each sub-skill via the Skill tool — NEVER substitute its reference
+VBS.** Every step below says "delegate to `/sap-X`": that means **invoke `/sap-X`
+through the Skill tool**, and read its result. Do NOT shortcut by opening a
+sub-skill's `references/*.vbs` and running it yourself — not even to save
+context. The release-specific dispatch, fallbacks, TR resolution and
+**post-delete RFC verification** live in each sub-skill's **SKILL.md, not its
+VBS**; running the VBS bare silently drops them (an unverified delete can
+false-succeed), and for the function group it **breaks the delete outright**: on
+ECC 6.0 / NW 7.31 `sap_function_group_gui_delete.vbs` aborts *by design*
+(`SE80 type/name control not found`) so `/sap-function-group` can fall through to
+`/sap-se38 delete SAPL<FG>`. That abort is the **fallback trigger, not a
+failure** — reading the VBS alone will mis-report a deletable FG as blocked
+(observed in the field, 2026-06-22). Driving a reference VBS directly is
+legitimate only for skill *development/debugging*, never inside this production
+cleanup.
+
 ### Step 3a — Wrapper FM (`Z_GENERIC_RFC_WRAPPER_TBL`)
 
 Delegate to `/sap-se37` delete mode:
