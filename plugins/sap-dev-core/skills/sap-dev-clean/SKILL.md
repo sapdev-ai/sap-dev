@@ -242,8 +242,12 @@ held, so it now carries only those (now-deleted) entries and is safe to drop:
    /sap-se01 delete <TR>
    ```
    This deletes the request **object** — NOT release (releasing would transport
-   the throwaway dev objects onward). A released TR cannot be deleted (only
-   reimported); if SE01 reports it is released, surface that and skip.
+   the throwaway dev objects onward). `/sap-se01 delete` is two-phase: it first
+   **empties** the request of any object entries (SAP refuses to delete a
+   non-empty request), then drops it. By this point 3a–3e have already deleted
+   the objects, so the empty-phase is a no-op safety net here — nothing is
+   orphaned. A released TR cannot be deleted (only reimported); if SE01 reports
+   it is released, surface that and skip.
 3. **If the delete cannot complete** (e.g. `/sap-se01` reports the TR is
    already released, or the delete errors), do NOT fail the clean — Step 4
    clears the TR reference (so the next `/sap-dev-init` self-heals and never
@@ -416,10 +420,13 @@ trivial one-step operation.
 
 - **TR deletion is opt-in.** By default the TR is presumed to host other work
   and is left alone. `--reset` (or legacy `--force`) deletes the dev TR via
-  `/sap-se01`, still with explicit per-call confirmation of its `E071` contents,
-  and refuses if the TR holds non-sap-dev-init objects. (The `/sap-se01` delete
-  mode is a pending follow-up; until it ships, `--reset` clears the TR reference
-  and reports the empty husk for manual SE01 deletion — see Step 3f.)
+  `/sap-se01 delete`, still with explicit per-call confirmation of its `E071`
+  contents, and refuses if the TR holds non-sap-dev-init objects. The `/sap-se01`
+  delete mode is two-phase (it empties the request of object entries, then drops
+  it — SAP refuses to delete a non-empty request); since 3a–3e already removed
+  the objects, the empty-phase is a no-op here and nothing is orphaned. If the
+  delete cannot complete (released TR, or a task that won't empty), Step 4 still
+  clears the TR reference so the next `/sap-dev-init` self-heals — see Step 3f.
 - **Conservative guards stop at the first user object.** A package
   with one Z table the operator added is left intact even if the rest
   is sap-dev-init detritus. Use `--force` to override, but read the

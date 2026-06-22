@@ -429,9 +429,23 @@ Use this section when `$ARGUMENTS` starts with `delete` (e.g.
 NOT release (releasing would transport its objects onward). **Deletion is
 irreversible**, and only an **unreleased** request can be deleted.
 
+**Two-phase delete.** SAP will not delete a request that still contains objects
+(the request silently survives -- confirmed live on EC2/ERP 2026-06-22). So the
+VBS works in two phases:
+
+- **Phase 1 -- empty the request.** For each node (the request + every task) it
+  drills in (F2), switches to change mode (`tbar[1]/btn[25]`), opens the Objects
+  tab, and if the list is non-empty does Select-All (`btnDB_SELECT_ALL`) +
+  Delete (`btnDB_DELETE`) + confirm + Save. This **unassigns** the objects from
+  the request -- it does NOT delete the repository objects, which remain in
+  their package as orphans (no transport). Every removed entry is echoed.
+- **Phase 2 -- delete the now-empty request** (`tbar[1]/btn[13]` + confirm walk).
+
 This mode is the back end for `/sap-dev-clean --reset` Step 3f: by the time it
-runs, the dev TR's objects have already been deleted, so the request carries
-only those (now-removed) entries and is safe to drop.
+runs, the dev TR's objects have already been deleted by Steps 3a-3e, so Phase 1
+finds an empty list and is a no-op safety net -- nothing is orphaned. Only a
+**standalone** `/sap-se01 delete` on a TR that still holds live objects will
+orphan them (see D2).
 
 ## D0 -- Resolve work directory
 
@@ -456,9 +470,16 @@ Deletion is irreversible. Show the operator what's inside, then confirm:
 3. **Refuse unrelated work.** If E071 holds objects that are NOT sap-dev-init
    artefacts and the caller did not explicitly authorize a full delete, stop
    and surface the list -- do not delete a TR holding the operator's own work.
-4. Ask:
+   This matters more now that delete is two-phase: any object still in the TR
+   gets **unassigned** (orphaned in its package, no transport) so the request
+   can be dropped. The repository objects are not deleted, but they lose their
+   transport record -- which for live work is almost never what the operator
+   wants.
+4. Ask (mention the unassign consequence whenever `<N>` > 0):
    > "About to DELETE transport request `<TR>` (status `<TRSTATUS>`, `<N>`
-   > objects shown above) via SE01. This is irreversible. Proceed? (yes / no)"
+   > objects shown above) via SE01. The `<N>` object(s) will first be
+   > **unassigned** from the request (orphaned in their package -- not deleted),
+   > then the request is dropped. This is irreversible. Proceed? (yes / no)"
 
 Only proceed on explicit `yes`. (When called from `/sap-dev-clean --reset`,
 that skill has already shown the E071 list and confirmed -- it may pass the
@@ -496,11 +517,18 @@ C:/Windows/SysWOW64/cscript.exe //NoLogo {RUN_TEMP}\sap_se01_delete_run.vbs
 
 ## D5 -- Interpret VBS output
 
+Before the verdict the VBS echoes Phase-1 progress -- one
+`INFO: Request nodes found: <N>` line, then per node either
+`INFO:   node <TR/task>: 0 objects.` or `INFO:   node <task>: <N> object(s)
+-- unassigning...` followed by one `INFO:     - <PGMID> <OBJECT> <NAME>` line
+per unassigned entry, then `INFO: Phase 1 removed <N> object entr(ies)`. Surface
+the unassigned-object lines to the operator -- they are the orphaned objects.
+
 | Last line | Meaning |
 |---|---|
 | `SUCCESS: Transport request <TR> deleted.` | The request object is gone (the VBS re-displayed it and the request screen no longer opened). Verify authoritatively in D6. |
 | `ERROR: Request display did not open ...` | The TR did not exist to begin with (already gone) -- treat as success once the D6 RFC check confirms absence. |
-| `ERROR: TR <TR> still exists after delete ...` | Delete did not take (a confirm-popup style the walker didn't match, or the TR was actually released). Show the SAP sbar line; recheck status and retry, or finish in SE01 manually. |
+| `ERROR: TR <TR> still exists after delete ...` | Delete did not take (a confirm-popup style the walker didn't match, the TR was actually released, or Phase 1 could not empty a task). Show the SAP sbar line; recheck status and retry, or finish in SE01 manually. |
 
 ## D6 -- Verify + housekeeping
 
@@ -518,12 +546,25 @@ C:/Windows/SysWOW64/cscript.exe //NoLogo {RUN_TEMP}\sap_se01_delete_run.vbs
 | TR input field | `.../ssubCOMMONSUBSCREEN:RDDM0001:0210/ctxtTRDYSE01SN-TR_TRKORR` |
 | Display button | `.../btn%_AUTOTEXT028` (auto-name) |
 | Request-display program | `SAPMSSY0` (screen 120) |
-| Delete button | `wnd[0]/tbar[1]/btn[13]` (Shift+F1 -- stable id; alt menu `mbar/menu[0]/menu[5]`) |
-| Confirm popups | handled by the shared `sap_delete_popups.vbs` walker (`btnBUTTON_1` / `btnSPOP-OPTION1` / Enter) |
+| Node rows (request + tasks) | `wnd[0]/usr` GuiLabels; identified by TR-number pattern (same 4-char prefix + 6 digits as the request), never by column text |
+| Drill into a node | focus its label + `sendVKey 2` (F2) -> object editor `SAPLSCTSREQ` screen 100 |
+| Change-mode toggle (editor) | `wnd[0]/tbar[1]/btn[25]` |
+| Objects tab | `wnd[0]/usr/tabsREQ_TABSTRIP/tabpOBJECTS` |
+| Object subscreen base | `.../tabpOBJECTS/ssubSCREEN_HEADER:SAPLSCTS_OLE:0500/` |
+| Object count field | `<base>txtDV_OBJECT_COUNT` |
+| Select-all / Delete (Phase 1) | `<base>btnDB_SELECT_ALL` / `<base>btnDB_DELETE` |
+| Object-delete confirm | `wnd[1]/usr/btnSPOP-OPTION1` / `wnd[1]/tbar[0]/btn[0]` / Enter (cascade) |
+| Delete button (Phase 2) | `wnd[0]/tbar[1]/btn[13]` (Shift+F1 -- stable id; alt menu `mbar/menu[0]/menu[5]`) |
+| Request-delete confirm popups | handled by the shared `sap_delete_popups.vbs` walker (`btnBUTTON_1` / `btnSPOP-OPTION1` / Enter) |
 | Status bar | `wnd[0]/sbar` |
 
-Live-verified on EC2/ERP (ECC6) 2026-06-22: created throwaway `ERPK900031` ->
-`/sap-se01 delete` -> walker confirmed via `btnBUTTON_1` -> RFC E070 ROWS=0.
+Live-verified 2026-06-22 (two-phase delete, multi-object TRs):
+- **EC2/ERP (ECC6 7.31, JA)**: TR `ERPK900035` with 2 domains -> Phase 1
+  unassigned both -> Phase 2 deleted -> RFC E070 ROWS=0.
+- **S4D (S/4HANA 1909, ZH)**: TR `S4DK941297` with 2 domains -> same flow ->
+  request-display re-open verify confirmed gone.
+- (Empty-TR path also verified earlier: `ERPK900031`/`ERPK900033` ->
+  `btnBUTTON_1` confirm -> RFC E070 ROWS=0.)
 
 ---
 
