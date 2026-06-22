@@ -232,10 +232,31 @@ Run `/sap-dev-status` (RFC, read-only) and read its per-artefact `STATE`:
   artefact under it. Only clear the stored value if it is *malformed* (fails the
   `sap_object_naming_rules.tsv` regex); then Step 3 / Step 4 re-prompt for a
   valid name.
+- **Config mismatch (anchor self-heal)** — if `/sap-dev-status` exits `3` /
+  reports `STATUS: CONFIG_MISMATCH` (a `CONFIG_MISMATCH:` line), the stored
+  `sap_dev_package` / `sap_dev_function_group` point at the **wrong** objects
+  (typically an application build wrote its own package/TR into this connection's
+  `dev_defaults`), while the toolset actually lives at the `ANCHOR:` values.
+  **Re-point each mismatched key to its anchor value** (Connection + Session
+  scope) so Steps 2–4 reuse the real toolset instead of creating a duplicate
+  under the wrong (application) package — which would also clobber app objects'
+  package assignment:
+  ```bash
+  powershell -NoProfile -ExecutionPolicy Bypass -Command "\$env:SAPDEV_AI_WORK_DIR='{work_dir}'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; foreach (\$s in 'Session','Connection') { Set-SapUserSetting -Key 'sap_dev_package' -Value '<anchor-package>' -Scope \$s; Set-SapUserSetting -Key 'sap_dev_function_group' -Value '<anchor-fugr>' -Scope \$s }"
+  ```
+  (Substitute `<anchor-package>` / `<anchor-fugr>` from the `ANCHOR:` line; only
+  set the keys actually flagged `CONFIG_MISMATCH:` / `CONFIG_HINT:`.) Log
+  `INFO: re-pointed dev defaults to anchor (package=<anchor-package> fugr=<anchor-fugr>)`.
+  The anchor is authoritative (it is where the wrapper FM physically resides), so
+  the re-point is deterministic and idempotent — a correctly-configured env emits
+  `CONFIG: OK` and skips this entirely. The TR is not anchor-derivable; if it too
+  points at unrelated work, clear it like a stale TR above so Step 2b resolves a
+  fresh one.
 
 Do **not** clear a TR that is merely `MODIFIABLE` (healthy) — that would mint a
 new TR on every init (TR sprawl) and defeat idempotency. Self-heal touches only
-provably-dead references; everything else flows through to Steps 2–4 unchanged.
+provably-dead or anchor-contradicted references; everything else flows through to
+Steps 2–4 unchanged.
 
 ---
 

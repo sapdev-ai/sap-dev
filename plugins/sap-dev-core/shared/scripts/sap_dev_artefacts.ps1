@@ -29,15 +29,31 @@
 #   <state> in ACTIVE | INACTIVE | MISSING | MODIFIABLE | RELEASED |
 #             EMPTY | NON_EMPTY | NOT_CONFIGURED | ERROR
 #
-# Summary line (last line, parseable):
+# Anchor-validation lines (emitted when the wrapper FM exists -- it is the
+# immovable anchor of the dev-init toolset):
+#   ANCHOR: wrapper_fm=<FM> | package=<actual> | fugr=<actual>
+#       Where the toolset ACTUALLY lives (FM -> TFDIR.PNAME -> FG -> TADIR pkg).
+#       This is the source of truth; the configured sap_dev_* are only hints.
+#   CONFIG_MISMATCH: <key> | configured=<X> | anchor=<Y> | <why>
+#       A configured sap_dev_package / sap_dev_function_group that is non-blank
+#       but DIFFERENT from the anchor. DANGEROUS -- a destructive clean/reset
+#       would aim at <X> (the wrong objects). Callers MUST refuse and surface
+#       <Y> as the correction.
+#   CONFIG_HINT: <key> is blank | anchor=<Y>
+#       Configured value is blank; clean safely skips it, but it should be <Y>.
+#
+# Summary lines (last lines, parseable):
+#   CONFIG: OK  |  CONFIG: MISMATCH=<M>     (always emitted when the FM exists)
 #   STATUS: ALL_OK
 #   STATUS: GAPS=<N>          (N artefacts not in the expected ACTIVE/MODIFIABLE state)
+#   STATUS: CONFIG_MISMATCH   (>=1 configured pointer disagrees with the anchor)
 #   STATUS: ERROR             (RFC connection failed; details on stderr)
 #
 # Exit code:
 #   0 = ALL_OK
 #   1 = GAPS>0                (some artefacts missing or inactive)
 #   2 = RFC connection failed
+#   3 = CONFIG_MISMATCH       (config points at the wrong package/FG -- refuse to clean)
 # =============================================================================
 
 . "%%RFC_LIB_PS1%%"
@@ -68,6 +84,16 @@ if (-not $g_dest) {
 }
 
 $gaps = 0
+
+# Anchor-validation state. The wrapper FM is the immovable anchor of the
+# dev-init toolset: where it actually lives (its function group, and that FG's
+# package) is the source of truth, while the configured sap_dev_package /
+# sap_dev_function_group are only hints. If they disagree, a destructive
+# /sap-dev-clean would aim at the wrong objects -- so we resolve the anchor
+# (section 8) and cross-check.
+$g_wrapperExists = $false
+$g_wrapperFg     = ""
+$mismatch        = 0
 
 function Emit($name, $kind, $state, $detail) {
     Write-Host ("ARTEFACT: {0} | KIND: {1} | STATE: {2} | DETAIL: {3}" -f $name, $kind, $state, $detail)
@@ -200,6 +226,12 @@ if ($null -eq $rows) {
 } else {
     # Row format from RFC_READ_TABLE with DELIMITER='|':
     #   "FUNCNAME |PNAME    |FMODE"  (trailing-padded fields)
+    # The FM exists -> it anchors the toolset. PNAME is the FG main program
+    # 'SAPL<FG>'; strip the prefix to get the function group (section 8 then
+    # resolves that FG's package via TADIR).
+    $g_wrapperExists = $true
+    $wpname = ($rows[0] -split '\|')[1].Trim()
+    if ($wpname -like 'SAPL*') { $g_wrapperFg = $wpname.Substring(4) }
     $fmodeOk = $false
     foreach ($r in $rows) {
         $parts = $r -split '\|'
@@ -283,9 +315,56 @@ if ($null -eq $rows) {
     Emit $utilPgm "PGM" "ACTIVE" "PROGDIR.STATE=A"
 }
 
+# ---------------------------------------------------------------------------
+# 8. Anchor validation -- does the configured package / FG actually host the
+#    dev-init toolset?
+# ---------------------------------------------------------------------------
+# The wrapper FM is the anchor. Resolve its function group (captured from
+# TFDIR.PNAME in section 4) and that FG's package (TADIR R3TR/FUGR), then
+# cross-check the configured sap_dev_package / sap_dev_function_group:
+#   * non-blank but DIFFERENT  -> CONFIG_MISMATCH (dangerous; callers refuse).
+#   * blank                    -> CONFIG_HINT     (clean skips it; just incomplete).
+# Only runs when the anchor FM exists -- otherwise the per-artefact MISSING
+# states already say "run /sap-dev-init", and there is nothing to anchor to.
+if ($g_wrapperExists -and -not [string]::IsNullOrWhiteSpace($g_wrapperFg)) {
+    $anchorPkg = ""
+    $tadirRows = Q-RfcReadTable "TADIR" "PGMID = 'R3TR' AND OBJECT = 'FUGR' AND OBJ_NAME = '$g_wrapperFg'" @("DEVCLASS","OBJ_NAME")
+    if ($null -ne $tadirRows -and $tadirRows.Count -ge 1) {
+        $anchorPkg = ($tadirRows[0] -split '\|')[0].Trim()
+    }
+    Write-Host ("ANCHOR: wrapper_fm={0} | package={1} | fugr={2}" -f $wrapperFm, $anchorPkg, $g_wrapperFg)
+
+    if (-not [string]::IsNullOrWhiteSpace($anchorPkg)) {
+        if ([string]::IsNullOrWhiteSpace($pkg)) {
+            Write-Host ("CONFIG_HINT: sap_dev_package is blank | anchor=$anchorPkg")
+        } elseif ($pkg.Trim().ToUpper() -ne $anchorPkg.ToUpper()) {
+            Write-Host ("CONFIG_MISMATCH: sap_dev_package | configured=$pkg | anchor=$anchorPkg | the wrapper FM lives in $anchorPkg, not $pkg")
+            $mismatch++
+        }
+    }
+
+    if ([string]::IsNullOrWhiteSpace($fugr)) {
+        Write-Host ("CONFIG_HINT: sap_dev_function_group is blank | anchor=$g_wrapperFg")
+    } elseif ($fugr.Trim().ToUpper() -ne $g_wrapperFg.ToUpper()) {
+        Write-Host ("CONFIG_MISMATCH: sap_dev_function_group | configured=$fugr | anchor=$g_wrapperFg | the wrapper FM belongs to $g_wrapperFg, not $fugr")
+        $mismatch++
+    }
+} elseif ($g_wrapperExists) {
+    Write-Host ("ANCHOR: wrapper_fm={0} | package=? | fugr=? (could not derive FG from PNAME)" -f $wrapperFm)
+}
+
+if ($g_wrapperExists) {
+    if ($mismatch -gt 0) { Write-Host ("CONFIG: MISMATCH=" + $mismatch) } else { Write-Host "CONFIG: OK" }
+}
+
 Disconnect-SapRfc
 
-if ($gaps -eq 0) {
+# A config mismatch outranks artefact gaps: a wrong pointer makes a destructive
+# clean unsafe regardless of how healthy the (mis-located) artefacts look.
+if ($mismatch -gt 0) {
+    Write-Host "STATUS: CONFIG_MISMATCH"
+    exit 3
+} elseif ($gaps -eq 0) {
     Write-Host "STATUS: ALL_OK"
     exit 0
 } else {

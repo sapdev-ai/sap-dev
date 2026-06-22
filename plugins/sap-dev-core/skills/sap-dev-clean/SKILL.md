@@ -122,6 +122,33 @@ below — only attempt deletion of artefacts whose `STATE` is not
 If `STATUS: ERROR`, abort: an RFC connection problem will block the
 cleanup anyway.
 
+**ANCHOR GATE — abort on `STATUS: CONFIG_MISMATCH` (a `CONFIG_MISMATCH:` line is
+present).** This is the hard safety stop: the configured `sap_dev_package` /
+`sap_dev_function_group` does **not** match where the wrapper FM actually lives
+(the `ANCHOR:` line), so the package/FG this clean would target is the wrong
+object — typically an application package an earlier build wrote into the
+connection's `dev_defaults`. **Do NOT delete anything**, and **`--force` /
+`--reset` do NOT override this gate** (they bypass the "extras present" guards,
+which is exactly why a wrong pointer here is dangerous). Surface the mismatch
+and stop:
+
+> `/sap-dev-clean` aborted — the configured dev defaults point at the wrong
+> objects. The wrapper FM lives in package `<anchor-package>` / FG
+> `<anchor-fugr>`, but `sap_dev_package` is set to `<configured>`. Deleting
+> against the current config would target the wrong package/TR. Fix the
+> connection's `dev_defaults` to the anchor values, then re-run:
+> ```
+> <SAP_DEV_CORE_SHARED_DIR>\scripts\sap_dev_default.ps1 -Action set -Scope Connection -Key sap_dev_package        -Value <anchor-package>
+> <SAP_DEV_CORE_SHARED_DIR>\scripts\sap_dev_default.ps1 -Action set -Scope Connection -Key sap_dev_function_group -Value <anchor-fugr>
+> ```
+
+Log `Status SKIPPED`, `ErrorClass DEV_CLEAN_CONFIG_MISMATCH`, and stop. (Offer
+to apply the corrections for the operator; only proceed to the deletes once a
+re-run reports `CONFIG: OK`.)
+
+`CONFIG_HINT:` lines (a blank `sap_dev_*` key) are NOT a stop — clean simply
+skips that artefact's step — but mention them so the operator can fill the key.
+
 If `--dry-run`, print the worklist and stop here.
 
 ---
@@ -379,7 +406,7 @@ powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_
 
 Suggested `<CLASS>`: `DEV_CLEAN_FM_FAILED`, `DEV_CLEAN_DDIC_FAILED`,
 `DEV_CLEAN_FG_HAS_EXTRAS`, `DEV_CLEAN_PKG_NON_EMPTY`,
-`DEV_CLEAN_TR_RISK`.
+`DEV_CLEAN_TR_RISK`, `DEV_CLEAN_CONFIG_MISMATCH` (anchor gate, Step 2).
 
 ---
 

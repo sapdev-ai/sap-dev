@@ -118,15 +118,32 @@ C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypas
 
 ## Step 2 — Interpret the Output
 
-The shared script emits one line per artefact, then a summary:
+The shared script emits one line per artefact, then anchor-validation lines,
+then a summary:
 
 ```
 ARTEFACT: <NAME> | KIND: <TR|PKG|FG|FM|STRUCT|TT|PGM> | STATE: <state> | DETAIL: <free text>
 ...
+ANCHOR: wrapper_fm=<FM> | package=<actual> | fugr=<actual>
+CONFIG_MISMATCH: <key> | configured=<X> | anchor=<Y> | <why>
+CONFIG_HINT: <key> is blank | anchor=<Y>
+CONFIG: OK | CONFIG: MISMATCH=<M>
 STATUS: ALL_OK
 STATUS: GAPS=<N>
+STATUS: CONFIG_MISMATCH
 STATUS: ERROR
 ```
+
+**Anchor validation** (emitted when the wrapper FM exists): the FM is the
+immovable anchor of the toolset, so the script resolves where it *actually*
+lives — its function group (`TFDIR.PNAME`) and that FG's package (`TADIR`) — and
+prints that as `ANCHOR:`. It then cross-checks the configured `sap_dev_package`
+/ `sap_dev_function_group`:
+- `CONFIG_MISMATCH:` — a **non-blank but different** value. This is the
+  dangerous case (a destructive clean/reset would aim at the configured object,
+  not the real toolset). `<Y>` is the correct value to fix the config to.
+- `CONFIG_HINT:` — a **blank** value. Clean safely skips it, but it should be
+  `<Y>`.
 
 `<state>` values:
 
@@ -149,6 +166,7 @@ Exit code:
 | `0` | Everything healthy (`STATUS: ALL_OK`) |
 | `1` | One or more gaps; `STATUS: GAPS=<N>` |
 | `2` | RFC connection failed; `STATUS: ERROR` |
+| `3` | Config mismatch; `STATUS: CONFIG_MISMATCH` — the configured `sap_dev_package` / `sap_dev_function_group` does not match where the wrapper FM actually lives. **Destructive skills (`/sap-dev-clean`) must refuse** until the config is corrected to the `ANCHOR:` values. |
 
 ---
 
@@ -171,6 +189,23 @@ Format the output as a small table in your reply:
 STATUS: ALL_OK
 ```
 
+**If `STATUS: CONFIG_MISMATCH`** (a `CONFIG_MISMATCH:` line is present), lead
+with it — it outranks the per-artefact states. The configured dev defaults
+point at the wrong objects (a frequent cause: an application build wrote its own
+package/TR into the connection's `dev_defaults`). Show the `ANCHOR:` line (the
+real home of the toolset) and tell the operator to correct the connection's
+`dev_defaults` to the anchor values **before** running `/sap-dev-clean`, e.g.:
+
+```bash
+powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_dev_default.ps1'" # see below
+# Per mismatched key (Connection scope = the standing default for this system):
+<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_dev_default.ps1 -Action set -Scope Connection -Key sap_dev_package           -Value <anchor-package>
+<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_dev_default.ps1 -Action set -Scope Connection -Key sap_dev_function_group    -Value <anchor-fugr>
+```
+
+(`CONFIG_HINT:` lines are advisory — a blank key that clean skips; fill it to
+the anchor value for completeness.)
+
 If any state is not `ACTIVE` / `MODIFIABLE`, recommend the matching
 remediation:
 
@@ -180,6 +215,7 @@ remediation:
 | `INACTIVE` for FG | `/sap-function-group --activate-only` |
 | `RELEASED` TR | `/sap-transport-request` (resolve fresh TR) |
 | `NOT_CONFIGURED` | Run `/update-config` to set the missing key, then `/sap-dev-init` |
+| `CONFIG_MISMATCH` | Correct the connection `dev_defaults` to the `ANCHOR:` values (commands above) |
 
 ---
 
