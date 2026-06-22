@@ -44,7 +44,7 @@ Task: $ARGUMENTS
 | **Create + activate** | `RS_FUNCTION_POOL_INSERT` (creates active FG in one call) | SE37 *Goto > Function Groups > Create* + activate | RFC → GUI |
 | **Activate only** | not supported via standard RFC | SE37 *Change Group* + Ctrl+F3 + Inactive-Objects worklist | GUI only |
 | **Check PROGDIR state** | `RFC_READ_TABLE PROGDIR` for `SAPL<FG>` | n/a | RFC only |
-| **Delete** | no clean RFC API | delegate to `/sap-se38` with `PROGRAM_NAME = SAPL<FG>` | GUI only |
+| **Delete** | no clean RFC API | Step 3e — own VBS deletes `SAPL<FG>` via SE38 (Shift+F2) + shared walker | GUI only |
 
 `--activate-only` and `--delete` always force the GUI path. Everything
 else follows the **mode precedence in Step 2** — `sap_dev_mode` takes
@@ -306,35 +306,28 @@ Run via 32-bit PowerShell. **Output (parseable):**
 
 ---
 
-## Step 3e — Delete (SE80 WB_DELETE — canonical Workbench path)
+## Step 3e — Delete (via SE38 `SAPL<FG>` pool-program delete)
 
-**Why SE80?** SE80's repository-tree context menu `WB_DELETE` is the
-canonical Workbench delete for function groups: it understands the
-FG ⇒ FMs ⇒ includes ⇒ screens cascade, surfaces a single
-"FG still contains these FMs — confirm?" dialog (the one in
-`sap_function_group_gui_delete.vbs`'s reference screenshot), and asks
-for the transport assignment in one server round.
+**Mechanism (one path, all releases).** A function group is deleted by deleting
+its **function-pool program `SAPL<FUGR>`** in SE38 (Shift+F2) + the shared
+`sap_delete_popups.vbs` walker. Deleting `SAPL<FUGR>` cascades the whole
+function group (the pool program with its FMs / includes / screens, plus the
+`TLIBG` registration). Verified on **ECC 6.0 / NW 7.31 (EC2/ERP)** and
+**S/4HANA 1909 (S4D)**, 2026-06-22.
 
-There is no clean standard RFC API for FG deletion
-(`RS_FUNCTION_POOL_DELETE` exists in some releases but is
-undocumented and dangerous), so GUI is the only path.
+There is no clean standard RFC API for FG deletion (`RS_FUNCTION_POOL_DELETE`
+exists in some releases but is undocumented and dangerous), so GUI is the path.
 
-**Release dispatch is handled INSIDE the VBS — you do not choose it.** Just run
-`sap_function_group_gui_delete.vbs`; it self-selects:
-> - **S/4HANA** → the SE80 `WB_DELETE` path (drives the HTML type/name control +
->   repository-tree context menu).
-> - **ECC 6.0 / NW 7.31 (classic, non-HTML navigator)** → the HTML type/name
->   control is absent, so the VBS **auto-falls-through to `DeleteFgViaSe38()`** =
->   delete the function-pool program `SAPL<FUGR>` via SE38 (Shift+F2) + the
->   shared `sap_delete_popups.vbs` walker (which clears the SAPLSETX original-
->   language, KO007 Object-Directory, and TR popups). Deleting `SAPL<FUGR>`
->   cascades the FG delete on ECC6 — verified 2026-06-21 on EC2/ERP (`TLIBG`=0,
->   `PROGDIR SAPL<FG>`=0). The old "SE38 → false SUCCESS while the FG is still
->   alive" caveat predates the shared walker and **no longer applies**.
+> **Why not SE80 `WB_DELETE`?** Retired 2026-06-22. SE80's HTML type/name
+> control is absent on ECC6 (classic navigator), and even on S/4 its hand-rolled
+> inline popup walker looped on a `$TMP`/local FG and emitted a **false SUCCESS**
+> on an empty status bar (S4D: `TLIBG`=1 yet "deleted"). The SE38 `SAPL<FG>`
+> path + the shared DDIC-id-gated walker (SAPLSETX / KO007 / TR-prompt / confirm)
+> is release- and locale-robust, so it is the single path now.
 
-A bare run therefore no longer aborts on ECC6. Still **invoke the skill** (this
-Step) rather than the VBS directly — it adds the TR resolution above + the RFC
-verification below, neither of which the VBS does on its own.
+Still **invoke the skill** (this Step) rather than the VBS directly — it adds the
+TR resolution + dependent-FM pre-check below and the mandatory RFC verification,
+none of which the VBS does on its own.
 
 **Pre-checks (do these BEFORE confirming with the user):**
 
@@ -366,7 +359,7 @@ Template: `<SKILL_DIR>/references/sap_function_group_gui_delete.vbs`.
 |---|---|
 | `%%FUGR_ID%%` | Function group name (UPPERCASE) |
 | `%%TRANSPORT%%` | TR for the post-delete prompt — empty when local (`$TMP`) or already locked to a modifiable TR |
-| `%%PACKAGE%%` | FG `DEVCLASS` (pre-check 3) — used only by the ECC6 SE38 fallback's KO007 popup. Empty = Local Object / accept pre-filled. Safe to leave empty. |
+| `%%PACKAGE%%` | FG `DEVCLASS` (pre-check 3) — fills the ECC6 KO007 "Create Object Directory Entry" popup so the deletion records on the TR. Empty = Local Object / accept pre-filled. Safe to leave empty. |
 | `%%ORIG_LANG%%` | 1-char original language for an empty KO007 package field (default `E`). Usually left empty. |
 | `%%SESSION_LOCK_VBS%%` | path to `sap_session_lock.vbs` |
 
@@ -376,7 +369,7 @@ Write `{RUN_TEMP}\sap_function_group_gui_delete_run.ps1`:
 $content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_function_group_gui_delete.vbs', [System.Text.Encoding]::UTF8)
 $content = $content -replace '%%FUGR_ID%%','THE_FG'
 $content = $content -replace '%%TRANSPORT%%','THE_TR'
-$content = $content -replace '%%PACKAGE%%','THE_PACKAGE'   # FG DEVCLASS (pre-check 3); only used by the ECC6 SE38 fallback's KO007 popup. Empty = Local Object.
+$content = $content -replace '%%PACKAGE%%','THE_PACKAGE'   # FG DEVCLASS (pre-check 3); fills the ECC6 KO007 Object-Directory popup. Empty = Local Object.
 $content = $content -replace '%%ORIG_LANG%%',''            # 1-char orig lang for an empty KO007 package; VBS defaults to E
 $content = $content -replace '%%SESSION_LOCK_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_session_lock.vbs'
 # Phase 3.5 session-attach plumbing.
@@ -398,24 +391,22 @@ C:/Windows/SysWOW64/cscript.exe //NoLogo {RUN_TEMP}\sap_function_group_gui_delet
 
 ### Behaviour Notes
 
-- The VBS opens `/nSE80`, drives the type/name HTML control via
-  `sapEvent` (`type=F`, `name=<FUGR_ID>`, Enter), then selects the
-  root repository tree node (`"          1"` — 10 leading spaces),
-  invokes `nodeContextMenu` + `selectContextMenuItem "WB_DELETE"`.
-- The shellcont indices for the type-selector and tree controls vary
-  with SE80's currently-saved splitter layout. The VBS walks a small
-  fan of common paths and uses the first one that responds; if all
-  fail it prints `ERROR: SE80 type/name control not found.` with the
-  list it tried — re-record via `/sap-gui-record` for that release.
-- Post-WB_DELETE popup chain (observed S/4HANA 1909):
-  - `wnd[1]` "Delete Function Group: Delete Function Module" — dependent FM list + Continue (`tbar[0]/btn[0]`).
-  - `wnd[2]` TR prompt (`ctxtKO008-TRKORR`) or a second confirmation — Continue after filling TR if needed.
-- The popup walker also handles the SAPLSETX
-  "Different original and logon languages" info popup if it
-  interleaves anywhere in the chain (fingerprint:
-  `ctxtRSETX-MASTERLANG` present → press `btnPUSH1`).
-- After the chain the VBS reads `wnd[0]/sbar` and emits
-  `SUCCESS:` unless `MessageType in {"E","A"}`.
+- The VBS opens `/nSE38`, fills `ctxtRS38M-PROGRAMM` = `SAPL<FUGR>`, and presses
+  Delete (Shift+F2 = `sendVKey 14`) from the initial screen.
+- The post-delete modal chain — a confirm, the dependents+confirm pair (the FG's
+  FMs cascade with the pool program), the SAPLSETX "Different original and logon
+  languages" popup (`ctxtRSETX-MASTERLANG` → `btnPUSH1`), the KO007 "Create
+  Object Directory Entry" popup on ECC6 (`ctxtKO007-L_DEVCLASS`, filled from
+  `%%PACKAGE%%` else Local Object), and a TR prompt for a transportable FG
+  (`ctxtKO008-TRKORR`, filled from `%%TRANSPORT%%`; aborts if the prompt appears
+  with TRANSPORT empty) — is dispatched entirely by the shared
+  `sap_delete_popups.vbs` walker (DDIC-id-gated, locale-independent, walks
+  stacked `wnd[1]`+`wnd[2]`).
+- The VBS then does a quick **Display** re-check (`btnSHOP`): if the
+  `ctxtRS38M-PROGRAMM` field survives we stayed on the initial screen →
+  `SAPL<FG>` is gone → `SUCCESS`; if Display opened the editor it still exists →
+  `ERROR`. This is a quick check only — the **mandatory RFC verification below is
+  authoritative.**
 
 ### Outputs
 
