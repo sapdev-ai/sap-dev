@@ -437,24 +437,56 @@ Else
 End If
 
 ' ------ 6. Activate (Ctrl+F3) ----------------------------------------------
+' Guarded activate: on 7.31/ECC6 the post-Check editor state intermittently
+' reports "the virtual key is not enabled" for a bare sendVKey 27, silently
+' leaving the domain inactive (DD01L AS4LOCAL='L' — the 2026-06-22 EC2 bug;
+' DE/structure used the same code and happened to succeed, so it is screen-
+' state/timing dependent). Prefer the toolbar Activate button (tbar[1]/btn[27],
+' the same control tabletype/se37 use) and fall back to the raw VKey; retry
+' after a settle if the command was rejected. PostActivateVerifyOrFail (RFC on
+' DD01L, below) is the backstop that turns a still-inactive domain into a hard
+' failure rather than a false success.
 WScript.Echo "INFO: Activating..."
-oSession.findById("wnd[0]").sendVKey 27
-WScript.Sleep 2000
-
-' Dismiss all activation popups
-On Error Resume Next
-For nPopupLoop = 1 To 10
-    WScript.Sleep 500
-    If InStr(oSession.ActiveWindow.Id, "wnd[1]") > 0 Then
-        oSession.findById("wnd[1]").sendVKey VKEY_ENTER
-        WScript.Sleep 500
-        Err.Clear
+Dim iAct, bActSent
+bActSent = False
+For iAct = 1 To 3
+    On Error Resume Next
+    oSession.findById("wnd[0]/tbar[1]/btn[27]").press
+    If Err.Number = 0 Then
+        bActSent = True
     Else
         Err.Clear
-        Exit For
+        oSession.findById("wnd[0]").sendVKey 27
+        If Err.Number = 0 Then bActSent = True
     End If
+    Err.Clear
+    On Error GoTo 0
+    WScript.Sleep 2000
+
+    ' Dismiss all activation popups (press Enter on each wnd[1]).
+    On Error Resume Next
+    For nPopupLoop = 1 To 10
+        WScript.Sleep 500
+        If InStr(oSession.ActiveWindow.Id, "wnd[1]") > 0 Then
+            oSession.findById("wnd[1]").sendVKey VKEY_ENTER
+            WScript.Sleep 500
+            Err.Clear
+        Else
+            Err.Clear
+            Exit For
+        End If
+    Next
+    On Error GoTo 0
+
+    ' Activate command accepted (button/VKey was enabled) -> done. Otherwise
+    ' the screen wasn't ready; settle and retry instead of leaving it inactive.
+    If bActSent Then Exit For
+    WScript.Echo "INFO: Activate not accepted yet (attempt " & iAct & " of 3); settling and retrying..."
+    WScript.Sleep 1500
 Next
-On Error GoTo 0
+If Not bActSent Then
+    WScript.Echo "WARNING: Activate command never accepted by the editor after 3 attempts; the RFC verify below will confirm the domain's true state."
+End If
 
 ' --- Release the session UI lock; final status is read-only ---
 ReleaseSession oSession, wasLocked

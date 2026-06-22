@@ -227,20 +227,28 @@ Sub HandleWorklistPopup
             Set oWnd = oSess.findById(sId)
             If Err.Number = 0 And Not (oWnd Is Nothing) Then
                 Err.Clear
-                ' (a) Probe for the worklist toolbar (Select All = btn[9]).
+                ' (a) Inactive-objects worklist popup. Discriminator: it
+                '     carries a Select All button at tbar[0]/btn[9]. DETECT
+                '     via btn[9] but deliberately do NOT press it — the
+                '     triggering object and its dependent includes are
+                '     already pre-selected, so Continue (btn[0]) activates
+                '     exactly them. Pressing Select All would co-activate
+                '     every UNRELATED inactive object in the user's worklist
+                '     (e.g. EC2/DEV102: 10 strangers incl. a BAdI). Matches
+                '     the proven-safe SE38 model. Never fall back to Select
+                '     All if Continue doesn't clear it — the post-activate
+                '     DWINACTIV verify reports a still-inactive object as a
+                '     real failure (safety over a silent over-activation).
                 Set oBtn = Nothing
                 Set oBtn = oSess.findById(sId & "/tbar[0]/btn[9]")
                 If Err.Number = 0 And Not (oBtn Is Nothing) Then
-                    oBtn.press
-                    WScript.Sleep 500
-                    WScript.Echo "INFO: " & sId & " - Select All pressed."
                     Err.Clear
                     Set oBtn = Nothing
                     Set oBtn = oSess.findById(sId & "/tbar[0]/btn[0]")
                     If Err.Number = 0 And Not (oBtn Is Nothing) Then
                         oBtn.press
                         WScript.Sleep 1200
-                        WScript.Echo "INFO: " & sId & " - Continue pressed."
+                        WScript.Echo "INFO: " & sId & " - inactive-objects worklist; Continue pressed (pre-selected object only, no Select All)."
                     End If
                     bAnyDismissed = True
                 Else

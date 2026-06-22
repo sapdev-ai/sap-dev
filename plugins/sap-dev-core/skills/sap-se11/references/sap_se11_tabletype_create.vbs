@@ -240,13 +240,17 @@ WScript.Sleep 2000
 ' Handle "Save object?" popup (table type check requires save first)
 On Error Resume Next
 If InStr(oSession.ActiveWindow.Id, "wnd[1]") > 0 Then
-    Dim sChkDiag1
-    sChkDiag1 = ""
-    sChkDiag1 = oSession.findById("wnd[1]/usr/txtSPOP-DIAGNOSE1").Text
-    If Err.Number <> 0 Then sChkDiag1 = "" : Err.Clear
-    If InStr(sChkDiag1, "saved") > 0 Then
-        WScript.Echo "INFO: Check requires save - pressing Yes..."
-        oSession.findById("wnd[1]/usr/btnSPOP-OPTION1").press
+    ' Locale-independent SPOP confirm detection: a "save object first?" popup
+    ' exposes btnSPOP-OPTION1 (the affirmative button) regardless of logon
+    ' language. The old InStr(DIAGNOSE1,"saved") test branched on ENGLISH text
+    ' and silently fell through on the ZH/JA logon (Rule 5 violation), pressing
+    ' a blind Enter that left the check unresolved.
+    Dim oChkOpt1
+    Set oChkOpt1 = Nothing
+    Set oChkOpt1 = oSession.findById("wnd[1]/usr/btnSPOP-OPTION1")
+    If Err.Number = 0 And Not (oChkOpt1 Is Nothing) Then
+        WScript.Echo "INFO: Check requires save - pressing Yes (SPOP OPTION1)..."
+        oChkOpt1.press
         WScript.Sleep 2000
         If InStr(oSession.ActiveWindow.Id, "wnd[1]") > 0 Then
             If SAP_PACKAGE <> "" And UCase(SAP_PACKAGE) <> "$TMP" And SAP_TRANSPORT <> "" Then
@@ -341,6 +345,39 @@ End If
 WScript.Echo "INFO: Saving table type..."
 oSession.findById("wnd[0]").sendVKey VKEY_F11_SAVE
 WScript.Sleep 1500
+
+' 7.31/ECC6 raises a SAPLSPO1 "Check table type?" confirm popup on save
+' (btnSPOP-OPTION1/2/CAN) BEFORE the Object Directory / package dialog. It is
+' modal over wnd[0], so the package fill below would otherwise target the
+' wrong window and the save silently fails (DD40L 0 rows — the 2026-06-22 EC2
+' bug). Sweep up to 3 leading confirm popups by control id (locale-independent:
+' btnSPOP-OPTION1 = the affirmative button) until the package/TR dialog
+' (ctxtKO007-L_DEVCLASS) surfaces or the popups clear.
+On Error Resume Next
+Dim iSpop, oSpopOpt1, oSpopPkg
+For iSpop = 1 To 3
+    If InStr(oSession.ActiveWindow.Id, "wnd[1]") = 0 Then Exit For
+    ' If wnd[1] is already the package / Object Directory dialog, stop sweeping.
+    Set oSpopPkg = Nothing
+    Set oSpopPkg = oSession.findById("wnd[1]/usr/ctxtKO007-L_DEVCLASS")
+    If Err.Number = 0 And Not (oSpopPkg Is Nothing) Then Err.Clear : Exit For
+    Err.Clear
+    ' Otherwise dismiss a confirm popup: Yes (OPTION1) if present, else Enter.
+    Set oSpopOpt1 = Nothing
+    Set oSpopOpt1 = oSession.findById("wnd[1]/usr/btnSPOP-OPTION1")
+    If Err.Number = 0 And Not (oSpopOpt1 Is Nothing) Then
+        oSpopOpt1.press
+        WScript.Echo "INFO: Dismissed save confirm popup (SPOP OPTION1=Yes)."
+    Else
+        Err.Clear
+        oSession.ActiveWindow.sendVKey VKEY_ENTER
+        WScript.Echo "INFO: Dismissed save popup (Enter)."
+    End If
+    Err.Clear
+    WScript.Sleep 1500
+Next
+Err.Clear
+On Error GoTo 0
 
 On Error Resume Next
 If InStr(oSession.ActiveWindow.Id, "wnd[1]") > 0 Then

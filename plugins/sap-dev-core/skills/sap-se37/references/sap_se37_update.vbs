@@ -47,6 +47,58 @@ ExecuteGlobal CreateObject("Scripting.FileSystemObject") _
 ExecuteGlobal CreateObject("Scripting.FileSystemObject") _
     .OpenTextFile("%%SYNTAX_CHECK_LIB_VBS%%", 1).ReadAll()
 
+' ----------------------------------------------------------------------------
+' FindFunctionEditorShell(oSess) -> the SE37 Source-code editor shell, or Nothing
+'   The Source tab hosts an AbapEditor GuiShell whose full id is release-specific
+'   (the subscreen dynpro number varies: EC2 / NW 7.31 =
+'   ssubSCREEN_HEADER:SAPLEDITOR_START:8430). Walk the tabpSOURCE subtree for the
+'   shell whose id ends in "cntlEDITOR/shellcont/shell", with the observed EC2 id
+'   as a fast-path. (Mirrors the release-robust grid walk in the syntax lib.)
+' ----------------------------------------------------------------------------
+Function FindFunctionEditorShell(oSess)
+    Dim oTry, oRoot
+    Set FindFunctionEditorShell = Nothing
+    On Error Resume Next
+    Set oTry = oSess.findById("wnd[0]/usr/tabsFUNC_TAB_STRIP/tabpSOURCE/ssubSCREEN_HEADER:SAPLEDITOR_START:8430/cntlEDITOR/shellcont/shell")
+    If Err.Number = 0 And Not (oTry Is Nothing) Then
+        Set FindFunctionEditorShell = oTry : Err.Clear : On Error GoTo 0 : Exit Function
+    End If
+    Err.Clear
+    Set oRoot = Nothing
+    Set oRoot = oSess.findById("wnd[0]/usr/tabsFUNC_TAB_STRIP/tabpSOURCE")
+    If Err.Number = 0 And Not (oRoot Is Nothing) Then
+        Set FindFunctionEditorShell = WalkForEditorShell(oRoot)
+    End If
+    Err.Clear
+    On Error GoTo 0
+End Function
+
+Function WalkForEditorShell(o)
+    Dim sId, oCh, oC, oRes
+    Const SUFFIX = "cntlEDITOR/shellcont/shell"
+    Set WalkForEditorShell = Nothing
+    On Error Resume Next
+    sId = o.Id
+    If Err.Number = 0 Then
+        If Right(sId, Len(SUFFIX)) = SUFFIX Then
+            Set WalkForEditorShell = o : Err.Clear : On Error GoTo 0 : Exit Function
+        End If
+    End If
+    Err.Clear
+    Set oCh = Nothing
+    Set oCh = o.Children
+    If Err.Number = 0 And Not (oCh Is Nothing) Then
+        For Each oC In oCh
+            Set oRes = WalkForEditorShell(oC)
+            If Not (oRes Is Nothing) Then
+                Set WalkForEditorShell = oRes : Err.Clear : On Error GoTo 0 : Exit Function
+            End If
+        Next
+    End If
+    Err.Clear
+    On Error GoTo 0
+End Function
+
 ' ------ 1. Attach to existing SAP GUI session (via shared attach helper) ----
 Dim oSession
 Set oSession = AttachSapSession(SESSION_PATH)
@@ -172,24 +224,28 @@ End If
 Err.Clear
 On Error GoTo 0
 
-' --- Lock the SAP session UI for the source upload + save + activate + syntax check critical section ---
-' Per Rule 7: LockSessionUI blocks user input races inside SAP. We do NOT
-' need an OS-level foreground guard here (unlike sap-se38) because the
-' source is uploaded via SE37's Utilities > Upload menu — the file is
-' read from disk by the SAP process; no clipboard, no SendKeys, no
-' Windows-foreground race. Released after activation.
+' --- Lock the SAP session UI for the source paste + save + activate + syntax check critical section ---
+' Per Rule 7: LockSessionUI blocks user input races inside SAP. Source is now
+' pasted into the editor via the Windows clipboard + SendKeys (the Utilities >
+' Upload menu is S/4-only — its positional path does not exist on NW 7.31 /
+' ECC6, the 2026-06-22 EC2 hard blocker), so — like sap-se38 — we ALSO use the
+' OS-level foreground guard below so Ctrl+V can never land in another app.
 Dim wasLocked : wasLocked = TryLockSession(oSession)
 If wasLocked Then
-    WScript.Echo "INFO: Session UI locked for the source upload + save + activate + syntax check critical section."
+    WScript.Echo "INFO: Session UI locked for the source paste + save + activate + syntax check critical section."
 Else
     WScript.Echo "INFO: LockSessionUI not available on this SAP GUI build; continuing without lock."
 End If
 
-' ------ 4. Navigate to Source code tab and upload source ---------------------
+' ------ 4. Navigate to Source code tab and paste source via clipboard --------
+' Why clipboard + SendKeys instead of Utilities > Upload? The positional Upload
+' menu (mbar/menu[3]/menu[9]/menu[3]/menu[0]) is S/4HANA-1909-only and does NOT
+' exist on NW 7.31 / ECC6 -> hard "Could not open Upload menu" failure (the
+' 2026-06-22 EC2 blocker). The clipboard paste is the same proven mechanism
+' sap-se38 uses: release-independent and raises no SAP GUI Security file dialog.
+' The AbapEditor .Text is read-only, so a direct write is not possible.
 oSession.findById("wnd[0]/usr/tabsFUNC_TAB_STRIP/tabpSOURCE").select
 WScript.Sleep 1500
-
-WScript.Echo "INFO: Uploading source file: " & ABAP_SOURCE_FILE
 
 Dim oFSO
 Set oFSO = CreateObject("Scripting.FileSystemObject")
@@ -199,115 +255,148 @@ If Not oFSO.FileExists(ABAP_SOURCE_FILE) Then
     WScript.Quit 1
 End If
 
-' Convert UTF-8 source file to appropriate encoding for SAP GUI upload.
-' On Unicode SAP systems (codepage 4110), upload UTF-8 directly.
-' On non-Unicode systems, convert to the Windows system ANSI codepage.
-Dim bIsUnicode
-bIsUnicode = False
-On Error Resume Next
-Dim iSAPCodepage
-iSAPCodepage = oSession.Info.Codepage
-If Err.Number = 0 And (CStr(iSAPCodepage) = "4110" Or CStr(iSAPCodepage) = "4103") Then
-    bIsUnicode = True
-End If
-Err.Clear
-On Error GoTo 0
-
-Dim sUploadFile
-If bIsUnicode Then
-    sUploadFile = ABAP_SOURCE_FILE
-    WScript.Echo "INFO: Unicode SAP system (codepage " & iSAPCodepage & "). Uploading UTF-8 source directly."
-Else
-    Dim oWMI, colItems, oItem, sCodePage
-    Set oWMI = GetObject("winmgmts:\\.\root\cimv2")
-    Set colItems = oWMI.ExecQuery("SELECT CodeSet FROM Win32_OperatingSystem")
-    sCodePage = ""
-    For Each oItem In colItems
-        If oItem.CodeSet <> "" Then sCodePage = oItem.CodeSet
-    Next
-    Dim sCharset
-    Select Case sCodePage
-        Case "932"   : sCharset = "shift_jis"
-        Case "936"   : sCharset = "gb2312"
-        Case "949"   : sCharset = "ks_c_5601-1987"
-        Case "950"   : sCharset = "big5"
-        Case "1250"  : sCharset = "windows-1250"
-        Case "1251"  : sCharset = "windows-1251"
-        Case "1253"  : sCharset = "windows-1253"
-        Case "1254"  : sCharset = "windows-1254"
-        Case "1255"  : sCharset = "windows-1255"
-        Case "1256"  : sCharset = "windows-1256"
-        Case "65001" : sCharset = "utf-8"
-        Case Else    : sCharset = "windows-1252"
-    End Select
-
-    sUploadFile = ABAP_SOURCE_FILE & ".upload.txt"
-    Dim oInStream, oOutStream
-    Set oInStream = CreateObject("ADODB.Stream")
-    oInStream.Type = 2
-    oInStream.Charset = "utf-8"
-    oInStream.Open
-    oInStream.LoadFromFile ABAP_SOURCE_FILE
-
-    Set oOutStream = CreateObject("ADODB.Stream")
-    oOutStream.Type = 2
-    oOutStream.Charset = sCharset
-    oOutStream.Open
-
-    Dim sAbapContent
-    sAbapContent = oInStream.ReadText
-    oInStream.Close
-    oOutStream.WriteText sAbapContent
-    oOutStream.SaveToFile sUploadFile, 2
-    oOutStream.Close
-    WScript.Echo "INFO: Converted source file from UTF-8 to " & sCharset & " for upload."
+' Locate the Source-tab editor shell (release-robust fast-path + walk).
+Dim oEditorShell
+Set oEditorShell = FindFunctionEditorShell(oSession)
+If oEditorShell Is Nothing Then
+    WScript.Echo "ERROR: Could not locate the SE37 Source-code editor shell on the Source tab"
+    WScript.Echo "       (expected a GuiShell under tabsFUNC_TAB_STRIP/tabpSOURCE/.../cntlEDITOR/shellcont/shell)."
+    ReleaseSession oSession, wasLocked
+    WScript.Quit 1
 End If
 
-' Utilities > More Utilities > Upload/Download > Upload
-' menu[3]/menu[9]/menu[3]/menu[0]
+WScript.Echo "INFO: Pasting source via clipboard + SendKeys: " & ABAP_SOURCE_FILE
+
+' --- 4a. Read source text (UTF-8) into memory ---
+Dim oSrcStream, sSourceText
 On Error Resume Next
-oSession.findById("wnd[0]/mbar/menu[3]/menu[9]/menu[3]/menu[0]").select
+Set oSrcStream = CreateObject("ADODB.Stream")
+oSrcStream.Type = 2   ' adTypeText
+oSrcStream.Charset = "utf-8"
+oSrcStream.Open
+oSrcStream.LoadFromFile ABAP_SOURCE_FILE
+sSourceText = oSrcStream.ReadText
+oSrcStream.Close
 If Err.Number <> 0 Then
-    WScript.Echo "ERROR: Could not open Upload menu (menu[3]/menu[9]/menu[3]/menu[0])." & vbCrLf & _
-                 "       Use Scripting Recorder to find the correct menu path."
+    WScript.Echo "ERROR: Could not read source file: " & Err.Description
     ReleaseSession oSession, wasLocked
     WScript.Quit 1
 End If
 Err.Clear
 On Error GoTo 0
-WScript.Sleep 1000
 
-' Fill in the upload dialog
+' --- 4b. Stage source on the Windows clipboard (Unicode / CF_UNICODETEXT) ---
+' Codepage-independent (mirrors sap-se38): PowerShell Set-Clipboard (primary;
+' CF_UNICODETEXT via .NET) with a no-powershell fallback of "clip < utf16file"
+' by REDIRECTION. Never "type | clip" (cmd's `type` transcodes through the
+' console OEM codepage and corrupts non-codepage glyphs to "?").
+Dim bClipOk, sTmpClip, oTmpStream, oWshClip, sPsClipCmd, nPsClipRc
+bClipOk  = False
+sTmpClip = ABAP_SOURCE_FILE & ".clip.txt"
+Set oWshClip = CreateObject("WScript.Shell")
+
 On Error Resume Next
-Dim iSlash, sDir, sFile
-iSlash = InStrRev(sUploadFile, "\")
-sDir   = Left(sUploadFile, iSlash)
-sFile  = Mid(sUploadFile, iSlash + 1)
+Set oTmpStream = CreateObject("ADODB.Stream")
+oTmpStream.Type = 2
+oTmpStream.Charset = "utf-8"
+oTmpStream.Open
+oTmpStream.WriteText sSourceText
+oTmpStream.SaveToFile sTmpClip, 2   ' 2 = overwrite
+oTmpStream.Close
+If Err.Number = 0 Then
+    sPsClipCmd = "powershell -NoProfile -ExecutionPolicy Bypass -Command " & _
+        """Set-Clipboard -Value ([IO.File]::ReadAllText('" & sTmpClip & _
+        "',[Text.Encoding]::UTF8))"""
+    nPsClipRc = oWshClip.Run(sPsClipCmd, 0, True)
+    If Err.Number = 0 And nPsClipRc = 0 Then bClipOk = True
+End If
+Err.Clear
+On Error GoTo 0
 
-oSession.findById("wnd[1]/usr/ctxtDY_PATH").Text     = sDir
-oSession.findById("wnd[1]/usr/ctxtDY_FILENAME").Text = sFile
+If Not bClipOk Then
+    On Error Resume Next
+    Set oTmpStream = CreateObject("ADODB.Stream")
+    oTmpStream.Type = 2
+    oTmpStream.Charset = "utf-16"
+    oTmpStream.Open
+    oTmpStream.WriteText sSourceText
+    oTmpStream.SaveToFile sTmpClip, 2
+    oTmpStream.Close
+    oWshClip.Run "cmd /c clip < """ & sTmpClip & """", 0, True
+    If Err.Number = 0 Then bClipOk = True
+    Err.Clear
+    On Error GoTo 0
+End If
+
+If Not bClipOk Then
+    WScript.Echo "ERROR: Could not place source on clipboard."
+    ReleaseSession oSession, wasLocked
+    WScript.Quit 1
+End If
+
+' --- 4c. Foreground-guard the SAP GUI window, then paste ---
+' SAFETY: before Ctrl+A / Del / Ctrl+V we MUST guarantee SAP GUI is the OS
+' foreground window, or SendKeys pastes into whatever app has focus. The sidecar
+' uses AttachThreadInput to bypass Windows' SetForegroundWindow suppression.
+Dim oWshSend, sapTitle
+Set oWshSend = CreateObject("WScript.Shell")
+sapTitle = oSession.findById("wnd[0]").Text
+
+On Error Resume Next
+If oSession.findById("wnd[0]").Iconified Then
+    oSession.findById("wnd[0]").Restore
+    WScript.Sleep 200
+End If
+oSession.findById("wnd[0]").Maximize
+WScript.Sleep 100
+Err.Clear
+On Error GoTo 0
+
+Dim sFgGuardCmd, nFgGuardRc
+sFgGuardCmd = "powershell -NoProfile -ExecutionPolicy Bypass -File """ & _
+              "%%FOREGROUND_GUARD_PS1%%"" -TargetTitle """ & sapTitle & _
+              """ -TimeoutSeconds 5"
+nFgGuardRc = oWshSend.Run(sFgGuardCmd, 0, True)
+If nFgGuardRc <> 0 Then
+    WScript.Echo "ERROR: SAP GUI window is not the OS foreground window (sidecar exit " & nFgGuardRc & ")."
+    WScript.Echo "       Aborting paste so Ctrl+V cannot land in another app (Notepad, VS Code, browser)."
+    On Error Resume Next
+    If oFSO.FileExists(sTmpClip) Then oFSO.DeleteFile sTmpClip
+    On Error GoTo 0
+    ReleaseSession oSession, wasLocked
+    WScript.Quit 1
+End If
+
+On Error Resume Next
+oEditorShell.SetFocus
+Err.Clear
+On Error GoTo 0
 WScript.Sleep 300
-oSession.findById("wnd[1]").sendVKey VKEY_ENTER
-WScript.Sleep 2000
 
-If Err.Number <> 0 Then
-    WScript.Echo "ERROR: Upload dialog interaction failed: " & Err.Description
-    ReleaseSession oSession, wasLocked
-    WScript.Quit 1
-End If
-Err.Clear
-On Error GoTo 0
-
-' Dismiss "Replace existing text?" confirmation if it appears
+' 3-layer clear-then-paste (mirrors sap-se38): SAP-side Ctrl+A (sendVKey 26),
+' then Ctrl+Home + Ctrl+Shift+End, then Windows Ctrl+A, then Del, then Ctrl+V.
 On Error Resume Next
-If InStr(oSession.ActiveWindow.Id, "wnd[1]") > 0 Then
-    oSession.ActiveWindow.sendVKey VKEY_ENTER
-    WScript.Sleep 1000
-End If
+oSession.findById("wnd[0]").sendVKey 26
+WScript.Sleep 400
+Err.Clear
+On Error GoTo 0
+oWshSend.SendKeys "^{HOME}"
+WScript.Sleep 200
+oWshSend.SendKeys "^+{END}"
+WScript.Sleep 200
+oWshSend.SendKeys "^a"
+WScript.Sleep 300
+oWshSend.SendKeys "{DEL}"
+WScript.Sleep 1500
+oWshSend.SendKeys "^v"
+WScript.Sleep 2500
+
+On Error Resume Next
+If oFSO.FileExists(sTmpClip) Then oFSO.DeleteFile sTmpClip
 Err.Clear
 On Error GoTo 0
 
-WScript.Echo "INFO: Source code uploaded."
+WScript.Echo "INFO: Source code pasted into Function Builder editor (foreground-guarded, 3-layer clear)."
 
 ' ------ 4b. Fill interface tabs (generated from parsed FM source) -----------
 ' On UPDATE the source upload writes only the body. On activation SAP
@@ -364,21 +453,30 @@ WScript.Sleep 1500
 
 ' Handle "Inactive Objects" worklist popup. The popup may appear up to ~10s
 ' after pressing Activate (esp. when sibling FUGR objects are also inactive
-' after a recent Reassign). Poll, then Select All (Ctrl+A = sendVKey 26)
-' before pressing Continue (btn[0]) — pressing Continue alone with nothing
-' selected leaves the popup up.
+' after a recent Reassign). Press Continue (btn[0]) ONLY — the FM and its
+' function-group includes are pre-selected, so Continue activates exactly them.
+' Do NOT Select All (Ctrl+A / sendVKey 26): EC2/DEV102 carries 500+ unrelated
+' inactive objects and Select All would co-activate every one. Matches the
+' proven-safe SE38 model; fail loud (never re-add Select All) if it persists.
 Dim iWaitAct
 For iWaitAct = 1 To 10
     If InStr(oSession.ActiveWindow.Id, "wnd[1]") > 0 Then Exit For
     WScript.Sleep 1000
 Next
 If InStr(oSession.ActiveWindow.Id, "wnd[1]") > 0 Then
-    WScript.Echo "INFO: Inactive objects list — Select All + Continue..."
+    WScript.Echo "INFO: Inactive objects worklist — Continue (pre-selected object only, no Select All)..."
     Err.Clear
-    oSession.findById("wnd[1]").sendVKey 26   ' Ctrl+A = Select All
-    WScript.Sleep 500
     oSession.findById("wnd[1]/tbar[0]/btn[0]").press  ' Continue
     WScript.Sleep 5000
+    If InStr(oSession.ActiveWindow.Id, "wnd[1]") > 0 Then
+        Dim oStillWl
+        Set oStillWl = Nothing
+        Set oStillWl = oSession.findById("wnd[1]/tbar[0]/btn[9]")
+        If Err.Number = 0 And Not (oStillWl Is Nothing) Then
+            WScript.Echo "WARNING: Inactive-objects worklist still open after Continue. NOT pressing Select All (would co-activate unrelated objects); the syntax check below will report if the FM stayed inactive."
+        End If
+        Err.Clear
+    End If
 End If
 
 ' Handle "Activation errors" popup (wnd[2]) — press Activate to proceed
@@ -504,11 +602,9 @@ End If
 On Error GoTo 0
 
 If Not bSyntaxOK Then
-    ' Clean up temp file before exiting
+    ' Clean up the clipboard temp file before exiting
     On Error Resume Next
-    If sUploadFile <> ABAP_SOURCE_FILE Then
-        If oFSO.FileExists(sUploadFile) Then oFSO.DeleteFile sUploadFile
-    End If
+    If oFSO.FileExists(sTmpClip) Then oFSO.DeleteFile sTmpClip
     Err.Clear
     On Error GoTo 0
     WScript.Echo "ERROR: Fix syntax errors and retry."
@@ -521,11 +617,9 @@ ReleaseSession oSession, wasLocked
 If wasLocked Then WScript.Echo "INFO: Session UI lock released."
 
 ' ------ 8. Final status check -----------------------------------------------
-' Clean up temp upload file (only delete if it was a converted temp copy, not the original)
+' Clean up the clipboard temp file (best-effort; already removed after paste).
 On Error Resume Next
-If sUploadFile <> ABAP_SOURCE_FILE Then
-    If oFSO.FileExists(sUploadFile) Then oFSO.DeleteFile sUploadFile
-End If
+If oFSO.FileExists(sTmpClip) Then oFSO.DeleteFile sTmpClip
 Err.Clear
 On Error GoTo 0
 
