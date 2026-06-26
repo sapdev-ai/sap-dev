@@ -1,0 +1,47 @@
+{
+  "schema": "sapdev.screenbaseline/1",
+  "vbs": "sap_se01_remove_objects.vbs",
+  "captured_on": {
+    "release": "S/4HANA 1909 + ECC6 EhP6 (NW 7.31)",
+    "kernel": "",
+    "date": "2026-06-26",
+    "method": "static dependency-set seed; identity captured on first /sap-gui-screen-check run"
+  },
+  "checkpoints": [
+    {
+      "id": "se01_main_organizer_tab",
+      "reach": "/nSE01 -> Transport Organizer tab (tabpTSSN), enter TR, press Display",
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/tbar[0]/okcd",
+        "wnd[0]/usr/tabsMAINTABSTRIP/tabpTSSN",
+        "wnd[0]/usr/tabsMAINTABSTRIP/tabpTSSN/ssubCOMMONSUBSCREEN:RDDM0001:0210/ctxtTRDYSE01SN-TR_TRKORR",
+        "wnd[0]/usr/tabsMAINTABSTRIP/tabpTSSN/ssubCOMMONSUBSCREEN:RDDM0001:0210/btn%_AUTOTEXT028"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "request_display_nodes",
+      "reach": "Request-display list (SAPMSSY0): request + task labels, node number-pattern matched",
+      "identity": { "program": "SAPMSSY0", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/usr"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "object_editor_objects_tab",
+      "reach": "Drill F2 into a node -> object editor (SAPLSCTSREQ) -> change mode -> Objects tab",
+      "identity": { "program": "SAPLSCTSREQ", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/tbar[1]/btn[25]",
+        "wnd[0]/usr/tabsREQ_TABSTRIP/tabpOBJECTS",
+        "wnd[0]/usr/tabsREQ_TABSTRIP/tabpOBJECTS/ssubSCREEN_HEADER:SAPLSCTS_OLE:0500/txtDV_OBJECT_COUNT",
+        "wnd[0]/usr/tabsREQ_TABSTRIP/tabpOBJECTS/ssubSCREEN_HEADER:SAPLSCTS_OLE:0500/tblSAPLSCTS_OLETC_OLE",
+        "wnd[0]/usr/tabsREQ_TABSTRIP/tabpOBJECTS/ssubSCREEN_HEADER:SAPLSCTS_OLE:0500/btnDB_SELECT_ALL",
+        "wnd[0]/usr/tabsREQ_TABSTRIP/tabpOBJECTS/ssubSCREEN_HEADER:SAPLSCTS_OLE:0500/btnDB_DELETE"
+      ],
+      "status": "pending_live"
+    }
+  ]
+}

@@ -25,6 +25,7 @@ Task: $ARGUMENTS
 
 | File | Purpose |
 |---|---|
+| `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_tr_object_entries.ps1` | RFC E071/E070 read (Step 1.5) — with `-OnlyOrphaned`, finds dev-init objects whose definition is gone but whose lock lingers in an old unreleased request (would block re-create); cleared via `/sap-se01 remove-objects` |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/skill_operating_rules.md` | Mandatory operating rules |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/language_independence_rules.md` | GUI-scripting language independence — applies to the GUI-driving sub-skills this orchestrator dispatches (sap-transport-request, sap-se21, sap-function-group, sap-se38) |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/abap_code_quality_rules.md` | ABAP code-quality rules — the `Z_GENERIC_RFC_WRAPPER_TBL` wrapper FM source deployed by this init flow follows modern syntax, OOP / exception conventions, and no literal MESSAGE strings. **Exception:** `ZCMRUPDATE_ADDON_TABLE.abap` (Step 8) is deliberately **classic-syntax** so a single source activates on ECC 6.0 / NetWeaver ≤7.40 as well as S/4HANA — do NOT modernize it (see that file's header + sap-update-addon Step 4c). |
@@ -266,6 +267,58 @@ Do **not** clear a TR that is merely `MODIFIABLE` (healthy) — that would mint 
 new TR on every init (TR sprawl) and defeat idempotency. Self-heal touches only
 provably-dead or anchor-contradicted references; everything else flows through to
 Steps 2–4 unchanged.
+
+---
+
+## Step 1.5 — Pre-create transport hygiene (clear stale object-locks)
+
+**Why this step exists.** An object recorded in an *unreleased* transport request
+holds a **name-lock**. If that object was later deleted (e.g. an earlier
+`/sap-dev-clean` that didn't clear the entry, or a manual SE11 delete) but its
+`E071` entry lingered in the old request, the create steps below **fail**: SAP
+refuses with `<object> is in request <TR>` / "enter object only in original
+request". This is the exact failure mode that motivated the `/sap-se01
+remove-objects` mode — clear the orphaned entry *before* creating, so Steps 4b–8
+don't trip over it. (`/sap-dev-clean` is the other half: it clears these entries
+on teardown. This step is the defensive complement for an env where teardown was
+incomplete or the objects were deleted by hand.)
+
+**Best-effort + RFC-gated.** The detection is an RFC read. If RFC is unavailable
+on this system (no NCo / no saved creds and `sap_dev_mode = GUI` with no session
+RFC), **skip this step** — the create steps still surface a lock error, which you
+then resolve reactively with the same `/sap-se01 remove-objects` call.
+
+1. **Find orphaned locks.** Run the shared helper for the dev-init objects with
+   `-OnlyOrphaned` — it reports an entry ONLY when the object's definition is
+   gone (a genuine stale lock), never for a live object:
+
+   ```bash
+   C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_tr_object_entries.ps1" -OnlyOrphaned -Objects "ZCMD_RFCVAL,ZCMDE_RFCVAL,ZCMST_RFC_PARAM,ZCMCT_RFC_PARAM,Z_GENERIC_RFC_WRAPPER_TBL,ZCMRUPDATE_ADDON_TABLE"
+   ```
+
+   **Use the 32-bit `SysWOW64` PowerShell** as shown — the helper loads SAP NCo
+   3.1 (32-bit-only); plain 64-bit `powershell` fails to load `sapnco.dll`. If it
+   prints `STATUS: RFC_ERROR …` (RFC unavailable on this system), skip this step
+   and rely on the reactive fallback in the create steps.
+   Each `ENTRY<TAB>TRKORR<TAB>TRSTATUS<TAB>TRFUNCTION<TAB>PGMID<TAB>OBJECT<TAB>OBJ_NAME`
+   line is an orphaned lock in an unreleased request; the closing
+   `STATUS: OK entries=<n> ...` gives the count. `entries=0` (or
+   `STATUS: RFC_ERROR ...` → RFC unavailable) → nothing to do; continue to Step 1b.
+
+2. **Clear them, request by request.** Group the `ENTRY` lines by `TRKORR`; for
+   each, delegate to `/sap-se01 remove-objects` with the `OBJ_NAME`s found in it:
+
+   ```
+   /sap-se01 remove-objects <TRKORR> OBJECTS=<comma-separated OBJ_NAMEs found in that TR>
+   ```
+
+   These are all deleted-but-locked dev-init objects, so removal is safe and may
+   proceed without an extra prompt (log what was cleared). After clearing, the
+   names are free and the create steps below succeed.
+
+3. This step is idempotent: a clean env reports `entries=0` and the step is a
+   no-op. It never touches a live object (the `-OnlyOrphaned` gate checks the
+   definition table per object type) nor a released request (those hold no lock).
 
 ---
 
@@ -898,6 +951,7 @@ Suggested `<CLASS>`: `DEV_INIT_FAILED`, `TR_RESOLUTION_FAILED`, `PACKAGE_FAILED`
 | Error | Cause | Fix |
 |---|---|---|
 | `sap_dev_mode` not recognised | Typo / unsupported value | Edit settings.json; allowed values are `GUI`, `RFC`, `BDC` (case-insensitive). |
+| Create step fails: `<object> is in request <TR>` / "enter object only in original request" | The object was deleted but its `E071` entry lingers in an old unreleased request, holding the name-lock | Step 1.5 should have cleared it; if it ran in a no-RFC env, clear it reactively: `/sap-se01 remove-objects <TR> OBJECTS=<object>`, then re-run the create. Find the TR via `sap_tr_object_entries.ps1 -OnlyOrphaned -Objects <object>`. |
 | GUI step says "no SAP GUI session" | Step 1a was skipped or `/sap-login` failed | Run `/sap-login` manually, then resume. |
 | `sap-se01` succeeds but no TRKORR found in E070 | Description contains characters (e.g. `[`) that the SE16N inline single-value filter rejects | Filter only by `AS4USER` and identify the new row by description in the result file. Known limitation, see `sap-se01` notes. |
 | `sap-function-group` (GUI sub-flow) reports `DONE FUGR=…` but FUGR is missing | Empty status bar after save (e.g. non-existent package) is not treated as failure | Verify via TLIBT / re-run the skill; ensure Step 3 (package) succeeded first. |

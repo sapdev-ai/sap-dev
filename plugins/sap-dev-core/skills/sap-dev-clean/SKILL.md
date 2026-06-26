@@ -8,9 +8,13 @@ description: |
   artefact whose dependents were extended by the operator (e.g.
   function group that contains user-added FMs, package that contains
   user-added Z* tables) unless --force is set.
-  By default the transport request is left untouched (other work may
-  live in it). Settings.json keys are preserved unless --settings is
-  passed, so a follow-up /sap-dev-init re-creates the same names.
+  By default the transport REQUEST object is kept (other work may live
+  in it), but the deleted dev-init OBJECTS are unassigned from it (their
+  lingering E071 entries are removed via /sap-se01 remove-objects) so a
+  later /sap-dev-init can re-create them — without this, a deleted
+  object's name-lock in an old unreleased request blocks re-creation
+  ("object is in request ..."). Settings.json keys are preserved unless
+  --settings is passed, so a follow-up /sap-dev-init re-creates the same names.
   The canonical "blow away and rebuild" sequence is:
   /sap-dev-clean ; /sap-dev-init.
   Pass --reset for a full, truly-clean reset: it implies --force + --settings,
@@ -39,6 +43,7 @@ Task: $ARGUMENTS
 | File | Purpose |
 |---|---|
 | `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_dev_artefacts.ps1` | RFC artefact-state pre-flight (also used by `/sap-dev-status`) |
+| `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_tr_object_entries.ps1` | RFC E071/E070 read — finds which unreleased request(s) still list a deleted artefact, so Step 3f can clear the lingering entries (read-only; removal is delegated to `/sap-se01 remove-objects`) |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/skill_operating_rules.md` | Mandatory operating rules |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/language_independence_rules.md` | GUI-scripting language independence — applies to GUI-driven delete sub-skills (sap-se37, sap-se11, sap-se38, sap-function-group, sap-se21) |
 
@@ -88,7 +93,7 @@ powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_
 
 | Flag | Meaning |
 |---|---|
-| `--reset` | **Full, truly-clean reset.** Implies `--force` **and** `--settings`, and additionally **deletes the dev transport request** (Step 3f) so no husk is left behind. Use for the `/sap-dev-clean --reset ; /sap-dev-init` rebuild. Still per-step confirmed; combine with `--dry-run` to preview first. |
+| `--reset` | **Full, truly-clean reset.** Implies `--force` **and** `--settings`, and additionally **deletes the dev transport request** (Step 3g) so no husk is left behind. Use for the `/sap-dev-clean --reset ; /sap-dev-init` rebuild. Still per-step confirmed; combine with `--dry-run` to preview first. |
 | `--settings` | After SAP-side cleanup, clear the `sap_dev_*` keys so the next `/sap-dev-init` picks fresh names. Default: keys preserved. |
 | `--force` | Skip the "extras-present, skip" guards on FG and package. Use only when you're absolutely sure no operator content depends on these artefacts. |
 | `--dry-run` | Pre-flight only. Print what would be deleted, prompt for nothing, change nothing. |
@@ -96,8 +101,9 @@ powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_
 **`--reset` is the umbrella destructive flag.** When it is set, treat `--force`
 and `--settings` as also set for every step below (the extras-skip guards are
 bypassed, the settings keys are cleared in Step 4), and run the TR-delete path
-in Step 3f. It does **not** make deletes silent — each artefact step still
-confirms with the operator (use `--dry-run` for a no-prompt preview).
+in Step 3g (instead of the Step 3f entry-clearing path). It does **not** make
+deletes silent — each artefact step still confirms with the operator (use
+`--dry-run` for a no-prompt preview).
 
 **Trigger phrases:**
 
@@ -115,7 +121,7 @@ chaining is the canonical reset.
 ## Step 2 — Pre-flight via `/sap-dev-status`
 
 Always run `/sap-dev-status` first to find out what's actually in the
-system. Use its per-artefact output as the worklist for Steps 3a–3f
+system. Use its per-artefact output as the worklist for Steps 3a–3g
 below — only attempt deletion of artefacts whose `STATE` is not
 `MISSING` / `NOT_CONFIGURED`.
 
@@ -267,14 +273,70 @@ re-check. Failures most commonly mean the package still has TADIR
 children — surface SE21's error verbatim and let the operator move
 those objects manually.
 
-### Step 3f — Transport request
+### Step 3f — Clear the deleted artefacts from their transport request(s)
 
-**By default (no `--reset` / `--force`), leave it alone.** Other work may live
-in it.
+**Run this on the DEFAULT path** (the common `/sap-dev-clean` with no `--reset`
+/ `--force`). **Skip it when Step 3g will delete the whole TR** (`--reset` /
+`--force`) — there the request and every entry it holds go away anyway, so
+clearing entries first is redundant.
 
-**With `--reset`** — delete the dev transport request itself, so the reset
-leaves no husk. By this point Steps 3a–3e have removed every object the dev TR
-held, so it now carries only those (now-deleted) entries and is safe to drop:
+**Why this step is mandatory now (it used to be "leave the TR alone").** Deleting
+an object's *definition* (Steps 3a-3e) does **not** remove its `E071` entry from
+the unreleased request that recorded it. That lingering entry keeps the object's
+**name-lock**, so a later `/sap-dev-init` fails to re-create the object:
+`ZCMD_RFCVAL is in request <TR>` / "enter object only in original request". The
+request itself is still left in place (other work may live in it) — but the
+**dev-init objects must be unassigned from it** so the names are free again.
+
+1. **Find the lingering entries.** Query `E071` for every artefact Steps 3a-3e
+   deleted, across all *unreleased* requests (an old "PR" may not be the current
+   `sap_dev_transport_request` — query by object name, not by TR):
+
+   ```bash
+   C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_tr_object_entries.ps1" -Objects "ZCMD_RFCVAL,ZCMDE_RFCVAL,ZCMST_RFC_PARAM,ZCMCT_RFC_PARAM,Z_GENERIC_RFC_WRAPPER_TBL,ZCMRUPDATE_ADDON_TABLE,<FG>,SAPL<FG>"
+   ```
+
+   **Use the 32-bit `SysWOW64` PowerShell** as shown — `sap_tr_object_entries.ps1`
+   loads SAP NCo 3.1, which is 32-bit-only; plain 64-bit `powershell` fails with
+   "Could not load … sapnco.dll … incorrect format". Substitute `<FG>` =
+   `sap_dev_function_group`. Restrict the `-Objects` list to
+   the artefacts that were **actually present + deleted** this run (use the Step
+   2 pre-flight worklist) — never list an object the operator still uses. The
+   helper is read-only and prints one
+   `ENTRY<TAB>TRKORR<TAB>TRSTATUS<TAB>TRFUNCTION<TAB>PGMID<TAB>OBJECT<TAB>OBJ_NAME`
+   line per hit (modifiable `D`/`L` requests only, by default), then
+   `STATUS: OK entries=<n> requests=<m> unreleased=<u>`. `entries=0` -> nothing
+   to clear; this step is done.
+
+2. **Remove the entries, request by request.** Group the `ENTRY` lines by
+   `TRKORR`. For each unreleased request, collect the `OBJ_NAME`s found in it and
+   delegate to `/sap-se01 remove-objects` (which unassigns the entries and
+   **keeps the request**):
+
+   ```
+   /sap-se01 remove-objects <TRKORR> OBJECTS=<comma-separated OBJ_NAMEs found in that TR>
+   ```
+
+   `OBJECTS=` is **mandatory** here — it bounds the removal to our own deleted
+   artefacts so any unrelated work in the same request is untouched. The
+   confirmation may be passed through (a bounded list of confirmed-deleted
+   dev-init objects). `/sap-se01 remove-objects` RFC-verifies `E071` afterwards.
+
+3. **Released requests are not a problem.** A released (`R`/`O`) request holds no
+   re-create lock and cannot be edited, so the helper omits them by default; if
+   one shows up, do not try to remove from it — re-create is not blocked by it.
+
+This is the step that makes the **conservative** clean leave the system in a
+re-init-able state. A failure here does not abort the clean — surface it and
+continue; the operator can re-run, or use `--reset` to drop the TR entirely.
+
+### Step 3g — Delete the dev transport request (`--reset` / `--force` only)
+
+**By default the request object is kept** (Step 3f already freed the object
+names). Only under `--reset` (or legacy `--force`) is the dev transport request
+itself deleted, so the reset leaves no husk. By this point Steps 3a-3e have
+removed every object the dev TR held, so it now carries only those (now-deleted)
+entries and is safe to drop:
 
 1. Confirm with the operator, showing the TR's `E071` child list (one line per
    object) — **let them read it first**. If the list contains objects the
@@ -297,14 +359,14 @@ held, so it now carries only those (now-deleted) entries and is safe to drop:
    reuses it), leaving only a harmless husk. Report the TR for manual handling
    in SE01.
 
-**With `--force` but not `--reset`** (legacy opt-in): same confirm-then-delete
-flow as the `--reset` path above.
+(`--force` without `--reset` follows the same confirm-then-delete flow as
+`--reset` for this step.)
 
 ---
 
 ## Step 4 — Optional: clear settings keys
 
-If `--settings` **or** `--reset` was passed, after Steps 3a-3f finish, clear the
+If `--settings` **or** `--reset` was passed, after Steps 3a-3g finish, clear the
 `sap_dev_transport_request`, `sap_dev_package`, and
 `sap_dev_function_group` standing defaults. Since `/sap-dev-init` now persists
 them **Connection-scoped** (the pinned connection's `dev_defaults` block), clear
@@ -461,15 +523,19 @@ trivial one-step operation.
 
 ## Limitations
 
-- **TR deletion is opt-in.** By default the TR is presumed to host other work
-  and is left alone. `--reset` (or legacy `--force`) deletes the dev TR via
-  `/sap-se01 delete`, still with explicit per-call confirmation of its `E071`
-  contents, and refuses if the TR holds non-sap-dev-init objects. The `/sap-se01`
-  delete mode is two-phase (it empties the request of object entries, then drops
-  it — SAP refuses to delete a non-empty request); since 3a–3e already removed
-  the objects, the empty-phase is a no-op here and nothing is orphaned. If the
-  delete cannot complete (released TR, or a task that won't empty), Step 4 still
-  clears the TR reference so the next `/sap-dev-init` self-heals — see Step 3f.
+- **The dev-init object ENTRIES are cleared from the TR by default; deleting the
+  TR itself is opt-in.** Step 3f always unassigns the deleted artefacts from the
+  unreleased request(s) that recorded them (via `/sap-se01 remove-objects`) so
+  their name-locks are freed and the next `/sap-dev-init` can re-create them —
+  the request object is kept (other work may live in it). Only `--reset` (or
+  legacy `--force`) additionally DELETES the dev TR (Step 3g) via `/sap-se01
+  delete`, with explicit per-call confirmation of its `E071` contents, refusing
+  if the TR holds non-sap-dev-init objects. The `/sap-se01` delete mode is
+  two-phase (it empties the request of object entries, then drops it — SAP
+  refuses to delete a non-empty request); since 3a–3e already removed the
+  objects, the empty-phase is a no-op here and nothing is orphaned. If the delete
+  cannot complete (released TR, or a task that won't empty), Step 4 still clears
+  the TR reference so the next `/sap-dev-init` self-heals — see Step 3g.
 - **Conservative guards stop at the first user object.** A package
   with one Z table the operator added is left intact even if the rest
   is sap-dev-init detritus. Use `--force` to override, but read the

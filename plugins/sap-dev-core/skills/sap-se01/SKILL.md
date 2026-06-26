@@ -19,14 +19,23 @@ description: |
         shared popup walker) and verifies removal via E070. Asks for explicit
         confirmation; refuses a released TR or one holding non-dev objects.
         Used by /sap-dev-clean --reset to drop the dev TR.
+    (d) REMOVE-OBJECTS -- invoked as `/sap-se01 remove-objects <TR>
+        [OBJECTS=a,b,...]`. Unassigns object entries (E071) from an UNRELEASED
+        request but KEEPS the request itself. With OBJECTS= it removes only the
+        named objects (safe on a TR that holds other work); without it, removes
+        ALL objects (Select-All). Clears the name-lock a lingering E071 entry
+        holds, so a deleted object can be re-created -- the fix for "object is in
+        request ..." / "enter object only in original request" on re-create.
+        Verifies via E071. Used by /sap-dev-clean (teardown) and /sap-dev-init
+        (defensive pre-create). Distinct from DELETE, which drops the whole TR.
   Prerequisites: Active SAP GUI session (use /sap-login first).
-argument-hint: "[create [W|C] [\"<desc>\"]] | [release <TR>] | [delete <TR>]"
+argument-hint: "[create [W|C] [\"<desc>\"]] | [release <TR>] | [delete <TR>] | [remove-objects <TR> [OBJECTS=a,b]]"
 ---
 
 # SAP SE01 — Transport Request Management Skill
 
-You manage SAP transport requests via SE01 using SAP GUI Scripting. Two modes:
-**CREATE** (default) and **RELEASE**.
+You manage SAP transport requests via SE01 using SAP GUI Scripting. Four modes:
+**CREATE** (default), **RELEASE**, **DELETE**, and **REMOVE-OBJECTS**.
 
 Task: $ARGUMENTS
 
@@ -38,6 +47,7 @@ Look at `$ARGUMENTS` to pick the mode:
 |---|---|---|
 | `release` followed by a TR (e.g. `release ER1K900234`) | RELEASE | "Release Mode" section below |
 | `delete` followed by a TR (e.g. `delete ER1K900234`) | DELETE | "Delete Mode" section below |
+| `remove-objects` / `remove-object` / `delobj` followed by a TR (e.g. `remove-objects ER1K900234 OBJECTS=ZCMD_RFCVAL`) | REMOVE-OBJECTS | "Remove-Objects Mode" section below |
 | `create` (or no first-token keyword) | CREATE | continue with Step 1 |
 
 Direct callers (`/sap-transport-request`) typically use the bare CREATE form.
@@ -565,6 +575,147 @@ Live-verified 2026-06-22 (two-phase delete, multi-object TRs):
   request-display re-open verify confirmed gone.
 - (Empty-TR path also verified earlier: `ERPK900031`/`ERPK900033` ->
   `btnBUTTON_1` confirm -> RFC E070 ROWS=0.)
+
+---
+
+# Remove-Objects Mode
+
+Use this section when `$ARGUMENTS` starts with `remove-objects` (aliases
+`remove-object` / `delobj`), e.g. `/sap-se01 remove-objects ER1K900234
+OBJECTS=ZCMD_RFCVAL,ZCMDE_RFCVAL`. This **unassigns object entries (E071) from
+an unreleased request and keeps the request alive** — the surgical counterpart
+to Delete Mode (which drops the whole request).
+
+**Why this mode exists.** An object recorded in an unreleased request holds a
+**name-lock**. When the object's definition is later deleted (e.g. `/sap-se11
+delete`) but its `E071` entry lingers in the old request, **re-creating the
+object fails** — SAP refuses with "object `<X>` is in request `<TR>`" / "enter
+object only in original request". Removing the lingering `E071` entry releases
+the lock so the name can be created again. This is the root-cause fix behind the
+`/sap-dev-clean` teardown and the `/sap-dev-init` defensive pre-create.
+
+**Removing an E071 entry is NOT a repository delete.** It only unassigns the
+object from the request. If the object still exists it becomes a package orphan
+(no transport record); if its definition is already gone (the lock-clearing
+case) there is nothing to orphan. Releasing the lock is the whole point.
+
+## X0 — Resolve work directory
+
+Same as Step 0 above: resolve `work_dir`, set `{WORK_TEMP}` and `{RUN_TEMP}`.
+
+## X1 — Parse the arguments
+
+- TR = the token after `remove-objects` (validate `<SID>K<digits>`, e.g.
+  `ER1K900234`). If missing / malformed:
+  > "Which transport request should I remove objects from? (e.g. `ER1K900234`)"
+- `OBJECTS=<comma-separated OBJ_NAME list>` — the objects to unassign (matched
+  case-insensitively against the `E071` `OBJ_NAME` column). **If omitted, the
+  mode removes ALL objects from the request** (Select-All). Callers that want
+  surgical removal (`/sap-dev-clean`, `/sap-dev-init`) ALWAYS pass `OBJECTS=`.
+
+## X2 — Inspect + confirm (mandatory)
+
+1. Read the TR's object list — `/sap-se16n E071` filtering `TRKORR EQ <TR>`
+   (or RFC `RFC_READ_TABLE` on `E071`), plus `E070-TRSTATUS`.
+2. **Refuse a released TR.** If `TRSTATUS` is `R` (Released) or `O` (release
+   started), stop — a released request cannot be edited (only reimported). The
+   name-lock is already gone for a released TR, so there is nothing to clear.
+3. Resolve the effective removal set: intersect `OBJECTS=` with the `E071` rows.
+   Show the operator exactly which entries will be unassigned. **If `OBJECTS=`
+   was omitted (remove-ALL), spell that out and list every entry** — removing
+   all entries from a TR that holds other work would unassign that work too.
+4. Confirm:
+   > "About to remove `<N>` object entr(ies) from transport request `<TR>`
+   > (status `<TRSTATUS>`): `<list>`. This unassigns them from the request
+   > (clears their name-lock); it does NOT delete the repository objects. The
+   > request `<TR>` itself is kept. Proceed? (yes / no)"
+
+   Only proceed on explicit `yes`. When called from `/sap-dev-clean` /
+   `/sap-dev-init`, those skills have already shown the list and confirmed — they
+   may pass the confirmation through (each names a bounded `OBJECTS=` set of its
+   own dev-init artefacts, never remove-ALL).
+
+## X3 — Ensure SAP GUI login
+
+Same as Step 2: requires an active SAP GUI session.
+
+## X4 — Run the remove-objects VBS
+
+Template: `./references/sap_se01_remove_objects.vbs`. Tokens: `%%TRANSPORT%%`,
+`%%OBJECTS%%`.
+
+Write `{RUN_TEMP}\sap_se01_remove_objects_run.ps1`:
+```powershell
+$content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_se01_remove_objects.vbs', [System.Text.Encoding]::UTF8)
+$content = $content -replace '%%TRANSPORT%%','THE_TR'
+$content = $content -replace '%%OBJECTS%%','THE_OBJECTS'
+$content = $content -replace '%%SESSION_LOCK_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_session_lock.vbs'
+$sessionPath = ''
+$content = $content -replace '%%SESSION_PATH%%', $sessionPath
+$content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
+[System.IO.File]::WriteAllText('{RUN_TEMP}\sap_se01_remove_objects_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
+Write-Host 'Done'
+```
+Replace `THE_TR`, `THE_OBJECTS` (the comma-separated list, or empty for
+remove-ALL), and `<SKILL_DIR>` / `{WORK_TEMP}` / `{RUN_TEMP}` with absolute
+values. **Pass `OBJECTS=` from every automated caller** — leave `THE_OBJECTS`
+empty only for a deliberate operator-confirmed remove-ALL.
+
+Run:
+```bash
+powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_se01_remove_objects_run.ps1"
+C:/Windows/SysWOW64/cscript.exe //NoLogo {RUN_TEMP}\sap_se01_remove_objects_run.vbs
+```
+
+## X5 — Interpret VBS output
+
+The VBS echoes one `INFO: Request nodes found: <N>` line, then per node either
+`INFO:   node <TR/task>: 0 objects.` / `... none of the named objects present.`
+or `INFO:   node <task>: removing <N> matched object(s)...` followed by one
+`INFO:     - <PGMID> <OBJECT> <OBJ_NAME>` line per removed entry.
+
+| Last line | Meaning |
+|---|---|
+| `SUCCESS: Removed <N> object entr(ies) from <TR>.` | `<N>` entries unassigned. Verify in X6. `<N>` = 0 with a "(none of the named objects were in the request)" tail means the lock was already clear — that is a clean success for the lock-clearing use case. |
+| `ERROR: Request display did not open ...` | The TR did not exist (already gone). For the lock-clearing use case treat as success once X6 confirms `E071` has no row. |
+| `ERROR: TRANSPORT is empty ...` | The `%%TRANSPORT%%` token was not substituted. Re-generate the VBS. |
+
+## X6 — Verify + report
+
+1. **RFC-verify** the named objects are gone from the TR: `RFC_READ_TABLE` on
+   `E071` filtering `TRKORR = '<TR>'` (or `/sap-se16n E071`). Each removed
+   `OBJ_NAME` should no longer appear under that `TRKORR`. (The request header
+   `E070` row still exists — that is intended; only the object entries were
+   removed.)
+2. Report:
+   ```
+   Removed <N> object entr(ies) from <TR> (request kept).
+   Verified E071 no longer lists: <objects>.
+   ```
+3. Persistence: this mode never touches settings — the caller decides.
+
+## X7 — Component IDs (remove-objects flow, for reference)
+
+| Element | ID |
+|---|---|
+| TR input field | `.../ssubCOMMONSUBSCREEN:RDDM0001:0210/ctxtTRDYSE01SN-TR_TRKORR` |
+| Display button | `.../btn%_AUTOTEXT028` (auto-name) |
+| Request-display program | `SAPMSSY0` |
+| Object editor program | `SAPLSCTSREQ` |
+| Node rows (request + tasks) | `wnd[0]/usr` GuiLabels; identified by TR-number pattern, never column text |
+| Drill into a node | focus its label + `sendVKey 2` (F2) |
+| Change-mode toggle (editor) | `wnd[0]/tbar[1]/btn[25]` |
+| Objects tab | `wnd[0]/usr/tabsREQ_TABSTRIP/tabpOBJECTS` |
+| Object subscreen base | `.../tabpOBJECTS/ssubSCREEN_HEADER:SAPLSCTS_OLE:0500/` |
+| Object count field | `<base>txtDV_OBJECT_COUNT` |
+| Object table control | `<base>tblSAPLSCTS_OLETC_OLE` (cells `ctxtTRE071X-PGMID[1,r]` / `ctxtTRE071X-OBJECT[2,r]` / `txtTRE071X-OBJ_NAME[3,r]`) |
+| Select-all (remove-ALL path) | `<base>btnDB_SELECT_ALL` |
+| Targeted row select | `<table>.GetAbsoluteRow(i).Selected = True` (scroll via `<table>.VerticalScrollbar.Position`) |
+| Delete selected | `<base>btnDB_DELETE` |
+| Object-delete confirm | `wnd[1]/usr/btnSPOP-OPTION1` / `btnBUTTON_1` / `tbar[0]/btn[0]` / Enter (cascade) |
+| Save (commit unassign) | `sendVKey 11` |
 
 ---
 
