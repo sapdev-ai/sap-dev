@@ -474,19 +474,43 @@ the **package** delete (Step 3e) — `SE21` refuses a package whose `TADIR`
 still has children. So after the comparison, RFC-check `TADIR` for every
 deleted artefact (`PGMID=R3TR`, `OBJECT` ∈ {`PROG`,`TABL`,`TTYP`,`DTEL`,
 `DOMA`,`FUGR`}, `OBJ_NAME=<name>`); a row that survives while the definition
-is gone is a TADIR orphan. Report each orphan explicitly (do NOT fold it into
-"cleaned") with the remediation:
+is gone is a TADIR orphan.
 
-- **Clear the directory entries** — `SE03 → Object Directory → Change Object
-  Directory Entries` (report `RSWBO052`; ECC6 has no dedicated "Delete Object
-  Directory Entries" node): select the orphan rows → delete.
-- **or release/delete the transport** holding the objects — releasing
-  finalizes the recorded deletions and clears their `TADIR`; deleting the TR
-  (once it holds only deleted objects) unlocks them so the SE03 step / a
-  re-run of Step 3e can complete.
+**Clean each orphan programmatically** via `sap_tadir_delete.ps1` (the P2 fix —
+it deletes the directory row through the dev-init wrapper FM →
+`TR_TADIR_INTERFACE`, safety-guarded so it only ever removes a row whose
+definition is verifiably gone, and RFC-verifies the deletion). Build the
+`-Entries` list as `OBJECT:OBJ_NAME` pairs for the orphans found:
 
-Until the orphans are cleared the package CANNOT be dropped — surface this as
-a follow-up rather than reporting the clean as fully complete.
+```bash
+C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_tadir_delete.ps1" -Entries "DOMA:ZCMD_RFCVAL,DTEL:ZCMDE_RFCVAL,TABL:ZCMST_RFC_PARAM,TTYP:ZCMCT_RFC_PARAM,PROG:ZCMRUPDATE_ADDON_TABLE,FUGR:<FG>"
+```
+
+**Circular-teardown caveat (important).** The wrapper FM
+`Z_GENERIC_RFC_WRAPPER_TBL` is itself a `/sap-dev-init` artefact that Step 3a
+already deleted — so when cleaning the **dev-init package's own** orphans the
+script will print `STATUS: RFC_ERROR wrapper FM … not found`. That is expected:
+the tool needed to clean the orphans was torn down with everything else. In that
+case fall back to either —
+
+- **Clear the directory entries manually** — `SE03 → Object Directory → Change
+  Object Directory Entries` (report `RSWBO052`; ECC6 has no dedicated "Delete
+  Object Directory Entries" node): select the orphan rows → delete; **or**
+- **release/delete the transport** holding the objects — releasing finalizes the
+  recorded deletions and clears their `TADIR`; **or**
+- re-run `/sap-dev-init` (redeploys the wrapper FM), then re-run the
+  `sap_tadir_delete.ps1` command above.
+
+(When `/sap-dev-clean` is NOT deleting the wrapper's own package — or you reach
+this with the wrapper still deployed — the script cleans the orphans outright
+and no manual step is needed; this is the common case for a throwaway package
+whose objects you deleted, exactly the "P2" scenario `/sap-se21` Step 8a also
+handles on a standalone package delete.)
+
+Report each orphan explicitly (do NOT fold it into "cleaned") and whether it was
+auto-cleaned or left for manual handling. Until the orphans are cleared the
+package CANNOT be dropped — surface any remaining ones as a follow-up rather
+than reporting the clean as fully complete.
 
 ---
 

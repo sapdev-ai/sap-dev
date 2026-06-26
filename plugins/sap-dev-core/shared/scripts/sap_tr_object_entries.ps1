@@ -51,13 +51,20 @@
 #   Connect-SapRfc, which defaults to the AI-session's pinned profile when blank.
 #
 # Output (stdout, parseable):
-#   One TAB-separated line per matching entry (REQUEST = the top-level request:
-#   the entry's STRKORR when its TRKORR is a task, else the TRKORR itself):
-#     ENTRY<TAB>TRKORR<TAB>TRSTATUS<TAB>TRFUNCTION<TAB>PGMID<TAB>OBJECT<TAB>OBJ_NAME<TAB>REQUEST
-#   Then a summary line:
-#     STATUS: OK entries=<n> requests=<m> unreleased=<u>
+#   One TAB-separated line per matching entry. OBJFUNC = the E071 object function:
+#   'K' (normalised from blank) = create/change, 'D' = the entry RECORDS A
+#   DELETION of the object. REQUEST = the top-level request (the entry's STRKORR
+#   when its TRKORR is a task, else the TRKORR itself) -- still the TRAILING column:
+#     ENTRY<TAB>TRKORR<TAB>TRSTATUS<TAB>TRFUNCTION<TAB>PGMID<TAB>OBJECT<TAB>OBJ_NAME<TAB>OBJFUNC<TAB>REQUEST
+#   Then a summary line (deletions = how many of the entries are OBJFUNC='D'):
+#     STATUS: OK entries=<n> deletions=<d> requests=<m> unreleased=<u>
 #     STATUS: RFC_ERROR <msg>
 #   Exit code: 0 = OK (including 0 entries), 2 = RFC / connect failure.
+#
+# Deletion entries (OBJFUNC='D') matter to callers: a TR holding ONLY 'D' entries
+# is a record of already-deleted objects (no live content) -- deleting/emptying
+# that TR un-records those deletions (they won't transport onward) even though the
+# objects stay deleted locally. /sap-se01 delete surfaces this; see its D2.
 #
 # TRSTATUS legend: D Modifiable, L Locked, O Release started, R Released.
 # =============================================================================
@@ -181,7 +188,7 @@ try {
             $where = "OBJ_NAME = " + (Quote-RfcLiteral $name)
             if ($reqFilter -ne '') { $where += " AND TRKORR = " + (Quote-RfcLiteral $reqFilter) }
             $rows = Read-SapTableRows -Destination $dest -Table 'E071' -Where $where `
-                        -Fields @('TRKORR', 'PGMID', 'OBJECT', 'OBJ_NAME')
+                        -Fields @('TRKORR', 'PGMID', 'OBJECT', 'OBJ_NAME', 'OBJFUNC')
             if ($null -eq $rows) {
                 Write-Output 'STATUS: RFC_ERROR RFC_READ_TABLE on E071 failed (auth S_TABU_DIS?)'
                 exit 2
@@ -207,7 +214,7 @@ try {
         foreach ($node in $nodes) {
             $rows = Read-SapTableRows -Destination $dest -Table 'E071' `
                         -Where ("TRKORR = " + (Quote-RfcLiteral $node)) `
-                        -Fields @('TRKORR', 'PGMID', 'OBJECT', 'OBJ_NAME')
+                        -Fields @('TRKORR', 'PGMID', 'OBJECT', 'OBJ_NAME', 'OBJFUNC')
             if ($null -eq $rows) {
                 Write-Output 'STATUS: RFC_ERROR RFC_READ_TABLE on E071 failed (auth S_TABU_DIS?)'
                 exit 2
@@ -248,6 +255,7 @@ try {
     #    object unconditionally (the emptiness signal must be the TRUE count).
     #    REQUEST column = STRKORR when the entry's TRKORR is a task, else TRKORR.
     $emitted   = 0
+    $delCount  = 0
     $reqSet    = @{}
     $unrelSet  = @{}
     foreach ($e in $entries) {
@@ -260,14 +268,21 @@ try {
         }
         $strk    = "$($hdr.STRKORR)".Trim()
         $request = if ($strk -ne '') { $strk } else { "$($e.TRKORR)" }
+        # OBJFUNC: '' (blank) = create/change, 'D' = the entry RECORDS A DELETION of
+        # the object (P5/P6 -- such an entry is a record of an already-deleted
+        # object; un-assigning it un-records the deletion, and a TR holding only
+        # these is "effectively empty" of live content). Normalise blank -> 'K'.
+        $objf = "$($e.OBJFUNC)".Trim().ToUpperInvariant()
+        if ($objf -eq '') { $objf = 'K' }
+        if ($objf -eq 'D') { $delCount++ }
         $reqSet[$request] = $true
         if ($isUnrel) { $unrelSet[$request] = $true }
-        $line = "ENTRY`t$($e.TRKORR)`t$trstatus`t$($hdr.TRFUNCTION)`t$($e.PGMID)`t$($e.OBJECT)`t$($e.OBJ_NAME)`t$request"
+        $line = "ENTRY`t$($e.TRKORR)`t$trstatus`t$($hdr.TRFUNCTION)`t$($e.PGMID)`t$($e.OBJECT)`t$($e.OBJ_NAME)`t$objf`t$request"
         Write-Output $line
         $emitted++
     }
 
-    Write-Output ("STATUS: OK entries=$emitted requests=$($reqSet.Count) unreleased=$($unrelSet.Count)")
+    Write-Output ("STATUS: OK entries=$emitted deletions=$delCount requests=$($reqSet.Count) unreleased=$($unrelSet.Count)")
     exit 0
 } catch {
     Write-Output ("STATUS: RFC_ERROR " + $_.Exception.Message)

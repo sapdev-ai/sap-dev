@@ -178,8 +178,18 @@ If finalSbarType = "E" Or finalSbarType = "A" Then
 End If
 
 If finalProg <> "SAPLPB_PACKAGE" Then
-    WScript.Echo "WARN: Did not land on SAPLPB_PACKAGE/Change Package screen. " & _
-                 "Verify manually via SE16N on TDEVC."
+    ' P3 false-success gate: landing on the Change Package editor (SAPLPB_PACKAGE
+    ' /1000) is the ONLY authoritative "package was created" signal. When the
+    ' create is canceled (e.g. a bad/invalid TR -> sbar type S "Action was
+    ' canceled", screen falls back to SAPLPB_ENTRY/100), the E/A check above does
+    ' NOT catch it (the message type is S). Previously the VBS emitted a non-fatal
+    ' WARN and STILL printed "RESULT: PACKAGE_CREATED" -- a false success the
+    ' SKILL.md keys on. Fail loud instead; do NOT print the RESULT line.
+    WScript.Echo "ERROR: Package " & PKG_NAME & " NOT created -- did not reach the " & _
+                 "Change Package screen (SAPLPB_PACKAGE/1000). Final screen=" & finalProg & _
+                 "/" & oSession.Info.ScreenNumber & " sbar(" & finalSbarType & ")=" & finalSbarText & _
+                 ". (A canceled create reports sbar type S, so this screen check is the gate.)"
+    WScript.Quit 1
 End If
 
 ' ------ 7. Back out to SAP Easy Access --------------------------------------
@@ -187,5 +197,6 @@ On Error Resume Next
 oSession.findById("wnd[0]/tbar[0]/okcd").Text = "/n"
 oSession.findById("wnd[0]").sendVKey VKEY_ENTER
 WScript.Sleep 500
+On Error GoTo 0
 
 WScript.Echo "RESULT: PACKAGE_CREATED: " & PKG_NAME

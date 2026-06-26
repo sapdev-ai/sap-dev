@@ -392,28 +392,43 @@ C:/Windows/SysWOW64/cscript.exe //NoLogo {RUN_TEMP}\sap_se01_release_run.vbs
 
 ## R6 — Interpret VBS output
 
-The VBS emits one line per release iteration plus a final `DONE` or
-`WARNING` / `ERROR` line.
+The VBS releases each task once (collected by number, not by fixed label
+position) then the request, and emits a `status[<type>]: <text>` line per node
+plus a final `DONE` or `WARNING` / `ERROR` line. **The VBS output is NOT
+authoritative** — it cannot read `E070`; R7's RFC check is the gate.
 
 | Last line | Meaning |
 |---|---|
-| `DONE: TR <TR> release flow completed.` | Tasks + parent TR released. Verify via `E070-TRSTATUS = R`. |
-| `WARNING: Release loop hit max ... iterations` | Indeterminate. Open SE01 manually and check. |
-| `ERROR: Release failed at iteration N: [E] <message>` | A release step failed. Common causes: TR has unsaved objects, RDDIMPDP not running, permission missing. Show the SAP message to the user. |
+| `DONE: TR <TR> release flow ran (no visible failure). Caller MUST verify E070-TRSTATUS=R ...` | No failure was visible in the GUI. **Still verify in R7** — this is not a success claim. |
+| `WARNING: request <TR> release appears to have FAILED ...` | The request release hit a transport-control (`tp`) error or an E/A status — the request is likely still **modifiable** (`TRSTATUS=D`). Exit code 1. Surface the `tp` message; the TR did NOT release. Most often the system's STMS / transport route is not configured for an outbound release (common on sandboxes), or the TR has unsaved objects / RDDIMPDP is down. |
+| `ERROR: ...` | A navigation/attach step failed. Show the SAP message. |
 
-## R7 — Post-release housekeeping
+## R7 — Post-release housekeeping (RFC verify is the authoritative gate)
 
-After `DONE`:
+**Always RFC-verify — regardless of the VBS verdict.** The bare VBS cannot read
+`E070`, so a `DONE` line is "no visible failure", NOT "released". Confirm via
+`/sap-se16n E070` (or `RFC_READ_TABLE`) filtering `TRKORR EQ <TR>` **and**
+`STRKORR EQ <TR>` (the child tasks):
 
-1. Verify status via `/sap-se16n E070` filtering `TRKORR EQ <TR>`. Expect
-   `TRSTATUS = R`.
-2. If R2 noted that the TR was the saved default, run `/update-config` to
-   clear `sap_dev_transport_request` (set to empty).
-3. Report to the user:
+1. **Request + every task must be `TRSTATUS = R`.** If the **request** is still
+   `D` (modifiable) while tasks are `R`, the request release **failed** (e.g. the
+   S4D-style `tp` return-code-0012 — STMS not configured) — report it as a
+   **failure**, NOT a success, and surface the `tp`/sbar message. Do not clear
+   any default or claim the TR is released.
+2. Only when the request is `R`: if R2 noted the TR was the saved default, run
+   `/update-config` to clear `sap_dev_transport_request` (set to empty).
+3. Report:
 
 ```
-Released TR <TR>. Verified E070-TRSTATUS = R.
+Released TR <TR>. Verified E070-TRSTATUS = R (request + N task(s)).
 [sap_dev_transport_request cleared.]
+```
+
+   or, on the failure path:
+
+```
+TR <TR> did NOT release: request still TRSTATUS=D (tasks R). <tp/sbar message>.
+Likely STMS/transport route not configured for release on this system.
 ```
 
 ## R8 — Component IDs (release flow, for reference)
@@ -484,9 +499,14 @@ format (`<SID>K<digits>`, e.g. `ER1K900234`). If missing / malformed:
 
 Deletion is irreversible. Show the operator what's inside, then confirm:
 
-1. Read the TR's object list -- `/sap-se16n E071` filtering `TRKORR EQ <TR>`
-   (or RFC `RFC_READ_TABLE` on `E071`), one line per object; also read
-   `E070-TRSTATUS`.
+1. Read the TR's object list **with the entry function** -- prefer the shared
+   helper (it reports `OBJFUNC` + a `deletions=` count):
+   ```bash
+   C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_tr_object_entries.ps1" -Trkorr <TR>
+   ```
+   (or `/sap-se16n E071` filtering `TRKORR EQ <TR>` reading `OBJFUNC` too). Also
+   read `E070-TRSTATUS`. Each `ENTRY` line ends `…OBJ_NAME<TAB>OBJFUNC<TAB>REQUEST`
+   where `OBJFUNC` = `K` (create/change) or **`D` (records a DELETION)**.
 2. **Refuse a released TR.** If `TRSTATUS` is `R` (Released) or `O` (release
    started), stop: a released request cannot be deleted (only reimported).
 3. **Refuse unrelated work.** If E071 holds objects that are NOT sap-dev-init
@@ -497,15 +517,39 @@ Deletion is irreversible. Show the operator what's inside, then confirm:
    can be dropped. The repository objects are not deleted, but they lose their
    transport record -- which for live work is almost never what the operator
    wants.
-4. Ask (mention the unassign consequence whenever `<N>` > 0):
+4. **P5 -- deletion entries (`OBJFUNC='D'`, `deletions=<d>` > 0).** A `D` entry is
+   a **record that the object was deleted** (the object is already gone). Phase 1
+   will **unassign** it -- which *un-records the deletion*: the object stays
+   deleted in THIS system, but the deletion will **no longer transport** to QA /
+   PROD (and any `TADIR` orphan stays). For a throwaway dev TR that is the right
+   outcome; for a TR whose deletions are meant to ship, **you almost certainly
+   want to RELEASE it, not delete it.** Call this out explicitly when `<d>` > 0
+   and require a knowing confirmation. (A TR holding ONLY `D` entries is
+   "effectively empty" of live content -- safe to drop for cleanup, but the
+   un-record consequence still applies.)
+5. Ask (mention the unassign consequence whenever `<N>` > 0; add the deletion
+   note whenever `<d>` > 0):
    > "About to DELETE transport request `<TR>` (status `<TRSTATUS>`, `<N>`
-   > objects shown above) via SE01. The `<N>` object(s) will first be
-   > **unassigned** from the request (orphaned in their package -- not deleted),
-   > then the request is dropped. This is irreversible. Proceed? (yes / no)"
+   > entries shown above; `<d>` of them are DELETION records) via SE01. The
+   > `<N>` entr(ies) will first be **unassigned** from the request, then the
+   > request is dropped. [If `<d>`>0:] This **un-records `<d>` deletion(s)** --
+   > those objects stay deleted here but the deletions will NOT transport onward.
+   > Irreversible. Proceed? (yes / no)"
 
 Only proceed on explicit `yes`. (When called from `/sap-dev-clean --reset`,
 that skill has already shown the E071 list and confirmed -- it may pass the
 confirmation through.)
+
+> **P6 -- where an object's deletion actually lands (read before assuming a "new
+> TR").** When you DELETE a repository object (via `/sap-se11`, `/sap-se21`, …),
+> SAP records the deletion in the object's **own modifiable request** if it still
+> has one -- auto-creating a task there -- and only prompts for a *different* TR
+> (the `KO008` popup) when the object's original request is **released**. So
+> "the deletions go to a new TR" holds ONLY for released-original objects;
+> otherwise they fold back into the original (still-`D`) request and any TR you
+> passed is ignored / left empty. **Never assume which TR captured a deletion --
+> query it** (the helper's by-object mode, `-Objects <name>`, returns the actual
+> `REQUEST`).
 
 ## D3 -- Ensure SAP GUI login
 

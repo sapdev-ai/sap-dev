@@ -37,6 +37,7 @@ Task: $ARGUMENTS
 |---|---|---|
 | `<SKILL_DIR>/references/sap_se21_create.vbs` | `%%PACKAGE%%`, `%%DESCRIPTION%%`, `%%TRANSPORT%%`, `%%SESSION_LOCK_VBS%%` | GUI-scripting template that drives SE21 to create the package |
 | `<SKILL_DIR>/references/sap_check_package.ps1` | `%%PACKAGE%%`, `%%SAP_*%%` | RFC_READ_TABLE check for package existence on TDEVC |
+| `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_tadir_delete.ps1` | — (CLI) | Delete **orphaned** TADIR children (definition gone) via the dev-init wrapper FM → `TR_TADIR_INTERFACE`, so a package whose only blockers are orphans can be deleted. Safety-guarded (refuses rows whose definition still exists) + RFC-verified. Used by Step 8. |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/skill_operating_rules.md` | — | Mandatory operating rules |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/tr_resolution.md` | — | TR resolution policy implemented by `/sap-transport-request` |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/language_independence_rules.md` | — | GUI-scripting language independence — identify by component ID + DDIC field name, status-bar checks via `MessageType` codes (S/W/E/I/A), VKey instead of menu-text, no branching on `.Text`/`.Tooltip`/window titles |
@@ -254,13 +255,22 @@ Read the script output line-by-line.
 - Suggest: "You can now use this package for development objects. Set
   `sap_dev_package` in settings.json to `<name>` for automatic use."
 
-**On failure** (output starts with `ERROR:` or includes `WARN:` for unexpected
-final state):
+> **`RESULT: PACKAGE_CREATED` is now gated on actually reaching the Change
+> Package editor (`SAPLPB_PACKAGE/1000`).** A **canceled** create — e.g. an
+> invalid TR makes SAP report sbar **type `S` "Action was canceled"** and fall
+> back to `SAPLPB_ENTRY/100` — is type `S`, so the E/A status check does NOT
+> catch it; the screen check does. Previously the VBS emitted a non-fatal `WARN`
+> and still printed `RESULT: PACKAGE_CREATED` (a false success). Now it emits
+> `ERROR: Package <name> NOT created -- did not reach the Change Package screen
+> ...` and exits 1, so keying success on the `RESULT:` line is reliable.
+
+**On failure** (output starts with `ERROR:`):
 
 | Error / status-bar message | Cause | Fix |
 |---|---|---|
 | `SAP GUI is not running` / `No SAP GUI session found` | Not logged in | Run `/sap-login` then retry |
 | `Did not reach SE21 initial screen` | Wrong transaction routing | Verify user has S_TCODE auth for SE21 |
+| `Package <name> NOT created -- did not reach the Change Package screen` | Create was canceled — most often a bad/invalid/blank TR (sbar "Action was canceled"), or a build whose popup flow differs | Re-resolve a valid modifiable TR via `/sap-transport-request`; if the flow differs, re-record |
 | `Description popup field SCOMPKDTLN-CTEXT not found` | Different SAP build (older release uses `PBSRVSCR`; newer uses `PBENSCREEN` / `SCOMPKDTLN`) | Re-record via SAP Logon > Help > Scripting Recorder |
 | `TR popup appeared but no TRANSPORT was supplied` | Skill bug — Step 4 was skipped | Run `/sap-transport-request` first |
 | sbar `E` "Package already exists" | Race condition with another user | Skip Step 5; report success |
@@ -288,15 +298,78 @@ flow is:
    filtered by `DEVCLASS = <PKG>` and print the rows (one per
    `OBJECT/OBJ_NAME` pair). For more than ~20 children, summarise by
    object type. Anything in this list will block the deletion at SAP's
-   side; the operator must move them to a different package first.
-3. **Resolve the TR.** Query `TADIR` for
+   side — but **a child may be a true object OR an orphaned directory row**
+   (its definition was already deleted but `TADIR` survived). Step 8a
+   sorts the two apart; only true objects must be moved by the operator.
+
+3. **Clear orphaned TADIR children (Step 8a — the P2 fix).** A
+   successful SE-delete of a DDIC object / program commonly leaves the
+   object's `TADIR` row behind after the definition (DD01L / DD04L /
+   DD02L / DD40L / TRDIR / …) is already gone. Such an **orphan** is not a
+   real object, yet SE21 still counts it as a child and refuses the
+   package delete (the exact "P2" blocker). Clean these programmatically
+   via `sap_tadir_delete.ps1`, which deletes a TADIR row through the
+   dev-init wrapper FM → `TR_TADIR_INTERFACE` (the SAP write API for
+   TADIR; not remote-enabled, so it is reached through the wrapper). It is
+   **safety-guarded**: it deletes a row ONLY when the object's definition
+   is verifiably gone, and **refuses** (never deletes) a row whose
+   definition still exists — so a live child can never be orphaned by this
+   step. It then RFC-re-reads `TADIR` to confirm each deletion.
+
+   First **classify** every child with `-TestOnly` (no writes) — build the
+   `-Entries` list as `OBJECT:OBJ_NAME` pairs from the Step 2 list (the
+   `OBJECT` is the TADIR object code, e.g. `DOMA`/`DTEL`/`TABL`/`TTYP`/
+   `PROG`/`FUGR`):
+
+   ```bash
+   C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_tadir_delete.ps1" -TestOnly -Entries "DOMA:ZCMD_X,DTEL:ZCMDE_Y,TABL:ZCMST_Z"
+   ```
+
+   Each line is `TADIR: <verdict> <PGMID> <OBJECT> <OBJ_NAME>`:
+   `WOULD_DELETE` = orphan (definition gone, safe to clean);
+   `REFUSED_DEF_EXISTS` = a **live** object (must be moved by the operator —
+   it genuinely blocks the delete); `REFUSED_UNMAPPED` = unknown object type
+   (treat as live unless the operator is certain). The connection params are
+   omitted, so the script falls back to this AI session's pinned profile —
+   the same system the GUI is driving.
+
+   - **If any child is `REFUSED_DEF_EXISTS` / `REFUSED_UNMAPPED`** (a real
+     object), the package cannot be deleted: tell the operator to move
+     those objects to another package first, and **stop** (do not delete).
+   - **If the only blockers are orphans** (`WOULD_DELETE`), clean them (drop
+     `-TestOnly`) and proceed once the summary shows `failed=0`:
+
+     ```bash
+     C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_tadir_delete.ps1" -Entries "DOMA:ZCMD_X,DTEL:ZCMDE_Y,TABL:ZCMST_Z"
+     ```
+
+     If the script prints `STATUS: RFC_ERROR wrapper FM … not found`, the
+     dev-init wrapper is not deployed on this system — fall back to the
+     manual clean (`SE03 → Change Object Directory Entries`, report
+     `RSWBO052`) or run `/sap-dev-init` first, then retry.
+
+     A `TADIR: FAILED … still listed in unreleased request <TR> (E071)` line
+     means the orphan's name is still **locked** by an entry in an unreleased
+     transport — `TR_TADIR_INTERFACE` refuses to delete a locked directory row.
+     Clear that entry first, then re-run the clean:
+
+     ```
+     /sap-se01 remove-objects <TR> OBJECTS=<OBJ_NAME>
+     ```
+
+     (`sap_tadir_delete.ps1` emits the exact `<TR>` + `OBJECTS=` hint on the
+     `FAILED` line.) This is the same name-lock that blocks a re-create; the
+     script never reports a locked row as deleted.
+
+4. **Resolve the TR.** Query `TADIR` for
    `PGMID='R3TR' AND OBJECT='DEVC' AND OBJ_NAME=<PKG>`; if `DEVCLASS`
    starts with `$` it's local — TR not needed. Otherwise resolve a
    modifiable TR via `/sap-transport-request`.
-4. **Mandatory confirmation prompt:**
+5. **Mandatory confirmation prompt:**
 
    > Deleting development package `<PKG>` is irreversible.
    > Children in TADIR (`<count>`): `<list-or-summary>`.
+   > Orphaned directory rows cleaned in Step 8a (`<count>`): `<list>`.
    > Linked TR (if transportable): `<TR>`.
    > Type **yes** to proceed, anything else to abort.
 
@@ -373,7 +446,7 @@ cscript //NoLogo "{RUN_TEMP}\sap_se21_delete_run.vbs"
 | Last line | Meaning |
 |---|---|
 | `SUCCESS: Package <PKG> deleted.` | Package is gone — sbar status echoed above. |
-| `ERROR: Package still exists after delete (Display opened the editor).` | Most often: package still has TADIR children. Move them to another package and retry. |
+| `ERROR: Package still exists after delete (Display opened the editor).` | Package still has TADIR children. If they are **orphans** (definition gone), Step 8a should have cleaned them first — re-run Step 8a's classify (`-TestOnly`) and clean, then retry. If they are **live** objects, move them to another package and retry. |
 | `ERROR: SAP prompted for a transport request but TRANSPORT is empty.` | Transportable package; resolve a modifiable TR via `/sap-transport-request` and re-run. |
 | Other `ERROR: …` | Surface verbatim. |
 

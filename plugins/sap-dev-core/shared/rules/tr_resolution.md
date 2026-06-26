@@ -151,3 +151,29 @@ If PACKAGE is empty or $TMP, skip this step (local object — no TR needed).
 
 Skills MUST NOT prompt the user directly for the TR or call `/sap-se01`
 themselves — let `/sap-transport-request` mediate.
+
+## 6. DELETIONS: the resolved TR may be ignored (fold-into-modifiable-request)
+
+When a skill **deletes** a repository object (SE11/SE21/SE38/… delete modes),
+the resolved/passed TR is **not always where the deletion records**. SAP records
+the deletion in the object's **own modifiable request** if it still has one
+(auto-creating a task there), and only shows the `KO008` "choose a request"
+popup — i.e. actually uses the TR you supply — when the object's original
+request is **released** (or the object isn't already in any open request).
+
+Consequences a delete skill (and its caller) MUST handle:
+
+- **Do not assume the deletion landed in the TR you resolved.** If the object was
+  still in a modifiable request, your `%%TRANSPORT%%` is ignored and that request
+  (not your TR) now carries the deletion; a TR you created for the purpose may be
+  left empty.
+- **Query where it actually landed** rather than trusting the passed value — read
+  `E071` by object name (e.g. `shared/scripts/sap_tr_object_entries.ps1
+  -Objects <name>`, whose `REQUEST` column is the real request). This is what
+  `/sap-dev-clean` relies on instead of assuming a TR.
+- A deletion shows in `E071` as `OBJFUNC = 'D'`. Deleting/emptying the TR that
+  holds it **un-records** the deletion (it stays deleted locally but won't
+  transport) — see `/sap-se01` Delete-Mode D2.
+
+This is SAP behaviour, not a skill bug — but skills that *assume* "the deletion
+went to the new TR I made" will mis-report. Verify, don't assume.

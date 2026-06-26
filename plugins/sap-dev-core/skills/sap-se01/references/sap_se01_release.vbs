@@ -7,17 +7,30 @@
 ' Flow:
 '   1. /nse01 -> Transport Organizer tab (tabpTSSN)
 '   2. Enter TR -> press Display button (btn%_AUTOTEXT028)
-'   3. Scan wnd[0]/usr GuiLabels: any TR-shaped label != parent TR is a task.
-'      Release each task (F9) one at a time, refreshing display in between.
-'   4. Refresh display, find the parent TR label by EXACT text match, release.
-'   5. Back to SE01 main.
+'   3. Collect EVERY task node number (TR-shaped GuiLabel != parent TR) ONCE,
+'      then release each task EXACTLY once (locate its label by exact number,
+'      refresh display between releases). No re-scan-and-re-release loop.
+'   4. Release the parent request (label located by exact number match).
+'   5. Detect a request-release FAILURE (status type E/A, or a non-zero transport-
+'      control (tp) return code in the status) and refuse to claim DONE.
+'   6. Back to SE01 main.
+'
+' Two fixes (2026-06-26, from the create->release->delete lifecycle test):
+'   P1 - the old design re-scanned for "the first task label" each pass and
+'        re-released the SAME (already-released) task until a 10-pass cap, so a
+'        1-task TR burned 9 wasted "already released" round-trips. Now each task
+'        is collected up front and released once.
+'   P4 - on a system whose transport route is not configured, releasing the
+'        REQUEST returns "tp ... return code 0012" (status type S) and leaves the
+'        request MODIFIABLE (E070-TRSTATUS=D) -- yet the VBS used to print DONE.
+'        Now a tp-RC / E-A request-release status makes the VBS WARN + exit 1.
+'        The AUTHORITATIVE check is still the caller's RFC verify of
+'        E070-TRSTATUS=R (SKILL.md R7) -- the VBS cannot read E070.
 '
 ' Pitfalls handled:
-'   - The previous "first GuiLabel" pick caught lbl[0,0] (an empty header
-'     cell) and released nothing. We now match by exact text.
-'   - Label coordinates shift after each release -> re-scan + re-display.
-'   - Use exact equality (oC.Text = TRANSPORT), NOT InStr -- the screen
-'     header reads "Display Request <TR>" which would also match.
+'   - Nodes located by EXACT number match (locale/layout independent), never by
+'     fixed lbl[col,row] positions or the localized "Display Request <TR>" header.
+'   - Label coordinates shift after each release -> re-display before each lookup.
 '   - VBScript "If A And B" does NOT short-circuit. Pre-Set Nothing + split
 '     If Err = 0 / If Not (X Is Nothing) to avoid 424 on Empty Is Nothing.
 ' =============================================================================
@@ -34,13 +47,13 @@ Const VKEY_F9_RELEASE  = 9
 Const TR_FIELD       = "wnd[0]/usr/tabsMAINTABSTRIP/tabpTSSN/ssubCOMMONSUBSCREEN:RDDM0001:0210/ctxtTRDYSE01SN-TR_TRKORR"
 Const DISPLAY_BUTTON = "wnd[0]/usr/tabsMAINTABSTRIP/tabpTSSN/ssubCOMMONSUBSCREEN:RDDM0001:0210/btn%_AUTOTEXT028"
 
-Const MAX_TASK_PASSES = 10
-
 ' Include shared attach helper.
 ExecuteGlobal CreateObject("Scripting.FileSystemObject") _
     .OpenTextFile("%%ATTACH_LIB_VBS%%", 1).ReadAll()
 
 Dim sTR
+Dim gLastStat, gLastType    ' last release-status text + MessageType, set by ReleaseRow
+gLastStat = "" : gLastType = ""
 
 sTR = UCase(Trim(TRANSPORT))
 If sTR = "" Then
@@ -72,45 +85,41 @@ On Error GoTo 0
 ' ------ 3. Display TR --------------------------------------------------------
 If Not OpenTRDisplay(sTR) Then WScript.Quit 1
 
-' ------ 4. Release tasks one pass at a time ---------------------------------
-Dim iPass, sFirstTask
-For iPass = 1 To MAX_TASK_PASSES
-    sFirstTask = FindFirstTaskLabelId(sTR)
-    If sFirstTask = "" Then
-        WScript.Echo "INFO: No more tasks to release (pass " & iPass & ")."
-        Exit For
-    End If
-    WScript.Echo "INFO: Pass " & iPass & " - releasing task at " & sFirstTask & "..."
-    ReleaseRow sFirstTask
+' ------ 4. Release each task EXACTLY ONCE (P1) -------------------------------
+' Collect every task node number up front, then release each once (locating its
+' label by exact number after a fresh display). The old re-scan-first-label loop
+' re-released the same already-released task until a 10-pass cap.
+Dim aTasks : aTasks = CollectTaskNumbers(sTR)
+WScript.Echo "INFO: " & (UBound(aTasks) + 1) & " task(s) to release."
+Dim iT, sLblId
+For iT = 0 To UBound(aTasks)
     RefreshDisplay sTR
+    sLblId = FindLabelIdByNumber(aTasks(iT))
+    If sLblId = "" Then
+        WScript.Echo "INFO: task " & aTasks(iT) & " not on display (already released/gone); skip."
+    Else
+        WScript.Echo "INFO: releasing task " & aTasks(iT) & "..."
+        ReleaseRow sLblId
+    End If
 Next
 
-' ------ 5. Find + release the parent TR by EXACT text match -----------------
-Dim oUsr, oC, oTRLbl
-Set oTRLbl = Nothing
-On Error Resume Next
-Set oUsr = oSess.findById("wnd[0]/usr")
-If Err.Number = 0 Then
-    If Not (oUsr Is Nothing) Then
-        For Each oC In oUsr.Children
-            If oC.Type = "GuiLabel" Then
-                If oC.Text = sTR Then
-                    Set oTRLbl = oC
-                    Exit For
-                End If
-            End If
-        Next
-    End If
-End If
-Err.Clear
-On Error GoTo 0
-
-If oTRLbl Is Nothing Then
-    WScript.Echo "WARN: Could not find TR label " & sTR & " after task release. " & _
-                 "It may already be released, or the layout differs on this build."
+' ------ 5. Release the parent request (located by exact number) --------------
+Dim bReqTried, bReqFailed
+bReqTried = False : bReqFailed = False
+RefreshDisplay sTR
+Dim sReqLbl : sReqLbl = FindLabelIdByNumber(sTR)
+If sReqLbl = "" Then
+    WScript.Echo "WARN: Could not find request label " & sTR & " after task release " & _
+                 "(already gone, or layout differs). Verify E070-TRSTATUS."
 Else
-    WScript.Echo "INFO: Releasing TR " & sTR & " at " & oTRLbl.Id & "..."
-    ReleaseRow oTRLbl.Id
+    WScript.Echo "INFO: releasing request " & sTR & "..."
+    ReleaseRow sReqLbl
+    bReqTried = True
+    ' P4: a request release that hits a transport-control (tp) error leaves the
+    ' request MODIFIABLE even though the status message type is S. Flag E/A
+    ' status OR a non-zero tp return code so we never claim a false DONE.
+    If gLastType = "E" Or gLastType = "A" Then bReqFailed = True
+    If LooksLikeTpFailure(gLastStat) Then bReqFailed = True
 End If
 
 ' ------ 6. Back to SE01 main -------------------------------------------------
@@ -122,7 +131,19 @@ WScript.Sleep 400
 Err.Clear
 On Error GoTo 0
 
-WScript.Echo "DONE: TR " & sTR & " release flow completed. Verify status via E070-TRSTATUS (R = Released)."
+' ------ 7. Verdict (P4) -----------------------------------------------------
+' The AUTHORITATIVE check is the caller's RFC verify of E070-TRSTATUS=R (this
+' GUI step cannot read E070). Here we only refuse a clean DONE when the request
+' release visibly failed.
+If bReqTried And bReqFailed Then
+    WScript.Echo "WARNING: request " & sTR & " release appears to have FAILED (last status: [" & _
+                 gLastType & "] " & gLastStat & "). The request is likely still MODIFIABLE " & _
+                 "(E070-TRSTATUS=D) -- e.g. a transport-control (tp) error / unconfigured " & _
+                 "transport route. Do NOT treat as released; verify E070-TRSTATUS."
+    WScript.Quit 1
+End If
+WScript.Echo "DONE: TR " & sTR & " release flow ran (no visible failure). Caller MUST verify " & _
+             "E070-TRSTATUS=R for the request AND every task -- this GUI step cannot read E070."
 WScript.Quit 0
 
 
@@ -163,11 +184,11 @@ Sub RefreshDisplay(sTRNum)
     OpenTRDisplay sTRNum
 End Sub
 
-' Return the ID of the first GuiLabel whose text looks like a TR/task number
-' AND is not the parent TR. "" if none found.
-Function FindFirstTaskLabelId(sParentTR)
-    Dim oUsrLocal, oChild, sText
-    FindFirstTaskLabelId = ""
+' Collect EVERY task node number (TR-shaped GuiLabel whose text != parent TR)
+' from the current display, deduped. Returns an array (possibly empty).
+Function CollectTaskNumbers(sParentTR)
+    Dim dict, oUsrLocal, oChild, sText
+    Set dict = CreateObject("Scripting.Dictionary")
     On Error Resume Next
     Set oUsrLocal = oSess.findById("wnd[0]/usr")
     If Err.Number = 0 Then
@@ -176,7 +197,30 @@ Function FindFirstTaskLabelId(sParentTR)
                 If oChild.Type = "GuiLabel" Then
                     sText = Trim(oChild.Text)
                     If LooksLikeTRNumber(sText) And sText <> sParentTR Then
-                        FindFirstTaskLabelId = oChild.Id
+                        If Not dict.Exists(sText) Then dict.Add sText, True
+                    End If
+                End If
+            Next
+        End If
+    End If
+    Err.Clear
+    On Error GoTo 0
+    CollectTaskNumbers = dict.Keys
+End Function
+
+' Return the ID of the GuiLabel whose text EXACTLY equals sNum on the current
+' display. "" if not found.
+Function FindLabelIdByNumber(sNum)
+    Dim oUsrLocal, oChild
+    FindLabelIdByNumber = ""
+    On Error Resume Next
+    Set oUsrLocal = oSess.findById("wnd[0]/usr")
+    If Err.Number = 0 Then
+        If Not (oUsrLocal Is Nothing) Then
+            For Each oChild In oUsrLocal.Children
+                If oChild.Type = "GuiLabel" Then
+                    If Trim(oChild.Text) = sNum Then
+                        FindLabelIdByNumber = oChild.Id
                         Exit For
                     End If
                 End If
@@ -185,6 +229,18 @@ Function FindFirstTaskLabelId(sParentTR)
     End If
     Err.Clear
     On Error GoTo 0
+End Function
+
+' P4 heuristic: does a transport-control status carry a non-zero tp return code?
+' tp/RDDIMPDP RCs are universal digits inside a localized sentence (0004 warn,
+' 0008/0012/0016/0020 error). Treat >= 0008 as a release-failure signal.
+Function LooksLikeTpFailure(sStat)
+    LooksLikeTpFailure = False
+    If sStat = "" Then Exit Function
+    If InStr(sStat, "0008") > 0 Or InStr(sStat, "0012") > 0 _
+       Or InStr(sStat, "0016") > 0 Or InStr(sStat, "0020") > 0 Then
+        LooksLikeTpFailure = True
+    End If
 End Function
 
 ' SAP TR/task numbers: 3-char SID + 'K9' + 5+ digits (e.g. ER1K900235,
@@ -237,5 +293,9 @@ Sub ReleaseRow(sLblId)
     sStat = oSess.findById("wnd[0]/sbar").Text
     sType = oSess.findById("wnd[0]/sbar").MessageType
     On Error GoTo 0
+    ' Record the last release status so the caller (request-release verdict, P4)
+    ' can detect a tp-error / E-A failure.
+    gLastStat = sStat
+    gLastType = sType
     If sStat <> "" Then WScript.Echo "  status[" & sType & "]: " & sStat
 End Sub
