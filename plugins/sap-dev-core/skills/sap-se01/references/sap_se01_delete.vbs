@@ -17,9 +17,15 @@
 '             package intact). In the /sap-dev-clean --reset flow Steps 3a-3e
 '             have already deleted the objects, so Phase 1 normally finds an
 '             empty list and is a no-op safety net. Each removed entry is echoed.
-'   Phase 2 -- DELETE THE EMPTY REQUEST. Focus the request row, press Delete
-'             (tbar[1]/btn[13] = Shift+F1), and let the shared WalkDeletePopups
-'             answer the "delete request and its tasks?" confirm chain.
+'   Phase 2 -- DELETE THE EMPTY NODES, bottom-up. Delete each TASK node first,
+'             then the request itself: focus the node by its TR number, press
+'             Delete (tbar[1]/btn[13] = Shift+F1), and let the shared
+'             WalkDeletePopups answer the confirm (btnBUTTON_1 / Yes). The
+'             request-delete does NOT reliably cascade to its tasks across
+'             releases (and some releases refuse to delete a request that still
+'             owns a task), so each node is deleted explicitly -- the node-by-node
+'             flow from Record_EC2_SE01_DeleteTR001.vbs. Focusing by number (not
+'             the recording's fixed lbl[col,row]) keeps it locale-independent.
 '
 ' Tokens replaced at run time:
 '   %%TRANSPORT%%   TR number to delete, e.g. "ER1K900234". Required, unreleased.
@@ -116,36 +122,34 @@ Else
     WScript.Echo "INFO: Phase 1: request already empty -- nothing to unassign."
 End If
 
-' ------ 3. Phase 2: delete the (now empty) request --------------------------
+' ------ 3. Phase 2: delete nodes bottom-up (each task first, then the request) -
+' The request-delete does NOT reliably cascade to its tasks across releases (and
+' some releases refuse to delete a request that still owns tasks). So delete each
+' TASK node explicitly first, then the request itself -- the node-by-node flow
+' from the recorded SE01 empty-TR/task delete (Record_EC2_SE01_DeleteTR001.vbs).
+' Nodes are focused by their TR number (locale-independent), never by the fixed
+' lbl[col,row] positions of the raw recording, and the request is re-displayed
+' fresh before each deletion so the (shifting) layout is always current.
 If Not DisplayRequest(oSess, sTR) Then
     WScript.Echo "ERROR: Lost the request display before delete."
     WScript.Quit 1
 End If
+Dim aDelNodes : aDelNodes = CollectNodes(oSess, sTR)
 
 Dim wasLocked : wasLocked = TryLockSession(oSess)
-
-' Focus the request row, then press Delete.
-If Not FocusNode(oSess, sTR) Then
-    WScript.Echo "INFO: Could not focus the request row " & sTR & " (continuing; Delete acts on the request)."
-End If
-
-WScript.Echo "INFO: Pressing Delete (Shift+F1)..."
-On Error Resume Next
-oSess.findById(DELETE_BUTTON).press
-WScript.Sleep 1500
-If Err.Number <> 0 Then
-    WScript.Echo "ERROR: Could not press Delete (" & DELETE_BUTTON & "): " & Err.Description
-    ReleaseSession oSess, wasLocked
-    WScript.Quit 1
-End If
-Err.Clear
-On Error GoTo 0
-
-' Walk the confirm chain (delete request + tasks? -> Yes). A TR delete raises
-' only confirm popups -> pass empty objdir/lang/tr so only the confirm branch fires.
-Dim dpRes : dpRes = WalkDeletePopups(oSess, "", "", "")
-
+Dim idx, sNd, nDeleted
+nDeleted = 0
+' Tasks first (every collected node other than the request itself).
+For idx = 0 To UBound(aDelNodes)
+    sNd = aDelNodes(idx)
+    If sNd <> sTR Then
+        If DeleteNodeOnce(oSess, sTR, sNd, "task") Then nDeleted = nDeleted + 1
+    End If
+Next
+' Then the request node last (now task-less).
+If DeleteNodeOnce(oSess, sTR, sTR, "request") Then nDeleted = nDeleted + 1
 ReleaseSession oSess, wasLocked
+WScript.Echo "INFO: Phase 2 deleted " & nDeleted & " node(s) (tasks then request)."
 
 ' ------ 4. Verify: re-display; request screen should no longer open ----------
 WScript.Echo "INFO: Verifying deletion (try Display again)..."
@@ -366,3 +370,37 @@ Sub EchoVisibleObjects(oS)
     Next
     On Error GoTo 0
 End Sub
+
+' Delete ONE node (task or request) of sReq. Re-displays the request fresh first
+' (positions shift after each deletion), focuses the node by its TR number, presses
+' Delete (Shift+F1 = tbar[1]/btn[13]), and answers the confirm chain via the shared
+' popup walker (btnBUTTON_1 / btnSPOP-OPTION1 / Enter). Returns True if the node was
+' deleted or was already absent; False only on a hard "lost the screen" failure.
+Function DeleteNodeOnce(oS, sReq, sNode, sKind)
+    DeleteNodeOnce = False
+    If Not DisplayRequest(oS, sReq) Then
+        ' The request screen no longer opens. For the request node that means it
+        ' is already gone (success); for a task it means we lost the display.
+        If sKind = "request" Then
+            WScript.Echo "INFO:   request " & sReq & " no longer displays (already gone)."
+            DeleteNodeOnce = True
+        Else
+            WScript.Echo "INFO:   could not re-display " & sReq & " to delete node " & sNode & "."
+        End If
+        Exit Function
+    End If
+    If Not FocusNode(oS, sNode) Then
+        WScript.Echo "INFO:   " & sKind & " node " & sNode & " not present; skip (already deleted)."
+        DeleteNodeOnce = True
+        Exit Function
+    End If
+    WScript.Echo "INFO:   deleting " & sKind & " node " & sNode & " (Shift+F1)..."
+    On Error Resume Next
+    oS.findById(DELETE_BUTTON).press
+    WScript.Sleep 1200
+    Err.Clear
+    On Error GoTo 0
+    WalkDeletePopups oS, "", "", ""
+    WScript.Sleep 400
+    DeleteNodeOnce = True
+End Function

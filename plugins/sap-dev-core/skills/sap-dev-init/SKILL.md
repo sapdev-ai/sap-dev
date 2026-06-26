@@ -300,16 +300,18 @@ then resolve reactively with the same `/sap-se01 remove-objects` call.
    3.1 (32-bit-only); plain 64-bit `powershell` fails to load `sapnco.dll`. If it
    prints `STATUS: RFC_ERROR …` (RFC unavailable on this system), skip this step
    and rely on the reactive fallback in the create steps.
-   Each `ENTRY<TAB>TRKORR<TAB>TRSTATUS<TAB>TRFUNCTION<TAB>PGMID<TAB>OBJECT<TAB>OBJ_NAME`
-   line is an orphaned lock in an unreleased request; the closing
-   `STATUS: OK entries=<n> ...` gives the count. `entries=0` (or
-   `STATUS: RFC_ERROR ...` → RFC unavailable) → nothing to do; continue to Step 1b.
+   Each `ENTRY<TAB>TRKORR<TAB>TRSTATUS<TAB>TRFUNCTION<TAB>PGMID<TAB>OBJECT<TAB>OBJ_NAME<TAB>REQUEST`
+   line is an orphaned lock in an unreleased request; the trailing **`REQUEST`**
+   column is the top-level request (the task's parent, since objects sit in
+   tasks). The closing `STATUS: OK entries=<n> ...` gives the count. `entries=0`
+   (or `STATUS: RFC_ERROR ...` → RFC unavailable) → nothing to do; continue to Step 1b.
 
-2. **Clear them, request by request.** Group the `ENTRY` lines by `TRKORR`; for
-   each, delegate to `/sap-se01 remove-objects` with the `OBJ_NAME`s found in it:
+2. **Clear them, request by request.** Group the `ENTRY` lines by their
+   **`REQUEST`** column (pass the request — `/sap-se01 remove-objects` walks the
+   request and its tasks); delegate with the `OBJ_NAME`s found under it:
 
    ```
-   /sap-se01 remove-objects <TRKORR> OBJECTS=<comma-separated OBJ_NAMEs found in that TR>
+   /sap-se01 remove-objects <REQUEST> OBJECTS=<comma-separated OBJ_NAMEs found under that request>
    ```
 
    These are all deleted-but-locked dev-init objects, so removal is safe and may

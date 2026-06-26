@@ -20,9 +20,17 @@
 # 64-bit powershell fails with "Could not load ... sapnco.dll ... incorrect
 # format" (the script surfaces that hint and exits 2).
 #
+# Two query modes:
+#   * BY-OBJECT (-Objects given): report which request(s) list those object names.
+#   * BY-TR (only -Trkorr given, no -Objects): list EVERY object in that request and
+#     its child tasks -- the emptiness check behind /sap-dev-clean "delete the TR
+#     when it is empty" (entries=0 => safe to delete; entries>0 => other work
+#     remains, keep it). No release / orphan filtering in this mode.
+#
 # Parameters:
-#   -Objects "<comma-separated OBJ_NAME list>"   (required; e.g. "ZCMD_RFCVAL,ZCMDE_RFCVAL")
-#   -Trkorr  "<TR>"        optional -- restrict to a single request
+#   -Objects "<comma-separated OBJ_NAME list>"   BY-OBJECT mode (e.g. "ZCMD_RFCVAL,ZCMDE_RFCVAL")
+#   -Trkorr  "<TR>"        BY-OBJECT: restrict the name search to this request.
+#                          BY-TR (when -Objects is omitted): the request to list in full.
 #   -IncludeReleased       optional switch -- also report released (R/O) requests
 #                          (default: only modifiable D / L requests, which are
 #                          the ones whose entries can be removed and the only
@@ -43,8 +51,9 @@
 #   Connect-SapRfc, which defaults to the AI-session's pinned profile when blank.
 #
 # Output (stdout, parseable):
-#   One TAB-separated line per matching entry:
-#     ENTRY<TAB>TRKORR<TAB>TRSTATUS<TAB>TRFUNCTION<TAB>PGMID<TAB>OBJECT<TAB>OBJ_NAME
+#   One TAB-separated line per matching entry (REQUEST = the top-level request:
+#   the entry's STRKORR when its TRKORR is a task, else the TRKORR itself):
+#     ENTRY<TAB>TRKORR<TAB>TRSTATUS<TAB>TRFUNCTION<TAB>PGMID<TAB>OBJECT<TAB>OBJ_NAME<TAB>REQUEST
 #   Then a summary line:
 #     STATUS: OK entries=<n> requests=<m> unreleased=<u>
 #     STATUS: RFC_ERROR <msg>
@@ -55,7 +64,7 @@
 
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory)] [string] $Objects,
+    [string] $Objects = '',
     [string] $Trkorr = '',
     [switch] $IncludeReleased,
     [switch] $OnlyOrphaned,
@@ -102,9 +111,13 @@ foreach ($n in ($Objects -split ',')) {
     $t = $n.Trim().ToUpperInvariant()
     if ($t -ne '' -and ($names -notcontains $t)) { $names += $t }
 }
-if ($names.Count -eq 0) {
-    Write-Output 'STATUS: OK entries=0 requests=0 unreleased=0'
-    exit 0
+# Mode dispatch: BY-OBJECT (names given) vs BY-TR (only a request given).
+$reqFilter = $Trkorr.Trim().ToUpperInvariant()
+$byObjects = ($names.Count -gt 0)
+$byTr      = (-not $byObjects) -and ($reqFilter -ne '')
+if (-not $byObjects -and -not $byTr) {
+    Write-Output 'STATUS: RFC_ERROR need -Objects or -Trkorr'
+    exit 2
 }
 
 # RFC_READ_TABLE quotes a value literal with single quotes; an embedded quote is
@@ -159,21 +172,48 @@ if ($null -eq $dest) {
 }
 
 try {
-    # 1. Collect E071 entries for every requested object name. One read per name
-    #    keeps each OPTIONS line well under RFC_READ_TABLE's 72-char limit and
-    #    avoids OR-clause quoting fragility.
+    # 1. Collect the E071 entries to consider.
     $entries = @()
-    foreach ($name in $names) {
-        $where = "OBJ_NAME = " + (Quote-RfcLiteral $name)
-        if ($Trkorr -ne '') { $where += " AND TRKORR = " + (Quote-RfcLiteral $Trkorr.ToUpperInvariant()) }
-        $rows = Read-SapTableRows -Destination $dest -Table 'E071' -Where $where `
-                    -Fields @('TRKORR', 'PGMID', 'OBJECT', 'OBJ_NAME')
-        if ($null -eq $rows) {
-            # $null (distinct from empty) = RFC read failure on this table.
-            Write-Output 'STATUS: RFC_ERROR RFC_READ_TABLE on E071 failed (auth S_TABU_DIS?)'
+    if ($byObjects) {
+        # BY-OBJECT: one read per name (keeps each OPTIONS line under
+        # RFC_READ_TABLE's 72-char limit, avoids OR-clause quoting fragility).
+        foreach ($name in $names) {
+            $where = "OBJ_NAME = " + (Quote-RfcLiteral $name)
+            if ($reqFilter -ne '') { $where += " AND TRKORR = " + (Quote-RfcLiteral $reqFilter) }
+            $rows = Read-SapTableRows -Destination $dest -Table 'E071' -Where $where `
+                        -Fields @('TRKORR', 'PGMID', 'OBJECT', 'OBJ_NAME')
+            if ($null -eq $rows) {
+                Write-Output 'STATUS: RFC_ERROR RFC_READ_TABLE on E071 failed (auth S_TABU_DIS?)'
+                exit 2
+            }
+            foreach ($r in $rows) { $entries += $r }
+        }
+    } else {
+        # BY-TR: list EVERY object in the request AND its child tasks. Objects
+        # usually live in the tasks (E071.TRKORR = task), so the request header
+        # alone is not enough -- discover tasks via E070 STRKORR = request.
+        $nodes = New-Object System.Collections.Generic.List[string]
+        $nodes.Add($reqFilter) | Out-Null
+        $taskRows = Read-SapTableRows -Destination $dest -Table 'E070' `
+                        -Where ("STRKORR = " + (Quote-RfcLiteral $reqFilter)) -Fields @('TRKORR')
+        if ($null -eq $taskRows) {
+            Write-Output 'STATUS: RFC_ERROR RFC_READ_TABLE on E070 failed (auth S_TABU_DIS?)'
             exit 2
         }
-        foreach ($r in $rows) { $entries += $r }
+        foreach ($t in $taskRows) {
+            $tk = "$($t.TRKORR)".Trim()
+            if ($tk -ne '' -and -not $nodes.Contains($tk)) { $nodes.Add($tk) | Out-Null }
+        }
+        foreach ($node in $nodes) {
+            $rows = Read-SapTableRows -Destination $dest -Table 'E071' `
+                        -Where ("TRKORR = " + (Quote-RfcLiteral $node)) `
+                        -Fields @('TRKORR', 'PGMID', 'OBJECT', 'OBJ_NAME')
+            if ($null -eq $rows) {
+                Write-Output 'STATUS: RFC_ERROR RFC_READ_TABLE on E071 failed (auth S_TABU_DIS?)'
+                exit 2
+            }
+            foreach ($r in $rows) { $entries += $r }
+        }
     }
 
     # 2. Resolve each distinct request's status once (E070), cached.
@@ -183,11 +223,11 @@ try {
         if ($statusByTr.ContainsKey($tr)) { continue }
         $hdr = Read-SapTableRows -Destination $dest -Table 'E070' `
                     -Where ("TRKORR = " + (Quote-RfcLiteral $tr)) `
-                    -Fields @('TRKORR', 'TRSTATUS', 'TRFUNCTION') -RowCount 1
+                    -Fields @('TRKORR', 'TRSTATUS', 'TRFUNCTION', 'STRKORR') -RowCount 1
         if ($null -ne $hdr -and $hdr.Count -ge 1) {
             $statusByTr[$tr] = $hdr[0]
         } else {
-            $statusByTr[$tr] = [pscustomobject]@{ TRKORR = $tr; TRSTATUS = '?'; TRFUNCTION = '?' }
+            $statusByTr[$tr] = [pscustomobject]@{ TRKORR = $tr; TRSTATUS = '?'; TRFUNCTION = '?'; STRKORR = '' }
         }
     }
 
@@ -204,8 +244,9 @@ try {
         }
     }
 
-    # 4. Emit, filtering to modifiable requests unless -IncludeReleased, and to
-    #    orphaned (definition-gone) objects when -OnlyOrphaned.
+    # 4. Emit. BY-OBJECT applies the release / orphan filters; BY-TR lists every
+    #    object unconditionally (the emptiness signal must be the TRUE count).
+    #    REQUEST column = STRKORR when the entry's TRKORR is a task, else TRKORR.
     $emitted   = 0
     $reqSet    = @{}
     $unrelSet  = @{}
@@ -213,11 +254,15 @@ try {
         $hdr      = $statusByTr[$e.TRKORR]
         $trstatus = "$($hdr.TRSTATUS)"
         $isUnrel  = ($trstatus -eq 'D' -or $trstatus -eq 'L')
-        if (-not $IncludeReleased -and -not $isUnrel) { continue }
-        if ($OnlyOrphaned -and $existsCache["$($e.OBJECT)|$($e.OBJ_NAME)"]) { continue }
-        $reqSet[$e.TRKORR] = $true
-        if ($isUnrel) { $unrelSet[$e.TRKORR] = $true }
-        $line = "ENTRY`t$($e.TRKORR)`t$trstatus`t$($hdr.TRFUNCTION)`t$($e.PGMID)`t$($e.OBJECT)`t$($e.OBJ_NAME)"
+        if ($byObjects) {
+            if (-not $IncludeReleased -and -not $isUnrel) { continue }
+            if ($OnlyOrphaned -and $existsCache["$($e.OBJECT)|$($e.OBJ_NAME)"]) { continue }
+        }
+        $strk    = "$($hdr.STRKORR)".Trim()
+        $request = if ($strk -ne '') { $strk } else { "$($e.TRKORR)" }
+        $reqSet[$request] = $true
+        if ($isUnrel) { $unrelSet[$request] = $true }
+        $line = "ENTRY`t$($e.TRKORR)`t$trstatus`t$($hdr.TRFUNCTION)`t$($e.PGMID)`t$($e.OBJECT)`t$($e.OBJ_NAME)`t$request"
         Write-Output $line
         $emitted++
     }

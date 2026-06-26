@@ -15,10 +15,13 @@ description: |
         Asks the user for explicit confirmation before releasing — release
         is irreversible.
     (c) DELETE -- invoked as `/sap-se01 delete <TR>`. Deletes an UNRELEASED
-        request object (Display + Delete tbar[1]/btn[13], confirm via the
-        shared popup walker) and verifies removal via E070. Asks for explicit
-        confirmation; refuses a released TR or one holding non-dev objects.
-        Used by /sap-dev-clean --reset to drop the dev TR.
+        request and its tasks. Two-phase: empties any objects (Phase 1), then
+        deletes the nodes bottom-up -- each TASK first, then the REQUEST (Display
+        + Delete tbar[1]/btn[13] + btnBUTTON_1 confirm per node, not relying on a
+        cascade), so an empty TR/Task is removed cleanly. Verifies removal via
+        E070 (request + child tasks). Asks for explicit confirmation; refuses a
+        released TR or one holding non-dev objects. Used by /sap-dev-clean
+        --reset to drop the dev TR.
     (d) REMOVE-OBJECTS -- invoked as `/sap-se01 remove-objects <TR>
         [OBJECTS=a,b,...]`. Unassigns object entries (E071) from an UNRELEASED
         request but KEEPS the request itself. With OBJECTS= it removes only the
@@ -449,9 +452,18 @@ VBS works in two phases:
   Delete (`btnDB_DELETE`) + confirm + Save. This **unassigns** the objects from
   the request -- it does NOT delete the repository objects, which remain in
   their package as orphans (no transport). Every removed entry is echoed.
-- **Phase 2 -- delete the now-empty request** (`tbar[1]/btn[13]` + confirm walk).
+- **Phase 2 -- delete the now-empty nodes, bottom-up.** It deletes each **task**
+  node first, then the **request** itself: focus the node by its TR number, press
+  Delete (`tbar[1]/btn[13]` = Shift+F1), answer the confirm (`btnBUTTON_1` / Yes)
+  via the shared popup walker, re-displaying fresh between deletions. The
+  request-delete does **not** reliably cascade to its tasks across releases (and
+  some releases refuse to delete a request that still owns a task), so each node
+  is deleted explicitly -- the node-by-node flow recorded in
+  `Record_EC2_SE01_DeleteTR001.vbs`. This is what makes a clean delete of an
+  **empty TR/Task** reliable; a freshly-created Workbench request typically owns
+  one auto-created task, which Phase 2 removes before the request.
 
-This mode is the back end for `/sap-dev-clean --reset` Step 3f: by the time it
+This mode is the back end for `/sap-dev-clean --reset` Step 3g: by the time it
 runs, the dev TR's objects have already been deleted by Steps 3a-3e, so Phase 1
 finds an empty list and is a no-op safety net -- nothing is orphaned. Only a
 **standalone** `/sap-se01 delete` on a TR that still holds live objects will
@@ -534,9 +546,15 @@ Before the verdict the VBS echoes Phase-1 progress -- one
 per unassigned entry, then `INFO: Phase 1 removed <N> object entr(ies)`. Surface
 the unassigned-object lines to the operator -- they are the orphaned objects.
 
+Then Phase 2 echoes one `INFO:   deleting <task|request> node <TR> (Shift+F1)...`
+line per node deleted (tasks first, then the request), and a closing
+`INFO: Phase 2 deleted <N> node(s) (tasks then request).`. A node reported
+`not present; skip (already deleted)` was removed by a prior step / cascade --
+harmless.
+
 | Last line | Meaning |
 |---|---|
-| `SUCCESS: Transport request <TR> deleted.` | The request object is gone (the VBS re-displayed it and the request screen no longer opened). Verify authoritatively in D6. |
+| `SUCCESS: Transport request <TR> deleted.` | All nodes are gone (the VBS re-displayed the request and its screen no longer opened). Verify authoritatively in D6. |
 | `ERROR: Request display did not open ...` | The TR did not exist to begin with (already gone) -- treat as success once the D6 RFC check confirms absence. |
 | `ERROR: TR <TR> still exists after delete ...` | Delete did not take (a confirm-popup style the walker didn't match, the TR was actually released, or Phase 1 could not empty a task). Show the SAP sbar line; recheck status and retry, or finish in SE01 manually. |
 
@@ -545,7 +563,11 @@ the unassigned-object lines to the operator -- they are the orphaned objects.
 1. **RFC-verify** the TR is gone: `RFC_READ_TABLE` on `E070` filtering
    `TRKORR = '<TR>'` -> expect 0 rows. (The VBS's own verify is a
    language-independent `Info.Program` check; this RFC read is authoritative.)
-2. Report: `Deleted TR <TR>. Verified E070 row absent.`
+   **Also confirm no orphaned child task survived** -- `E070` filtering
+   `STRKORR = '<TR>'` should likewise return 0 rows (the node-by-node Phase 2
+   deletes each task explicitly, so a leftover task here means a node delete was
+   blocked -- surface it).
+2. Report: `Deleted TR <TR> (request + tasks). Verified E070 rows absent.`
 3. If the caller is `/sap-dev-clean --reset`, it clears the dev-default TR
    reference (its Step 4). A direct `/sap-se01 delete` does not touch settings.
 
@@ -564,8 +586,8 @@ the unassigned-object lines to the operator -- they are the orphaned objects.
 | Object count field | `<base>txtDV_OBJECT_COUNT` |
 | Select-all / Delete (Phase 1) | `<base>btnDB_SELECT_ALL` / `<base>btnDB_DELETE` |
 | Object-delete confirm | `wnd[1]/usr/btnSPOP-OPTION1` / `wnd[1]/tbar[0]/btn[0]` / Enter (cascade) |
-| Delete button (Phase 2) | `wnd[0]/tbar[1]/btn[13]` (Shift+F1 -- stable id; alt menu `mbar/menu[0]/menu[5]`) |
-| Request-delete confirm popups | handled by the shared `sap_delete_popups.vbs` walker (`btnBUTTON_1` / `btnSPOP-OPTION1` / Enter) |
+| Delete node (Phase 2) | `wnd[0]/tbar[1]/btn[13]` (Shift+F1 -- stable id; alt menu `mbar/menu[0]/menu[5]`). Applied per node: focus the **task** label then Delete, repeat for each task, then focus the **request** label + Delete. Re-display fresh between deletions. |
+| Node-delete confirm popups | handled by the shared `sap_delete_popups.vbs` walker (`btnBUTTON_1` / `btnSPOP-OPTION1` / Enter) -- same popup for a task or a request delete |
 | Status bar | `wnd[0]/sbar` |
 
 Live-verified 2026-06-22 (two-phase delete, multi-object TRs):

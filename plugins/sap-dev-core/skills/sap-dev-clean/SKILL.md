@@ -8,13 +8,15 @@ description: |
   artefact whose dependents were extended by the operator (e.g.
   function group that contains user-added FMs, package that contains
   user-added Z* tables) unless --force is set.
-  By default the transport REQUEST object is kept (other work may live
-  in it), but the deleted dev-init OBJECTS are unassigned from it (their
-  lingering E071 entries are removed via /sap-se01 remove-objects) so a
-  later /sap-dev-init can re-create them — without this, a deleted
-  object's name-lock in an old unreleased request blocks re-creation
-  ("object is in request ..."). Settings.json keys are preserved unless
-  --settings is passed, so a follow-up /sap-dev-init re-creates the same names.
+  The deleted dev-init OBJECTS are unassigned from their transport
+  request (their lingering E071 entries are removed via /sap-se01
+  remove-objects) so a later /sap-dev-init can re-create them — without
+  this, a deleted object's name-lock in an old unreleased request blocks
+  re-creation ("object is in request ..."). The request is then DELETED
+  if it ends up empty (default path, via /sap-se01 delete) so no husk
+  lingers; a request that still holds the operator's other objects is
+  kept. Settings.json keys are preserved unless --settings is passed,
+  so a follow-up /sap-dev-init re-creates the same names.
   The canonical "blow away and rebuild" sequence is:
   /sap-dev-clean ; /sap-dev-init.
   Pass --reset for a full, truly-clean reset: it implies --force + --settings,
@@ -43,7 +45,7 @@ Task: $ARGUMENTS
 | File | Purpose |
 |---|---|
 | `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_dev_artefacts.ps1` | RFC artefact-state pre-flight (also used by `/sap-dev-status`) |
-| `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_tr_object_entries.ps1` | RFC E071/E070 read — finds which unreleased request(s) still list a deleted artefact, so Step 3f can clear the lingering entries (read-only; removal is delegated to `/sap-se01 remove-objects`) |
+| `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_tr_object_entries.ps1` | RFC E071/E070 read (read-only). By-object mode finds which unreleased request(s) still list a deleted artefact (Step 3f clears via `/sap-se01 remove-objects`); by-TR mode (`-Trkorr` only) lists EVERY object in a request + its tasks — the emptiness check that decides whether Step 3f deletes the now-empty TR. Emits a trailing `REQUEST` column (task→parent). |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/skill_operating_rules.md` | Mandatory operating rules |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/language_independence_rules.md` | GUI-scripting language independence — applies to GUI-driven delete sub-skills (sap-se37, sap-se11, sap-se38, sap-function-group, sap-se21) |
 
@@ -273,7 +275,7 @@ re-check. Failures most commonly mean the package still has TADIR
 children — surface SE21's error verbatim and let the operator move
 those objects manually.
 
-### Step 3f — Clear the deleted artefacts from their transport request(s)
+### Step 3f — Clear the deleted artefacts from their TR(s), then delete the TR if it ends up empty
 
 **Run this on the DEFAULT path** (the common `/sap-dev-clean` with no `--reset`
 / `--force`). **Skip it when Step 3g will delete the whole TR** (`--reset` /
@@ -303,18 +305,22 @@ request itself is still left in place (other work may live in it) — but the
    the artefacts that were **actually present + deleted** this run (use the Step
    2 pre-flight worklist) — never list an object the operator still uses. The
    helper is read-only and prints one
-   `ENTRY<TAB>TRKORR<TAB>TRSTATUS<TAB>TRFUNCTION<TAB>PGMID<TAB>OBJECT<TAB>OBJ_NAME`
+   `ENTRY<TAB>TRKORR<TAB>TRSTATUS<TAB>TRFUNCTION<TAB>PGMID<TAB>OBJECT<TAB>OBJ_NAME<TAB>REQUEST`
    line per hit (modifiable `D`/`L` requests only, by default), then
-   `STATUS: OK entries=<n> requests=<m> unreleased=<u>`. `entries=0` -> nothing
-   to clear; this step is done.
+   `STATUS: OK entries=<n> requests=<m> unreleased=<u>`. The **`REQUEST`** column
+   is the top-level request (objects usually sit in a *task*, whose `TRKORR`
+   differs from the request — `REQUEST` is the task's parent, or the `TRKORR`
+   itself when it is already a request). `entries=0` -> nothing to clear; skip to
+   the dev-TR emptiness check in step 4.
 
-2. **Remove the entries, request by request.** Group the `ENTRY` lines by
-   `TRKORR`. For each unreleased request, collect the `OBJ_NAME`s found in it and
-   delegate to `/sap-se01 remove-objects` (which unassigns the entries and
-   **keeps the request**):
+2. **Remove the entries, request by request.** Group the `ENTRY` lines by their
+   **`REQUEST`** column (not `TRKORR` — pass the request, since `/sap-se01
+   remove-objects` walks the request AND its tasks). For each unreleased request,
+   collect the `OBJ_NAME`s found under it and delegate (it unassigns the entries
+   and **keeps the request**):
 
    ```
-   /sap-se01 remove-objects <TRKORR> OBJECTS=<comma-separated OBJ_NAMEs found in that TR>
+   /sap-se01 remove-objects <REQUEST> OBJECTS=<comma-separated OBJ_NAMEs found under that request>
    ```
 
    `OBJECTS=` is **mandatory** here — it bounds the removal to our own deleted
@@ -325,6 +331,31 @@ request itself is still left in place (other work may live in it) — but the
 3. **Released requests are not a problem.** A released (`R`/`O`) request holds no
    re-create lock and cannot be edited, so the helper omits them by default; if
    one shows up, do not try to remove from it — re-create is not blocked by it.
+
+4. **Delete the request if it is now empty.** This is the "when the relative TR
+   is empty, delete the TR" rule: an emptied dev request should not linger as a
+   husk. Build the candidate set = every `REQUEST` touched in step 2, PLUS the
+   configured `sap_dev_transport_request` (the standing dev TR — check it even if
+   no entry pointed at it, e.g. its artefacts lived in an old PR). For each
+   candidate request, run the helper in **by-TR mode** (no `-Objects`, just
+   `-Trkorr`) — it lists EVERY object across the request and its tasks:
+
+   ```bash
+   C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_tr_object_entries.ps1" -Trkorr <REQUEST>
+   ```
+
+   - **`STATUS: OK entries=0`** -> the request (and all its tasks) is empty.
+     **Delete it** via `/sap-se01 delete <REQUEST>` (node-by-node: it removes the
+     empty task(s) then the request, and RFC-verifies E070). Do this on the
+     DEFAULT path — no `--reset` needed; an empty TR holds nothing of the
+     operator's.
+   - **`entries>0`** -> other work still lives in the request. **Keep it** and
+     report the remaining `ENTRY` lines so the operator sees what blocked the
+     delete. Never delete a request that still holds objects.
+
+   If a deleted request was the `sap_dev_transport_request`, leave the stored
+   value as-is — the next `/sap-dev-init` Step 1.4 self-heals a TR that is gone
+   from `E070` (or pass `--settings` to clear it now).
 
 This is the step that makes the **conservative** clean leave the system in a
 re-init-able state. A failure here does not abort the clean — surface it and
@@ -523,19 +554,21 @@ trivial one-step operation.
 
 ## Limitations
 
-- **The dev-init object ENTRIES are cleared from the TR by default; deleting the
-  TR itself is opt-in.** Step 3f always unassigns the deleted artefacts from the
-  unreleased request(s) that recorded them (via `/sap-se01 remove-objects`) so
-  their name-locks are freed and the next `/sap-dev-init` can re-create them —
-  the request object is kept (other work may live in it). Only `--reset` (or
-  legacy `--force`) additionally DELETES the dev TR (Step 3g) via `/sap-se01
-  delete`, with explicit per-call confirmation of its `E071` contents, refusing
-  if the TR holds non-sap-dev-init objects. The `/sap-se01` delete mode is
-  two-phase (it empties the request of object entries, then drops it — SAP
-  refuses to delete a non-empty request); since 3a–3e already removed the
-  objects, the empty-phase is a no-op here and nothing is orphaned. If the delete
-  cannot complete (released TR, or a task that won't empty), Step 4 still clears
-  the TR reference so the next `/sap-dev-init` self-heals — see Step 3g.
+- **Step 3f clears the dev-init ENTRIES and then deletes the TR IF it ends up
+  empty (default path).** It unassigns the deleted artefacts from the unreleased
+  request(s) that recorded them (via `/sap-se01 remove-objects`) so their
+  name-locks are freed and the next `/sap-dev-init` can re-create them; it then
+  runs a by-TR emptiness check (`sap_tr_object_entries.ps1 -Trkorr`) on each
+  affected request (and the configured `sap_dev_transport_request`) and **deletes
+  any that are now empty** via `/sap-se01 delete` — node-by-node (empty task(s)
+  then the request), so no husk is left. A request that **still holds other
+  objects is kept** (the emptiness check returns `entries>0`); the operator's
+  work is never deleted or orphaned. `--reset` (or legacy `--force`) still force-
+  deletes the dev TR in Step 3g even when it is non-empty — but only after
+  confirming its `E071` contents and refusing if it holds non-sap-dev-init
+  objects. If a delete cannot complete (released TR), the stale
+  `sap_dev_transport_request` reference is self-healed by the next
+  `/sap-dev-init` Step 1.4 (gone from `E070`).
 - **Conservative guards stop at the first user object.** A package
   with one Z table the operator added is left intact even if the rest
   is sap-dev-init detritus. Use `--force` to override, but read the
