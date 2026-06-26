@@ -180,7 +180,7 @@ node scripts/check-consistency.mjs
 
 Should print (counts grow as the repo grows — the shape is what matters):
 ```
-OK: 4 plugins, 78 skills, all manifests aligned at version 0.6.6, Tier 3 attach contract clean, 10 non-ASCII warning(s), 30 run-temp warning(s), screen-baseline coverage 7/119 (112 unbaselined)
+OK: 4 plugins, 78 skills, all manifests aligned at version 0.6.7, Tier 3 attach contract clean, 10 non-ASCII warning(s), 30 run-temp warning(s), screen-baseline coverage 7/119 (112 unbaselined)
 ```
 
 On failure, the script lists each non-conforming file with a specific reason. The check covers:

@@ -2,7 +2,38 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## [0.6.7] — 2026-06-26
+
+### Added
+
+- **`/sap-se01` gained transport-object un-assignment and empty-TR/Task
+  deletion.** A new **`remove-objects`** mode surgically unassigns `E071` object
+  entries from a transport while keeping the TR (targeted by object name, or
+  remove-all), and the **delete** flow now removes an empty TR/Task
+  node-by-node, bottom-up (tasks before their request) so a drained request
+  collapses cleanly. Both are backed by a new shared RFC reader
+  `shared/scripts/sap_tr_object_entries.ps1` (NCo 3.1) that lists `E071` entries
+  by object, by TR (walking request + tasks via `E070-STRKORR`), or only the
+  orphaned ones — surfacing each entry's `OBJFUNC` (`K` create/change vs `D`
+  deletion) plus a `deletions=` count and the real capturing `REQUEST`.
+
+- **`/sap-dev-clean` and `/sap-dev-init` transport hygiene.** `/sap-dev-clean`
+  now clears the dev-init object entries from their transport and **deletes the
+  TR once it is empty** (plus a `--reset` / `--force` full-reset path);
+  `/sap-dev-init` runs a **pre-create orphaned-lock sweep** so a stale `E071`
+  entry from an old released/deleted transport can no longer block re-creating
+  the same object. Both also gained **anchor validation + self-healing for stale
+  dev defaults**, so a build that clobbered `dev_defaults` can no longer let
+  dev-clean target the wrong package/TR.
+
+- **`/sap-se37` clipboard source paste + post-activate verification.** Source is
+  pasted via the clipboard behind the OS-level foreground guard (so it can never
+  land in the user's foreground editor), and the function module is RFC-verified
+  after activation.
+
+- **AI-session liveness heartbeat.** A stable-id breadcrumb that lets the
+  session broker distinguish a live conversation from an orphaned one, hardening
+  parallel-session isolation.
 
 ### Fixed
 
@@ -31,6 +62,67 @@ All notable changes to this project will be documented in this file.
   latent stale-variable bug in `sap_se24_test_classes.vbs` (loop-scoped `Dim`
   vars were not re-initialised, so a failed read reused the prior row's value).
   Offline-validated against a mock grid whose `LINE` column throws.
+
+- **`/sap-se01` release wasted its pass cap re-releasing an already-released
+  task via fixed label positions.** It targeted a task at a fixed `lbl[col,row]`
+  and pressed Release up to its cap (one success, then N "already released"
+  no-ops), locating the request the same fragile way. It now collects each task
+  number once, releases each exactly once, and locates every node by **TR
+  number** (language-independent) rather than by screen position.
+
+- **`/sap-se01` release reported `DONE` on a failed transport-control release
+  (false success).** A request left `D` after a non-zero `tp` return code (e.g.
+  `0012`) was still reported `DONE`. The verdict now flags a non-zero `tp` RC or
+  an `E`/`A` status, and the **RFC verify of `E070-TRSTATUS = R` for the request
+  and every task is the authoritative gate**.
+
+- **`/sap-se21` create reported `PACKAGE_CREATED` even when the create was
+  canceled (false success).** The success line is now gated on actually reaching
+  the Change-Package screen (`SAPLPB_PACKAGE/1000`); a canceled create emits an
+  `ERROR` and a non-zero exit instead.
+
+- **Deletion entries (`E071-OBJFUNC = 'D'`) were invisible and could be silently
+  un-recorded.** Emptying or deleting a transport that holds deletion records
+  un-records those deletions (the object stays deleted locally but the deletion
+  never transports). The shared reader now surfaces them with a `deletions=`
+  count, `/sap-se01` Delete-Mode requires a knowing confirmation before draining
+  such a TR, and `shared/rules/tr_resolution.md` gained a **§6** documenting the
+  **fold-into-modifiable-request** behaviour — a deletion records in the
+  object's own still-open request, not the TR you passed, so verify where it
+  landed instead of assuming.
+
+- **Delete-flow robustness across `/sap-se11`, `/sap-se21`, `/sap-se37`,
+  `/sap-se24`, `/sap-se38`.** A **shared post-delete popup walker** replaces the
+  divergent per-skill loops (each modal dispatched by DDIC control id only);
+  `/sap-se11` delete now confirms success by **control presence** instead of the
+  translated window title; and ECC 6.0 "Create Object Directory Entry" (KO007)
+  handling was hardened.
+
+- **A `TADIR` orphan left after a DDIC delete could block the package delete
+  indefinitely (`/sap-se21`, `/sap-dev-clean`).** When a domain / data-element /
+  … definition was deleted (`DD01L` / `DD04L` / … row gone) its `TADIR`
+  object-directory row could survive, and SE21 then refused to delete the owning
+  package. A new safety-guarded helper `shared/scripts/sap_tadir_delete.ps1`
+  removes the orphan row via the dev-init wrapper FM → `TR_TADIR_INTERFACE` (the
+  SAP write API for `TADIR` — not remote-enabled, so reached as an asXML dynamic
+  call through `Z_GENERIC_RFC_WRAPPER_TBL`; no raw SQL on `TADIR`). It deletes a
+  row **only** when the object's definition is verifiably gone (per-type
+  def-table probe `DOMA`→`DD01L`, `DTEL`→`DD04L`, `TABL`→`DD02L`, …;
+  `REFUSED_DEF_EXISTS` for a live object, `REFUSED_UNMAPPED` for an unknown
+  type), and treats a post-delete RFC re-read of `TADIR` returning zero rows as
+  the authoritative success — so it can never orphan a live object. Wired into
+  `/sap-se21` (Step 8a) and `/sap-dev-clean` (Step 5). Caveat: cleaning the
+  dev-init package's *own* orphans fails by construction (the wrapper FM is
+  deleted with it) — redeploy via `/sap-dev-init` or clean via SE03 / `RSWBO052`.
+
+### Changed
+
+- **Sub-skill delegation is enforced through the Skill tool.** Documentation and
+  `/sap-function-group` delete now make explicit that orchestrators
+  (`/sap-dev-clean`, `/sap-dev-init`) must invoke `/sap-se*` via the Skill tool
+  rather than running their reference VBS directly — otherwise mode dispatch,
+  fallbacks (e.g. ECC 6.0 `/sap-se38 delete SAPL<FG>`), and post-action
+  verification are silently bypassed.
 
 ## [0.6.6] — 2026-06-20
 
