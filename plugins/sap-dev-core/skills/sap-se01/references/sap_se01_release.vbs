@@ -187,15 +187,19 @@ Function FindFirstTaskLabelId(sParentTR)
     On Error GoTo 0
 End Function
 
-' SAP TR/task numbers: 3-letter SID + 'K9' + 5+ digits (e.g. ER1K900235).
+' SAP TR/task numbers: 3-char SID + 'K9' + 5+ digits (e.g. ER1K900235,
+' S4HK903102). The SID's first char is a letter; chars 2-3 may be letters
+' OR digits (e.g. S4H, S42, C11) -- so only char 1 is constrained to A-Z.
 Function LooksLikeTRNumber(s)
-    Dim i, ch
+    Dim i, ch, c1
     LooksLikeTRNumber = False
     If Len(s) < 8 Or Len(s) > 12 Then Exit Function
     If InStr(2, s, "K9") = 0 Then Exit Function
-    For i = 1 To 3
+    c1 = UCase(Mid(s, 1, 1))
+    If c1 < "A" Or c1 > "Z" Then Exit Function
+    For i = 2 To 3
         ch = UCase(Mid(s, i, 1))
-        If ch < "A" Or ch > "Z" Then Exit Function
+        If Not ((ch >= "A" And ch <= "Z") Or (ch >= "0" And ch <= "9")) Then Exit Function
     Next
     LooksLikeTRNumber = True
 End Function

@@ -11,8 +11,17 @@
 '   %%CLASS_DESCRIPTION%%  Short description           e.g. "Test class"
 '   %%PACKAGE%%            SAP package (optional, blank = local $TMP)
 '   %%TRANSPORT%%          Transport request (optional, blank = local)
+'   %%CLASS_KIND%%         "EXCEPTION" => exception class (CLSCATEG=40, super
+'                          CX_STATIC_CHECK); anything else / blank => usual
+'                          ABAP class (unchanged default path).
+'   %%WITH_MESSAGE%%       "X" => tick the exception "with message class"
+'                          (T100) checkbox so message-class texts back the
+'                          exception; blank => leave it cleared. Only meaningful
+'                          when CLASS_KIND = EXCEPTION.
 '
-' Component IDs recorded from SAP GUI 7.60 on S/4HANA 1909 (S4D).
+' Component IDs recorded from SAP GUI 7.60 on S/4HANA 1909 (S4D). The exception-
+' class controls (radDY_0102-RB_EXCEPTION_CLASS / chkDY_0102-CB_EXCEPTION_CLASS_
+' T100) were captured live on S4D 2026-06-26.
 ' =============================================================================
 
 Option Explicit
@@ -21,6 +30,8 @@ Const CLASS_NAME        = "%%CLASS_NAME%%"
 Const CLASS_DESCRIPTION = "%%CLASS_DESCRIPTION%%"
 Const SAP_PACKAGE       = "%%PACKAGE%%"
 Const SAP_TRANSPORT     = "%%TRANSPORT%%"
+Const CLASS_KIND        = "%%CLASS_KIND%%"     ' "EXCEPTION" => exception class
+Const WITH_MESSAGE      = "%%WITH_MESSAGE%%"   ' "X" => tick T100 message-class box
 Const SESSION_PATH      = "%%SESSION_PATH%%"   ' empty / unsubstituted = use default
 
 Const VKEY_ENTER    = 0
@@ -82,146 +93,175 @@ End If
 Err.Clear
 On Error GoTo 0
 
-If InStr(oSession.ActiveWindow.Id, "wnd[1]") > 0 Then
-    WScript.Echo "INFO: Setting description=" & CLASS_DESCRIPTION
-    On Error Resume Next
-    oSession.findById("wnd[1]/usr/txtVSEOCLASS-DESCRIPT").Text = CLASS_DESCRIPTION
-    If Err.Number <> 0 Then
-        Err.Clear
-        On Error GoTo 0
-        WScript.Echo "ERROR: Class-details dialog did not expose VSEOCLASS-DESCRIPT (unexpected SE24 create screen)."
-        WScript.Quit 1
-    End If
-    ' Ensure 'Usual ABAP Class' is selected (the default; explicit for safety).
-    ' No-op when the dialog variant does not expose the radio.
-    oSession.findById("wnd[1]/usr/radDY_0102-RB_NORMAL_CLASS").Select
-    Err.Clear
-    On Error GoTo 0
-    ' Default: Usual ABAP Class, Public instantiation, not Final
-    WScript.Sleep 300
-    oSession.findById("wnd[1]").sendVKey VKEY_ENTER
-    WScript.Sleep 3000
-Else
+' Selecting "Class" in the DY_0101 chooser and pressing Enter can cascade an
+' empty-field confirm into the just-opened DY_0102 details dialog, raising a
+' "Fill out all required entry fields" info popup (usr/txtMESSTXT1) ON TOP of
+' the details dialog. Drain it, then locate the details dialog by its DDIC id
+' (it may sit at wnd[1] or wnd[2] depending on whether that popup stacked).
+DrainInfoPopup oSession
+
+Dim iDlg : iDlg = FindDetailsWindow(oSession)
+If iDlg < 0 Then
     WScript.Echo "ERROR: Create dialog did not appear. Check if class already exists."
     WScript.Quit 1
 End If
+Dim sDlg : sDlg = "wnd[" & iDlg & "]"
+WScript.Echo "INFO: Class-details dialog at " & sDlg
 
-' ------ 5. Handle Object Directory Entry / Transport (wnd[1]/wnd[2]) --------
+WScript.Echo "INFO: Setting description=" & CLASS_DESCRIPTION
 On Error Resume Next
-If InStr(oSession.ActiveWindow.Id, "wnd[2]") > 0 Then
-    If SAP_PACKAGE <> "" And SAP_TRANSPORT <> "" Then
-        WScript.Echo "INFO: Assigning to package " & SAP_PACKAGE & " with transport " & SAP_TRANSPORT & "..."
-        Dim oPkgField2
-        Set oPkgField2 = oSession.findById("wnd[2]/usr/ctxtSEUK-DEVCLASS")
-        If Err.Number <> 0 Or oPkgField2 Is Nothing Then
-            Err.Clear
-            Set oPkgField2 = oSession.findById("wnd[2]/usr/ctxtKO007-L_DEVCLASS")
-        End If
-        If Err.Number = 0 And Not (oPkgField2 Is Nothing) Then
-            oPkgField2.Text = SAP_PACKAGE
-        End If
-        Err.Clear
-        oSession.findById("wnd[2]").sendVKey VKEY_ENTER
-        WScript.Sleep 1500
-        If InStr(oSession.ActiveWindow.Id, "wnd[2]") > 0 Then
-            Dim oTrField2
-            Set oTrField2 = oSession.findById("wnd[2]/usr/ctxtKORR_TXT-REQ_NUM")
-            If Err.Number = 0 And Not (oTrField2 Is Nothing) Then
-                oTrField2.Text = SAP_TRANSPORT
-            Else
-                Err.Clear
-                Set oTrField2 = oSession.findById("wnd[2]/usr/ctxtKO007-L_REQ")
-                If Err.Number <> 0 Or oTrField2 Is Nothing Then
-                    Err.Clear
-                    Set oTrField2 = oSession.findById("wnd[2]/usr/ctxtKO008-TRKORR")
-                End If
-                If Err.Number = 0 And Not (oTrField2 Is Nothing) Then
-                    oTrField2.Text = SAP_TRANSPORT
-                End If
-            End If
-            Err.Clear
-            oSession.findById("wnd[2]").sendVKey VKEY_ENTER
-            WScript.Sleep 1000
-        End If
-    Else
-        WScript.Echo "INFO: Assigning to Local Object ($TMP)..."
-        oSession.findById("wnd[2]/tbar[0]/btn[7]").press
-        If Err.Number <> 0 Then
-            Err.Clear
-            oSession.findById("wnd[2]").sendVKey VKEY_ENTER
-        End If
-        WScript.Sleep 2000
-    End If
-ElseIf InStr(oSession.ActiveWindow.Id, "wnd[1]") > 0 Then
-    If SAP_PACKAGE <> "" And SAP_TRANSPORT <> "" Then
-        WScript.Echo "INFO: Assigning to package " & SAP_PACKAGE & " with transport " & SAP_TRANSPORT & "..."
-        Dim oPkgField1
-        Set oPkgField1 = oSession.findById("wnd[1]/usr/ctxtSEUK-DEVCLASS")
-        If Err.Number <> 0 Or oPkgField1 Is Nothing Then
-            Err.Clear
-            Set oPkgField1 = oSession.findById("wnd[1]/usr/ctxtKO007-L_DEVCLASS")
-        End If
-        If Err.Number = 0 And Not (oPkgField1 Is Nothing) Then
-            oPkgField1.Text = SAP_PACKAGE
-        End If
-        Err.Clear
-        oSession.findById("wnd[1]").sendVKey VKEY_ENTER
-        WScript.Sleep 1500
-        If InStr(oSession.ActiveWindow.Id, "wnd[1]") > 0 Then
-            Dim oTrField1
-            Set oTrField1 = oSession.findById("wnd[1]/usr/ctxtKORR_TXT-REQ_NUM")
-            If Err.Number = 0 And Not (oTrField1 Is Nothing) Then
-                oTrField1.Text = SAP_TRANSPORT
-            Else
-                Err.Clear
-                Set oTrField1 = oSession.findById("wnd[1]/usr/ctxtKO007-L_REQ")
-                If Err.Number <> 0 Or oTrField1 Is Nothing Then
-                    Err.Clear
-                    Set oTrField1 = oSession.findById("wnd[1]/usr/ctxtKO008-TRKORR")
-                End If
-                If Err.Number = 0 And Not (oTrField1 Is Nothing) Then
-                    oTrField1.Text = SAP_TRANSPORT
-                End If
-            End If
-            Err.Clear
-            oSession.findById("wnd[1]").sendVKey VKEY_ENTER
-            WScript.Sleep 1000
-        End If
-    Else
-        WScript.Echo "INFO: Assigning to Local Object ($TMP)..."
-        oSession.findById("wnd[1]/tbar[0]/btn[7]").press
-        If Err.Number <> 0 Then
-            Err.Clear
-            oSession.findById("wnd[1]").sendVKey VKEY_ENTER
-        End If
-        WScript.Sleep 2000
-    End If
+oSession.findById(sDlg & "/usr/txtVSEOCLASS-DESCRIPT").Text = CLASS_DESCRIPTION
+If Err.Number <> 0 Then
+    Err.Clear
+    On Error GoTo 0
+    WScript.Echo "ERROR: Class-details dialog did not expose VSEOCLASS-DESCRIPT (unexpected SE24 create screen)."
+    WScript.Quit 1
 End If
 Err.Clear
 On Error GoTo 0
 
-' Verify we are in the Class Builder editor
-On Error Resume Next
-Dim oTabCheck
-Set oTabCheck = oSession.findById("wnd[0]/usr/tabsCTS")
-Dim bInEditor
-bInEditor = (Err.Number = 0) And Not (oTabCheck Is Nothing)
-Err.Clear
-On Error GoTo 0
-
-' Also check source-code-based view
-If Not bInEditor Then
+If UCase(CLASS_KIND) = "EXCEPTION" Then
+    ' ---- Exception class branch (CLSCATEG=40, superclass CX_STATIC_CHECK) ----
+    ' For a ZCX_* name SAP already pre-selects the exception radio and pre-fills
+    ' the superclass; we still drive both explicitly so an --exception request on
+    ' a non-ZCX name (or a release that doesn't auto-detect) lands the same way.
+    WScript.Echo "INFO: Exception class -> selecting exception radio (category 40)."
     On Error Resume Next
-    Dim oSrcCheck
-    Set oSrcCheck = oSession.findById("wnd[0]/usr/txtDY0400_STATUS")
-    bInEditor = (Err.Number = 0) And Not (oSrcCheck Is Nothing)
+    oSession.findById(sDlg & "/usr/radDY_0102-RB_EXCEPTION_CLASS").Select
+    If Err.Number <> 0 Then
+        Err.Clear
+        On Error GoTo 0
+        WScript.Echo "ERROR: Exception-class radio (radDY_0102-RB_EXCEPTION_CLASS) not found on the create dialog."
+        WScript.Quit 1
+    End If
+    ' Tick / clear the "with message class" (T100) checkbox per request. SAP
+    ' defaults it ON for ZCX_ names, so set it explicitly either way.
+    Dim bWithMsg : bWithMsg = (UCase(WITH_MESSAGE) = "X")
+    oSession.findById(sDlg & "/usr/chkDY_0102-CB_EXCEPTION_CLASS_T100").Selected = bWithMsg
+    Err.Clear
+    On Error GoTo 0
+    If bWithMsg Then
+        WScript.Echo "INFO: T100 'with message class' checkbox ticked."
+    Else
+        WScript.Echo "INFO: T100 'with message class' checkbox cleared."
+    End If
+Else
+    ' ---- Usual ABAP class branch (unchanged default) ------------------------
+    ' Ensure 'Usual ABAP Class' is selected (the default; explicit for safety).
+    ' No-op when the dialog variant does not expose the radio.
+    On Error Resume Next
+    oSession.findById(sDlg & "/usr/radDY_0102-RB_NORMAL_CLASS").Select
     Err.Clear
     On Error GoTo 0
 End If
 
-If Not bInEditor Then
+WScript.Sleep 300
+oSession.findById(sDlg).sendVKey VKEY_ENTER
+WScript.Sleep 3000
+' A required-field validation popup can resurface here too; drain it.
+DrainInfoPopup oSession
+
+' ------ 5. Handle Object Directory Entry / Transport -----------------------
+' The create confirm raises a short SEQUENCE of modal dialogs whose order and
+' window index vary (the exception-class flow can stack an extra modal, and the
+' TR prompt arrives a beat after the package dialog). Rather than guess wnd[1]
+' vs wnd[2] from the active window (which left the KO007 package field empty in
+' the 2026-06-26 exception-class failure), re-scan each pass for the package
+' dialog (SEUK-DEVCLASS / KO007-L_DEVCLASS) and the TR prompt (KO008-TRKORR /
+' KORR_TXT-REQ_NUM / KO007-L_REQ) by DDIC id, handle whichever is present, and
+' loop until neither remains. The per-pass sleep also absorbs the render delay.
+On Error Resume Next
+
+' --- 5a. Object Directory Entry / package dialog (handle once) -------------
+DrainInfoPopup oSession
+Dim iObj : iObj = FindObjDirWindow(oSession)
+If iObj >= 0 Then
+    Dim sObj : sObj = "wnd[" & iObj & "]"
+    If SAP_PACKAGE <> "" Then
+        WScript.Echo "INFO: Assigning to package " & SAP_PACKAGE & " (dialog " & sObj & ")..."
+        Dim oPkgField
+        Set oPkgField = oSession.findById(sObj & "/usr/ctxtSEUK-DEVCLASS")
+        If Err.Number <> 0 Or oPkgField Is Nothing Then
+            Err.Clear
+            Set oPkgField = oSession.findById(sObj & "/usr/ctxtKO007-L_DEVCLASS")
+        End If
+        If Err.Number = 0 And Not (oPkgField Is Nothing) Then oPkgField.Text = SAP_PACKAGE
+        Err.Clear
+        ConfirmDialog oSession, sObj   ' press Continue (btn[0]); Enter fallback
+    Else
+        WScript.Echo "INFO: Assigning to Local Object ($TMP)..."
+        oSession.findById(sObj & "/tbar[0]/btn[7]").press
+        If Err.Number <> 0 Then
+            Err.Clear
+            oSession.findById(sObj).sendVKey VKEY_ENTER
+        End If
+    End If
+    Err.Clear
+End If
+
+' --- 5b. Transport-request prompt (poll: it renders a beat after 5a) -------
+' SAPLSTRD/KO008 arrives slightly after the package dialog confirms, so a
+' single scan misses it (the 2026-06-26 timing miss). Poll up to ~6s.
+Dim iTr : iTr = -1
+Dim k5
+For k5 = 1 To 16
+    DrainInfoPopup oSession
+    iTr = FindTrWindow(oSession)
+    If iTr >= 0 Then Exit For
+    If FindObjDirWindow(oSession) < 0 And InClassEditor(oSession) Then Exit For
+    WScript.Sleep 400
+Next
+If iTr >= 0 Then
+    Dim sTr : sTr = "wnd[" & iTr & "]"
+    If SAP_TRANSPORT <> "" Then
+        WScript.Echo "INFO: Assigning transport " & SAP_TRANSPORT & " (dialog " & sTr & ")..."
+        ' The TR prompt can render a beat before it accepts input, so set the
+        ' field then READ IT BACK and retry until it sticks before confirming
+        ' (a blind set+Continue left the field empty in the 2026-06-26 race).
+        Dim tTries, oTrField, bTrSet
+        bTrSet = False
+        For tTries = 1 To 6
+            WScript.Sleep 400
+            Set oTrField = oSession.findById(sTr & "/usr/ctxtKO008-TRKORR")
+            If Err.Number <> 0 Or oTrField Is Nothing Then
+                Err.Clear
+                Set oTrField = oSession.findById(sTr & "/usr/ctxtKORR_TXT-REQ_NUM")
+            End If
+            If Err.Number <> 0 Or oTrField Is Nothing Then
+                Err.Clear
+                Set oTrField = oSession.findById(sTr & "/usr/ctxtKO007-L_REQ")
+            End If
+            If Err.Number = 0 And Not (oTrField Is Nothing) Then
+                oTrField.Text = SAP_TRANSPORT
+                If Err.Number = 0 And oTrField.Text = SAP_TRANSPORT Then
+                    bTrSet = True
+                    Exit For
+                End If
+            End If
+            Err.Clear
+        Next
+        If Not bTrSet Then WScript.Echo "WARNING: transport field did not accept " & SAP_TRANSPORT & " after retries."
+        ConfirmDialog oSession, sTr
+    Else
+        ' Prompted for a TR but none supplied -> fall back to Local Object.
+        oSession.findById(sTr & "/tbar[0]/btn[7]").press
+        If Err.Number <> 0 Then
+            Err.Clear
+            oSession.findById(sTr).sendVKey VKEY_ENTER
+        End If
+    End If
+    WScript.Sleep 1500
+End If
+Err.Clear
+On Error GoTo 0
+
+' Verify we are in the Class Builder editor (form-based tabsCTS, source-based
+' txtDY0400_STATUS, or any SAPLSEO* class-builder screen with no modal popup).
+If Not InClassEditor(oSession) Then
+    On Error Resume Next
     WScript.Echo "ERROR: Could not reach Class Builder editor after create." & vbCrLf & _
                  "       Status: " & oSession.findById("wnd[0]/sbar").Text
+    On Error GoTo 0
     WScript.Quit 1
 End If
 WScript.Echo "INFO: Class created, now in Class Builder."
@@ -290,6 +330,40 @@ Err.Clear
 On Error GoTo 0
 WScript.Echo "INFO: Saved."
 
+' ------ 6b. Activate (exception classes only) -------------------------------
+' A standalone exception class is delivered as a complete, activatable skeleton,
+' so activate it now so its active version exists (SEOCLASSDF VERSION=1). Normal
+' classes are intentionally left INACTIVE here -- their later source upload
+' (sap_se24_update.vbs) activates them -- so the normal path is unchanged.
+If UCase(CLASS_KIND) = "EXCEPTION" Then
+    WScript.Echo "INFO: Activating exception class..."
+    On Error Resume Next
+    oSession.findById("wnd[0]").sendVKey 27   ' Ctrl+F3 = Activate
+    WScript.Sleep 2000
+    ' Optional inactive-objects worklist popup: Select All (btn[5]) + Continue.
+    If InStr(oSession.ActiveWindow.Id, "wnd[1]") > 0 Then
+        oSession.findById("wnd[1]/tbar[0]/btn[5]").press   ' Select All (no-op if absent)
+        Err.Clear
+        oSession.findById("wnd[1]/tbar[0]/btn[0]").press   ' Continue
+        If Err.Number <> 0 Then
+            Err.Clear
+            oSession.findById("wnd[1]").sendVKey 0
+        End If
+        WScript.Sleep 2000
+    End If
+    DrainInfoPopup oSession
+    Dim sActMsg, sActType
+    sActMsg  = oSession.findById("wnd[0]/sbar").Text
+    sActType = oSession.findById("wnd[0]/sbar").MessageType
+    Err.Clear
+    On Error GoTo 0
+    If sActType = "E" Or sActType = "A" Then
+        WScript.Echo "WARNING: Activation reported " & sActType & " - " & sActMsg
+    Else
+        WScript.Echo "INFO: Activated. SAP status: " & sActMsg
+    End If
+End If
+
 ' --- Release the session UI lock; Step 7 is read-only status check ---
 ReleaseSession oSession, wasLocked
 If wasLocked Then WScript.Echo "INFO: Session UI lock released."
@@ -309,3 +383,123 @@ End If
 
 WScript.Echo "SUCCESS: Class " & UCase(CLASS_NAME) & " created in SAP."
 WScript.Quit 0
+
+' =============================================================================
+' Helpers
+' =============================================================================
+
+' Return the window index (1..3) whose user area exposes the DY_0102 class-
+' details field VSEOCLASS-DESCRIPT, or -1 if none. The details dialog normally
+' sits at wnd[1], but a stacked "fill required fields" info popup can push the
+' active window to wnd[2]; locating by DDIC id is robust to that ordering.
+Function FindDetailsWindow(oSess)
+    Dim w, o
+    FindDetailsWindow = -1
+    For w = 1 To 3
+        On Error Resume Next
+        Set o = oSess.findById("wnd[" & w & "]/usr/txtVSEOCLASS-DESCRIPT")
+        If Err.Number = 0 And Not (o Is Nothing) Then
+            FindDetailsWindow = w
+            Err.Clear
+            On Error GoTo 0
+            Exit Function
+        End If
+        Err.Clear
+        On Error GoTo 0
+    Next
+End Function
+
+' Dismiss a single-message info popup (its user area holds txtMESSTXT1, e.g.
+' "Fill out all required entry fields") by pressing Enter on it. No-op when no
+' such popup is present. Scans top-down so a popup stacked above the details
+' dialog is cleared without disturbing the dialog underneath.
+Sub DrainInfoPopup(oSess)
+    Dim w, o
+    For w = 3 To 1 Step -1
+        On Error Resume Next
+        Set o = oSess.findById("wnd[" & w & "]/usr/txtMESSTXT1")
+        If Err.Number = 0 And Not (o Is Nothing) Then
+            oSess.findById("wnd[" & w & "]").sendVKey 0
+            WScript.Sleep 600
+        End If
+        Err.Clear
+        On Error GoTo 0
+    Next
+End Sub
+
+' Return the window index (1..3) whose user area exposes the given control
+' (the part after usr/), or -1. Lets the package / TR handling target the
+' right modal by DDIC id instead of guessing wnd[1] vs wnd[2].
+Function FindWinWithCtrl(oSess, sCtrl)
+    Dim w, o
+    FindWinWithCtrl = -1
+    For w = 1 To 3
+        On Error Resume Next
+        Set o = oSess.findById("wnd[" & w & "]/usr/" & sCtrl)
+        If Err.Number = 0 And Not (o Is Nothing) Then
+            FindWinWithCtrl = w
+            Err.Clear
+            On Error GoTo 0
+            Exit Function
+        End If
+        Err.Clear
+        On Error GoTo 0
+    Next
+End Function
+
+' Object Directory Entry / package dialog: SEUK-DEVCLASS (package-create
+' flavour) or KO007-L_DEVCLASS (object-directory flavour).
+Function FindObjDirWindow(oSess)
+    FindObjDirWindow = FindWinWithCtrl(oSess, "ctxtSEUK-DEVCLASS")
+    If FindObjDirWindow < 0 Then FindObjDirWindow = FindWinWithCtrl(oSess, "ctxtKO007-L_DEVCLASS")
+End Function
+
+' Transport-request prompt: KO008-TRKORR (SAPLSTRD), KORR_TXT-REQ_NUM, or
+' KO007-L_REQ depending on the dialog flavour.
+Function FindTrWindow(oSess)
+    FindTrWindow = FindWinWithCtrl(oSess, "ctxtKO008-TRKORR")
+    If FindTrWindow < 0 Then FindTrWindow = FindWinWithCtrl(oSess, "ctxtKORR_TXT-REQ_NUM")
+    If FindTrWindow < 0 Then FindTrWindow = FindWinWithCtrl(oSess, "ctxtKO007-L_REQ")
+End Function
+
+' Confirm a modal dialog by pressing its Continue button (tbar[0]/btn[0]),
+' falling back to Enter. More reliable than Enter alone on the KO007 / SAPLSTRD
+' object-directory + transport dialogs.
+Sub ConfirmDialog(oSess, sWin)
+    On Error Resume Next
+    oSess.findById(sWin & "/tbar[0]/btn[0]").press
+    If Err.Number <> 0 Then
+        Err.Clear
+        oSess.findById(sWin).sendVKey 0
+    End If
+    Err.Clear
+    On Error GoTo 0
+End Sub
+
+' True when the main window shows the Class Builder editor and no modal popup
+' is open: form-based (tabsCTS), source-based (txtDY0400_STATUS), or any
+' SAPLSEO* class-builder screen (covers the exception-class editor variant).
+Function InClassEditor(oSess)
+    InClassEditor = False
+    On Error Resume Next
+    If oSess.ActiveWindow.Id <> oSess.Id & "/wnd[0]" Then
+        Err.Clear : On Error GoTo 0 : Exit Function
+    End If
+    Dim o
+    Set o = oSess.findById("wnd[0]/usr/tabsCTS")
+    If Err.Number = 0 And Not (o Is Nothing) Then
+        InClassEditor = True : Err.Clear : On Error GoTo 0 : Exit Function
+    End If
+    Err.Clear
+    Set o = oSess.findById("wnd[0]/usr/txtDY0400_STATUS")
+    If Err.Number = 0 And Not (o Is Nothing) Then
+        InClassEditor = True : Err.Clear : On Error GoTo 0 : Exit Function
+    End If
+    Err.Clear
+    Dim p : p = oSess.Info.Program
+    If Err.Number = 0 Then
+        If Left(p, 7) = "SAPLSEO" Then InClassEditor = True
+    End If
+    Err.Clear
+    On Error GoTo 0
+End Function

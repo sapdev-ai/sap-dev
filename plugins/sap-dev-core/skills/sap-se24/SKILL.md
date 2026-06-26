@@ -112,6 +112,14 @@ powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_
 | Package | SAP package (optional, blank = local $TMP) | `ZHKA001` |
 | Transport | Transport request (optional; resolved by `/sap-transport-request` per `way_to_get_transport_request` if not supplied) | `S4DK940992` |
 | Test source (`--test-source=<path>`) | Optional. Local test classes for the class's CCAU "Local Test Classes" include (local `CLASS ltcl_… DEFINITION FOR TESTING … ENDCLASS.` + IMPLEMENTATION only — **not** the global class). Deployed after the main source via Step 5f. | `{work}\ZCL_X_TEST.abap` |
+| Class kind (`--exception` / `--with-message`) | Optional, **create flow only**. The class is created as an **exception class** (category 40, superclass `CX_STATIC_CHECK`) when the name starts with `ZCX_` / `YCX_` **or** `--exception` is passed. Add `--with-message` (alias `--t100`) to tick the exception "with message class" (T100) checkbox so message-class messages back the exception texts. Drives the SE24 Create dialog's `radDY_0102-RB_EXCEPTION_CLASS` + `chkDY_0102-CB_EXCEPTION_CLASS_T100` by ID. | `ZCX_HK_FILE_NOT_FOUND --with-message` |
+
+**Exception-class detection (create flow):** before generating the create VBS
+(Step 5b), set `THE_CLASS_KIND = EXCEPTION` when the class name matches
+`^[ZY]CX_` **or** the user passed `--exception` / asked for an "exception class";
+otherwise `NORMAL`. Set `THE_WITH_MESSAGE = X` only when `--with-message` /
+`--t100` was requested (else blank). This affects **only** the create path —
+update / fix / change-props / delete are unchanged.
 
 **Mode selection:**
 
@@ -371,6 +379,27 @@ It does NOT upload source code. After creation, you must:
 1. Switch to source-code-based view (see note in Step 5a).
 2. Run Step 5a (Update) to upload the actual source.
 
+### Class kind — usual ABAP class vs. exception class
+
+Decide `THE_CLASS_KIND` from the request (detection lives in Step 1):
+
+- **Exception class** when the class name starts with `ZCX_` / `YCX_`, **or** the
+  user passed `--exception` (or asked for an "exception class" / "ZCX"). SAP's
+  SE24 Create dialog then offers the **Exception Class** radio
+  (`radDY_0102-RB_EXCEPTION_CLASS`, category `40`, superclass `CX_STATIC_CHECK`)
+  plus a **"with message class" (T100)** checkbox. Set `THE_CLASS_KIND =
+  EXCEPTION`. Tick the T100 box (`THE_WITH_MESSAGE = X`) **only when requested**
+  — i.e. the user passed `--with-message` / `--t100` or asked for an exception
+  whose texts come from a message class (T100); otherwise leave it blank. A bare
+  exception class (no T100) is the safe default and matches the standard,
+  activatable skeleton.
+- **Usual ABAP class** otherwise. Set `THE_CLASS_KIND = NORMAL` and leave
+  `THE_WITH_MESSAGE` blank. The dialog path is unchanged.
+
+The VBS drives the radio and checkbox **by control ID only** (locale
+independent); selecting the exception radio is what sets the class category to
+`40`, so there is no separate category field to fill.
+
 ### Generate the filled-in VBScript
 
 Write `{RUN_TEMP}\sap_se24_create_run.ps1`:
@@ -380,6 +409,11 @@ $content = $content -replace '%%CLASS_NAME%%','THE_CLASS_NAME'
 $content = $content -replace '%%CLASS_DESCRIPTION%%','THE_DESCRIPTION'
 $content = $content -replace '%%PACKAGE%%','THE_PACKAGE'
 $content = $content -replace '%%TRANSPORT%%','THE_TRANSPORT'
+# Exception-class branch. THE_CLASS_KIND = 'EXCEPTION' for a ZCX_/YCX_ name or an
+# explicit --exception request, else 'NORMAL'. THE_WITH_MESSAGE = 'X' to tick the
+# T100 'with message class' checkbox (only honoured when KIND=EXCEPTION), else ''.
+$content = $content -replace '%%CLASS_KIND%%','THE_CLASS_KIND'
+$content = $content -replace '%%WITH_MESSAGE%%','THE_WITH_MESSAGE'
 $content = $content -replace '%%SESSION_LOCK_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_session_lock.vbs'
 $sessionPath = ''
 $content = $content -replace '%%SESSION_PATH%%', $sessionPath
@@ -390,6 +424,8 @@ $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 Write-Host 'Done'
 ```
 Replace all `THE_*` placeholders (PACKAGE/TRANSPORT blank if local $TMP) and `<SKILL_DIR>`.
+Set `THE_CLASS_KIND` = `NORMAL` or `EXCEPTION` per the rule above, and
+`THE_WITH_MESSAGE` = `X` only for a T100-backed exception (else blank).
 
 Run:
 ```bash
@@ -407,6 +443,45 @@ cscript //NoLogo {RUN_TEMP}\sap_se24_create_run.vbs
 - The class will be in form-based view. The user (or a follow-up script) must switch to
   source-code-based view before running the update. See "Source-Code-Based View Setup" below.
 - Then proceed to Step 5a (Update) to upload the source.
+- **Exception class:** verify the category landed as `40` via the RFC check in
+  **Step 5c — Verify Exception Class (SEOCLASSDF)** below before uploading source.
+
+---
+
+## Step 5c — Verify Exception Class (SEOCLASSDF) — exception classes only
+
+**When to run:** Right after a successful exception-class create (Step 5b with
+`THE_CLASS_KIND = EXCEPTION`). Confirms SAP actually persisted the class as an
+exception category rather than a usual class. Skip for normal classes.
+
+The class-builder header view `SEOCLASSDF` carries the resolved category in
+`CATEGORY` (`40` = exception class) and the activation state in `VERSION`
+(`1` = active, `0` = inactive). The freshly-created shell is active once the
+create VBS saved + activated it, so expect `VERSION=1, CATEGORY=40`.
+
+Read it via **32-bit** PowerShell (SAP NCo 3.1 is registered only in the 32-bit
+GAC — a 64-bit host fails with "no destination"). `Connect-SapRfc` falls back to
+the pinned `/sap-login` profile when no credentials are passed, so a logged-in
+session needs only the table read:
+
+```bash
+C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_rfc_lib.ps1'; $d = Connect-SapRfc; if (-not $d) { Write-Output 'ERROR: RFC connect failed'; exit 2 }; $f = $d.Repository.CreateFunction('RFC_READ_TABLE'); $f.SetValue('QUERY_TABLE','SEOCLASSDF'); $f.SetValue('DELIMITER','|'); $fields=$f.GetTable('FIELDS'); foreach ($fn in @('CLSNAME','VERSION','CATEGORY')) { $fields.Append(); $fields.SetValue('FIELDNAME',$fn) }; $o=$f.GetTable('OPTIONS'); $o.Append(); $o.SetValue('TEXT',\"CLSNAME = 'THE_CLASS_NAME'\"); $f.Invoke($d); $rows=$f.GetTable('DATA'); if ($rows.RowCount -eq 0) { Write-Output 'VERIFY: NOT_FOUND' } else { $rows.CurrentIndex=0; Write-Output ('VERIFY: ' + $rows.GetValue('WA')) }"
+```
+
+Replace `THE_CLASS_NAME` with the UPPERCASE class name. Note `Invoke($d)` takes
+the destination argument (NCo 3.1 has no zero-arg overload). The shared
+`Add-RfcField` / `Add-RfcOption` helpers may also be used instead of the inline
+`GetTable` calls.
+
+| Output (`WA` = `CLSNAME|VERSION|CATEGORY`) | Meaning |
+|---|---|
+| `VERIFY: ZCX_…\|1\|40` (VERSION=`1`, CATEGORY=`40`) | Exception class created and active. Proceed to Step 5a. |
+| `VERIFY: ZCX_…\|0\|40` | Exception category is right but the class is still inactive — re-activate via `/sap-activate-object CLASS <name>`. |
+| `VERIFY: …\|*\|00` (CATEGORY `00`) | The class was created as a usual class — the exception radio did not take. Re-check the create output and re-run. |
+| `VERIFY: NOT_FOUND` | No `SEOCLASSDF` row — the create did not persist. Re-run Step 5b. |
+
+(Verified live on S/4HANA 1909 / S4D 2026-06-26: `ZCX_…|1|40` for an activated
+exception class, `…|0|00` for a usual class left inactive by the create path.)
 
 ---
 

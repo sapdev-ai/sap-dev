@@ -18,6 +18,18 @@
         "wnd[0]/usr/btnPUSH_CREATE"
       ],
       "status": "pending_live"
+    },
+    {
+      "id": "create_details_dialog",
+      "reach": { "after": "btnPUSH_CREATE + DY_0101 Class chooser" },
+      "identity": { "program": "SAPMSDYP", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]/usr/txtVSEOCLASS-DESCRIPT",
+        "wnd[1]/usr/radDY_0102-RB_NORMAL_CLASS",
+        "wnd[1]/usr/radDY_0102-RB_EXCEPTION_CLASS",
+        "wnd[1]/usr/chkDY_0102-CB_EXCEPTION_CLASS_T100"
+      ],
+      "status": "pending_live"
     }
   ]
 }

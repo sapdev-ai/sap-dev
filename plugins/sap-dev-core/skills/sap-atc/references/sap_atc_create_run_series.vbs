@@ -20,8 +20,13 @@
 '        ctxtP3B_OBVT = %%OBJECT_SET_NAME%%
 '        (optional) check-variant field = %%CHECK_VARIANT%% when supplied
 '        Enter, Save (btn[11])
-'   6. Find the new row in the result grid by APP_CONFIG_NAME column (NAME
-'      on older releases -- multi-candidate lookup), select it,
+'   5b. Post-Save: a LOCAL-object run (no remote object provider) raises a
+'        benign "local objects will be checked" confirmation (SAPLSPO1 "Save
+'        inconsistent data"). Confirm it via the DDIC control
+'        wnd[1]/usr/btnBUTTON_1 (Yes; live-verified) and continue. Any OTHER
+'        unhandled post-Save modal still aborts loud.
+'   6. Find the new row in the result grid by NAME column (verified live on
+'      S/4HANA 1909; multi-candidate lookup for other releases), select it,
 '      pressToolbarButton "EXECUTE_SERIE", confirm via tbar[1]/btn[8].
 '
 ' Tokens:
@@ -316,15 +321,17 @@ oSess.findById("wnd[0]").sendVKey VKEY_F11_SAVE
 WScript.Sleep 2000
 On Error GoTo 0
 
-' --- 5b. Diagnose any post-Save popup BEFORE walking the grid ----------------
-' Save can raise a modal at wnd[1] (most commonly "Save inconsistent data"
-' when the underlying SCI Object Set is Local-only -- ATC Run Series binding
-' requires a Global set). If we don't detect this, the subsequent grid
-' lookup runs against a frozen / wrong screen, the column match silently
-' falls through to the last-row heuristic, and EXECUTE_SERIE selects the
-' wrong row (or fails silently). Dump the popup details and abort with a
-' clear diagnostic so the operator sees the real cause instead of a
-' downstream "could not match column" warning.
+' --- 5b. Triage any post-Save popup BEFORE walking the grid ------------------
+' Save can raise a modal at wnd[1]. Two cases, handled in order below:
+'   5b.0  Benign: a LOCAL-object run raises an informational "local objects
+'         will be checked" confirm (Yes = wnd[1]/usr/btnBUTTON_1). Confirm
+'         and continue -- this is the normal local-run path, not an error.
+'   5b.1  Unhandled: any OTHER modal still standing (e.g. a Local-only SCI
+'         Object Set that cannot bind to a Run Series). If we don't abort, the
+'         subsequent grid lookup runs against a frozen / wrong screen, the
+'         column match silently falls through to the last-row heuristic, and
+'         EXECUTE_SERIE selects the wrong row (or fails silently). Dump the
+'         popup details and abort with a clear diagnostic.
 On Error Resume Next
 Dim sPopupId, sPopupTitle, sPopupSbar
 sPopupId    = ""
@@ -334,6 +341,52 @@ sPopupId = oSess.ActiveWindow.Id
 If Err.Number <> 0 Then Err.Clear
 On Error GoTo 0
 
+' --- 5b.0 Confirm-and-continue the benign "local objects will be checked" popup
+' For a LOCAL-object run (a $TMP / local Z-object, no remote object provider)
+' Save raises an informational confirmation -- the SAPLSPO1 "Save inconsistent
+' data / local objects will be checked" modal -- whose Yes button is the DDIC
+' control wnd[1]/usr/btnBUTTON_1 (VERIFIED live on S/4HANA 1909, 2026-06-26:
+' GuiModalWindow SAPLSPO1/0502, btnBUTTON_1 text=' Yes', btnBUTTON_2 text=' No').
+' This is NOT an error: pressing Yes proceeds to the run-series grid so
+' EXECUTE_SERIE can fire. Detect it by control id ONLY (locale-independent; we
+' never branch on the translated modal title, per language_independence_rules.md).
+' The original code aborted on ANY post-Save wnd[1] popup, which killed every
+' local-object ATC run before EXECUTE_SERIE (field bug, S/4HANA 1909, 2026-06-26).
+' The downstream row-match + final status-bar E/A gate remain the hard guards,
+' so confirming a genuinely inconsistent save here cannot mask a real failure.
+' (The field report named the button "btnSPOP-BUTTON_1"; the live-verified id is
+' btnBUTTON_1 -- we try the verified id first, then the SPOP variant as a
+' release/dialog-class fallback.)
+If Right(sPopupId, 6) <> "wnd[0]" Then
+    Dim oSpopYes : Set oSpopYes = Nothing
+    Dim yesCands : yesCands = Array(sPopupId & "/usr/btnBUTTON_1", sPopupId & "/usr/btnSPOP-BUTTON_1")
+    Dim yi, sYesId
+    sYesId = ""
+    For yi = 0 To UBound(yesCands)
+        On Error Resume Next
+        Set oSpopYes = Nothing
+        Set oSpopYes = oSess.findById(yesCands(yi))
+        On Error GoTo 0
+        If Not (oSpopYes Is Nothing) Then
+            sYesId = yesCands(yi)
+            Exit For
+        End If
+    Next
+    If Not (oSpopYes Is Nothing) Then
+        WScript.Echo "INFO: Post-Save confirm popup at " & sPopupId & " (" & sYesId & ") -- pressing Yes (local objects will be checked / confirm save)."
+        On Error Resume Next
+        oSpopYes.press
+        WScript.Sleep 1500
+        ' Re-read the active window: Yes should return us to wnd[0] (the grid).
+        sPopupId = oSess.ActiveWindow.Id
+        If Err.Number <> 0 Then
+            Err.Clear
+            sPopupId = ""   ' force the abort diagnostic below if we can't re-read
+        End If
+        On Error GoTo 0
+    End If
+End If
+
 If Right(sPopupId, 6) <> "wnd[0]" Then
     On Error Resume Next
     sPopupTitle = oSess.ActiveWindow.Text
@@ -341,10 +394,13 @@ If Right(sPopupId, 6) <> "wnd[0]" Then
     sPopupSbar  = oSess.findById("wnd[0]/sbar").Text
     Err.Clear
     On Error GoTo 0
-    WScript.Echo "ERROR: Post-Save popup detected at " & sPopupId & ": " & sPopupTitle
+    WScript.Echo "ERROR: Unhandled post-Save popup at " & sPopupId & ": " & sPopupTitle
     WScript.Echo "       Status bar: " & sPopupSbar
-    WScript.Echo "       The most common cause is a Local-only SCI Object Set."
-    WScript.Echo "       ATC Run Series binding requires a GLOBAL object set; check that"
+    WScript.Echo "       (The benign 'local objects will be checked' confirm is auto-pressed"
+    WScript.Echo "       via btnBUTTON_1; this popup exposes no such Yes control, so it is a"
+    WScript.Echo "       different, unhandled modal.)"
+    WScript.Echo "       A common cause is a Local-only SCI Object Set -- ATC Run Series"
+    WScript.Echo "       binding requires a GLOBAL object set; check that"
     WScript.Echo "       sap_sci_create_object_set.vbs created the set with the Global flag."
     WScript.Echo "       Aborting Stage 2 to avoid silent EXECUTE_SERIE on the wrong row."
     ReleaseSession oSess, wasLocked
@@ -360,15 +416,22 @@ On Error Resume Next
 Set oGrid = oSess.findById("wnd[0]/usr/shell/shellcont/shell")
 On Error GoTo 0
 
-' Try common column-id candidates for the Run Series name column. The Run
-' Series management grid actually exposes it as APP_CONFIG_NAME on
-' S/4HANA 1909 (verified -- same column id as the Run Monitor grid in
-' sap_atc_check_run_status.vbs). Older releases may use NAME or
-' RUN_SERIES_NAME. The lookup must mirror the multi-candidate approach so
-' the row match doesn't silently fall through to the last-row heuristic
-' (which can pick a stale series when SAP did not append the new one at
-' the bottom).
-Dim seriesCols : seriesCols = Array("APP_CONFIG_NAME", "RUN_SERIES_NAME", "RUN_SERIES", "SERIE_NAME", "NAME")
+' Try common column-id candidates for the Run Series name column. The node-12
+' Run Series MANAGEMENT grid (program SAPLSATC_CI_CFG_SERIES_CATALOG) exposes
+' it as NAME (title "Series Name") on S/4HANA 1909 -- verified live 2026-06-26
+' on S4D by dumping ColumnOrder at ATC node 12. NOTE: this is a DIFFERENT grid
+' from the Stage-3 Run Monitor (node 13), which uses APP_CONFIG_NAME; an
+' earlier comment here wrongly assumed the two grids shared that id. NAME is
+' listed FIRST so the correct column is matched without relying on the invalid
+' candidates below raising an error first (GetCellValue on an unknown column id
+' raises -2147024809 on the tested kernel, but that generic E_FAIL behaviour is
+' not guaranteed across releases/locales -- a build that returns "" instead
+' would never error out, so the real id must lead). The remaining ids are kept
+' as best-effort fallbacks for other releases. The multi-candidate approach
+' keeps the row match from silently falling through to the last-row heuristic
+' (which can pick a stale series when SAP did not append the new one at the
+' bottom).
+Dim seriesCols : seriesCols = Array("NAME", "APP_CONFIG_NAME", "RUN_SERIES_NAME", "RUN_SERIES", "SERIE_NAME")
 Dim r, sRowName, foundRow, sMatchedCol
 foundRow = -1
 sMatchedCol = ""
@@ -430,9 +493,23 @@ Err.Clear
 
 ' Recording also presses tbar[1]/btn[8] after EXECUTE_SERIE -- likely the
 ' "Confirm execution" button. If a popup appeared, drive it; if not,
-' send F8 from the main window as the recording does.
+' send F8 from the main window as the recording does. A LOCAL-object run can
+' raise the same "local objects will be checked" confirm here too, so prefer its
+' DDIC Yes control (btnBUTTON_1, live-verified; btnSPOP-BUTTON_1 as fallback)
+' when present (locale-independent), then fall back to the recorded tbar[0]/btn[0].
 If InStr(oSess.ActiveWindow.Id, "wnd[1]") > 0 Then
-    oSess.findById("wnd[1]/tbar[0]/btn[0]").press
+    Dim oExecYes : Set oExecYes = Nothing
+    Set oExecYes = oSess.findById("wnd[1]/usr/btnBUTTON_1")
+    If oExecYes Is Nothing Then
+        Err.Clear
+        Set oExecYes = oSess.findById("wnd[1]/usr/btnSPOP-BUTTON_1")
+    End If
+    If Not (oExecYes Is Nothing) Then
+        oExecYes.press
+    Else
+        Err.Clear
+        oSess.findById("wnd[1]/tbar[0]/btn[0]").press
+    End If
     WScript.Sleep 1000
 Else
     oSess.findById("wnd[0]/tbar[1]/btn[8]").press

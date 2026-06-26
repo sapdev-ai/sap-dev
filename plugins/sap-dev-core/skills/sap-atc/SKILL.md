@@ -261,6 +261,20 @@ Confirm the `VARIANT:` line reports the variant you intended — if you passed
 `--variant=S4HANA_READINESS` but it reads `SYSTEM_DEFAULT`, the token was not
 substituted (treat as a bug, not a clean run).
 
+**Local-object runs (no object provider).** When the target is a LOCAL /
+`$TMP` object (or any run with no remote object provider), Save raises an
+informational confirmation popup — the `SAPLSPO1` *"Save inconsistent data /
+local objects will be checked"* modal. Stage 2 detects it by its DDIC control id
+(`wnd[1]/usr/btnBUTTON_1` — the Yes button; locale-independent, never by title;
+`btnSPOP-BUTTON_1` is tried as a release-variance fallback) and
+**confirms-and-continues** (presses Yes) so EXECUTE_SERIE still fires. This is
+the normal path for a local Z-program ATC run; it is not an error. A *different*
+unhandled post-Save modal (one with no such Yes control — e.g. a Local-only SCI
+Object Set that can't bind to a Run Series) still aborts loud. (Field fix,
+S/4HANA 1909, 2026-06-26 — the popup previously aborted every local-object run
+before EXECUTE_SERIE. Control id `btnBUTTON_1` verified live by dumping the
+dialog's control tree.)
+
 After this point the ATC run is **async** — SAP queues the work and
 executes it in the background. Stage 3 polls.
 
@@ -641,12 +655,20 @@ releases, and **aborts loud** if none match when `--variant=` is supplied:
 | `wnd[0]/usr/ctxtG_DYNP_3000-CHECK_VARIANT` / `…-CI_CHK_VARIANT` / `…-CHKV` / `…-VARIANT` | Cross-release structure-name fallbacks |
 | `wnd[0]/usr/ctxtP3B_CHKV`, `…3010/ctxtG_DYNP_3000-CHECK_VARIANT` | Last-resort fallbacks |
 
-The same grid probe also confirmed the Stage-2 run-series **management grid**
-exposes its name column as `NAME` (there is no `APP_CONFIG_NAME` there — that id
-belongs to the Stage-3 *Run Monitor* grid). The row-matching candidate list in
-`sap_atc_create_run_series.vbs` already falls through to `NAME`, so this is
-handled; the lead comment naming `APP_CONFIG_NAME` as "verified" for that grid
-is slightly misleading and could be reordered in a future pass.
+The Stage-2 run-series **management grid** (node 12, program
+`SAPLSATC_CI_CFG_SERIES_CATALOG`) exposes its name column as **`NAME`** (title
+"Series Name") — **VERIFIED live on S/4HANA 1909** (2026-06-26 S4D, dumped via
+`ColumnOrder` at ATC node 12; columns are `NAME`, `TITLE`, `CHECK_VARIANT`,
+`CREATED_BY`, `CREATED_ON`, `CHANGED_BY`, `CHANGED_ON`, `UPDATE_ITEM_STATE`,
+`OVERRIDE_BASELINE_EFFECT`). There is **no** `APP_CONFIG_NAME` on this grid —
+that id belongs to the *Stage-3 Run Monitor* grid (node 13). The row-matching
+candidate list in `sap_atc_create_run_series.vbs` now lists **`NAME` first**, so
+the correct column is matched without relying on the invalid candidates raising
+an error first (on the tested kernel an unknown column id raises `-2147024809`,
+but that behaviour is not guaranteed across releases/locales — a build that
+returns `""` instead would never trip the fallthrough). Live repro confirmed the
+match lands on the right row via column `NAME` (e.g. row 80) instead of the
+last-row heuristic.
 
 **On a different release:** if Stage 2 errors with "check-variant input field
 could not be located", record the config screen via `/sap-gui-probe` or
