@@ -1,0 +1,14 @@
+# Python dependencies for the sap-dev tools/ scripts and the
+# /sap-docs-extract skill's reference implementation.
+#
+#   openpyxl    — read/write .xlsx workbooks (extract_spec.py, build_spec_template.py)
+#   Pillow      — decode embedded images for the `image` format (extract_spec.py)
+#   python-docx — read .docx design documents on the /sap-docs-extract .docx path
+#
+# Install with:  python -m pip install -r tools/requirements.txt
+#
+# Version floors are the versions verified on the maintainer's machine
+# (openpyxl 3.1.5, Pillow 12.2.0); python-docx pinned to a recent stable.
+openpyxl>=3.1.0
+Pillow>=10.0.0
+python-docx>=1.1.0

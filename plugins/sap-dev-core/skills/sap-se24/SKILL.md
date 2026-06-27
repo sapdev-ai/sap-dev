@@ -882,6 +882,30 @@ create/update reporting applies.
 ## Step 6 — Report Result
 
 **On success** (output contains `SUCCESS:`):
+- **Post-activate RFC verify (regular classes) — mandatory; brings se24 to
+  parity with se38/se37.** The update VBS now fails closed on a status-bar
+  Error/Abend after Activate, but a class can still be left INACTIVE for a
+  non-syntax reason (a referenced object inactive, a lock, a missing dependency)
+  whose status the editor no longer shows by the time the final check reads the
+  status bar. So confirm the **active** version exists over RFC before declaring
+  success — read `SEOCLASSDF` filtered to the active version (NCo 3.1 is 32-bit
+  only; `Connect-SapRfc` falls back to the pinned `/sap-login` profile, so a
+  logged-in session needs only the table read):
+
+  ```bash
+  C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_rfc_lib.ps1'; $d = Connect-SapRfc; if (-not $d) { Write-Output 'VERIFY: RFC_UNAVAILABLE'; exit 0 }; $f = $d.Repository.CreateFunction('RFC_READ_TABLE'); $f.SetValue('QUERY_TABLE','SEOCLASSDF'); $f.SetValue('DELIMITER','|'); $fields=$f.GetTable('FIELDS'); foreach ($fn in @('CLSNAME','VERSION')) { $fields.Append(); $fields.SetValue('FIELDNAME',$fn) }; $o=$f.GetTable('OPTIONS'); $o.Append(); $o.SetValue('TEXT',\"CLSNAME = 'THE_CLASS_NAME' AND VERSION = '1'\"); $f.Invoke($d); $rows=$f.GetTable('DATA'); if ($rows.RowCount -ge 1) { Write-Output 'VERIFY: ACTIVE' } else { Write-Output 'VERIFY: INACTIVE_OR_MISSING' }"
+  ```
+
+  Replace `THE_CLASS_NAME` with the UPPERCASE class name. (For exception classes,
+  Step 5c already verifies `VERSION=1, CATEGORY=40` — this regular-class check is
+  the analogous gate for the usual-class update/activate path.)
+
+  | Output | Meaning |
+  |---|---|
+  | `VERIFY: ACTIVE` | An active (`VERSION = 1`) `SEOCLASSDF` row exists — the class is genuinely active. Report success. |
+  | `VERIFY: INACTIVE_OR_MISSING` | No active version — the class did NOT activate despite the GUI `SUCCESS:` echo. Treat the run as **FAILED**; re-activate via `/sap-activate-object CLASS <name>` and surface the real activation errors. |
+  | `VERIFY: RFC_UNAVAILABLE` | No RFC profile (GUI-only environment). Tell the user the active version could not be RFC-confirmed rather than implying it was. |
+
 - Tell the user the class was deployed and activated.
 - Show the full script output as a code block.
 

@@ -67,7 +67,9 @@ Manage multiple saved profiles with `/sap-login --list`, `--switch <id>`,
 `--set-default <id>`, `--delete <id>`. Each Claude Code conversation pins
 to one profile; subagents inherit the pin.
 
-See [docs/getting-started/installation.md](docs/getting-started/installation.md) for details.
+See [docs/getting-started/installation.md](docs/getting-started/installation.md) for details,
+or the end-to-end **[Developer's Manual](docs/manual.md)** —
+a complete walkthrough from install to generating and deploying ABAP, with screenshots.
 
 ## Prerequisites
 

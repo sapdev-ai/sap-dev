@@ -115,16 +115,28 @@ def resolve_anchor(section):
         m = re.match(r"'?([^'!]+)'?!\$?([A-Z]+)\$?(\d+)", ref)
         if m:
             sheet, col, row = m.group(1), m.group(2), int(m.group(3))
-            return sheet, row, column_index_from_string(col)
-    # Fallback: scan column A for keyword
+            # Honour the named range ONLY when it resolves to a sheet that
+            # actually exists in THIS workbook. A range copied between
+            # workbooks is rewritten by Excel into an external reference like
+            # '[4]SourceTemplateSheet'!$A18 — the sheet does not exist here,
+            # so it is NOT resolvable. Fall through to the keyword scan
+            # instead of reading the section's real sheet at the wrong row.
+            if sheet in wb.sheetnames:
+                return sheet, row, column_index_from_string(col)
+    # Fallback: scan ALL columns for the keyword (top-to-bottom, then
+    # left-to-right within each row). The anchor keyword may live in any
+    # column — e.g. ddic_tables_fields uses FIELDNAME, which sits in column C
+    # (after the Table join column in A and No in B), so a column-A-only scan
+    # never finds it and the fields half of _tables.txt comes out empty.
     sheet = section.get("sheet_name", "")
     keyword = section.get("anchor_keyword", "")
     if sheet and keyword and sheet in wb.sheetnames:
         ws_local = wb[sheet]
         for r in range(1, ws_local.max_row + 1):
-            v = ws_local.cell(row=r, column=1).value
-            if v and str(v).strip() == keyword:
-                return sheet, r, 1
+            for c in range(1, ws_local.max_column + 1):
+                v = ws_local.cell(row=r, column=c).value
+                if v and str(v).strip() == keyword:
+                    return sheet, r, c
     return sheet, None, 1
 
 # Per-format dispatch

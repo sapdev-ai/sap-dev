@@ -382,6 +382,22 @@ Proceed to Step 6 to evaluate the result.
 ## Step 6 — Report Result
 
 **On success** (output contains `SUCCESS:`):
+- **Post-save RFC backstop (recommended — brings se91 to parity with se38/se37).**
+  The VBS now fails closed on a status-bar `MessageType` of `E`/`A`
+  (locale-independent), so a save that SAP rejected can no longer be reported as
+  success. As a second, GUI-independent confirmation that the rows actually
+  persisted, RFC-read `T100` for the class and assert the expected message
+  numbers are present (`T100` is a SAP standard table, but `RFC_READ_TABLE` is a
+  READ and is always allowed). Reuse the connection params already resolved in
+  Step 4b and the shared `sap_rfc_lib.ps1`:
+  - `QUERY_TABLE = T100`, `OPTIONS` = `ARBGB = '<MSG_CLASS>'` (upper-cased),
+    `FIELDS` = `MSGNR`, `SPRSL`.
+  - Confirm every requested 3-digit `MSGNR` appears in the result for the logon
+    language. If any expected number is missing, treat the run as **FAILED**
+    even though the VBS echoed `SUCCESS:` — surface the missing numbers to the
+    user (this catches a partial save the status bar did not flag).
+  - Skip only when no SAP RFC profile is available (GUI-only environment); say
+    so explicitly rather than implying the rows were verified.
 - Tell the user the message class was created/updated.
 - Show the full script output as a code block.
 - If Step 4b found duplicates, also report which message numbers were reused.

@@ -1,0 +1,5 @@
+SPEC SECTION -> ABAP LOCATION
+[Validation #1: material must exist] -> lcl_main->validate (line 48)
+[Validation #2: material type set] -> lcl_main->validate (line 50)
+[Processing 3.1: BAPI save] -> lcl_main->execute (line 65)
+[FILE MAPPING row 1: MARA-MATNR] -> lcl_main->build (line 58)

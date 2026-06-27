@@ -38,18 +38,47 @@ jobs:
 
       # Offline contract-lint for generated ABAP. The --selftest seeds known
       # good/bad ABAP snippets and asserts the lint classifies them correctly,
-      # so the rule engine itself is gated. When tests/fixtures/ goldens land
-      # (P2.3), add a step that lints each golden via:
-      #   node scripts/lint-abap-contract.mjs <golden.abap> --work-folder <dir> --fixture
-      # (--fixture turns silent signature-skips into SNAPSHOT_INCOMPLETE errors,
-      #  so an incomplete RFC snapshot can no longer green-wash a fixture run.)
+      # so the rule engine itself is gated.
       - name: ABAP contract-lint self-test
         run: node scripts/lint-abap-contract.mjs --selftest
 
       # Offline skeleton-diff: the logic-regression net (dropped/re-mapped spec
       # rules) the contract-lint cannot be. --selftest gates the diff engine on
-      # seeded good / dependency-drop / pair-swap cases. When fixtures land
-      # (P2.3), add a per-golden step:
-      #   node scripts/diff-abap-skeleton.mjs --work-folder <dir> --program <stem> --case <case.json>
+      # seeded good / dependency-drop / pair-swap cases.
       - name: ABAP skeleton-diff self-test
         run: node scripts/diff-abap-skeleton.mjs --selftest
+
+      # Fixture gates: run the two engines against REAL generated-ABAP artifacts
+      # under tests/fixtures/ so an actual generator regression fails CI (not just
+      # a rule-engine self-test). --fixture turns silent signature-skips into
+      # SNAPSHOT_INCOMPLETE errors, so an incomplete RFC snapshot can no longer
+      # green-wash a fixture run. See tests/fixtures/README.md.
+      - name: ABAP contract-lint - clean fixture (must pass)
+        run: >-
+          node scripts/lint-abap-contract.mjs
+          tests/fixtures/clean_ZMMRMAT099R01/ZMMRMAT099R01.abap
+          --work-folder tests/fixtures/clean_ZMMRMAT099R01 --fixture
+
+      - name: ABAP skeleton-diff - clean fixture (must pass)
+        run: >-
+          node scripts/diff-abap-skeleton.mjs
+          --work-folder tests/fixtures/clean_ZMMRMAT099R01
+          --program ZMMRMAT099R01
+          --case tests/fixtures/clean_ZMMRMAT099R01/case.json
+
+      # Broken fixtures assert a NON-ZERO exit: these are deliberate regressions
+      # (literal MESSAGE + dropped FM snapshot; dropped dependency + re-mapped
+      # traceability pair). If a change ever lets one of them pass, the gate has
+      # been weakened - the `!` makes CI fail on that exit-0.
+      - name: ABAP contract-lint - broken fixture (must fail)
+        run: >-
+          ! node scripts/lint-abap-contract.mjs
+          tests/fixtures/broken_lint_ZMMRMAT100R01/ZMMRMAT100R01.abap
+          --work-folder tests/fixtures/broken_lint_ZMMRMAT100R01 --fixture
+
+      - name: ABAP skeleton-diff - broken fixture (must fail)
+        run: >-
+          ! node scripts/diff-abap-skeleton.mjs
+          --work-folder tests/fixtures/broken_skeleton_ZMMRMAT101R01
+          --program ZMMRMAT101R01
+          --case tests/fixtures/broken_skeleton_ZMMRMAT101R01/case.json

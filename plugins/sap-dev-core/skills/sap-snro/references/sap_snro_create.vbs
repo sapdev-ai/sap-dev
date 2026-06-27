@@ -202,17 +202,20 @@ Err.Clear
 On Error GoTo 0
 
 ' ------ 7. Read status bar -----------------------------------------------
-Dim sStatus
-sStatus = ""
+Dim sStatus, sStatusType
+sStatus = "" : sStatusType = ""
 On Error Resume Next
-sStatus = oSession.findById("wnd[0]/sbar").Text
+sStatus     = oSession.findById("wnd[0]/sbar").Text
+sStatusType = oSession.findById("wnd[0]/sbar").MessageType
 On Error GoTo 0
-WScript.Echo "INFO: Status: " & sStatus
+WScript.Echo "INFO: Status [" & sStatusType & "]: " & sStatus
 
-If InStr(LCase(sStatus), "error") > 0 _
-   Or InStr(LCase(sStatus), "not saved") > 0 _
-   Or InStr(LCase(sStatus), "cannot") > 0 Then
-    WScript.Echo "ERROR: Save failed. Status: " & sStatus
+' Locale-independent verdict: branch on the MessageType code (S/W/E/I/A), never
+' on translated text. The pre-fix English substring match silently passed a real
+' failure on any non-EN logon, reporting a false SUCCESS while TNRO/NRIV was not
+' written (Audit P5).
+If LCase(sStatusType) = "e" Or LCase(sStatusType) = "a" Then
+    WScript.Echo "ERROR: Save failed - " & sStatus
     WScript.Quit 1
 End If
 

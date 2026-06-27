@@ -360,23 +360,69 @@ If bOnLogin Then
         oSession.findById("wnd[0]").sendVKey VKEY_ENTER
         WScript.Sleep 3000
 
-        ' Handle "other sessions" warning if present
+        ' ---- Handle any post-credential popup, discriminating by control id ----
+        ' The pre-fix code blind-Entered ANY wnd[1], which silently dismissed a
+        ' password-expired / system dialog and then reported SUCCESS on an unusable
+        ' screen (Audit P7). Identify the popup by stable DDIC control id:
+        '   * Password-change/expired (pwdRSYST-NCODE1) -> hard ERROR; do NOT
+        '     dismiss (the logon is not usable until a new password is set).
+        '   * Multiple-logon warning (radMULTI_LOGON_OPT*) -> accept with Enter.
+        '   * Anything else (e.g. a benign system-message announcement) -> Enter
+        '     once to clear it; the login is re-verified below regardless.
         On Error Resume Next
         If InStr(oSession.ActiveWindow.Id, "wnd[1]") > 0 Then
-            oSession.findById("wnd[1]").sendVKey VKEY_ENTER
-            WScript.Sleep 1500
-        End If
-        On Error GoTo 0
-
-        ' Verify login succeeded
-        On Error Resume Next
-        Set oLoginCheck = oSession.findById("wnd[0]/usr/txtRSYST-MANDT")
-        If Err.Number = 0 And Not (oLoginCheck Is Nothing) Then
-            WScript.Echo "ERROR: Login failed. Check client, username, and password."
-            WScript.Quit 1
+            Dim oPwdExpired, oMultiLogon, sPopTitle
+            Set oPwdExpired = oSession.findById("wnd[1]/usr/pwdRSYST-NCODE1", False)
+            Set oMultiLogon = oSession.findById("wnd[1]/usr/radMULTI_LOGON_OPT1", False)
+            If oMultiLogon Is Nothing Then Set oMultiLogon = oSession.findById("wnd[1]/usr/radMULTI_LOGON_OPT2", False)
+            If Not (oPwdExpired Is Nothing) Then
+                On Error GoTo 0
+                WScript.Echo "ERROR: SAP requires a password change for user '" & SAP_USER & "' (password expired/initial). Set a new password interactively in SAP GUI, then re-run /sap-login. The dialog was NOT auto-dismissed."
+                WScript.Quit 1
+            ElseIf Not (oMultiLogon Is Nothing) Then
+                WScript.Echo "INFO: Multiple-logon warning - continuing with this logon."
+                oSession.findById("wnd[1]").sendVKey VKEY_ENTER
+                WScript.Sleep 1500
+            Else
+                sPopTitle = ""
+                sPopTitle = oSession.findById("wnd[1]").Text
+                WScript.Echo "INFO: Clearing post-credential popup [" & sPopTitle & "] - login re-verified below."
+                oSession.findById("wnd[1]").sendVKey VKEY_ENTER
+                WScript.Sleep 1500
+            End If
         End If
         Err.Clear
         On Error GoTo 0
+
+        ' ---- Verify login succeeded (locale-independent) ----
+        ' Success requires BOTH that the login dynpro is gone AND that no
+        ' Error/Abend is pending on the status bar. The pre-fix code checked only
+        ' "is the login field gone?" and, on failure, printed a generic
+        ' "check password" line that DISCARDED the real status text -- so an
+        ' account lock read as a wrong password and invited a retry that drove
+        ' further failed-logon counts (Audit P7). MessageType is locale-independent;
+        ' the translated text is surfaced only as a diagnostic.
+        Dim oStillLogin, bStillLogin, sLoginSbar, sLoginSbarType
+        sLoginSbar = "" : sLoginSbarType = ""
+        On Error Resume Next
+        Set oStillLogin = oSession.findById("wnd[0]/usr/txtRSYST-MANDT", False)
+        bStillLogin = Not (oStillLogin Is Nothing)
+        sLoginSbar     = oSession.findById("wnd[0]/sbar").Text
+        sLoginSbarType = oSession.findById("wnd[0]/sbar").MessageType
+        Err.Clear
+        On Error GoTo 0
+        If bStillLogin Then
+            If LCase(sLoginSbarType) = "e" Or LCase(sLoginSbarType) = "a" Then
+                WScript.Echo "ERROR: Login rejected by SAP: " & sLoginSbar & " [MessageType " & sLoginSbarType & "]. Do NOT retry blindly -- if this is an account lock, repeated attempts extend it."
+            Else
+                WScript.Echo "ERROR: Login did not complete (still on the logon screen). Status: " & sLoginSbar
+            End If
+            WScript.Quit 1
+        End If
+        If LCase(sLoginSbarType) = "e" Or LCase(sLoginSbarType) = "a" Then
+            WScript.Echo "ERROR: Logon screen cleared but SAP reported [" & sLoginSbarType & "]: " & sLoginSbar
+            WScript.Quit 1
+        End If
         WScript.Echo "INFO: Login successful."
     Else
         WScript.Echo "INFO: Login screen detected - waiting for manual login (up to 5 minutes)..."

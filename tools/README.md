@@ -9,6 +9,18 @@ the plugins.
 | `build_spec_template.py` | Build the canonical `spec_template.xlsx` from scratch — 17 content sheets + a hidden `(Meta) Layout` sheet that maps each section to its output file. Bilingual: `--lang EN` (default) writes `spec_template.xlsx`; `--lang JA` writes `spec_template_JA.xlsx`. |
 | `spec_translations.py` | Translation strings used by `build_spec_template.py`. Single source of truth for sheet names, headers, banner text, and README content per language. Adding a third language = add a `"ZH": {...}` entry to each dict; no other code changes needed. |
 
+## Dependencies
+
+Install the Python deps once before running any script here:
+
+```bash
+python -m pip install -r tools/requirements.txt
+```
+
+`requirements.txt` pins `openpyxl` (xlsx read/write), `Pillow` (embedded-image
+decode for `extract_spec.py`), and `python-docx` (the `/sap-docs-extract`
+`.docx` path).
+
 ## Usage
 
 ```bash

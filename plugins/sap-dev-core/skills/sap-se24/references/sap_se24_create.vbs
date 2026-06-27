@@ -358,7 +358,13 @@ If UCase(CLASS_KIND) = "EXCEPTION" Then
     Err.Clear
     On Error GoTo 0
     If sActType = "E" Or sActType = "A" Then
-        WScript.Echo "WARNING: Activation reported " & sActType & " - " & sActMsg
+        ' An exception class is delivered as an activatable skeleton, so a failed
+        ' activation here is a real failure (the class is left inactive) -- fail
+        ' closed rather than warn-and-continue to a false SUCCESS (Audit P4).
+        ' Release the session UI lock first so the session is never left frozen.
+        WScript.Echo "ERROR: Exception class activation failed (" & sActType & ") - " & sActMsg
+        ReleaseSession oSession, wasLocked
+        WScript.Quit 1
     Else
         WScript.Echo "INFO: Activated. SAP status: " & sActMsg
     End If
@@ -375,8 +381,14 @@ sFinalMsg  = oSession.findById("wnd[0]/sbar").Text
 sFinalType = oSession.findById("wnd[0]/sbar").MessageType
 On Error GoTo 0
 
-If sFinalType = "E" Then
-    WScript.Echo "WARNING: Save may have errors - " & sFinalMsg
+' Fail closed on a status-bar Error/Abend -- a class whose definition did not
+' save must NOT be reported as SUCCESS (Audit P4). Locale-independent
+' (MessageType, not text). NB: a NORMAL class is intentionally left INACTIVE here
+' (activated later by sap_se24_update.vbs), so "inactive" is NOT a failure -- only
+' a save Error/Abend is. The session UI lock was already released above.
+If sFinalType = "E" Or sFinalType = "A" Then
+    WScript.Echo "ERROR: Class save failed (" & sFinalType & ") - " & sFinalMsg
+    WScript.Quit 1
 Else
     WScript.Echo "INFO: SAP status: " & sFinalMsg
 End If

@@ -1,0 +1,7 @@
+[SELECTION_TEXTS]
+P_MATNR	Material number
+P_MTART	Material type
+
+[TEXT_SYMBOLS]
+001	Starting material upload
+002	Material upload finished

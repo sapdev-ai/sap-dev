@@ -218,6 +218,74 @@ function New-EmptyConnectionStore {
 
 # --- Read / Write -----------------------------------------------------------
 
+function _Backup-CorruptConnectionStore {
+    <#
+    .SYNOPSIS
+        Preserve a timestamped copy of an unparseable connections.json next to
+        the original before we refuse to continue. Best-effort -- a backup
+        failure must not mask the underlying corruption error.
+    #>
+    param([string]$Path, [string]$Raw)
+    try {
+        $stamp  = (Get-Date).ToString('yyyyMMdd_HHmmss')
+        $backup = "$Path.corrupt.$stamp"
+        [System.IO.File]::WriteAllText($backup, $Raw, ([System.Text.UTF8Encoding]::new($false)))
+        return $backup
+    } catch {
+        return '(backup failed)'
+    }
+}
+
+function _Normalize-ConnectionRecord {
+    <#
+    .SYNOPSIS
+        Coerce ONE raw connection record (PSCustomObject from ConvertFrom-Json)
+        into the normalized hashtable shape. Field coercion is total-loss-proof:
+        a single bad field (e.g. a non-numeric gui_major) defaults that field
+        instead of throwing -- so it can never cascade into wiping the whole
+        store (Audit P1). The CALLER additionally wraps this in a per-record
+        try/catch as a backstop.
+    #>
+    param([Parameter(Mandatory)]$Record)
+    $p = @{}
+    foreach ($pp in $Record.PSObject.Properties) { $p[$pp.Name] = $pp.Value }
+    # String fields.
+    foreach ($f in @('id','description','logon_pad_entry','system_name','client','user','language',
+                      'password_dpapi','message_server','logon_group','system_id',
+                      'application_server','system_number','created_at','last_used_at',
+                      'gui_version_raw','server_kernel_release','server_release_family',
+                      'server_release_marker','server_release_raw')) {
+        if ($p.ContainsKey($f)) { $p[$f] = "$($p[$f])" } else { $p[$f] = '' }
+    }
+    # Integer fields -- TryParse, never a hard [int] cast that could throw.
+    foreach ($i in @('gui_major','gui_minor','gui_patch')) {
+        $iv = 0
+        if ($p.ContainsKey($i) -and $null -ne $p[$i]) {
+            $parsed = 0
+            if ([int]::TryParse("$($p[$i])", [ref]$parsed)) { $iv = $parsed }
+        }
+        $p[$i] = $iv
+    }
+    # Boolean fields.
+    foreach ($b in @('is_default_target','rfc_tested','gui_tested')) {
+        if ($p.ContainsKey($b)) { try { $p[$b] = [bool]$p[$b] } catch { $p[$b] = $false } } else { $p[$b] = $false }
+    }
+    if (-not $p.ContainsKey('software_components') -or $null -eq $p['software_components']) {
+        $p['software_components'] = @()
+    }
+    # dev_defaults -- per-connection overrides for system-keyed settings
+    # (sap_dev_transport_request / sap_dev_package / sap_dev_function_group).
+    # Coerce PSCustomObject -> hashtable so we can index/Update freely.
+    if (-not $p.ContainsKey('dev_defaults') -or $null -eq $p['dev_defaults']) {
+        $p['dev_defaults'] = @{}
+    } elseif ($p['dev_defaults'] -is [System.Management.Automation.PSCustomObject]) {
+        $hh = @{}
+        foreach ($pp2 in $p['dev_defaults'].PSObject.Properties) { $hh[$pp2.Name] = "$($pp2.Value)" }
+        $p['dev_defaults'] = $hh
+    }
+    return $p
+}
+
 function Read-SapConnectionStore {
     if ($null -ne $script:SapConnStore_Cache) { return $script:SapConnStore_Cache }
     $path = Get-SapConnectionStorePath
@@ -225,89 +293,128 @@ function Read-SapConnectionStore {
         $script:SapConnStore_Cache = New-EmptyConnectionStore
         return $script:SapConnStore_Cache
     }
-    try {
-        $raw = Get-Content -Path $path -Raw -Encoding UTF8
-        if ([string]::IsNullOrWhiteSpace($raw)) {
-            $script:SapConnStore_Cache = New-EmptyConnectionStore
-            return $script:SapConnStore_Cache
-        }
-        $obj = $raw | ConvertFrom-Json
 
-        $store = New-EmptyConnectionStore
-        if ($obj.version)           { $store.version = [int]$obj.version }
-        if ($obj.default_target_id) { $store.default_target_id = [string]$obj.default_target_id }
-        if ($obj.connections) {
-            foreach ($c in $obj.connections) {
-                $p = @{}
-                foreach ($pp in $c.PSObject.Properties) { $p[$pp.Name] = $pp.Value }
-                # Coerce key fields to string / bool defensively.
-                foreach ($f in @('id','description','logon_pad_entry','system_name','client','user','language',
-                                  'password_dpapi','message_server','logon_group','system_id',
-                                  'application_server','system_number','created_at','last_used_at',
-                                  'gui_version_raw','server_kernel_release','server_release_family',
-                                  'server_release_marker','server_release_raw')) {
-                    if ($p.ContainsKey($f)) { $p[$f] = "$($p[$f])" } else { $p[$f] = '' }
-                }
-                foreach ($i in @('gui_major','gui_minor','gui_patch')) {
-                    if ($p.ContainsKey($i) -and $null -ne $p[$i]) { $p[$i] = [int]$p[$i] } else { $p[$i] = 0 }
-                }
-                foreach ($b in @('is_default_target','rfc_tested','gui_tested')) {
-                    if ($p.ContainsKey($b)) { $p[$b] = [bool]$p[$b] } else { $p[$b] = $false }
-                }
-                if (-not $p.ContainsKey('software_components') -or $null -eq $p['software_components']) {
-                    $p['software_components'] = @()
-                }
-                # dev_defaults -- per-connection overrides for system-keyed settings
-                # (sap_dev_transport_request / sap_dev_package / sap_dev_function_group).
-                # Coerce PSCustomObject -> hashtable so we can index/Update freely.
-                if (-not $p.ContainsKey('dev_defaults') -or $null -eq $p['dev_defaults']) {
-                    $p['dev_defaults'] = @{}
-                } elseif ($p['dev_defaults'] -is [System.Management.Automation.PSCustomObject]) {
-                    $hh = @{}
-                    foreach ($pp2 in $p['dev_defaults'].PSObject.Properties) { $hh[$pp2.Name] = "$($pp2.Value)" }
-                    $p['dev_defaults'] = $hh
-                }
-                $store.connections += $p
-            }
-        }
-        $script:SapConnStore_Cache = $store
-        return $store
-    } catch {
-        Write-Host "WARN: sap_connection_lib: connections.json unreadable ($($_.Exception.Message)); resetting"
+    # Read the bytes with a short retry: a concurrent atomic swap
+    # (Write-SapConnectionStore's temp-write + File.Replace) can momentarily lock
+    # the file or expose a not-found window. That is transient, NOT corruption --
+    # so retry rather than treat it as an unreadable store.
+    $raw = $null
+    $ioErr = $null
+    for ($attempt = 0; $attempt -lt 5; $attempt++) {
+        try { $raw = Get-Content -Path $path -Raw -Encoding UTF8; $ioErr = $null; break }
+        catch { $ioErr = $_; Start-Sleep -Milliseconds 60 }
+    }
+    if ($null -ne $ioErr) {
+        # Persisted IO failure (permissions / disk / vanished). Do NOT reset to an
+        # empty store -- a later Save would then overwrite the real file and
+        # destroy every saved connection + DPAPI password (Audit P1). Fail loud.
+        throw "sap_connection_lib: connections.json could not be read after retries ($($ioErr.Exception.Message)). Refusing to continue so the credential store is not overwritten. Path: $path"
+    }
+
+    if ([string]::IsNullOrWhiteSpace($raw)) {
         $script:SapConnStore_Cache = New-EmptyConnectionStore
         return $script:SapConnStore_Cache
     }
+
+    $obj = $null
+    try { $obj = $raw | ConvertFrom-Json }
+    catch {
+        # File has content but is not valid JSON -> genuine corruption (or a torn
+        # write the atomic swap should have prevented). Preserve a timestamped
+        # backup and FAIL LOUD instead of silently resetting to an empty store --
+        # the old "resetting" path let a later Save overwrite the real file, so
+        # ALL saved connections + DPAPI passwords were lost (Audit P1).
+        $backup = _Backup-CorruptConnectionStore -Path $path -Raw $raw
+        throw "sap_connection_lib: connections.json is not valid JSON ($($_.Exception.Message)). A backup of the corrupt file was saved to '$backup'. Refusing to continue so the credential store is not overwritten."
+    }
+
+    $store = New-EmptyConnectionStore
+    try { if ($obj.version) { $store.version = [int]$obj.version } } catch { $store.version = 2 }
+    if ($obj.default_target_id) { $store.default_target_id = [string]$obj.default_target_id }
+    if ($obj.connections) {
+        foreach ($c in $obj.connections) {
+            # Isolate per-record normalization: one malformed connection (or one
+            # bad field within it) drops just THAT record, never the whole store.
+            try {
+                $store.connections += (_Normalize-ConnectionRecord -Record $c)
+            } catch {
+                Write-Host "WARN: sap_connection_lib: skipping one unreadable connection record ($($_.Exception.Message))"
+            }
+        }
+    }
+    $script:SapConnStore_Cache = $store
+    return $store
 }
 
 function Reset-SapConnectionStoreCache {
     $script:SapConnStore_Cache = $null
 }
 
+function _Write-SapConnectionStoreInner {
+    <#
+    .SYNOPSIS
+        The actual normalize + atomic-swap write, WITHOUT taking the store mutex.
+        Callers MUST already hold the lock (Write-SapConnectionStore /
+        Update-SapConnectionStore). Factored out so Update-SapConnectionStore's
+        transactional read-modify-write can reuse the exact same write path under
+        a single lock acquisition (Audit P2).
+    #>
+    param([Parameter(Mandatory)][hashtable] $Store)
+    if (-not $Store.version)           { $Store.version = 2 }
+    if (-not $Store.default_target_id) { $Store.default_target_id = '' }
+    if (-not $Store.connections)       { $Store.connections = @() }
+    $json = $Store | ConvertTo-Json -Depth 8
+    $path = Get-SapConnectionStorePath
+    # Atomic swap: Read-SapConnectionStore takes NO lock, so a concurrent reader
+    # must never see a half-written file. Temp-write + NTFS Replace (Move when
+    # the target is new) closes that race.
+    $enc = [System.Text.UTF8Encoding]::new($false)
+    $tmp = "$path.tmp.$PID"
+    [System.IO.File]::WriteAllText($tmp, $json, $enc)
+    try {
+        if (Test-Path -LiteralPath $path) { [System.IO.File]::Replace($tmp, $path, $null) }
+        else { [System.IO.File]::Move($tmp, $path) }
+    } catch {
+        [System.IO.File]::WriteAllText($path, $json, $enc)
+        if (Test-Path -LiteralPath $tmp) { try { Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue } catch {} }
+    }
+}
+
 function Write-SapConnectionStore {
     param([Parameter(Mandatory)][hashtable] $Store)
-    With-ConnectionStoreLock {
-        if (-not $Store.version)           { $Store.version = 2 }
-        if (-not $Store.default_target_id) { $Store.default_target_id = '' }
-        if (-not $Store.connections)       { $Store.connections = @() }
-        $json = $Store | ConvertTo-Json -Depth 8
-        $path = Get-SapConnectionStorePath
-        # Atomic swap: Read-SapConnectionStore takes NO lock, so a concurrent
-        # reader must never see a half-written file. A torn read used to fail
-        # ConvertFrom-Json -> "resetting" to an EMPTY store; a later Save then
-        # overwrote the real file -> ALL saved connections lost. Temp-write +
-        # NTFS Replace (Move when the target is new) closes that race.
-        $enc = [System.Text.UTF8Encoding]::new($false)
-        $tmp = "$path.tmp.$PID"
-        [System.IO.File]::WriteAllText($tmp, $json, $enc)
-        try {
-            if (Test-Path -LiteralPath $path) { [System.IO.File]::Replace($tmp, $path, $null) }
-            else { [System.IO.File]::Move($tmp, $path) }
-        } catch {
-            [System.IO.File]::WriteAllText($path, $json, $enc)
-            if (Test-Path -LiteralPath $tmp) { try { Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue } catch {} }
-        }
+    With-ConnectionStoreLock { _Write-SapConnectionStoreInner -Store $Store }
+    Reset-SapConnectionStoreCache
+}
+
+function Update-SapConnectionStore {
+    <#
+    .SYNOPSIS
+        Transactional read-modify-write of the connection store (Audit P2).
+    .DESCRIPTION
+        Runs the WHOLE cycle -- fresh on-disk read, the caller's mutation, and
+        the write -- under ONE mutex acquisition. The previous pattern (Save /
+        Set-default / Remove each called Read-SapConnectionStore OUTSIDE the lock,
+        then Write-SapConnectionStore locked only the write) let two concurrent
+        processes read the same baseline and silently drop one of the two saved
+        profiles -- the product's headline parallel-multi-system scenario.
+        Routing every mutator through here closes that window.
+
+        The -Mutator scriptblock receives the freshly-read $store hashtable as
+        its single argument, mutates it in place, and MAY return a value (e.g.
+        the saved profile) which Update passes back to the caller verbatim. Note
+        Read-SapConnectionStore now fails loud on a corrupt store, so a mutation
+        can never run against -- or persist over -- an unreadable file.
+    #>
+    param([Parameter(Mandatory)][scriptblock] $Mutator)
+    $captured = With-ConnectionStoreLock {
+        Reset-SapConnectionStoreCache
+        $store = Read-SapConnectionStore
+        $r = & $Mutator $store
+        _Write-SapConnectionStoreInner -Store $store
+        $r
     }
     Reset-SapConnectionStoreCache
+    return $captured
 }
 
 # --- Profile factory --------------------------------------------------------
@@ -649,12 +756,13 @@ function Set-SapDefaultConnection {
         Pass an empty $Id to clear the default entirely.
     #>
     param([string] $Id = '')
-    $store = Read-SapConnectionStore
-    $store.default_target_id = "$Id"
-    foreach ($p in $store.connections) {
-        $p.is_default_target = ("$($p.id)" -eq "$Id")
-    }
-    Write-SapConnectionStore -Store $store
+    Update-SapConnectionStore {
+        param($store)
+        $store.default_target_id = "$Id"
+        foreach ($p in $store.connections) {
+            $p.is_default_target = ("$($p.id)" -eq "$Id")
+        }
+    } | Out-Null
 }
 
 function New-SapConnectionAutoDescription {
@@ -1030,95 +1138,99 @@ function Save-SapConnection {
         [Parameter(Mandatory)] [hashtable] $Profile
     )
 
-    $store = Read-SapConnectionStore
-    $now = (Get-Date).ToString('yyyy-MM-ddTHH:mm:ss')
+    # Transactional read-modify-write (Audit P2): dedup + insert/update + persist
+    # all run under ONE store-mutex acquisition against a fresh on-disk baseline,
+    # so two concurrent /sap-login finalize calls can't drop one saved profile.
+    return (Update-SapConnectionStore {
+        param($store)
+        $now = (Get-Date).ToString('yyyy-MM-ddTHH:mm:ss')
 
-    $match = $null
-    foreach ($p in $store.connections) {
-        if (Test-SapConnectionsEqual -A $p -B $Profile) { $match = $p; break }
-    }
+        $match = $null
+        foreach ($p in $store.connections) {
+            if (Test-SapConnectionsEqual -A $p -B $Profile) { $match = $p; break }
+        }
 
-    if ($match) {
-        # Field-by-field merge -- overwrite only when $Profile supplied a value.
-        # Endpoint / language / password fields can shift across logins (e.g.,
-        # load-balancer routes to a different app server), so we overwrite.
-        foreach ($f in @('logon_pad_entry','language','password_dpapi','message_server',
-                          'logon_group','application_server','system_number')) {
-            if (_NotEmpty "$($Profile[$f])") { $match[$f] = "$($Profile[$f])" }
-        }
-        # Version info -- overwrite when supplied (refreshed on every login;
-        # SAP patches change these between sessions).
-        foreach ($v in @('gui_version_raw','server_kernel_release','server_release_family',
-                          'server_release_marker','server_release_raw')) {
-            if (_NotEmpty "$($Profile[$v])") { $match[$v] = "$($Profile[$v])" }
-        }
-        foreach ($v in @('gui_major','gui_minor','gui_patch')) {
-            if ($Profile.ContainsKey($v) -and [int]$Profile[$v] -gt 0) { $match[$v] = [int]$Profile[$v] }
-        }
-        if ($Profile.ContainsKey('software_components') -and $Profile['software_components']) {
-            $match['software_components'] = $Profile['software_components']
-        }
-        # Identity fill-ins: system_name / system_id are part of the profile's
-        # identity. We only set them when previously empty (e.g., the profile
-        # was migrated from legacy settings.json that didn't carry SystemName,
-        # and the post-login capture now knows it). We do NOT overwrite an
-        # existing non-empty value -- that would silently mutate identity.
-        foreach ($id in @('system_name','system_id')) {
-            if (-not (_NotEmpty "$($match[$id])") -and (_NotEmpty "$($Profile[$id])")) {
-                $match[$id] = "$($Profile[$id])"
+        if ($match) {
+            # Field-by-field merge -- overwrite only when $Profile supplied a value.
+            # Endpoint / language / password fields can shift across logins (e.g.,
+            # load-balancer routes to a different app server), so we overwrite.
+            foreach ($f in @('logon_pad_entry','language','password_dpapi','message_server',
+                              'logon_group','application_server','system_number')) {
+                if (_NotEmpty "$($Profile[$f])") { $match[$f] = "$($Profile[$f])" }
             }
+            # Version info -- overwrite when supplied (refreshed on every login;
+            # SAP patches change these between sessions).
+            foreach ($v in @('gui_version_raw','server_kernel_release','server_release_family',
+                              'server_release_marker','server_release_raw')) {
+                if (_NotEmpty "$($Profile[$v])") { $match[$v] = "$($Profile[$v])" }
+            }
+            foreach ($v in @('gui_major','gui_minor','gui_patch')) {
+                if ($Profile.ContainsKey($v) -and [int]$Profile[$v] -gt 0) { $match[$v] = [int]$Profile[$v] }
+            }
+            if ($Profile.ContainsKey('software_components') -and $Profile['software_components']) {
+                $match['software_components'] = $Profile['software_components']
+            }
+            # Identity fill-ins: system_name / system_id are part of the profile's
+            # identity. We only set them when previously empty (e.g., the profile
+            # was migrated from legacy settings.json that didn't carry SystemName,
+            # and the post-login capture now knows it). We do NOT overwrite an
+            # existing non-empty value -- that would silently mutate identity.
+            foreach ($id in @('system_name','system_id')) {
+                if (-not (_NotEmpty "$($match[$id])") -and (_NotEmpty "$($Profile[$id])")) {
+                    $match[$id] = "$($Profile[$id])"
+                }
+            }
+            # Description: user-supplied override; else keep existing or auto-derive.
+            if (_NotEmpty "$($Profile.description)") { $match.description = "$($Profile.description)" }
+            if (-not (_NotEmpty "$($match.description)")) {
+                $match.description = New-SapConnectionAutoDescription -Profile $match
+            }
+            $match.last_used_at = $now
+            if ($Profile.rfc_tested) { $match.rfc_tested = $true }
+            if ($Profile.gui_tested) { $match.gui_tested = $true }
+            return $match
         }
-        # Description: user-supplied override; else keep existing or auto-derive.
-        if (_NotEmpty "$($Profile.description)") { $match.description = "$($Profile.description)" }
-        if (-not (_NotEmpty "$($match.description)")) {
-            $match.description = New-SapConnectionAutoDescription -Profile $match
-        }
-        $match.last_used_at = $now
-        if ($Profile.rfc_tested) { $match.rfc_tested = $true }
-        if ($Profile.gui_tested) { $match.gui_tested = $true }
-        Write-SapConnectionStore -Store $store
-        return $match
-    }
 
-    # New profile.
-    $new = @{}
-    foreach ($k in $Profile.Keys) { $new[$k] = $Profile[$k] }
-    if (-not (_NotEmpty "$($new.id)")) { $new.id = [guid]::NewGuid().ToString() }
-    if (-not (_NotEmpty "$($new.created_at)")) { $new.created_at = $now }
-    $new.last_used_at = $now
-    if (-not (_NotEmpty "$($new.description)")) {
-        $new.description = New-SapConnectionAutoDescription -Profile $new
-    }
-    foreach ($f in @('id','description','logon_pad_entry','system_name','client','user','language',
-                      'password_dpapi','message_server','logon_group','system_id',
-                      'application_server','system_number','created_at','last_used_at',
-                      'gui_version_raw','server_kernel_release','server_release_family',
-                      'server_release_marker','server_release_raw')) {
-        if (-not $new.ContainsKey($f)) { $new[$f] = '' }
-    }
-    foreach ($i in @('gui_major','gui_minor','gui_patch')) {
-        if (-not $new.ContainsKey($i) -or $null -eq $new[$i]) { $new[$i] = 0 }
-    }
-    foreach ($b in @('is_default_target','rfc_tested','gui_tested')) {
-        if (-not $new.ContainsKey($b)) { $new[$b] = $false }
-    }
-    if (-not $new.ContainsKey('software_components') -or $null -eq $new['software_components']) {
-        $new['software_components'] = @()
-    }
-    if (-not $new.ContainsKey('dev_defaults') -or $null -eq $new['dev_defaults']) {
-        $new['dev_defaults'] = @{}
-    }
-    $store.connections += $new
-    Write-SapConnectionStore -Store $store
-    return $new
+        # New profile.
+        $new = @{}
+        foreach ($k in $Profile.Keys) { $new[$k] = $Profile[$k] }
+        if (-not (_NotEmpty "$($new.id)")) { $new.id = [guid]::NewGuid().ToString() }
+        if (-not (_NotEmpty "$($new.created_at)")) { $new.created_at = $now }
+        $new.last_used_at = $now
+        if (-not (_NotEmpty "$($new.description)")) {
+            $new.description = New-SapConnectionAutoDescription -Profile $new
+        }
+        foreach ($f in @('id','description','logon_pad_entry','system_name','client','user','language',
+                          'password_dpapi','message_server','logon_group','system_id',
+                          'application_server','system_number','created_at','last_used_at',
+                          'gui_version_raw','server_kernel_release','server_release_family',
+                          'server_release_marker','server_release_raw')) {
+            if (-not $new.ContainsKey($f)) { $new[$f] = '' }
+        }
+        foreach ($i in @('gui_major','gui_minor','gui_patch')) {
+            if (-not $new.ContainsKey($i) -or $null -eq $new[$i]) { $new[$i] = 0 }
+        }
+        foreach ($b in @('is_default_target','rfc_tested','gui_tested')) {
+            if (-not $new.ContainsKey($b)) { $new[$b] = $false }
+        }
+        if (-not $new.ContainsKey('software_components') -or $null -eq $new['software_components']) {
+            $new['software_components'] = @()
+        }
+        if (-not $new.ContainsKey('dev_defaults') -or $null -eq $new['dev_defaults']) {
+            $new['dev_defaults'] = @{}
+        }
+        $store.connections += $new
+        return $new
+    })
 }
 
 function Remove-SapConnection {
     param([Parameter(Mandatory)][string] $Id)
-    $store = Read-SapConnectionStore
-    $store.connections = @($store.connections | Where-Object { "$($_.id)" -ne $Id })
-    if ($store.default_target_id -eq $Id) { $store.default_target_id = '' }
-    Write-SapConnectionStore -Store $store
+    Update-SapConnectionStore {
+        param($store)
+        $store.connections = @($store.connections | Where-Object { "$($_.id)" -ne $Id })
+        if ($store.default_target_id -eq $Id) { $store.default_target_id = '' }
+    } | Out-Null
 }
 
 # =============================================================================
@@ -1926,12 +2038,29 @@ function Set-SapCurrentDevDefault {
         }
         throw "Set-SapCurrentDevDefault: no pinned connection and Set-SapUserSetting unavailable."
     }
-    $store = Read-SapConnectionStore
-    $target = $null
-    foreach ($p in $store.connections) {
-        if ("$($p.id)" -eq "$($profile.id)") { $target = $p; break }
+    # Resolve target + write atomically (Audit P2): the find-target -> set ->
+    # persist cycle runs under one store-mutex acquisition against a fresh
+    # baseline, so a concurrent connection mutation can't drop this dev default.
+    # The mutator returns $true when it found + updated the pinned connection,
+    # $false when the pinned id is absent (so we fall through to the global file).
+    $found = Update-SapConnectionStore {
+        param($store)
+        $target = $null
+        foreach ($p in $store.connections) {
+            if ("$($p.id)" -eq "$($profile.id)") { $target = $p; break }
+        }
+        if (-not $target) { return $false }
+        if (-not $target.ContainsKey('dev_defaults') -or $null -eq $target['dev_defaults']) {
+            $target['dev_defaults'] = @{}
+        } elseif ($target['dev_defaults'] -is [System.Management.Automation.PSCustomObject]) {
+            $h = @{}
+            foreach ($pp in $target['dev_defaults'].PSObject.Properties) { $h[$pp.Name] = "$($pp.Value)" }
+            $target['dev_defaults'] = $h
+        }
+        $target['dev_defaults'][$Key] = "$Value"
+        return $true
     }
-    if (-not $target) {
+    if (-not $found) {
         if (Get-Command Set-SapUserSetting -ErrorAction SilentlyContinue) {
             # -SkipPerConnRouting breaks the cycle: Set-SapUserSetting routes
             # per-conn keys through us; we route no-pin writes back through it.
@@ -1941,15 +2070,6 @@ function Set-SapCurrentDevDefault {
         }
         throw "Set-SapCurrentDevDefault: pinned connection id=$($profile.id) not found in store."
     }
-    if (-not $target.ContainsKey('dev_defaults') -or $null -eq $target['dev_defaults']) {
-        $target['dev_defaults'] = @{}
-    } elseif ($target['dev_defaults'] -is [System.Management.Automation.PSCustomObject]) {
-        $h = @{}
-        foreach ($pp in $target['dev_defaults'].PSObject.Properties) { $h[$pp.Name] = "$($pp.Value)" }
-        $target['dev_defaults'] = $h
-    }
-    $target['dev_defaults'][$Key] = "$Value"
-    Write-SapConnectionStore -Store $store
 }
 
 # =============================================================================

@@ -135,10 +135,24 @@ End If
 Err.Clear
 On Error GoTo 0
 
-' Check for errors
-Dim sStatus
-sStatus = oSession.findById("wnd[0]/sbar").Text
-WScript.Echo "INFO: Status: " & sStatus
+' Check for errors after header creation + object-directory assignment.
+' Locale-independent verdict: gate on MessageType (E/A), never translated text
+' (language_independence_rules.md). This makes BOTH the no-messages early exit
+' (iMsgCount = 0 below) and the with-messages path fail closed when the class
+' header itself did not persist -- e.g. a blocked transport, a lock, or an
+' authorization failure (Audit P3).
+Dim sStatus, sStatusType
+sStatus = "" : sStatusType = ""
+On Error Resume Next
+sStatus     = oSession.findById("wnd[0]/sbar").Text
+sStatusType = oSession.findById("wnd[0]/sbar").MessageType
+Err.Clear
+On Error GoTo 0
+WScript.Echo "INFO: Status [" & sStatusType & "]: " & sStatus
+If LCase(sStatusType) = "e" Or LCase(sStatusType) = "a" Then
+    WScript.Echo "ERROR: Message class creation failed - " & sStatus
+    WScript.Quit 1
+End If
 
 ' ------ 6. Switch to Messages tab -------------------------------------------
 WScript.Echo "INFO: Switching to Messages tab..."
@@ -309,9 +323,25 @@ Err.Clear
 On Error GoTo 0
 
 ' ------ 9. Final status check -----------------------------------------------
-Dim sFinalMsg
-sFinalMsg = oSession.findById("wnd[0]/sbar").Text
-WScript.Echo "INFO: SAP status: " & sFinalMsg
+' Locale-independent verdict: branch on the status-bar MessageType code
+' (S/W/E/I/A), never on translated text (language_independence_rules.md). A
+' real save failure -- duplicate message number, locked message class, blocked
+' transport, authorization failure, or an undismissed master-language popup --
+' surfaces as MessageType E/A. The pre-fix code echoed the text and reported
+' SUCCESS unconditionally, so a failed save read as success (Audit P3). Mirrors
+' the gate already in sap_se91_change_props.vbs.
+Dim sFinalMsg, sFinalType
+sFinalMsg = "" : sFinalType = ""
+On Error Resume Next
+sFinalMsg  = oSession.findById("wnd[0]/sbar").Text
+sFinalType = oSession.findById("wnd[0]/sbar").MessageType
+Err.Clear
+On Error GoTo 0
+WScript.Echo "INFO: SAP status [" & sFinalType & "]: " & sFinalMsg
+If LCase(sFinalType) = "e" Or LCase(sFinalType) = "a" Then
+    WScript.Echo "ERROR: Save failed - " & sFinalMsg
+    WScript.Quit 1
+End If
 
 WScript.Echo "SUCCESS: Message class " & UCase(MSG_CLASS) & " created with " & iMsgCount & " messages in SAP."
 WScript.Quit 0

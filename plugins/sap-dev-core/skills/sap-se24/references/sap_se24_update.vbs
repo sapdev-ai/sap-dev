@@ -568,8 +568,15 @@ sFinalMsg  = oSession.findById("wnd[0]/sbar").Text
 sFinalType = oSession.findById("wnd[0]/sbar").MessageType
 On Error GoTo 0
 
-If sFinalType = "E" Then
-    WScript.Echo "WARNING: Activation may have errors - " & sFinalMsg
+' Fail closed on a status-bar Error/Abend after Activate -- a class left INACTIVE
+' must NOT be reported as SUCCESS (Audit P4). Locale-independent: branch on the
+' MessageType code, never translated text; mirrors se54_generate.vbs. The
+' authoritative confirmation for regular classes is the RFC post-activate verify
+' wired into the SKILL.md (DWINACTIV / SEOCLASSDF); this gate catches the case
+' where SAP surfaces the activation failure on the status bar.
+If sFinalType = "E" Or sFinalType = "A" Then
+    WScript.Echo "ERROR: Activation failed (" & sFinalType & ") - " & sFinalMsg
+    WScript.Quit 1
 Else
     WScript.Echo "INFO: SAP status: " & sFinalMsg
 End If

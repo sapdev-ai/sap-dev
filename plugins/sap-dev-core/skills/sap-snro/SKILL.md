@@ -330,6 +330,22 @@ Proceed to Step 6.
 ## Step 6 — Report Result
 
 **On success** (output contains `SUCCESS:`):
+- **Post-save RFC backstop (recommended).** The VBS now fails closed on a
+  status-bar `MessageType` of `E`/`A` (locale-independent — the pre-fix English
+  substring match let a real failure pass as SUCCESS on a JA/ZH/DE logon). Number
+  ranges are correctness-critical (a silently-dropped or wrong interval causes
+  duplicate/gap document numbers), so confirm persistence over RFC before
+  declaring success — read the relevant table for the object and assert the rows
+  match what you sent (`RFC_READ_TABLE` is a read, always allowed):
+  - **Header (Create/Update):** `TNRO` filtered `OBJECT = '<NRO_NAME>'` — exactly
+    one row must exist.
+  - **Intervals:** `NRIV` filtered `OBJECT = '<NRO_NAME>'` — assert each expected
+    `NRRANGENR` / `FROMNUMBER` / `TONUMBER` row is present.
+
+  Use **32-bit** PowerShell (NCo 3.1 is 32-bit only); `Connect-SapRfc` falls back
+  to the pinned `/sap-login` profile. If no expected row is found, treat the run
+  as **FAILED** even though the VBS echoed `SUCCESS:`. Skip only when no RFC
+  profile is available (GUI-only) and say so rather than implying it was verified.
 - Tell the user the NRO was created/updated/intervals saved.
 - Show the full script output as a code block.
 - Mention the assigned package/TR (or `$TMP` local object) when relevant.

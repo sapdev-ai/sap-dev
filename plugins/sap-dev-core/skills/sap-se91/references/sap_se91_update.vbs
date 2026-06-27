@@ -280,9 +280,23 @@ Err.Clear
 On Error GoTo 0
 
 ' ------ 7. Final status check -----------------------------------------------
-Dim sFinalMsg
-sFinalMsg = oSession.findById("wnd[0]/sbar").Text
-WScript.Echo "INFO: SAP status: " & sFinalMsg
+' Locale-independent verdict: branch on the status-bar MessageType code
+' (S/W/E/I/A), never on translated text (language_independence_rules.md). A
+' real save failure -- duplicate number, locked class, blocked transport,
+' authorization failure -- surfaces as MessageType E/A. The pre-fix code echoed
+' the text and reported SUCCESS unconditionally (Audit P3).
+Dim sFinalMsg, sFinalType
+sFinalMsg = "" : sFinalType = ""
+On Error Resume Next
+sFinalMsg  = oSession.findById("wnd[0]/sbar").Text
+sFinalType = oSession.findById("wnd[0]/sbar").MessageType
+Err.Clear
+On Error GoTo 0
+WScript.Echo "INFO: SAP status [" & sFinalType & "]: " & sFinalMsg
+If LCase(sFinalType) = "e" Or LCase(sFinalType) = "a" Then
+    WScript.Echo "ERROR: Save failed - " & sFinalMsg
+    WScript.Quit 1
+End If
 
 WScript.Echo "SUCCESS: Message class " & UCase(MSG_CLASS) & " updated with " & iMsgCount & " messages in SAP."
 WScript.Quit 0

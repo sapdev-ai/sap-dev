@@ -2,6 +2,12 @@
 
 Welcome to the **sap-dev** marketplace - a curated collection of production-tested SAP skills for Claude Code CLI.
 
+> 📖 **New here?** For a complete, step-by-step walkthrough from a clean Windows
+> laptop all the way to generating and deploying ABAP — written for an SIer ABAP
+> developer, with real SAP screenshots — read the
+> **[Developer's Manual](../manual.md)**. This page is the quick
+> reference; the manual is the guided tour.
+
 ## Quick Start
 
 ### Prerequisites
@@ -18,12 +24,17 @@ Welcome to the **sap-dev** marketplace - a curated collection of production-test
 /plugin marketplace add https://github.com/sapdev-ai/sap-dev
 ```
 
-**Step 2: Install plugins**
+**Step 2: Install plugins** — one plugin per `/plugin install` command
 
 ```bash
-# Install all core plugins
-/plugin install sap-dev-core@sap-dev sap-gen-code@sap-dev sap-migrate@sap-dev sap-tcd@sap-dev
+/plugin install sap-dev-core@sap-dev   # foundation (required)
+/plugin install sap-gen-code@sap-dev   # spec -> ABAP generation (optional)
+/plugin install sap-migrate@sap-dev    # S/4HANA custom-code migration (optional)
+/plugin install sap-tcd@sap-dev        # BP / MM01 / VA01 automation (optional)
 ```
+
+> Claude Code does not currently accept several plugins in a single `/plugin install`,
+> so run the lines individually.
 
 **Step 3: Login and bootstrap**
 

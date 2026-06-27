@@ -1,0 +1,2 @@
+001	E	Material &1 is not authorized
+002	E	Material number must not be empty

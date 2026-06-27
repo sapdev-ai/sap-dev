@@ -1,0 +1,20 @@
+{
+  "schema": "sapdev.skeleton/1",
+  "program": "ZMMRMAT101R01",
+  "deps": {
+    "STANDARD_TABLES": ["MARA", "MAKT"],
+    "BAPIS": ["BAPI_MATERIAL_SAVEDATA"],
+    "AUTHZ_OBJECTS": ["M_MATE_MAR"]
+  },
+  "traceability": {
+    "min_by_category": { "Validation": 2, "Processing": 1, "FILE MAPPING": 1 },
+    "pairs": [
+      ["Validation #1", "lcl_main->validate"],
+      ["Processing 3.1", "lcl_main->execute"],
+      ["FILE MAPPING row 1", "lcl_main->build"]
+    ]
+  },
+  "messages": ["001", "002"],
+  "selection_texts_count": 1,
+  "text_symbols": ["001", "002"]
+}
