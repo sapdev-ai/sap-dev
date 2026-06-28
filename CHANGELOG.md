@@ -2,6 +2,29 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.8] — 2026-06-28
+
+### Added
+
+- **End-to-end developer manual.** A new `docs/manual.md` walks an SIer ABAP
+  developer from a clean Windows laptop through install → `/sap-login` →
+  `/sap-dev-init` → the spec → ABAP generation pipeline → deploy → the ATC /
+  ABAP-Unit gates → transport-to-production, with real S/4HANA screenshots and a
+  worked `abap-developer` agent example. Trilingual: `docs/manual.md` (EN,
+  canonical) + `docs/manual_JA.md` + `docs/manual_ZH.md` (each carries an
+  "EN is canonical" banner). Linked from the README and the installation guide.
+
+### Changed
+
+- **Installation docs corrected.** Each plugin must be installed with its own
+  `/plugin install` command (Claude Code does not accept several plugins in one
+  invocation); added a `/reload-plugins` step (or a Claude desktop restart)
+  after install; and a note that SAP GUI 7.70 often deploys SAP NCo 3.1 into the
+  GAC automatically — check `GAC_32\sapnco\…\sapnco.dll` +
+  `sapnco_utils\…\sapnco_utils.dll` before downloading.
+
+_Documentation-only release — no skill behaviour changed since 0.6.7._
+
 ## [0.6.7] — 2026-06-26
 
 ### Added

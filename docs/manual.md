@@ -8,7 +8,6 @@
 > or the production system.
 >
 > Reading time: ~30 min. Hands-on first run: ~1 hour (most of it is one-time setup).
-> Version of the toolkit this manual was written against: **v0.6.7** (2026-06-26).
 
 ---
 
@@ -1114,6 +1113,6 @@ definition files use **real TAB** bytes.
 
 ---
 
-*This manual covers sap-dev v0.6.7. The skills evolve — when in doubt, the SKILL.md of
+*The skills evolve — when in doubt, the SKILL.md of
 each skill is the source of truth, and `/sap-doctor` tells you whether your environment
 is ready. Questions: <https://github.com/sapdev-ai/sap-dev/issues> · <https://sapdev.ai>.*
