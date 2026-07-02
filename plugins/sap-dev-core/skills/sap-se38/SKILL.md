@@ -325,6 +325,11 @@ $content = $content -replace '%%SYNTAX_CHECK_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DI
 # queries PROGDIR.STATE. Closes the 2026-05-27 screen-101 false-success path.
 $content = $content -replace '%%POST_ACTIVATE_VERIFY_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_se11_post_activate_verify.vbs'
 $content = $content -replace '%%POST_ACTIVATE_VERIFY_PS1%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_se38_post_activate_verify.ps1'
+# Post-activate CONTENT verify (2026-07-02): reads the active source back via RPY_PROGRAM_READ
+# and compares it to the deployed file. Closes the EC2 clipboard-paste false-success where a
+# silently-failed paste leaves the OLD source active and PROGDIR/F8 still pass.
+$content = $content -replace '%%CONTENT_VERIFY_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_se38_content_verify.vbs'
+$content = $content -replace '%%CONTENT_VERIFY_PS1%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_se38_content_verify.ps1'
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 [System.IO.File]::WriteAllText('{RUN_TEMP}\sap_se38_update_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
@@ -353,6 +358,23 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\s
 ```
 
 Proceed to Step 6 to evaluate the result.
+
+> **Clipboard-free upload — investigated, deferred (2026-07-02).** SE38 is the
+> only deploy skill still bound to the Windows clipboard (`Set-Clipboard` +
+> SendKeys `^v`), a machine-global singleton the `SapDevGuiPaste_v1` mutex only
+> serialises across runs that go **through this skill**. A file-based upload
+> (SAP dialog `ctxtDY_FILENAME`, as `/sap-se24` update uses) was considered to
+> remove that shared-clipboard dependency, but it is **not** a drop-in for SE38:
+> the front-end `AbapEditor.1` control's *Utilities → Upload* opens a **native
+> Windows file-picker** (not scriptable — see the comment in
+> `sap_se38_create.vbs` step 6), unlike SE24's source-view which yields a
+> scriptable SAP dialog; and `/sap-se37` found the Upload menu **absent on
+> NW 7.31 / ECC6** (the 2026-06-22 EC2 blocker) — the exact release family where
+> this false-success occurred. So a clipboard-free SE38 path needs live
+> verification on a real SE38 editor (S/4 **and** ECC6) before it can be trusted,
+> and is deferred. **This does not leave a correctness hole:** the content
+> verify (Step 7.6) makes a failed paste fail LOUD (`CONTENT_VERIFY: MISMATCH`),
+> so a clipboard-free upload is a *prevention* optimisation, not the fix.
 
 ---
 
@@ -401,6 +423,11 @@ $content = $content -replace '%%SYNTAX_CHECK_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DI
 # queries PROGDIR.STATE. Closes the 2026-05-27 screen-101 false-success path.
 $content = $content -replace '%%POST_ACTIVATE_VERIFY_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_se11_post_activate_verify.vbs'
 $content = $content -replace '%%POST_ACTIVATE_VERIFY_PS1%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_se38_post_activate_verify.ps1'
+# Post-activate CONTENT verify (2026-07-02): reads the active source back via RPY_PROGRAM_READ
+# and compares it to the deployed file. Closes the EC2 clipboard-paste false-success where a
+# silently-failed paste leaves the OLD source active and PROGDIR/F8 still pass.
+$content = $content -replace '%%CONTENT_VERIFY_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_se38_content_verify.vbs'
+$content = $content -replace '%%CONTENT_VERIFY_PS1%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_se38_content_verify.ps1'
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 [System.IO.File]::WriteAllText('{RUN_TEMP}\sap_se38_create_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
@@ -967,14 +994,15 @@ create/update reporting applies.
 
 ## Step 6 — Report Result
 
-The create / update VBS emits **three parseable lines** in addition to the
+The create / update VBS emits **four parseable lines** in addition to the
 human-readable `INFO:` / `ERROR:` echoes. Callers should rely on these
 lines, not on substring-grepping the per-finding text:
 
 | Line | Meaning |
 |---|---|
 | `SYNTAX_ERRORS: <N>` | Count of real syntax errors found after Ctrl+F2 (excludes warnings). Always emitted. `0` = clean. |
-| `SUCCESS: Program <NAME> created and activated in SAP.` (or `updated and activated`) | Final SUCCESS — emitted ONLY when post-activation verification reached an active SE38 screen (1000/120/200). Followed by `WScript.Quit 0`. |
+| `CONTENT_VERIFY: <MATCH\|MISMATCH\|UNAVAILABLE\|SKIP>` | Result of the post-activate **content-integrity** gate: reads the active source back via RFC `RPY_PROGRAM_READ` and compares it line-for-line to the deployed file. `MATCH` = the deployed source is what's active. `MISMATCH` = the upload did NOT take (stale source stayed active — the clipboard-paste false-success) → VBS exits 1. `UNAVAILABLE` = RFC couldn't run the check (creds/endpoint/NCo/RFC-off) → report **SUCCESS_UNVERIFIED**, never plain SUCCESS. `SKIP` = helper not wired (offline test). |
+| `SUCCESS: Program <NAME> created and activated in SAP.` (or `updated and activated`) | Final SUCCESS — emitted ONLY when the content verify did not fail AND post-activation verification reached an active SE38 screen (1000/120/200). Followed by `WScript.Quit 0`. |
 | `ERROR: activation_uncertain — …` | The paste pipeline didn't error but verification didn't reach an active screen. Followed by `WScript.Quit 1`. The program is likely still INACTIVE — recovery: open SE38 manually + `/sap-activate-object`. |
 
 **Important — never trust just the final SUCCESS line.** Earlier versions
@@ -984,6 +1012,20 @@ fail-closed: anything other than a recognised-active verification screen
 exits 1 with `ERROR: activation_uncertain`. Callers that pre-date this
 fix should be updated to gate on the exit code, not on parsing the
 SUCCESS line.
+
+**Content-integrity gate (2026-07-02).** A clean `SUCCESS:` + exit 0 also
+requires `CONTENT_VERIFY: MATCH` (or `SKIP`/`UNAVAILABLE`). This gate exists
+because "activated" is not "deployed": on 2026-07-02 (EC2 / ECC6 7.31,
+`ZMMRMAT0A1R01`) the GUI clipboard paste failed silently under parallel-session
+contention, the editor kept the OLD source, and Ctrl+F2 / PROGDIR.STATE / F8 all
+passed against it — SE38 reported `SUCCESS … Post-activate RFC verify: ACTIVE`
+three times while the active source was UNCHANGED (recovered only via
+`/sap-se38 delete` + recreate). The content verify reads the active source back
+via RFC `RPY_PROGRAM_READ` and compares it to the deployed file, so a stale
+paste now fails LOUD (`CONTENT_VERIFY: MISMATCH` → exit 1) instead of
+false-succeeding. When the verify itself can't run (RFC off / no creds / NCo
+missing) it emits `CONTENT_VERIFY: UNAVAILABLE` — report **SUCCESS_UNVERIFIED**,
+never plain SUCCESS.
 
 **On success** (output contains `SUCCESS:` AND exit code 0):
 - Tell the user the program was deployed and activated.
@@ -1014,6 +1056,8 @@ SUCCESS line.
 | `Could not open program in change mode` | Program locked or no auth | Check locks (SM12) or authorization |
 | `Program is still INACTIVE` | Activation silently failed | Check SE38 manually; AbapEditor may have swallowed the error. Common causes: missing dictionary types, missing message class, syntax errors in local classes |
 | `ERROR: activation_uncertain` | Post-activation verification did not reach an active SE38 screen (1000/120/200) | Open SE38 for the program manually, inspect the activation log, then run `/sap-activate-object PROGRAM <NAME>` |
+| `CONTENT_VERIFY: MISMATCH` (+ `ERROR: … source does NOT match the file that was deployed`) | The program is ACTIVE but its active source ≠ the file you uploaded — the paste did not take (usually clipboard contention with another SAP GUI automation running concurrently; SE38 re-activated the OLD source). **Not a success.** | Re-run the deploy, serialising concurrent SE38 automation (the paste is guarded by the `SapDevGuiPaste_v1` mutex — ensure every concurrent driver holds it). If the paste keeps failing, `/sap-se38 delete` + recreate (the create-path paste often succeeds). ErrorClass=`SE38_CONTENT_MISMATCH`. |
+| `CONTENT_VERIFY: UNAVAILABLE` | The content gate could not run (RFC off — e.g. EC6/ER1 — / no saved creds / NCo 3.1 32-bit missing). Deploy is NOT failed, but content is unverified. | Report **SUCCESS_UNVERIFIED**. To enable the gate: re-run `/sap-login` (save the RFC password) and confirm NCo 3.1 is in the 32-bit GAC. |
 | `Status bar empty (AbapEditor swallows messages)` | Front-end editor limitation | This is expected behavior; activation is verified by test-executing the program |
 | `TEXT_ELEMENTS: FAILED:CHANGE_DID_NOT_OPEN_EDITOR` | Step 5c: btnCHAP did not transition to text-elements editor (orig-lang or TR popup not handled by current VBS variants). Source is active; only text elements are missing. | See Step 5c.1 table. Fallback: INITIALIZATION-injection. ErrorClass=`SE38_TEXTELM_CHANGE_FAIL` |
 | `TEXT_ELEMENTS: FAILED:REENTRY_DID_NOT_OPEN_EDITOR` | Step 5c: text elements were saved but re-entry to Change for Activate failed; TEXTPOOL is saved-but-inactive. | Open SE38 manually -> Goto -> Text Elements -> Activate (Ctrl+F3). ErrorClass=`SE38_TEXTELM_REENTRY_FAIL` |
@@ -1025,8 +1069,8 @@ SUCCESS line.
 | `TEXT_ELEMENTS: line absent` | Step 5c VBS crashed before final emit. | Inspect cscript output for the last `INFO:` line; that's where it died. ErrorClass=`SE38_TEXTELM_NO_STATUS` |
 
 Log the FAILED end record (pick `ErrorClass` from the matched row, e.g.
-`SE38_SYNTAX`, `SE38_INACTIVE`, `SE38_UPLOAD`, `SE38_LOCKED`, `SE38_AUTH`,
-`SE38_GENERIC`, `SE38_TEXTELM_*`):
+`SE38_SYNTAX`, `SE38_INACTIVE`, `SE38_CONTENT_MISMATCH`, `SE38_UPLOAD`,
+`SE38_LOCKED`, `SE38_AUTH`, `SE38_GENERIC`, `SE38_TEXTELM_*`):
 ```bash
 powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_se38_run.json" -Status FAILED -ExitCode 1 -ErrorClass <CLASS> -ErrorMsg "<one-line message from script output>"
 ```

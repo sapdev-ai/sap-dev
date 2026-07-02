@@ -25,6 +25,7 @@ Const SAP_PACKAGE      = "%%PACKAGE%%"
 Const SAP_TRANSPORT    = "%%TRANSPORT%%"
 Const SESSION_PATH     = "%%SESSION_PATH%%"   ' empty / unsubstituted = use default
 Const POST_ACTIVATE_VERIFY_PS1 = "%%POST_ACTIVATE_VERIFY_PS1%%"   ' empty = skip verify
+Const CONTENT_VERIFY_PS1 = "%%CONTENT_VERIFY_PS1%%"   ' empty = skip content verify
 ' Program type ("I" = Include). Optional: when empty / unsubstituted the F8
 ' run-test verify proceeds as before. When "I" the F8 run-test is skipped
 ' because Include programs are NOT executable (see Step 8).
@@ -50,6 +51,12 @@ ExecuteGlobal CreateObject("Scripting.FileSystemObject") _
 ' to PROGDIR). Provides PostActivateVerifyOrFail Sub - see Step 7.5 below.
 ExecuteGlobal CreateObject("Scripting.FileSystemObject") _
     .OpenTextFile("%%POST_ACTIVATE_VERIFY_VBS%%", 1).ReadAll()
+' Post-activate CONTENT verify helper. Provides ContentVerifyOrFail Sub -
+' reads the active source back via RPY_PROGRAM_READ and compares it to the
+' deployed file, catching the clipboard-paste false-success where stale
+' source stays active while PROGDIR/F8 pass. See Step 7.6 below.
+ExecuteGlobal CreateObject("Scripting.FileSystemObject") _
+    .OpenTextFile("%%CONTENT_VERIFY_VBS%%", 1).ReadAll()
 
 ' ----------------------------------------------------------------------------
 ' IsActivateAnywayPopup(oSess, sWnd)
@@ -698,6 +705,18 @@ End If
 ' the helper exits SKIP silently - safe in offline-test contexts. In
 ' normal deploys the SE38 SKILL.md substitutes the path; verify runs.
 PostActivateVerifyOrFail POST_ACTIVATE_VERIFY_PS1, "PROGRAM", PROGRAM_NAME
+
+' ------ 7.6 Post-activate CONTENT verify (authoritative deploy gate) --------
+' PROGDIR.STATE only proves the program is ACTIVE -- NOT that the source we
+' just uploaded is what became active. Under parallel-session clipboard
+' contention the paste can fail silently: the editor keeps the OLD (valid)
+' source, so Save / Ctrl+F2 / Ctrl+F3 / F8 all pass against stale content and
+' SE38 reports SUCCESS with UNCHANGED source (the 2026-07-02 EC2 ZMMRMAT0A1R01
+' false-success, 3 runs in a row). This gate reads the active source back over
+' RFC (RPY_PROGRAM_READ) and compares it line-for-line to ABAP_SOURCE_FILE:
+' MISMATCH -> Quit 1. It soft-warns (CONTENT_VERIFY: UNAVAILABLE) when RFC is
+' unreachable, so it degrades exactly like the PROGDIR verify above.
+ContentVerifyOrFail CONTENT_VERIFY_PS1, PROGRAM_NAME, ABAP_SOURCE_FILE
 
 ' ------ 8. Verify activation from SE38 initial screen ----------------------
 ' INCLUDE programs (type "I") are NOT executable -- running them via SA38/F8
