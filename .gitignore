@@ -46,6 +46,7 @@ dev_*.log
 .pre-convert/
 sap_*_run.json
 sap_*_run.ps1
+!plugins/sap-dev-core/shared/scripts/sap_probe_end_of_run.ps1
 sap_*_run.vbs
 se16n_params.txt
 se16n_*.txt
