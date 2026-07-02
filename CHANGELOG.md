@@ -2,6 +2,70 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.9] — 2026-07-02
+
+Hardening release. A full-repo skill review (~130 verified findings, 29 high)
+and its remediation across all four plugins, then live-validated on S/4HANA
+1909 under a Chinese (ZH) logon.
+
+### Fixed
+
+- **False-success on write paths.** Activation/save flows that printed SUCCESS
+  on a status-bar error now gate on `MessageType` and fail loud + exit 1 (SE11
+  updates, SE51, SE41, SNRO intervals, SE38 text elements, function-group
+  create). `sap-update-addon` (SM30/SE16/PROG) and `sap-call-bdc` now verify the
+  write (status-bar / `MSGTYP`) instead of reporting unconditional success, and
+  refuse unsupported DELETEs. `sap-tcd` (BP/MM01/VA01) captures the created
+  document number and aborts incomplete sales orders by default.
+- **Quality gates that passed on failure.** `/sap-atc` fails loud on an
+  unparseable result grid and on an empty object set (object-resolver
+  pre-flight) instead of reporting PASS; the poll loop now has a real timeout.
+  `/sap-run-abap-unit` no longer lets a `coverage=NA` silently satisfy an
+  explicit `--min-coverage`.
+- **Locale-dependent GUI logic.** `sap-tcd` (all 9 scripts), the change-package
+  family, SE91, SE54, SNRO and SE16N now decide by control ID + `MessageType`,
+  not translated window/status text, so they work under ZH/JA logons; evidence
+  and definition files are read/written as UTF-8.
+- **Transport integrity.** SE01 create now resolves the new TRKORR
+  authoritatively over RFC (new `sap-se01/references/sap_se01_resolve_trkorr.ps1`,
+  reading `E07T`/`E070`) — fixing both the empty-status-bar gap on 1909 ZH and
+  the old workstation/server timezone bug, while never guessing a wrong TR.
+  Select-All is removed from the inactive-objects worklist (no more
+  co-activating other developers' objects on a shared DEV); an empty transport
+  request now aborts instead of silently registering as `$TMP`.
+- **`/sap-sp02` could not run** — the variable `eNum` collided with the
+  VBScript reserved word `Enum` (a compile error); renamed.
+- **`sap-check-abap` false positives** (field-symbol naming, early-return
+  `FOR ALL ENTRIES` guard) removed, and the shipped object-naming defaults
+  realigned with what `/sap-gen-abap` actually emits; the invalid `sap-fix-fm`
+  auto-fix stub corrected.
+- **Login credential hygiene.** The password is piped to DPAPI via stdin (off
+  the process command line), and plaintext scratch is cleaned up on every path
+  via PowerShell `Remove-Item` (the previous `cmd /c del` silently failed under
+  git-bash).
+
+### Added
+
+- **`/sap-gui-screen-check` implementation.** The orchestrator + probe scripts
+  (previously documented but never committed) now ship.
+- **`/sap-docs-layout` helper.** The openpyxl `edit_meta_layout.py` + the
+  `(Meta) Layout` schema doc now ship.
+- **Evidence registration** for `/sap-atc` and `/sap-run-abap-unit` outputs so
+  `/sap-evidence-pack` collects them instead of always reporting them missing.
+- **CI gates** in `scripts/check-consistency.mjs`: referenced-script existence
+  (error), bare-`cscript` and locale-literal ratchets, `{RUN_TEMP}` coverage
+  widened to `.json/.xml/.log/.txt`; non-ASCII in committed scripts is now a
+  hard error.
+
+### Changed
+
+- ~20 skills migrated per-run scratch/state files to `{RUN_TEMP}` so concurrent
+  sessions no longer collide.
+- Migration-campaign integrity (sap-migrate): a usage join-rate guard (no more
+  estate-wide decommission on a zero-match export), per-object `ANALYZED`
+  marking, a mechanical sandbox-target assertion before remediate-deploy, and
+  honest KPI denominators.
+
 ## [0.6.8] — 2026-06-28
 
 ### Added
