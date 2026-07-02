@@ -17,16 +17,22 @@
 #     pwsh -File sap_se37_post_activate_verify.ps1 -ObjectType FM -ObjectName Z_MY_FM
 #
 # An FM is "active / usable" when its function group's MAIN program SAPL<FG> is
-# active. We resolve FM -> FG via ENLFDIR (FUNCNAME -> AREA), then check PROGDIR
-# for SAPL<FG>:
+# active AND the FM itself has no pending inactive version. We resolve FM -> FG
+# via ENLFDIR (FUNCNAME -> AREA), read DWINACTIV for OBJ_NAME = <FM> (a failed
+# UPDATE leaves the old active version usable while the new one sits inactive
+# -- PROGDIR alone false-passes that), then check PROGDIR for SAPL<FG>:
 #
 #   stdout last line / exit:
-#     ACTIVE     0   SAPL<FG> has STATE='A' and no STATE='I'
-#     INACTIVE   2   SAPL<FG> has STATE='I' (framework not activated) -- deploy failed
+#     ACTIVE     0   no DWINACTIV row for the FM; SAPL<FG> STATE='A', no 'I'
+#     INACTIVE   2   a DWINACTIV row exists for the FM, or SAPL<FG> has
+#                    STATE='I' (framework not activated) -- deploy failed
 #     MISSING    3   FM not in ENLFDIR (never registered) -- silent half-deploy
-#     ERROR: <m> 1   RFC unreachable / no creds / decrypt failed (soft-warn, do not block)
+#     WARNING: POST_ACTIVATE_VERIFY_UNAVAILABLE - <reason>    exit 1
+#                    verify could not run (RFC unreachable / no creds / decrypt
+#                    failed) -- soft, do not block, but the caller must report
+#                    the deploy as SUCCESS_UNVERIFIED, never plain SUCCESS
 #
-# Callers fail-closed on INACTIVE / MISSING, soft-warn on ERROR.
+# Callers fail-closed on INACTIVE / MISSING, soft-warn on UNAVAILABLE.
 # =============================================================================
 [CmdletBinding()]
 param(
@@ -40,6 +46,13 @@ $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\sap_connection_lib.ps1"
 . "$PSScriptRoot\sap_rfc_lib.ps1"
 
+# Distinctive last-line marker for every can't-run path. PostActivateVerifyOrFail
+# (sap_se11_post_activate_verify.vbs) passes it through as a NON-BLOCKING warning;
+# the calling skill must then report the deploy as SUCCESS_UNVERIFIED, not SUCCESS.
+function Write-PaVerifyUnavailable([string]$Reason) {
+    Write-Host ("WARNING: POST_ACTIVATE_VERIFY_UNAVAILABLE - " + $Reason)
+}
+
 $type = $ObjectType.ToUpperInvariant()
 $name = $ObjectName.ToUpperInvariant()
 
@@ -51,11 +64,11 @@ if ($type -ne 'FM' -and $type -ne 'FUNCTION' -and $type -ne 'FUNCTION_MODULE') {
 # Resolve the AI-session's pinned connection profile (same as the se38 verifier).
 $profile = $null
 try { $profile = Get-SapCurrentConnectionProfile } catch {
-    Write-Host "ERROR: Could not resolve pinned connection profile: $($_.Exception.Message)"
+    Write-PaVerifyUnavailable "Could not resolve pinned connection profile: $($_.Exception.Message)"
     exit 1
 }
 if (-not $profile) {
-    Write-Host "ERROR: No pinned SAP connection for this AI session. Run /sap-login first."
+    Write-PaVerifyUnavailable "No pinned SAP connection for this AI session. Run /sap-login first."
     exit 1
 }
 
@@ -63,13 +76,13 @@ $server = "$($profile.application_server)"
 $sysnr  = "$($profile.system_number)"
 if ([string]::IsNullOrWhiteSpace($server) -or [string]::IsNullOrWhiteSpace($sysnr)) {
     Write-Host "INFO: Re-run /sap-login so the post-login capture refreshes the endpoint."
-    Write-Host "ERROR: Pinned connection (id=$($profile.id)) has no application_server / system_number - cannot open RFC."
+    Write-PaVerifyUnavailable "Pinned connection (id=$($profile.id)) has no application_server / system_number - cannot open RFC."
     exit 1
 }
 
 $pwdField = "$($profile.password_dpapi)"
 if ([string]::IsNullOrWhiteSpace($pwdField)) {
-    Write-Host "ERROR: Pinned connection (id=$($profile.id)) has no saved password - cannot run RFC verify."
+    Write-PaVerifyUnavailable "Pinned connection (id=$($profile.id)) has no saved password - cannot run RFC verify."
     exit 1
 }
 $pwd = ''
@@ -77,11 +90,11 @@ try {
     $pwd = & "$PSScriptRoot\sap_dpapi.ps1" -Action unprotect -Value $pwdField 2>$null
     $pwd = "$pwd".Trim()
 } catch {
-    Write-Host "ERROR: Password decrypt failed: $($_.Exception.Message)"
+    Write-PaVerifyUnavailable "Password decrypt failed: $($_.Exception.Message)"
     exit 1
 }
 if ([string]::IsNullOrWhiteSpace($pwd)) {
-    Write-Host "ERROR: Password decrypt returned empty (different Windows user / different machine / corrupted ciphertext?)."
+    Write-PaVerifyUnavailable "Password decrypt returned empty (different Windows user / different machine / corrupted ciphertext?)."
     exit 1
 }
 
@@ -100,11 +113,11 @@ try {
                              -Language $lang `
                              -DestName 'SE37_PA_VERIFY'
 } catch {
-    Write-Host "ERROR: RFC connect failed: $($_.Exception.Message)"
+    Write-PaVerifyUnavailable "RFC connect failed: $($_.Exception.Message)"
     exit 1
 }
 if (-not $g_dest) {
-    Write-Host "ERROR: RFC connect returned no destination (check NCo 3.1 GAC + endpoint)."
+    Write-PaVerifyUnavailable "RFC connect returned no destination (check NCo 3.1 GAC + endpoint)."
     exit 1
 }
 
@@ -126,7 +139,19 @@ try {
     if ([string]::IsNullOrWhiteSpace($area)) { Write-Host 'MISSING'; exit 3 }
     $mainPgm = 'SAPL' + $area
 
-    # 2. FG main program must be active: PROGDIR NAME='SAPL<FG>' STATE='A', no 'I'.
+    # 2. The FM itself must have no pending inactive version: any DWINACTIV row
+    #    for OBJ_NAME = <FM> means the FM include stayed inactive -- a failed
+    #    UPDATE keeps the OLD active version loadable, so the SAPL<FG> PROGDIR
+    #    check below false-passes without this read.
+    $fnI = $g_dest.Repository.CreateFunction('RFC_READ_TABLE')
+    $fnI.SetValue('QUERY_TABLE', 'DWINACTIV')
+    $fnI.SetValue('DELIMITER',   '|')
+    Add-RfcOption $fnI ("OBJ_NAME = '{0}'" -f $name)
+    Add-RfcField  $fnI 'OBJ_NAME'
+    $fnI.Invoke($g_dest)
+    if ($fnI.GetTable('DATA').RowCount -gt 0) { Write-Host 'INACTIVE'; exit 2 }
+
+    # 3. FG main program must be active: PROGDIR NAME='SAPL<FG>' STATE='A', no 'I'.
     #    (An inactive framework is the false-success signal -- the FM cannot load.)
     $fn2 = $g_dest.Repository.CreateFunction('RFC_READ_TABLE')
     $fn2.SetValue('QUERY_TABLE', 'PROGDIR')
@@ -153,7 +178,7 @@ try {
     else                  { Write-Host 'INACTIVE'; exit 2 }   # FM registered but FG main has no active row
 }
 catch {
-    Write-Host "ERROR: RFC verify failed: $($_.Exception.Message)"
+    Write-PaVerifyUnavailable "RFC verify failed: $($_.Exception.Message)"
     exit 1
 }
 finally {

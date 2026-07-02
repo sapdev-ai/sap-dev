@@ -11,7 +11,7 @@ Manages SAP material masters via MM01 (Create), MM02 (Change), and MM03
 
 ## What It Does
 
-1. **Login** — Opens a SAP GUI connection and logs in (auto or manual)
+1. **Login** — Use the `/sap-login` skill first; this skill attaches to the active session
 2. **Check** — Uses MM03 to determine if a material already exists
 3. **Create** — Uses MM01 to create a new material with specified views and fields
 4. **Update** — Uses MM02 to change fields on an existing material
@@ -20,10 +20,12 @@ Manages SAP material masters via MM01 (Create), MM02 (Change), and MM03
 
 | File | Transaction | Tokens |
 |---|---|---|
-| `sap_mm01_login.vbs` | — | `%%SAP_LOGON_DESCRIPTION%%`, `%%SAP_CLIENT%%`, `%%SAP_USER%%`, `%%SAP_PASSWORD%%`, `%%SAP_LANGUAGE%%` |
 | `sap_mm01_check.vbs` | MM03 | `%%MATERIAL%%` |
 | `sap_mm01_create.vbs` | MM01 | `%%MATERIAL%%`, `%%INDUSTRY%%`, `%%MATERIAL_TYPE%%`, `%%DEFINITION_FILE%%` |
 | `sap_mm01_update.vbs` | MM02 | `%%MATERIAL%%`, `%%DEFINITION_FILE%%` |
+
+On a successful save the create/update scripts echo a machine-readable
+`MATERIAL: <number>` line before the final `SUCCESS:` line.
 
 ## Field Definition File Format
 

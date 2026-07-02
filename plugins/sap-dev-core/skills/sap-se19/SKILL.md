@@ -88,7 +88,7 @@ Per the CLAUDE.md "Two-bucket temp model" write this skill's generated scratch (
 ## Step 0.5 — Start logging (best-effort)
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{WORK_TEMP}\sap_se19_run.json" -Skill sap-se19 -ParamsJson "{\"op\":\"<OP>\",\"name\":\"<NAME>\"}"
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{RUN_TEMP}\sap_se19_run.json" -Skill sap-se19 -ParamsJson "{\"op\":\"<OP>\",\"name\":\"<NAME>\"}"
 ```
 
 ---
@@ -152,6 +152,13 @@ The classifier also returns, when known: `NEW_IMPL_BADI_NAME`,
 `TADIR_OBJECT`. Use these to pre-fill class names, route delete-class cleanup,
 and run the safety guard (Step 6).
 
+`KIND=` is the **discovered** kind (DEFINITION / IMPLEMENTATION / UNKNOWN) — the
+`-Expect` argument is only a **check**, it never rewrites `KIND`. When `-Expect`
+conflicts with what was discovered the classifier also emits `DISCOVERED_KIND=`
+and `EXPECT_MISMATCH=YES` (also appended to the `RESULT:` line). A mismatch on a
+`delete`/`update`/`activate` op means the supplied name is not the implementation
+that op needs (e.g. it is a definition) — stop and tell the user (see Step 6).
+
 ### Step 3a — Ambiguity prompt (only when `TYPE=AMBIGUOUS`)
 
 Use **AskUserQuestion**: *"`<NAME>` is a migrated BAdI — it can be implemented as
@@ -168,8 +175,13 @@ For `create`, `delete`, and `update` of a transportable object, resolve a TR via
 `/sap-transport-request` (honours `way_to_get_transport_request`). The result is
 `{TRKORR}`, passed into the VBS `%%TRKORR%%`. For Local (`$TMP`) objects, leave
 `{DEVCLASS}` empty and the create VBS presses **Local Object** instead.
-`display`, `activate`, `deactivate` need no TR (activate may still hit a TR popup
-for transported objects — the VBS handles it).
+`display` needs no TR. `activate` / `deactivate` of a **transported** object CAN
+still raise a TR popup: every VBS dispatches the `ctxtKO008-TRKORR` popup by
+control id and, if `%%TRKORR%%` is empty, aborts loud with
+`ERROR: ABORT_EMPTY_TR` (it never blind-accepts the popup — that would silently
+fall back to Local Object). So if you know the object is transported, resolve a
+TR via `/sap-transport-request` first and pass it even for activate/deactivate;
+if `ABORT_EMPTY_TR` comes back, resolve a TR and re-run.
 
 ---
 
@@ -266,8 +278,13 @@ resolved inside `/sap-se24`.
 this session did not create.**
 
 - **Definitions are never deleted here.** If `classify` returns `KIND=DEFINITION`
-  for a `delete` request, refuse: SE19 deletes implementations only (definitions
-  live in SE18 / the enhancement spot).
+  (or `EXPECT_MISMATCH=YES` for a `delete`, which passes `-Expect IMPLEMENTATION`),
+  refuse: SE19 deletes implementations only (definitions live in SE18 / the
+  enhancement spot). `KIND` is the *discovered* kind — `-Expect` is only a check,
+  it never rewrites `KIND` to the caller's expectation, so this guard is
+  reachable. `EXPECT_MISMATCH=YES` means the name is a definition (or otherwise
+  not the implementation the op expected) — treat it as "wrong object for this
+  operation" and stop.
 - **Implementations: the ledger is the gate.** "Created by you" means created by
   *this skill* — recorded in `{LEDGER}`. A matching TADIR author is **not**
   sufficient (the logon user authors plenty of objects by hand). Before running
@@ -347,7 +364,7 @@ cmd /c del {RUN_TEMP}\se19_run.vbs & del {RUN_TEMP}\se19_run.ps1
 Also delete `{WORK_TEMP}\<IMPL_CLASS>.abap` if you wrote pasted source.
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_se19_run.json" -Status <SUCCESS|FAILED> -ExitCode <0|1>
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_se19_run.json" -Status <SUCCESS|FAILED> -ExitCode <0|1>
 ```
 
 Suggested `ErrorClass`: `SE19_FAILED`, `BADI_AMBIGUOUS_UNRESOLVED`,

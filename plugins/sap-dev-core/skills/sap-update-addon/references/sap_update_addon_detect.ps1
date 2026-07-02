@@ -7,10 +7,21 @@
 #
 # Run with **32-bit PowerShell**.
 #
+# Session SELECTION mirrors shared\scripts\sap_attach_lib.vbs (never grabs
+# "first session of first connection"):
+#   1. explicit -SessionPath parameter (e.g. /app/con[0]/ses[1])
+#   2. $env:SAPDEV_SESSION_PATH (set by the SKILL.md wrapper via
+#      Get-SapCurrentSessionPath)
+#   3. sole-connection + sole-session safe default
+#   4. refuse loud (lists attached connections; /sap-login to pin)
+#
 # Tokens: %%SAP_SERVER%% %%SAP_SYSNR%% %%SAP_CLIENT%%
 #         %%SAP_USER%%   %%SAP_PASSWORD%% %%SAP_LANGUAGE%%
 #         %%TABLE_NAME%%
 # =============================================================================
+param(
+    [string]$SessionPath = ''
+)
 
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $ErrorActionPreference = 'Continue'
@@ -50,13 +61,45 @@ if (-not $sapGui) {
 }
 try {
     $appl = $sapGui.GetScriptingEngine()
-    foreach ($conn in $appl.Children) {
-        foreach ($s in $conn.Children) { $session = $s; break }
-        if ($session) { break }
+    # Session SELECTION (mirrors shared\scripts\sap_attach_lib.vbs strategy
+    # order): explicit -SessionPath -> $env:SAPDEV_SESSION_PATH -> sole
+    # connection + sole session -> refuse loud. Never silently grab
+    # connection[0]/session[0] -- that targets the wrong system in
+    # multi-connection setups.
+    $hint = $SessionPath
+    if ([string]::IsNullOrWhiteSpace($hint)) { $hint = $env:SAPDEV_SESSION_PATH }
+    if (-not [string]::IsNullOrWhiteSpace($hint)) { $hint = $hint.Trim() }
+    if (-not [string]::IsNullOrWhiteSpace($hint) -and -not $hint.Contains("%%")) {
+        try { $session = $appl.FindById($hint, $false) } catch { try { $session = $appl.FindById($hint) } catch { $session = $null } }
+        if (-not $session) {
+            # An explicit path that does not resolve is a hard error: silent
+            # retargeting is how parallel skills trample each other.
+            Write-Host "ERROR: session path not found: $hint"
+            Write-Host "       Re-run /sap-login to pin a live session, or pass a valid -SessionPath."
+            exit 1
+        }
+        Write-Host "INFO: Session acquired via explicit path: $hint"
+    } else {
+        $conns = @($appl.Children)
+        if ($conns.Count -eq 1 -and @($conns[0].Children).Count -eq 1) {
+            $session = @($conns[0].Children)[0]
+            Write-Host "INFO: Session acquired (sole connection, sole session)."
+        } elseif ($conns.Count -eq 1) {
+            Write-Host ("ERROR: 1 SAP connection but " + @($conns[0].Children).Count + " sessions; cannot pick one safely.")
+            Write-Host "       Run /sap-login to pin a session, or pass -SessionPath '/app/con[0]/ses[N]'."
+            exit 1
+        } else {
+            Write-Host ("ERROR: " + $conns.Count + " SAP connections attached; cannot pick one safely:")
+            foreach ($c in $conns) {
+                $desc = ""; try { $desc = $c.Description } catch {}
+                Write-Host ("       " + $c.Id + "  " + $desc)
+            }
+            Write-Host "       Run /sap-login to pin a connection, or pass -SessionPath."
+            exit 1
+        }
     }
 } catch { Write-Host "ERROR: Cannot get scripting engine: $($_.Exception.Message)"; exit 1 }
 if (-not $session) { Write-Host "ERROR: No SAP GUI session found."; exit 1 }
-Write-Host "INFO: Session acquired."
 
 # --- 2. SM30 check ----------------------------------------------------------
 Write-Host "INFO: Checking SM30 maintenance view for $TABLE_NAME..."

@@ -122,17 +122,35 @@ Disconnect-SapRfc
 $isClassic = $classicDef -or $classicImpl
 $isNew = $newSpot -or $newDefRef -or $newImpl -or $migrated -or $tadirEnho
 
-# KIND
-$kind = 'UNKNOWN'
-if ($classicDef -or $newSpot -or $migrated) { $kind = 'DEFINITION' }
-if ($classicImpl -or $newImpl) { $kind = 'IMPLEMENTATION' }
-# Honour caller expectation when both signals exist (a migrated def also has impls)
-if ($Expect -ne 'AUTO') { $kind = $Expect }
+# KIND -- what the SYSTEM actually shows (from the discovered signals).
+$hasDefSignal  = ($classicDef -or $newSpot -or $migrated)
+$hasImplSignal = ($classicImpl -or $newImpl)
+$discoveredKind = 'UNKNOWN'
+if ($hasDefSignal)  { $discoveredKind = 'DEFINITION' }
+if ($hasImplSignal) { $discoveredKind = 'IMPLEMENTATION' }  # impl wins when both (migrated def w/ impls)
+
+# -Expect is a CHECK, NOT a silent override. Previously `$kind = $Expect`
+# unconditionally forced the reported KIND to the caller's expectation, so a name
+# that is ONLY a BAdI DEFINITION reported KIND=IMPLEMENTATION whenever the delete
+# flow passed -Expect IMPLEMENTATION -- making the SKILL Step-6 "refuse delete if
+# DEFINITION" guard unreachable. Now the reported KIND stays the discovered truth
+# and a conflict is surfaced via EXPECT_MISMATCH so the caller can refuse.
+$kind = $discoveredKind
+$expectMismatch = $false
+if ($Expect -ne 'AUTO' -and $discoveredKind -ne 'UNKNOWN' -and $discoveredKind -ne $Expect) {
+    $expectMismatch = $true
+}
+
+# The TYPE disambiguation still uses the EXPECTED kind to scope its signals (that
+# is -Expect's legitimate role: pick the definition-face vs implementation-face of
+# a migrated BAdI). Fall back to the discovered kind under AUTO.
+$typeKind = $kind
+if ($Expect -ne 'AUTO') { $typeKind = $Expect }
 
 # TYPE -- restrict signals to the expected KIND so a migrated definition that
 # also has implementations isn't reported AMBIGUOUS for an implementation lookup.
 $typeClassic = $false; $typeNew = $false
-switch ($kind) {
+switch ($typeKind) {
     # A *migrated* BAdI keeps a classic face (you can still create classic
     # implementations of it -- e.g. ZZMB_MIGO_BADI on the migrated MB_MIGO_BADI)
     # AND a new face (it has an enhancement spot). Per req #1 that genuinely-
@@ -169,5 +187,7 @@ Write-Output ("NEW_IMPL_CLASS=" + $ni_class)
 Write-Output ("TADIR_OBJECT=" + $tadir_object)
 Write-Output ("TADIR_AUTHOR=" + $tadir_author)
 Write-Output ("TADIR_DEVCLASS=" + $tadir_devclass)
-Write-Output ("RESULT: TYPE=" + $type + " KIND=" + $kind)
+Write-Output ("DISCOVERED_KIND=" + $discoveredKind)
+Write-Output ("EXPECT_MISMATCH=" + ($(if ($expectMismatch) { 'YES' } else { 'NO' })))
+Write-Output ("RESULT: TYPE=" + $type + " KIND=" + $kind + " EXPECT_MISMATCH=" + ($(if ($expectMismatch) { 'YES' } else { 'NO' })))
 exit 0

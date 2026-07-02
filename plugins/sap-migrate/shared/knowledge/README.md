@@ -131,7 +131,10 @@ A consuming skill (e.g. `/sap-cc-triage` at
 `{custom_url}\knowledge\` (same precedence idea as the other shared tables) —
 e.g. to add patterns for their own retired Z-framework.
 
-## Related (not in this pack yet)
+## Related (not in this pack)
 - `migration_rules_r1.tsv` — deterministic, mechanical R1 transforms run by
-  `/sap-cc-remediate` (no AI). Catalog already indexes R1 patterns; the rule
-  table itself ships with the remediate skill when it is built.
+  `/sap-cc-remediate` (no AI). Catalog indexes the R1 patterns; the rule table
+  itself ships with the remediate skill at
+  `plugins/sap-migrate/skills/sap-cc-remediate/references/migration_rules_r1.tsv`
+  (customer override: `{custom_url}\knowledge\migration_rules_r1.tsv`, passed
+  via that skill's `--rules` flag).

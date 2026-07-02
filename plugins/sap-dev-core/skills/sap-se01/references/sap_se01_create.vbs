@@ -8,18 +8,36 @@
 '                      "C" = Customizing (radKO042-REQ_CUST_W)
 '   %%DESCRIPTION%%    Short text for the request, max 60 chars
 '
-' After creating the request the script then resolves the new TRKORR by
-' navigating to SE16N on table E070, filtering by AS4USER = current SAP user
-' and AS4DATE = workstation today (formatted YYYYMMDD), executing the query,
-' sorting the result grid by AS4TIME descending, and reading the TRKORR of the
-' first row whose TRFUNCTION is "K" (Workbench) or "W" (Customizing).
+' After saving the description the script GATES on the statusbar MessageType
+' (E/A = create failed -> ERROR + exit 1; it never proceeds to lookup on a
+' failed create), then resolves the new TRKORR:
+'   PRIMARY:  from the create-success statusbar -- structured properties
+'             (MessageParameter, guarded; not exposed on every release),
+'             else a shape scan of the sbar text for the locale-independent
+'             transport-number shape 3 alphanumerics + "K" + 6 digits
+'             (e.g. S4DK912345). Found -> SE16N is skipped entirely.
+'   FALLBACK: two-step SE16N -- E07T filtered by AS4TEXT = the exact
+'             description just written (the description lives in E07T, NOT
+'             E070) -> candidate TRKORR(s); then E070 filtered by AS4USER =
+'             current user + TRSTATUS = D, keeping TRFUNCTION K/W rows
+'             (tasks share the description but use S/Q/T/X). Several matches
+'             (reused description) -> the HIGHEST TRKORR wins (numbers are
+'             monotonic; the just-created request is the highest). No date
+'             filter at all -- immune to workstation/server timezone
+'             mismatches.
+'   Neither path resolving -> ERROR: TR_RESOLUTION_FAILED + exit 1. The
+'   script NEVER falls back to "the user's most recent TR".
 '
 ' Stdout contract:
 '   INFO: AS4TEXT=<description>
 '   INFO: AS4USER=<sap user>
-'   INFO: TRKORR=<new transport request>          <- consumed by the skill
+'   INFO: TRKORR=<new transport request>          <- kept for back-compat
 '   INFO: TRFUNCTION=<K|W>
+'   RESULT_TR: <new transport request>            <- authoritative result
 '   DONE
+' Failure lines (exit 1):
+'   ERROR: TR create failed - <sbar text>
+'   ERROR: TR_RESOLUTION_FAILED - request may exist; verify in SE01.
 ' =============================================================================
 
 Option Explicit
@@ -33,7 +51,7 @@ Const VKEY_F6    = 6
 
 ' Include shared helpers (attach first; session-lock's pre-unlock sweep
 ' reads from oSession). Released after the description is saved; the
-' SE16N TRKORR-resolution that follows is read-only.
+' TRKORR resolution that follows is read-only.
 ExecuteGlobal CreateObject("Scripting.FileSystemObject") _
     .OpenTextFile("%%ATTACH_LIB_VBS%%", 1).ReadAll()
 ExecuteGlobal CreateObject("Scripting.FileSystemObject") _
@@ -81,171 +99,329 @@ oSess.findById("wnd[1]/usr/txtKO013-AS4TEXT").text = DESCRIPTION
 oSess.findById("wnd[1]/tbar[0]/btn[0]").press
 WScript.Sleep 1200
 
-' --- Release the session UI lock; SE16N TRKORR resolution below is read-only ---
+' --- Release the session UI lock; the TRKORR resolution below is read-only ---
 ReleaseSession oSess, wasLocked
 If wasLocked Then WScript.Echo "INFO: Session UI lock released."
 
-' Read status bar (some releases echo "Request <NNNN> created")
+' Read status bar (success releases echo "Request <NNNN> created" and carry
+' the new number in the message parameters).
 Dim sbarText, sbarType
+sbarText = "" : sbarType = ""
 On Error Resume Next
 sbarText = oSess.findById("wnd[0]/sbar").Text
 sbarType = oSess.findById("wnd[0]/sbar").MessageType
+Err.Clear
 On Error GoTo 0
 WScript.Echo "INFO: sbar [" & sbarType & "] " & sbarText
 
+' GATE on the create outcome -- MessageType is locale-independent. E/A means
+' the create FAILED (authorization, number range, CTS config, ...); resolving
+' a TRKORR now would return some PRE-EXISTING request as "the new one".
+If sbarType = "E" Or sbarType = "A" Then
+    WScript.Echo "ERROR: TR create failed - " & sbarText
+    WScript.Quit 1
+End If
+
 ' Echo the description so the caller can use it as the AS4TEXT disambiguator
-' when querying E070 via /sap-se16n.
+' (the SE16N fallback below filters E07T by exactly this text).
 WScript.Echo "INFO: AS4TEXT=" & DESCRIPTION
 WScript.Echo "INFO: AS4USER=" & oSess.Info.User
 
-' (Do NOT back out of SE01 here -- `/nse16n` below navigates directly. Three
-' Back presses from SE01 main screen would log the user out and disconnect
-' the scripting session.)
+' (Do NOT back out of SE01 here -- the fallback's `/nse16n` navigates
+' directly. Three Back presses from SE01 main screen would log the user out
+' and disconnect the scripting session.)
 
-' ===== Resolve TRKORR via SE16N on E070 =====================================
-' Filter: AS4USER = current SAP user, AS4DATE = workstation today.
-' Sort the result grid by AS4TIME desc and take the first row whose
-' TRFUNCTION is K (Workbench) or W (Customizing). STRKORR-empty rows are
-' top-level requests (task rows have STRKORR = parent TR), but we use
-' TRFUNCTION K/W to filter top-level requests directly.
+' ===== Resolve the new TRKORR ================================================
+' PRIMARY: extract it from the create-success statusbar. Structured sbar
+' properties (MessageParameter) are tried first -- guarded, since not every
+' release exposes them through scripting -- then a shape scan of the sbar
+' text: 3 alphanumerics + "K" + 6 digits (e.g. S4DK912345). The shape is
+' locale-independent; the message text around it is not.
+' FALLBACK: two-step SE16N lookup (see the Else branch below). No date filter
+' anywhere, so a workstation/server date mismatch cannot break resolution.
 
 Dim sUser : sUser = UCase(oSess.Info.User)
-' AS4DATE filter: use the 8-digit YYYYMMDD form. SAP date fields interpret an
-' all-numeric 8-char entry as YYYYMMDD regardless of the logon user's date
-' personalization (USR01-DATFM), so it is locale-independent. A separator-bearing
-' form (e.g. YYYY.MM.DD) is only valid for the matching DATFM and otherwise yields
-' status-bar "Invalid date format" with no result grid (the pre-2026-06-19 bug;
-' verified 2026-06-19 on S/4HANA 754 with a YYYY/MM/DD user).
-Dim sToday
-sToday = Year(Now) & Right("0" & Month(Now), 2) & Right("0" & Day(Now), 2)
-WScript.Echo "INFO: SE16N lookup user=" & sUser & " date=" & sToday
+Dim sTrkorr, sFunc
+sTrkorr = "" : sFunc = ""
+' TRFUNCTION of the request we just created: request type W(orkbench) ->
+' E070-TRFUNCTION = K; C(ustomizing) -> W. Used when the statusbar path
+' resolves (no grid row to read it from); the fallback overwrites it from
+' the E070 grid.
+If sType = "C" Then sFunc = "W" Else sFunc = "K"
 
-oSess.findById("wnd[0]/tbar[0]/okcd").text = "/nse16n"
-oSess.findById("wnd[0]").sendVKey VKEY_ENTER
-WScript.Sleep 1500
-
-' Set table name = E070 and load the field selection table
+Dim vMsgPar, vOnePar
 On Error Resume Next
-oSess.findById("wnd[0]/usr/ctxtGD-TAB").text = "E070"
-If Err.Number <> 0 Then
-    Err.Clear
-    WScript.Echo "ERROR: SE16N table-name field GD-TAB not found."
-    WScript.Quit 1
+vMsgPar = oSess.findById("wnd[0]/sbar").MessageParameter
+If Err.Number = 0 Then
+    If IsArray(vMsgPar) Then
+        For Each vOnePar In vMsgPar
+            If sTrkorr = "" Then sTrkorr = FindTrkorrIn(CStr(vOnePar))
+        Next
+    ElseIf Not IsEmpty(vMsgPar) Then
+        sTrkorr = FindTrkorrIn(CStr(vMsgPar))
+    End If
 End If
-On Error GoTo 0
-oSess.findById("wnd[0]").sendVKey VKEY_ENTER
-WScript.Sleep 1500
-
-' Locate AS4USER and AS4DATE rows by scanning the field-selection table.
-' FIX: Use findById with scroll instead of GetCell to handle rows beyond the
-' visible viewport on S/4HANA 2022. GetCell(r, 6) returns empty for rows not
-' in the current scroll position, causing iUserRow/iDateRow to remain -1.
-Dim oSelTbl, r, sFieldName, iUserRow, iDateRow
-Dim selMaxScroll, selPageSize, selScrollPos
-iUserRow = -1 : iDateRow = -1
-On Error Resume Next
-Set oSelTbl = oSess.findById("wnd[0]/usr/tblSAPLSE16NSELFIELDS_TC")
-If Err.Number <> 0 Or oSelTbl Is Nothing Then
-    Err.Clear
-    WScript.Echo "ERROR: SE16N field-selection table not found."
-    WScript.Quit 1
-End If
-selMaxScroll = 0 : selPageSize = 0
-selMaxScroll = oSelTbl.verticalScrollbar.maximum
-selPageSize  = oSelTbl.verticalScrollbar.pageSize
 Err.Clear
 On Error GoTo 0
-If selPageSize <= 0 Then selPageSize = 14
+If sTrkorr = "" Then sTrkorr = FindTrkorrIn(sbarText)
 
-selScrollPos = 0
-Do
-    On Error Resume Next
-    oSelTbl.verticalScrollbar.position = selScrollPos
-    Err.Clear
-    On Error GoTo 0
-    WScript.Sleep 60
-    For r = 0 To selPageSize - 1
-        sFieldName = ""
+If sTrkorr <> "" Then
+    WScript.Echo "INFO: TRKORR resolved from the create statusbar (SE16N fallback skipped)."
+Else
+    ' ===== FALLBACK: two-step SE16N lookup ==================================
+    ' Step A: E07T (request short texts: TRKORR / LANGU / AS4TEXT) filtered
+    '         by AS4TEXT = the exact description just written -> candidate
+    '         TRKORR set. The description lives in E07T, NOT E070.
+    ' Step B: E070 filtered by AS4USER = current user + TRSTATUS = D
+    '         (modifiable); keep grid rows whose TRKORR is in the candidate
+    '         set AND whose TRFUNCTION is K/W (top-level requests -- tasks
+    '         share the description but use S/Q/T/X). A reused description
+    '         (e.g. rule_of_tr_description = FIXED) yields several matches;
+    '         TR numbers are monotonic, so the just-created one is the
+    '         HIGHEST TRKORR.
+    WScript.Echo "INFO: Statusbar yielded no TRKORR; falling back to SE16N (E07T by AS4TEXT, then E070)."
+
+    Dim dictCand : Set dictCand = CreateObject("Scripting.Dictionary")
+    Dim oGridA, nRowsA, iA, sCandOne
+    Set oGridA = RunSe16nQuery(oSess, "E07T", Array("AS4TEXT"), Array(DESCRIPTION))
+    If Not (oGridA Is Nothing) Then
+        nRowsA = 0
         On Error Resume Next
-        sFieldName = UCase(Trim(oSess.findById("wnd[0]/usr/tblSAPLSE16NSELFIELDS_TC/txtGS_SELFIELDS-FIELDNAME[6," & r & "]").text))
+        nRowsA = oGridA.RowCount
         Err.Clear
         On Error GoTo 0
-        If sFieldName = "AS4USER" Then iUserRow = r
-        If sFieldName = "AS4DATE" Then iDateRow = r
-        If iUserRow >= 0 And iDateRow >= 0 Then Exit For
-    Next
-    If iUserRow >= 0 And iDateRow >= 0 Then Exit Do
-    If selScrollPos >= selMaxScroll Then Exit Do
-    selScrollPos = selScrollPos + selPageSize
-    If selScrollPos > selMaxScroll Then selScrollPos = selMaxScroll
-Loop
-
-If iUserRow < 0 Or iDateRow < 0 Then
-    WScript.Echo "ERROR: Could not locate AS4USER/AS4DATE rows in SE16N field table " _
-        & "(iUserRow=" & iUserRow & ", iDateRow=" & iDateRow & ")."
-    WScript.Quit 1
-End If
-
-oSess.findById("wnd[0]/usr/tblSAPLSE16NSELFIELDS_TC/ctxtGS_SELFIELDS-LOW[2," & iUserRow & "]").text = sUser
-oSess.findById("wnd[0]/usr/tblSAPLSE16NSELFIELDS_TC/ctxtGS_SELFIELDS-LOW[2," & iDateRow & "]").text = sToday
-oSess.findById("wnd[0]").sendVKey VKEY_ENTER
-WScript.Sleep 500
-
-' Execute (F8)
-oSess.findById("wnd[0]/tbar[1]/btn[8]").press
-WScript.Sleep 2500
-
-' Dismiss any "no maintenance dialog" / "results may be large" popup
-On Error Resume Next
-If InStr(oSess.ActiveWindow.Id, "wnd[1]") > 0 Then
-    oSess.ActiveWindow.sendVKey VKEY_ENTER
-    WScript.Sleep 800
-End If
-Err.Clear
-On Error GoTo 0
-
-' Read result grid and sort by AS4TIME desc
-Dim oGrid
-On Error Resume Next
-Set oGrid = oSess.findById("wnd[0]/usr/cntlRESULT_LIST/shellcont/shell")
-If Err.Number <> 0 Or oGrid Is Nothing Then
-    Err.Clear
-    WScript.Echo "ERROR: SE16N result grid not found (no rows or table empty)."
-    WScript.Quit 1
-End If
-On Error GoTo 0
-
-oGrid.selectColumn "AS4TIME"
-oGrid.pressToolbarButton "&SORT_DSC"
-WScript.Sleep 500
-
-Dim nRows, i, sFunc, sTrkorr
-nRows = oGrid.RowCount
-WScript.Echo "INFO: SE16N grid rows=" & nRows
-sTrkorr = "" : sFunc = ""
-For i = 0 To nRows - 1
-    sFunc = UCase(Trim(oGrid.GetCellValue(i, "TRFUNCTION")))
-    If sFunc = "K" Or sFunc = "W" Then
-        sTrkorr = Trim(oGrid.GetCellValue(i, "TRKORR"))
-        Exit For
+        For iA = 0 To nRowsA - 1
+            sCandOne = ""
+            On Error Resume Next
+            sCandOne = UCase(Trim(oGridA.GetCellValue(iA, "TRKORR")))
+            Err.Clear
+            On Error GoTo 0
+            If sCandOne <> "" Then
+                If Not dictCand.Exists(sCandOne) Then dictCand.Add sCandOne, True
+            End If
+        Next
     End If
-Next
+    WScript.Echo "INFO: E07T candidates with matching AS4TEXT: " & dictCand.Count
+
+    If dictCand.Count > 0 Then
+        Dim oGridB, nRowsB, iB, sTrOne, sFuncOne
+        Set oGridB = RunSe16nQuery(oSess, "E070", Array("AS4USER", "TRSTATUS"), Array(sUser, "D"))
+        If Not (oGridB Is Nothing) Then
+            nRowsB = 0
+            On Error Resume Next
+            nRowsB = oGridB.RowCount
+            Err.Clear
+            On Error GoTo 0
+            For iB = 0 To nRowsB - 1
+                sTrOne = "" : sFuncOne = ""
+                On Error Resume Next
+                sTrOne   = UCase(Trim(oGridB.GetCellValue(iB, "TRKORR")))
+                sFuncOne = UCase(Trim(oGridB.GetCellValue(iB, "TRFUNCTION")))
+                Err.Clear
+                On Error GoTo 0
+                If dictCand.Exists(sTrOne) And (sFuncOne = "K" Or sFuncOne = "W") Then
+                    ' Same-length strings with monotonic numbering -> string
+                    ' comparison picks the numerically highest (= newest).
+                    If sTrOne > sTrkorr Then
+                        sTrkorr = sTrOne
+                        sFunc = sFuncOne
+                    End If
+                End If
+            Next
+        End If
+    End If
+End If
 
 If sTrkorr = "" Then
-    WScript.Echo "ERROR: No top-level TR (TRFUNCTION K or W) found for user " & sUser & " on " & sToday & "."
+    ' NEVER guess (e.g. "the user's most recent TR") -- a wrong TRKORR here
+    ' makes every caller persist/deploy into someone else's request.
+    WScript.Echo "ERROR: TR_RESOLUTION_FAILED - request may exist; verify in SE01."
     WScript.Quit 1
 End If
 
 WScript.Echo "INFO: TRKORR=" & sTrkorr
 WScript.Echo "INFO: TRFUNCTION=" & sFunc
 
-' Back out to SAP Easy Access
+' Back to SAP Easy Access (/n ends whatever transaction the resolution path
+' left active -- SE01 on the statusbar path, SE16N on the fallback path).
 On Error Resume Next
-oSess.findById("wnd[0]/tbar[0]/btn[15]").press
-WScript.Sleep 200
-oSess.findById("wnd[0]/tbar[0]/btn[15]").press
-WScript.Sleep 200
+oSess.findById("wnd[0]/tbar[0]/okcd").text = "/n"
+oSess.findById("wnd[0]").sendVKey VKEY_ENTER
+WScript.Sleep 300
+Err.Clear
 On Error GoTo 0
 
+WScript.Echo "RESULT_TR: " & sTrkorr
 WScript.Echo "DONE"
 WScript.Quit 0
+
+' ===========================================================================
+' Helpers
+' ===========================================================================
+
+' Transport-number shape check: exactly 10 chars = 3 alphanumerics + "K" +
+' 6 digits (e.g. S4DK912345, ERPK900033). Alphanumeric SID chars are allowed
+' (S4D, S4H) -- do NOT require letters-only. Locale-independent.
+Function LooksLikeTrkorr(sTok)
+    Dim k, ch
+    LooksLikeTrkorr = False
+    If Len(sTok) <> 10 Then Exit Function
+    For k = 1 To 3
+        ch = Mid(sTok, k, 1)
+        If Not ((ch >= "A" And ch <= "Z") Or (ch >= "0" And ch <= "9")) Then Exit Function
+    Next
+    If Mid(sTok, 4, 1) <> "K" Then Exit Function
+    For k = 5 To 10
+        ch = Mid(sTok, k, 1)
+        If ch < "0" Or ch > "9" Then Exit Function
+    Next
+    LooksLikeTrkorr = True
+End Function
+
+' Scan free text for the first transport-number-shaped token. Every
+' non-alphanumeric character is a token boundary, so quotes / punctuation
+' around the number in localized message text do not interfere.
+Function FindTrkorrIn(sText)
+    Dim sClean, ch, k, aTok
+    FindTrkorrIn = ""
+    If IsEmpty(sText) Or IsNull(sText) Then Exit Function
+    sClean = ""
+    For k = 1 To Len(sText)
+        ch = UCase(Mid(sText, k, 1))
+        If (ch >= "A" And ch <= "Z") Or (ch >= "0" And ch <= "9") Then
+            sClean = sClean & ch
+        Else
+            sClean = sClean & " "
+        End If
+    Next
+    aTok = Split(sClean, " ")
+    For k = 0 To UBound(aTok)
+        If LooksLikeTrkorr(aTok(k)) Then
+            FindTrkorrIn = aTok(k)
+            Exit Function
+        End If
+    Next
+End Function
+
+' Drive SE16N on sTable: fill each named field's LOW value, execute (F8),
+' and return the result grid (Nothing when no grid opened = zero rows, or a
+' hard navigation failure -- an ERROR line is echoed for the latter).
+' aFieldNames / aFieldValues are parallel arrays. Field rows are located by
+' the locale-independent Technical-name column (index 6) of the
+' field-selection table, scrolling as needed; each LOW value is written
+' while its row is in the viewport (values persist across scrolling).
+Function RunSe16nQuery(oS, sTable, aFieldNames, aFieldValues)
+    Dim oSelTbl, r, j, sFieldName, nFieldsWanted, nFilled
+    Dim selMaxScroll, selPageSize, selScrollPos
+    Dim aFilled()
+    Set RunSe16nQuery = Nothing
+
+    oS.findById("wnd[0]/tbar[0]/okcd").text = "/nse16n"
+    oS.findById("wnd[0]").sendVKey VKEY_ENTER
+    WScript.Sleep 1500
+
+    On Error Resume Next
+    oS.findById("wnd[0]/usr/ctxtGD-TAB").text = sTable
+    If Err.Number <> 0 Then
+        Err.Clear
+        On Error GoTo 0
+        WScript.Echo "ERROR: SE16N table-name field GD-TAB not found."
+        Exit Function
+    End If
+    On Error GoTo 0
+    oS.findById("wnd[0]").sendVKey VKEY_ENTER
+    WScript.Sleep 1500
+
+    nFieldsWanted = UBound(aFieldNames) + 1
+    ReDim aFilled(UBound(aFieldNames))
+    For j = 0 To UBound(aFieldNames)
+        aFilled(j) = False
+    Next
+    nFilled = 0
+
+    On Error Resume Next
+    Set oSelTbl = oS.findById("wnd[0]/usr/tblSAPLSE16NSELFIELDS_TC")
+    If Err.Number <> 0 Or oSelTbl Is Nothing Then
+        Err.Clear
+        On Error GoTo 0
+        WScript.Echo "ERROR: SE16N field-selection table not found."
+        Exit Function
+    End If
+    selMaxScroll = 0 : selPageSize = 0
+    selMaxScroll = oSelTbl.verticalScrollbar.maximum
+    selPageSize  = oSelTbl.verticalScrollbar.pageSize
+    Err.Clear
+    On Error GoTo 0
+    If selPageSize <= 0 Then selPageSize = 14
+
+    selScrollPos = 0
+    Do
+        On Error Resume Next
+        oSelTbl.verticalScrollbar.position = selScrollPos
+        Err.Clear
+        On Error GoTo 0
+        WScript.Sleep 60
+        For r = 0 To selPageSize - 1
+            sFieldName = ""
+            On Error Resume Next
+            sFieldName = UCase(Trim(oS.findById("wnd[0]/usr/tblSAPLSE16NSELFIELDS_TC/txtGS_SELFIELDS-FIELDNAME[6," & r & "]").text))
+            Err.Clear
+            On Error GoTo 0
+            For j = 0 To UBound(aFieldNames)
+                If (Not aFilled(j)) And sFieldName = UCase(aFieldNames(j)) Then
+                    ' Write the LOW value while the row is visible. Most LOW
+                    ' cells are GuiCTextField (ctxt); fall back to txt.
+                    On Error Resume Next
+                    oS.findById("wnd[0]/usr/tblSAPLSE16NSELFIELDS_TC/ctxtGS_SELFIELDS-LOW[2," & r & "]").text = aFieldValues(j)
+                    If Err.Number <> 0 Then
+                        Err.Clear
+                        oS.findById("wnd[0]/usr/tblSAPLSE16NSELFIELDS_TC/txtGS_SELFIELDS-LOW[2," & r & "]").text = aFieldValues(j)
+                    End If
+                    If Err.Number = 0 Then
+                        aFilled(j) = True
+                        nFilled = nFilled + 1
+                    End If
+                    Err.Clear
+                    On Error GoTo 0
+                End If
+            Next
+            If nFilled >= nFieldsWanted Then Exit For
+        Next
+        If nFilled >= nFieldsWanted Then Exit Do
+        If selScrollPos >= selMaxScroll Then Exit Do
+        selScrollPos = selScrollPos + selPageSize
+        If selScrollPos > selMaxScroll Then selScrollPos = selMaxScroll
+    Loop
+
+    If nFilled < nFieldsWanted Then
+        WScript.Echo "ERROR: Could not fill all filter fields (" & Join(aFieldNames, ",") & ") in the SE16N field table for " & sTable & "."
+        Exit Function
+    End If
+
+    oS.findById("wnd[0]").sendVKey VKEY_ENTER
+    WScript.Sleep 500
+
+    ' Execute (F8)
+    oS.findById("wnd[0]/tbar[1]/btn[8]").press
+    WScript.Sleep 2500
+
+    ' Dismiss any "no maintenance dialog" / "results may be large" popup
+    On Error Resume Next
+    If InStr(oS.ActiveWindow.Id, "wnd[1]") > 0 Then
+        oS.ActiveWindow.sendVKey VKEY_ENTER
+        WScript.Sleep 800
+    End If
+    Err.Clear
+    On Error GoTo 0
+
+    Dim oGrid
+    On Error Resume Next
+    Set oGrid = oS.findById("wnd[0]/usr/cntlRESULT_LIST/shellcont/shell")
+    If Err.Number <> 0 Or oGrid Is Nothing Then
+        Err.Clear
+        On Error GoTo 0
+        Exit Function   ' no grid -> caller treats as zero rows
+    End If
+    On Error GoTo 0
+    Set RunSe16nQuery = oGrid
+End Function

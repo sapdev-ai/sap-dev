@@ -9,11 +9,12 @@
 '   1. /nse38
 '   2. Enter program name into ctxtRS38M-PROGRAMM
 '   3. sendVKey 21 (Shift+F9 = Activate from initial screen)
-'   4. If wnd[1] (inactive worklist popup) appears:
-'        - tbar[0]/btn[9] = Select All
-'        - tbar[0]/btn[0] = Continue
-'      The popup is filtered by the locality (transportable vs local) of the
-'      triggering object -- SAP shows only objects of the same locality.
+'   4. If wnd[1] (inactive worklist popup) appears: press Continue
+'      (tbar[0]/btn[0]) ONLY -- the triggering object is pre-selected.
+'      btn[9] (Select All) is only the popup DISCRIMINATOR, never pressed:
+'      it would co-activate other developers' unrelated inactive objects on
+'      a shared DEV. The popup is filtered by the locality (transportable vs
+'      local) of the triggering object -- SAP shows only the same locality.
 '   5. Read sbar; expect "Object(s) activated" (S/I-type).
 '   6. F3 back (btn[15] = Shift+F3 / Cancel back to clean state).
 '
@@ -126,20 +127,25 @@ Sub HandleWorklistPopup
             Set oWnd = oSess.findById(sId)
             If Err.Number = 0 And Not (oWnd Is Nothing) Then
                 Err.Clear
-                ' Probe for the worklist toolbar (Select All = btn[9]).
+                ' Inactive-objects worklist popup. Discriminator: it carries
+                ' a Select All button at tbar[0]/btn[9]. DETECT via btn[9]
+                ' but deliberately do NOT press it -- the triggering object
+                ' (and its dependent includes) is already pre-selected, so
+                ' Continue (btn[0]) activates exactly it. Select All would
+                ' co-activate every UNRELATED inactive object on a shared DEV
+                ' (EC2/DEV102: 500+). Never fall back to Select All if
+                ' Continue doesn't clear it -- the post-activate DWINACTIV
+                ' verify reports a still-inactive object as a real failure.
                 Set oBtn = Nothing
                 Set oBtn = oSess.findById(sId & "/tbar[0]/btn[9]")
                 If Err.Number = 0 And Not (oBtn Is Nothing) Then
-                    oBtn.press
-                    WScript.Sleep 500
-                    WScript.Echo "INFO: " & sId & " - Select All pressed."
                     Err.Clear
                     Set oBtn = Nothing
                     Set oBtn = oSess.findById(sId & "/tbar[0]/btn[0]")
                     If Err.Number = 0 And Not (oBtn Is Nothing) Then
                         oBtn.press
                         WScript.Sleep 1200
-                        WScript.Echo "INFO: " & sId & " - Continue pressed."
+                        WScript.Echo "INFO: " & sId & " - inactive-objects worklist; Continue pressed (pre-selected object only, no Select All)."
                     End If
                     bAnyDismissed = True
                 Else

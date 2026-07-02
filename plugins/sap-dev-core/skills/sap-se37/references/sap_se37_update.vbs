@@ -151,7 +151,7 @@ If InStr(oSession.ActiveWindow.Id, "wnd[1]") > 0 Then
             If Err.Number = 0 Then
                 If Not (oMaintBtn Is Nothing) Then
                     WScript.Echo "INFO: Original-language popup detected (logon != MASTERLANG=" & _
-                                 oMasterLangFld.Text & ") — pressing 'Maint. in orig. lang.'."
+                                 oMasterLangFld.Text & ") -- pressing 'Maint. in orig. lang.'."
                     oMaintBtn.press
                     WScript.Sleep 1500
                 End If
@@ -190,9 +190,9 @@ WScript.Echo "INFO: Function module opened in change mode."
 ' ------ 3b. Pre-save TR claim --------------------------------------------------
 ' Send Ctrl+S to provoke any "Prompt for local Workbench request" popup.
 ' Outcomes:
-'   (a) wnd[1] with field ctxtKO008-TRKORR → fill SAP_TRANSPORT, Enter.
-'   (b) Other popup → Enter to dismiss.
-'   (c) No popup → object is local ($TMP) or already locked to a modifiable TR.
+'   (a) wnd[1] with field ctxtKO008-TRKORR -> fill SAP_TRANSPORT, Enter.
+'   (b) Other popup -> Enter to dismiss.
+'   (c) No popup -> object is local ($TMP) or already locked to a modifiable TR.
 ' If a TR popup appears but SAP_TRANSPORT is empty, abort.
 ' Diagnostics: TADIR-DEVCLASS, E071, E070-TRSTATUS.
 WScript.Echo "INFO: Pre-save (Ctrl+S) to check whether a TR popup appears..."
@@ -214,17 +214,17 @@ If InStr(oSession.ActiveWindow.Id, "wnd[1]") > 0 Then
             WScript.Quit 1
         End If
         oPreTR.Text = SAP_TRANSPORT
-        WScript.Echo "INFO: Pre-save TR popup detected — entering " & SAP_TRANSPORT & "."
+        WScript.Echo "INFO: Pre-save TR popup detected -- entering " & SAP_TRANSPORT & "."
         oSession.findById("wnd[1]").sendVKey VKEY_ENTER
         WScript.Sleep 1000
     Else
         Err.Clear
-        WScript.Echo "INFO: Pre-save popup (no TR field) — pressing Enter to dismiss."
+        WScript.Echo "INFO: Pre-save popup (no TR field) -- pressing Enter to dismiss."
         oSession.ActiveWindow.sendVKey VKEY_ENTER
         WScript.Sleep 800
     End If
 Else
-    WScript.Echo "INFO: No pre-save popup — object is local ($TMP) or already locked to a modifiable TR."
+    WScript.Echo "INFO: No pre-save popup -- object is local ($TMP) or already locked to a modifiable TR."
 End If
 Err.Clear
 On Error GoTo 0
@@ -232,8 +232,8 @@ On Error GoTo 0
 ' --- Lock the SAP session UI for the source paste + save + activate + syntax check critical section ---
 ' Per Rule 7: LockSessionUI blocks user input races inside SAP. Source is now
 ' pasted into the editor via the Windows clipboard + SendKeys (the Utilities >
-' Upload menu is S/4-only — its positional path does not exist on NW 7.31 /
-' ECC6, the 2026-06-22 EC2 hard blocker), so — like sap-se38 — we ALSO use the
+' Upload menu is S/4-only -- its positional path does not exist on NW 7.31 /
+' ECC6, the 2026-06-22 EC2 hard blocker), so -- like sap-se38 -- we ALSO use the
 ' OS-level foreground guard below so Ctrl+V can never land in another app.
 Dim wasLocked : wasLocked = TryLockSession(oSession)
 If wasLocked Then
@@ -433,13 +433,13 @@ If InStr(oSession.ActiveWindow.Id, "wnd[1]") > 0 Then
         Err.Clear
         If SAP_TRANSPORT <> "" Then
             oTrField2.Text = SAP_TRANSPORT
-            WScript.Echo "INFO: (safety-net) TR popup re-appeared on save — re-entering " & SAP_TRANSPORT & "."
+            WScript.Echo "INFO: (safety-net) TR popup re-appeared on save -- re-entering " & SAP_TRANSPORT & "."
         End If
         oSession.findById("wnd[1]").sendVKey VKEY_ENTER
         WScript.Sleep 1000
     Else
         Err.Clear
-        WScript.Echo "INFO: (safety-net) Save popup (no TR field) — Enter to dismiss."
+        WScript.Echo "INFO: (safety-net) Save popup (no TR field) -- Enter to dismiss."
         oSession.ActiveWindow.sendVKey VKEY_ENTER
         WScript.Sleep 800
     End If
@@ -448,7 +448,7 @@ Err.Clear
 On Error GoTo 0
 WScript.Echo "INFO: Saved."
 
-' ------ 6. Activate (Ctrl+F3) — must activate BEFORE syntax check ---------
+' ------ 6. Activate (Ctrl+F3) -- must activate BEFORE syntax check ---------
 ' If the function group has an inactive version, syntax check reports
 ' "Statement is not accessible" for ALL lines. Activating first resolves this.
 WScript.Echo "INFO: Activating..."
@@ -458,7 +458,7 @@ WScript.Sleep 1500
 
 ' Handle "Inactive Objects" worklist popup. The popup may appear up to ~10s
 ' after pressing Activate (esp. when sibling FUGR objects are also inactive
-' after a recent Reassign). Press Continue (btn[0]) ONLY — the FM and its
+' after a recent Reassign). Press Continue (btn[0]) ONLY -- the FM and its
 ' function-group includes are pre-selected, so Continue activates exactly them.
 ' Do NOT Select All (Ctrl+A / sendVKey 26): EC2/DEV102 carries 500+ unrelated
 ' inactive objects and Select All would co-activate every one. Matches the
@@ -469,7 +469,7 @@ For iWaitAct = 1 To 10
     WScript.Sleep 1000
 Next
 If InStr(oSession.ActiveWindow.Id, "wnd[1]") > 0 Then
-    WScript.Echo "INFO: Inactive objects worklist — Continue (pre-selected object only, no Select All)..."
+    WScript.Echo "INFO: Inactive objects worklist -- Continue (pre-selected object only, no Select All)..."
     Err.Clear
     oSession.findById("wnd[1]/tbar[0]/btn[0]").press  ' Continue
     WScript.Sleep 5000
@@ -484,9 +484,9 @@ If InStr(oSession.ActiveWindow.Id, "wnd[1]") > 0 Then
     End If
 End If
 
-' Handle "Activation errors" popup (wnd[2]) — press Activate to proceed
+' Handle "Activation errors" popup (wnd[2]) -- press Activate to proceed
 If InStr(oSession.ActiveWindow.Id, "wnd[2]") > 0 Then
-    WScript.Echo "WARNING: Activation errors — pressing Activate anyway..."
+    WScript.Echo "WARNING: Activation errors -- pressing Activate anyway..."
     On Error Resume Next
     oSession.findById("wnd[2]/usr/btnSPOP-VAROPTION1").press
     If Err.Number <> 0 Then
@@ -503,7 +503,7 @@ End If
 Err.Clear
 On Error GoTo 0
 
-' ------ 7. Syntax check (Ctrl+F2) — read error grid -----------------------
+' ------ 7. Syntax check (Ctrl+F2) -- read error grid -----------------------
 WScript.Echo "INFO: Running syntax check..."
 oSession.findById("wnd[0]/tbar[1]/btn[26]").press  ' Ctrl+F2 Check
 WScript.Sleep 3000
@@ -540,9 +540,9 @@ If Err.Number = 0 And Not (oSyntaxGrid Is Nothing) Then
         Dim nErrorCount
         nErrorCount = 0
         ' --- Resolve logon language so the shared IsErrorMsgType classifier can
-        ' match SAP's localized "Error" label in MSGTYPE (e.g. ZH "错误", JA
-        ' "エラー"). Icon-ID prefix is the locale-independent fallback inside
-        ' the helper — see shared/scripts/sap_syntax_check_lib.vbs.
+        ' match SAP's localized "Error" label in MSGTYPE (e.g. ZH "cuowu", JA
+        ' "eraa"). Icon-ID prefix is the locale-independent fallback inside
+        ' the helper -- see shared/scripts/sap_syntax_check_lib.vbs.
         Dim sLogonLang
         On Error Resume Next
         sLogonLang = UCase(CStr(oSession.Info.Language))
@@ -586,11 +586,11 @@ If Err.Number = 0 And Not (oSyntaxGrid Is Nothing) Then
             WScript.Echo "INFO: Syntax check passed with " & nSyntaxRows & " warning(s) only."
         End If
     Else
-        WScript.Echo "INFO: Syntax check passed — no findings."
+        WScript.Echo "INFO: Syntax check passed -- no findings."
     End If
 Else
     Err.Clear
-    ' Grid not found — fall back to status bar check
+    ' Grid not found -- fall back to status bar check
     Dim sSyntaxMsg, sSyntaxType
     sSyntaxMsg  = oSession.findById("wnd[0]/sbar").Text
     sSyntaxType = oSession.findById("wnd[0]/sbar").MessageType
@@ -599,7 +599,7 @@ Else
         bSyntaxOK = False
         WScript.Echo "ERROR: Syntax check failed - " & sSyntaxMsg
     ElseIf sSyntaxMsg = "" Then
-        WScript.Echo "INFO: Syntax check — no findings (sbar empty, AbapEditor may swallow messages)."
+        WScript.Echo "INFO: Syntax check -- no findings (sbar empty, AbapEditor may swallow messages)."
     Else
         WScript.Echo "INFO: Syntax check passed."
     End If

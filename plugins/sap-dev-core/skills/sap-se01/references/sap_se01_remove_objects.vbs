@@ -39,15 +39,20 @@
 '   - The object table is a classic GuiTableControl with empty input rows at the
 '     bottom -> the targeted scan is bounded by txtDV_OBJECT_COUNT and skips
 '     blank OBJ_NAME cells.
-'   - A RELEASED request cannot be edited -> the caller must gate on
-'     E070-TRSTATUS; here the change-mode switch simply has no effect and 0 rows
-'     are removed (reported, not a false success).
+'   - A RELEASED/locked request cannot be edited -> the caller must gate on
+'     E070-TRSTATUS; here a refused change-mode switch (sbar E/A), a failed
+'     Save, or a post-delete re-read that still shows more objects than
+'     expected exits with ERROR (both counts echoed) -- never a false
+'     SUCCESS. The removed count is VERIFIED by re-reading the grid count
+'     after Save (removed = before - after), not assumed from the number of
+'     rows marked before Delete.
 '   - Node rows / object names identified by id + DDIC field, never by localized
 '     column text.
 '
 ' Outputs (last line, parseable):
-'   SUCCESS: Removed <N> object entr(ies) from <TR>.
-'   ERROR:   ...
+'   SUCCESS: Removed <N> object entr(ies) from <TR>.   <- N = verified (before - after)
+'   ERROR:   ... (change-mode refused / save failed / count did not drop as
+'            expected / count unreadable -- nothing is reported as removed)
 ' Per-removed-object diagnostic lines:
 '   INFO:     - <PGMID> <OBJECT> <OBJ_NAME>
 ' =============================================================================
@@ -140,6 +145,13 @@ For iNode = 0 To UBound(aNodes)
         WScript.Quit 1
     End If
     nRemoved = ClearNodeObjects(oSess, sNode, gTargets, gAll)
+    If nRemoved < 0 Then
+        ' ClearNodeObjects already echoed the ERROR (change-mode refused,
+        ' save failed, or the post-delete re-read left more objects than
+        ' expected). Fail loud -- do NOT report a partial SUCCESS.
+        ReleaseSession oSess, wasLocked
+        WScript.Quit 1
+    End If
     If nRemoved > 0 Then nTotalRemoved = nTotalRemoved + nRemoved
 Next
 
@@ -242,7 +254,11 @@ End Function
 ' Remove matching object entries from ONE node (task or request). Assumes the
 ' request is freshly displayed. When bAll is True, removes every object
 ' (Select-All); otherwise removes only rows whose OBJ_NAME is in targets.
-' Returns the count removed (0 if empty / no match / not an editor).
+' Returns the VERIFIED count removed (before - after re-read of the grid
+' count; 0 if empty / no match / not an editor), or -1 on a hard failure
+' (change-mode refused, save rejected, count unreadable, or more objects
+' remain than expected) -- the ERROR line is echoed here; the caller must
+' Quit 1.
 Function ClearNodeObjects(oS, sNode, targets, bAll)
     ClearNodeObjects = 0
 
@@ -260,12 +276,25 @@ Function ClearNodeObjects(oS, sNode, targets, bAll)
         Exit Function
     End If
 
-    ' Switch to change mode so btnDB_DELETE is active.
+    ' Switch to change mode so btnDB_DELETE is active. A released / locked
+    ' request refuses the switch with a statusbar E/A message (MessageType is
+    ' locale-independent) -- fail loud instead of pressing Delete in display
+    ' mode and reporting a phantom removal.
+    Dim sTogType, sTogText
+    sTogType = "" : sTogText = ""
     On Error Resume Next
     oS.findById(CHANGE_BUTTON).press
     WScript.Sleep 800
+    sTogType = oS.findById("wnd[0]/sbar").MessageType
+    sTogText = oS.findById("wnd[0]/sbar").Text
     Err.Clear
     On Error GoTo 0
+    If sTogType = "E" Or sTogType = "A" Then
+        WScript.Echo "ERROR: Change-mode switch failed on node " & sNode & _
+                     " (request released/locked?) - " & sTogText
+        ClearNodeObjects = -1
+        Exit Function
+    End If
 
     ' Open the Objects tab so the table control materializes.
     On Error Resume Next
@@ -355,7 +384,54 @@ Function ClearNodeObjects(oS, sNode, targets, bAll)
     Err.Clear
     On Error GoTo 0
 
-    ClearNodeObjects = nMarked
+    ' Gate on the save outcome (MessageType, locale-independent). An E/A here
+    ' means the unassignment was NOT committed.
+    Dim sSaveType, sSaveText
+    sSaveType = "" : sSaveText = ""
+    On Error Resume Next
+    sSaveType = oS.findById("wnd[0]/sbar").MessageType
+    sSaveText = oS.findById("wnd[0]/sbar").Text
+    Err.Clear
+    On Error GoTo 0
+    If sSaveType = "E" Or sSaveType = "A" Then
+        WScript.Echo "ERROR: Save failed on node " & sNode & " after removing " & _
+                     nMarked & " object(s) - " & sSaveText
+        ClearNodeObjects = -1
+        Exit Function
+    End If
+
+    ' VERIFY: re-read the remaining object count. A Delete/Save on a released
+    ' or locked request (or behind a mis-dismissed popup) is silently ignored
+    ' by SAP, so the pre-delete count must never be reported as removed.
+    Dim sCntAfter, nAfter, nExpectedAfter, bCntErr
+    sCntAfter = "" : bCntErr = False
+    On Error Resume Next
+    sCntAfter = Trim(oS.findById(OBJ_BASE & "txtDV_OBJECT_COUNT").Text)
+    If Err.Number <> 0 Then bCntErr = True
+    Err.Clear
+    On Error GoTo 0
+    If bCntErr Then
+        WScript.Echo "ERROR: Could not re-read the object count on node " & sNode & _
+                     " after delete (before=" & nCnt & "). Removal NOT verified."
+        ClearNodeObjects = -1
+        Exit Function
+    End If
+    nAfter = 0
+    If sCntAfter <> "" And IsNumeric(sCntAfter) Then nAfter = CLng(sCntAfter)
+    If bAll Then
+        nExpectedAfter = 0
+    Else
+        nExpectedAfter = nCnt - nMarked
+    End If
+    If nAfter > nExpectedAfter Then
+        WScript.Echo "ERROR: node " & sNode & " still holds " & nAfter & " object(s) after " & _
+                     "delete+save (before=" & nCnt & ", expected remaining=" & nExpectedAfter & "). " & _
+                     "Request may be released/locked -- removal NOT verified."
+        ClearNodeObjects = -1
+        Exit Function
+    End If
+
+    ClearNodeObjects = nCnt - nAfter
 End Function
 
 ' Scroll the object table and mark every row whose OBJ_NAME is in targets.

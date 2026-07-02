@@ -39,21 +39,27 @@ checks, and confirming an import landed. Pure read-only on both systems
 ## Step 0 — Resolve Work Directory
 
 ```bash
-powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('WORK_DIR=' + (Get-SapWorkDir))"
+powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('WORK_DIR=' + (Get-SapWorkDir)); Write-Output ('RUN_TEMP=' + (Get-SapRunTemp))"
 ```
 
 | Setting | Default if blank |
 |---|---|
 | `work_dir` | `C:\sap_dev_work` |
 
-Set `{WORK_TEMP}` = `{work_dir}\temp`, `{OUT}` = `{WORK_TEMP}\compare\{OBJECT}`. Ensure `{OUT}` exists:
+Parse `WORK_DIR=` and `RUN_TEMP=` from stdout.
+
+Set `{WORK_TEMP}` = `{work_dir}\temp` and `{RUN_TEMP}` = the `RUN_TEMP=` value
+(`Get-SapRunTemp` mints + creates `{work_dir}\temp\run_<id>`). Set
+`{OUT}` = `{RUN_TEMP}\compare\{OBJECT}` — per-run private scratch, so concurrent
+`/sap-compare` runs never clobber each other's `left.def`/`right.def`/`diff.json`.
+Ensure `{OUT}` exists:
 ```bash
 cmd /c if not exist "{OUT}" mkdir "{OUT}"
 ```
 
 ## Step 0.5 — Start Logging (best-effort)
 ```bash
-powershell -NoProfile -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{WORK_TEMP}\sap_compare_run.json" -Skill sap-compare -ParamsJson "{\"args\":\"{RAW_ARGS}\"}"
+powershell -NoProfile -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{RUN_TEMP}\sap_compare_run.json" -Skill sap-compare -ParamsJson "{\"args\":\"{RAW_ARGS}\"}"
 ```
 
 ## Step 1 — Parse Arguments
@@ -119,14 +125,30 @@ parameterized by `-Dest`), and writes `{OUT}\diff.json` + `left.def` / `right.de
 `diff.json`:
 ```json
 { "object":"{OBJECT}","type":"{DDIC_TYPE}",
-  "left":{"sid":"{LEFT_SID}","exists":true},
-  "right":{"sid":"{RIGHT_SID}","release":"...","exists":true},
+  "left":{"sid":"{LEFT_SID}","exists":true,"read_status":"OK"},
+  "right":{"sid":"{RIGHT_SID}","release":"...","exists":true,"read_status":"OK"},
+  "verdict":"DIFFERS","reason":"",
   "identical":false,
   "added":[{"field":"ZZREASON","datatype":"CHAR","len":"40","dec":"0"}],
   "removed":[], "type_changed":[{"field":"MENGE","left":"QUAN","right":"QUAN"}],
   "length_changed":[{"field":"NAME1","left":"30.0","right":"40.0"}],
   "reordered":["WERKS","MATNR"] }
 ```
+
+**`read_status` per side** distinguishes a genuine absence from a fetch failure:
+`OK` (read, present), `ABSENT` (read, object not found), `FAILED` (RFC/read error
+— state unknown). **`verdict`** is the authoritative result — the script emits
+`IDENTICAL`/`DIFFERS` only when BOTH sides read OK; if either side is `FAILED`, or
+both sides are `ABSENT`, it emits **`COMPARE_UNAVAILABLE`** (exit 1) with `reason`,
+never a false `IDENTICAL`. One side `ABSENT` + the other `OK` → `DIFFERS` ("exists
+only on LEFT/RIGHT").
+
+**Parse the `RESULT:` line:**
+| Last-but-one line | Meaning |
+|---|---|
+| `RESULT: IDENTICAL` | both read OK + structurally equal |
+| `RESULT: DIFFERS` | both read (fields differ, or exists on exactly one side) |
+| `RESULT: COMPARE_UNAVAILABLE - <reason>` | a side failed to read, or absent on both — **do not** report identical; surface the reason and stop |
 
 ## Step 4b — Source Mode
 ```powershell
@@ -143,7 +165,9 @@ Handle `Status` per side: `NOT_FOUND` -> record "exists only on LEFT/RIGHT";
 
 ## Step 5 — Synthesize `diff.md`
 Read `diff.json` (ddic) or `diff.txt` (source) plus both release markers; write `{OUT}\diff.md`:
-1. **Verdict** — identical / differs / exists only on one side.
+1. **Verdict** — identical / differs / exists only on one side / **compare unavailable**
+   (a side's `read_status` is `FAILED`, or both `ABSENT`). Never render a
+   `COMPARE_UNAVAILABLE` result as "identical" — report the `reason` instead.
 2. **What differs** — concrete fields or source hunks with line refs.
 3. **Likely cause** — classify each diff: *real change* vs. *release skew*
    (a field/statement present only on the higher `server_release_marker` is
@@ -151,12 +175,14 @@ Read `diff.json` (ddic) or `diff.txt` (source) plus both release markers; write 
 4. **Recommended action** — e.g., "retrofit ZZREASON into {LEFT_SID} before transport."
 
 ## Step 6 — Report & Clean Up
-Print `{OUT}` + the verdict. Disconnect both destinations; remove scratch files
-in `{WORK_TEMP}` (leave `{OUT}` deliverables).
+Print `{OUT}` + the verdict. Disconnect both destinations. `{OUT}` and the
+`_run.json` state live under `{RUN_TEMP}` (per-run private scratch), swept
+automatically by `Remove-SapStaleRunTemp` — copy any `diff.md` the user wants to
+keep to a stable location before it ages out.
 
 ## Final — Log End
 ```bash
-powershell -NoProfile -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_compare_run.json" -Status SUCCESS -ExitCode 0
+powershell -NoProfile -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_compare_run.json" -Status SUCCESS -ExitCode 0
 ```
 (On failure use `-Status FAILED -ExitCode 1`. `-Status` must be one of `SUCCESS|FAILED|SKIPPED|EXISTED|ABANDONED`.)
 

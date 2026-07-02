@@ -156,8 +156,15 @@ cscript //NoLogo {RUN_TEMP}\sap_where_used_list_run.vbs
 | `NOT_FOUND: <TYPE> <NAME> has no usages in the selected scope.` | SAP returned the "no occurrences" popup. Object is **safe to delete** as far as the workbench knows (cross-system / Z-table-based / RTTI usages still need a manual check). |
 | `FOUND_LIST: <TYPE> <NAME> has usages — list shown on screen (no spool requested).` | List is rendered but no spool was requested (operator passed no `--to-spool`). The operator can read it interactively. |
 | `SPOOL_CREATED: <NUM>` | List was written to spool `<NUM>`. To download as a text file, chain into `/sap-sp02 <NUM> <PATH>`. |
+| `ERROR: Where-Used List did not start … the object may not exist …` | The object name was not found (SAP stayed on the initial screen, no scope popup). This is **not** a delete-safe result — verify the name / type, do **not** treat it as NOT_FOUND. |
+| `ERROR: Where-Used List reported a E/A-message …` | The list step raised an error (object not readable / not found). Cannot determine usages — surface verbatim; never a delete-safe verdict. |
+| `ERROR: Unexpected popup after scope selection …` | A modal with OPTION1 appeared that is not the confirmed "no usages" popup. Cannot confirm "no usages" safely — re-run or inspect via `/sap-gui-object-details`. |
 | `ERROR: Could not parse spool number from sbar: '...'` | Print succeeded but the sbar message did not contain a 4+ digit spool number (unusual locale / SAP version). Open SP02 manually, take the most recent spool, then run `/sap-sp02`. |
 | Other `ERROR: …` | Surface verbatim and consult Step 7. |
+
+**Delete-safety:** only `NOT_FOUND` is a (workbench-scope) delete-safe verdict. An
+`ERROR:` result is **never** delete-safe — a nonexistent object or a read error
+must never be reported as "safe to delete".
 
 ---
 

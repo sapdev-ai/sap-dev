@@ -42,9 +42,24 @@ WScript.Sleep 1500
 DismissModals
 On Error GoTo 0
 
+' Navigate INTO the target system's import queue. STMS_IMPORT can land on the
+' overview (a list of ALL systems) or the last-opened queue -- reading RC from
+' whatever landed would attribute another system's RC to TARGET_SID. Open the
+' named queue first; if it cannot be reached, do NOT read (and do NOT stamp the
+' output with a SID we never navigated to).
+Dim bOnQueue : bOnQueue = OpenTargetQueue(TARGET_SID)
+
 Dim grid : Set grid = FindGridShell()
 If grid Is Nothing Then
     WriteLog "skipped", "STMS grid not found for this release. Run /sap-gui-record on STMS_IMPORT and update candidate IDs in sap_stms_log_read.vbs.", "", ""
+    WScript.Quit 0
+End If
+
+' If we could not confirm the target-system queue is open, refuse rather than
+' mislabel another queue's RC as TARGET_SID's.
+If Not bOnQueue Then
+    WriteLog "skipped", "Could not open the import queue for " & TARGET_SID & " (system not found in the STMS overview, or the queue view differs on this release). Run /sap-gui-record on STMS_IMPORT and update OpenTargetQueue candidate IDs.", "", ""
+    WScript.Echo "LOG: tr=" & TR & " system=" & TARGET_SID & " rc=- verdict=QUEUE_NOT_REACHED file=" & OUTPUT_FILE
     WScript.Quit 0
 End If
 
@@ -129,6 +144,35 @@ Function FindGridShell()
         On Error GoTo 0
     Next
     Set FindGridShell = Nothing
+End Function
+
+' Open the import queue of the named system from the STMS_IMPORT overview by
+' double-clicking its row (SYSNAM/SYSTEM cell match -- locale-independent). Copied
+' from sap_stms_import.vbs so RC is read from the RIGHT system's queue. READ-ONLY
+' (double-click is navigation). Returns True only when a matching row was found +
+' opened; False when the overview isn't present or the SID isn't listed (caller
+' must then refuse rather than read whatever landed).
+Function OpenTargetQueue(sSid)
+    OpenTargetQueue = False
+    Dim ov : Set ov = FindGridShell()
+    If ov Is Nothing Then Exit Function
+    Dim rc, i, v
+    On Error Resume Next
+    rc = ov.RowCount
+    For i = 0 To rc - 1
+        v = "" : v = Trim(ov.GetCellValue(i, "SYSNAM"))
+        If Len(v) = 0 Then v = Trim(ov.GetCellValue(i, "SYSTEM"))
+        If UCase(v) = UCase(sSid) Then
+            ov.setCurrentCell i, ""
+            ov.doubleClickCurrentCell
+            WScript.Sleep 1200
+            DismissModals
+            OpenTargetQueue = True
+            Exit For
+        End If
+    Next
+    Err.Clear
+    On Error GoTo 0
 End Function
 
 Function OnlyDigits(s)

@@ -676,8 +676,12 @@ version** (`AS4LOCAL <> 'A'`, e.g. the `'L'` saved-but-not-activated row) as a
 failure rather than passing just because *an* active version exists. This
 catches the silent false-success where Activate reported success on the status
 bar but the change stayed inactive (observed on 7.31 + 1909, 2026-06-22). The
-gate is best-effort: if RFC creds / NCo are unavailable it soft-warns and
-relies on the GUI status bar. The other six update templates ignore the
+gate is best-effort: if RFC creds / NCo are unavailable it emits the
+distinctive non-blocking line `WARNING: POST_ACTIVATE_VERIFY_UNAVAILABLE - <reason>`
+and relies on the GUI status bar — **when that line appears, report the deploy
+as SUCCESS_UNVERIFIED (not SUCCESS)** and suggest `/sap-dev-status` to confirm
+the object; a verify failure (`INACTIVE` / `MISSING`) remains a hard `ERROR:`.
+The other six update templates ignore the
 `%%POST_ACTIVATE_VERIFY_*%%` tokens (no gate yet — adopt the same pattern when
 needed).
 
@@ -890,7 +894,11 @@ $content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scr
 # Phase 4.3 post-activate RFC verify plumbing. The VBS shells out to the PS1
 # AFTER activation; the PS1 reads the AI-session pinned connection from
 # connections.json (DPAPI-decrypted password) and runs an RFC_READ_TABLE
-# against the right DDIC catalog table. Fail-closed on INACTIVE/MISSING.
+# against the right DDIC catalog table (TYPEGROUP: TADIR + DWINACTIV -- it
+# has no DD*L catalog table). Fail-closed on INACTIVE/MISSING. If the helper
+# can't run, the output carries the non-blocking line
+# WARNING: POST_ACTIVATE_VERIFY_UNAVAILABLE - <reason>  -> report the deploy
+# as SUCCESS_UNVERIFIED (not SUCCESS) and suggest /sap-dev-status.
 $content = $content -replace '%%POST_ACTIVATE_VERIFY_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_se11_post_activate_verify.vbs'
 $content = $content -replace '%%POST_ACTIVATE_VERIFY_PS1%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_se11_post_activate_verify.ps1'
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
@@ -1056,7 +1064,8 @@ DDIC-catalog specific value: `TABLE`, `STRUCTURE`, `DATAELEMENT`,
 | `Sub-type popup detected` | Data type radio needs sub-type selection | Ensure correct type is being created |
 | `Definition file not found` | Wrong path or file not written | Verify path, re-run Step 2 |
 | `Could not set field at row N` | Grid component ID differs | Re-record grid interaction |
-| `Activation may have errors` | DDIC activation errors (missing dependencies) | Check SE11 activation log for details |
+| `ERROR: Activation failed - <message>` + `FAILED: <type> <name> was NOT activated.` | DDIC activation ended with status-bar `E`/`A` (missing dependencies, inconsistent definition); the update VBS exits 1 -- it no longer degrades this to a WARNING followed by SUCCESS | Check the SE11 activation log, fix the definition, and re-run |
+| `Activation may have errors` | Legacy WARNING wording still emitted by some create-path scripts on status-bar `E` (their post-activate RFC verify supplies the fail-closed gate) | Check SE11 activation log for details |
 | `Could not add table/field` | Grid full or component ID mismatch | Scroll grid or re-record IDs |
 
 ---
@@ -1117,14 +1126,24 @@ cscript //NoLogo {RUN_TEMP}\sap_se11_chgpkg_run.vbs
 ```
 
 **On success** (output contains `SUCCESS:`): report the package change to the user.
+The VBS gates success on `sbar.MessageType` not `E`/`A` **and** no modal popup
+left on screen, then emits `VERIFY_HINT: confirm TADIR-DEVCLASS=<pkg> ...` — the
+move is sbar-confirmed only. For an authoritative check, re-query `TADIR`
+(`DEVCLASS = <new package>`) via `/sap-se16n` or `/sap-dev-status`.
 
 **On failure** (output contains `ERROR:`): show full output and diagnose:
 
 | Error | Cause | Fix |
 |---|---|---|
+| `SAP refused the package change: <msg>` | Object locked in a modifiable TR (E071), authorization, or package does not exist | Release the blocking TR via `/sap-se01 release <TR>`, or fix the target package, then re-run. Message text is echoed for diagnostics. |
+| `A modal popup is still open after the change` | Unexpected dialog the flow did not anticipate | Re-run; if it persists capture the screen with `/sap-gui-object-details` |
 | `Object Directory Entry dialog did not appear` | Object doesn't exist or wrong type | Check object name and type |
 | `Cannot find package field` | Dialog layout mismatch | Check component IDs on this SAP version |
 | `Unsupported object type` | Invalid type code | Use one of: TABL, VIEW, DTEL, TTYP, DOMA, SHLP, ENQU |
+
+The lock/refusal popup is detected **locale-independently** by DDIC control id
+(`txtMESSTXT1` with no `txtKO013-AS4TEXT` and no `btnSPOP-OPTION1`), never by
+window title — so it is caught under ZH/JA logons.
 
 ### Changing multiple objects
 

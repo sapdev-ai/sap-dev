@@ -42,68 +42,79 @@ WScript.Sleep 300
 oSession.findById("wnd[0]/usr/btnDISPLAY").press
 WScript.Sleep 1500
 
-' ------ 4. Determine result -------------------------------------------------
-' If NRO exists, the editor opens with title "Display Number Range Object: <NAME>".
-' If it does not exist, the screen stays on the initial screen (title contains
-' "Number Range Object") and the status bar contains "object ... does not exist"
-' (or in some releases "is not yet defined"). Some releases instead pop up a
-' modal asking whether to create -- we close it and report NOT_EXIST.
+' ------ 4. Determine result (locale-independent) ----------------------------
+' Decide by CONTROL-ID screen identity + sbar MessageType, never by translated
+' title / status text (language_independence_rules.md; mirrors sap_se11_check.vbs).
+' SNRO flow after Display:
+'   * NRO does NOT exist -> SAP raises a "create object?" CONFIRM popup (wnd[1]).
+'   * NRO EXISTS         -> navigates to the Display screen; the initial-screen
+'                           name field ctxtNRIV-OBJECT is gone.
+'   * Auth / lock / other error -> stays on the initial screen (name field
+'                           present) with sbar MessageType E/A and NO popup.
+' Reading the message TEXT to tell "does not exist" from "no authorization" is
+' forbidden; SNRO distinguishes them structurally -- not-found is a popup, an
+' auth error is an sbar E on the initial screen -- so we branch on that.
 
-' Detect possible "Create object?" popup
+' Read sbar first (echoed for diagnostics; MessageType is load-bearing).
+Dim sStatus, sType
+sStatus = "" : sType = ""
+On Error Resume Next
+sStatus = oSession.findById("wnd[0]/sbar").Text
+sType   = oSession.findById("wnd[0]/sbar").MessageType
+On Error GoTo 0
+
+' (a) Confirmation popup present -> NRO does not exist. Cancel it (check-only).
 On Error Resume Next
 Dim oPopup
+Set oPopup = Nothing
 Set oPopup = oSession.findById("wnd[1]")
-If Err.Number = 0 And Not (oPopup Is Nothing) Then
-    WScript.Echo "INFO: Confirmation popup detected -- closing (Cancel)."
-    ' Cancel the popup; we only want to check, not create.
+Dim bPopup
+bPopup = (Err.Number = 0) And Not (oPopup Is Nothing)
+Err.Clear
+On Error GoTo 0
+If bPopup Then
+    WScript.Echo "INFO: 'Create object?' confirmation popup detected -- NRO not found. Closing (Cancel)."
     On Error Resume Next
     oSession.findById("wnd[1]/tbar[0]/btn[12]").press   ' Cancel (F12)
     If Err.Number <> 0 Then
         Err.Clear
         oSession.findById("wnd[1]").Close
     End If
+    Err.Clear
     On Error GoTo 0
     WScript.Sleep 500
-    WScript.Echo "INFO: " & oSession.findById("wnd[0]/sbar").Text
     WScript.Echo "NOT_EXIST"
     WScript.Quit 0
 End If
+
+' (b) Did we navigate into the Display screen? Probe the initial-screen name
+'     field: if it is GONE, we are on the object's display screen -> EXIST.
+On Error Resume Next
+Dim oInitProbe
+Set oInitProbe = Nothing
+Set oInitProbe = oSession.findById("wnd[0]/usr/ctxtNRIV-OBJECT")
+Dim bStillOnInitial
+bStillOnInitial = (Err.Number = 0) And Not (oInitProbe Is Nothing)
 Err.Clear
 On Error GoTo 0
 
-Dim sTitle, sStatus
-sTitle  = oSession.findById("wnd[0]").Text
-sStatus = ""
-On Error Resume Next
-sStatus = oSession.findById("wnd[0]/sbar").Text
-On Error GoTo 0
-
-If InStr(LCase(sTitle), "display") > 0 Then
-    WScript.Echo "INFO: NRO " & UCase(NRO_NAME) & " exists. Title: " & sTitle
-    ' Navigate back to SAPMSNUM initial screen
+If Not bStillOnInitial Then
+    WScript.Echo "INFO: NRO " & UCase(NRO_NAME) & " exists -- navigated to Display screen."
     oSession.findById("wnd[0]").sendVKey VKEY_F3
     WScript.Sleep 500
     WScript.Echo "EXIST"
     WScript.Quit 0
 End If
 
-' Still on initial screen -- check status bar
-WScript.Echo "INFO: Status: " & sStatus
-If InStr(LCase(sStatus), "does not exist") > 0 _
-   Or InStr(LCase(sStatus), "not been defined") > 0 _
-   Or InStr(LCase(sStatus), "not yet") > 0 _
-   Or InStr(LCase(sStatus), "is not defined") > 0 Then
-    WScript.Echo "NOT_EXIST"
-    WScript.Quit 0
+' (c) Still on the initial screen, no popup. An sbar E/A here is NOT the
+'     not-found case (which is a popup) -- it is an authorization / lock / other
+'     failure. Surface it as ERROR rather than a false NOT_EXIST.
+WScript.Echo "INFO: Status [" & sType & "]: " & sStatus
+If sType = "E" Or sType = "A" Then
+    WScript.Echo "ERROR: SNRO reported [" & sType & "] on the initial screen (not a not-found popup): " & sStatus
+    WScript.Quit 1
 End If
 
-' Fallback: if title still shows "Number Range Object" initial, treat as NOT_EXIST.
-If InStr(LCase(sTitle), "number range object") > 0 _
-   And InStr(LCase(sTitle), "display") = 0 _
-   And InStr(LCase(sTitle), "change") = 0 Then
-    WScript.Echo "NOT_EXIST"
-    WScript.Quit 0
-End If
-
-WScript.Echo "ERROR: Unable to determine NRO existence. Title=[" & sTitle & "] Status=[" & sStatus & "]"
-WScript.Quit 1
+' (d) Still on initial, no popup, no error -> treat as absent (defensive).
+WScript.Echo "NOT_EXIST"
+WScript.Quit 0

@@ -152,7 +152,9 @@ Skip blank lines and lines starting with `#`.
 
 ## Step 4 — Apply Rules
 
-Iterate the target files in `{work_folder}`:
+Iterate the target files in `{work_folder}` — the table covers every
+`/sap-docs-extract` output; files listed "no rules apply" are excluded
+deliberately, not by omission:
 
 | File | Rules to apply |
 |---|---|
@@ -163,6 +165,13 @@ Iterate the target files in `{work_folder}`:
 | `{doc_name}_errorMsgs.txt`     | field_rename |
 | `{doc_name}_textElements.txt`  | field_rename |
 | `{doc_name}_process.txt`       | field_rename, type_rename |
+| `{doc_name}_selection_definition.txt` | field_rename (field-name columns), type_rename (type columns) |
+| `{doc_name}_interface.txt`     | field_rename (field-name columns), type_rename (type columns) |
+| `{doc_name}_file_mapping_in.txt` / `{doc_name}_file_mapping_out.txt` | field_rename (file-field and SAP-field name columns), type_rename (type columns) |
+| `{doc_name}_golden.txt`        | field_rename (header / field-reference columns ONLY — never rewrite test data values) |
+| `{doc_name}_supplement.txt`    | field_rename, type_rename (free-form notes; keep tokens consistent with the converted spec) |
+| `{doc_name}_deps.txt`          | **no rules apply** — rows are FM / BAPI / class / include object names, not spec field or DDIC type tokens |
+| `{doc_name}_selection_screen_layout.png` | **no rules apply** — binary image |
 | `table_data_*.txt`             | field_rename (header row only) |
 
 For each rule:
@@ -174,9 +183,10 @@ For each rule:
   contains a column with value `PK`, set the `KEY` column to `X` and the
   `INITIAL` column to `X`. Implemented per file format — driven by header row.
 - **schema_migration**: free-form transformation block. Each migration name
-  (e.g. `LEGACY_HK_V1`) is a known transformation in this skill's
-  `references/migrations/<name>.md`. If the migration name is unknown, log a
-  WARNING and skip it.
+  (e.g. `LEGACY_HK_V1`) is looked up as a transformation spec at this skill's
+  `references/migrations/<name>.md`. **No migration docs ship with the
+  plugin** (see `references/migrations/README.md` for the mechanism) — when
+  no doc exists for the named migration, log a WARNING and skip the rule.
 
 Honour `SCOPE`: if non-empty, only apply the rule to files whose name appears
 in the comma-separated list.
@@ -248,6 +258,9 @@ powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_
   want to compare different rule sets.
 - The `_raw.txt` file is **not** modified — it always represents the original
   document dump from `/sap-docs-extract`.
-- `schema_migration` rules are intentionally pluggable. To add a new
-  migration, drop a `references/migrations/<NAME>.md` file with a clear
-  step-by-step transformation spec; the skill will load it on demand.
+- `schema_migration` rules are intentionally pluggable, and **none ship with
+  the plugin today** — `references/migrations/` contains only a README
+  describing the mechanism. To add a migration, drop a
+  `references/migrations/<NAME>.md` file with a clear step-by-step
+  transformation spec; the skill loads it on demand and WARNs+skips any
+  schema_migration rule whose doc is missing.

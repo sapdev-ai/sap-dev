@@ -133,11 +133,12 @@ The export-to-local-file step is SAP-GUI-side file IO, so it raises the modal
 **SAP GUI Security** dialog when the path isn't allow-listed — handle it exactly
 as `/sap-se16n` does (pre-check + OS-level sidecar watcher around the blocking
 cscript). The VBS identifies controls by recorded component IDs; the
-ST05/SAT-specific IDs are shipped as `PH_*` **placeholder constants** (see
-**Component IDs** below) — capture them once with `/sap-gui-record` or
-`/sap-gui-probe` on your release and fill them in before first use. The ALV
-export block at the bottom of each template already uses the known SE16N-style
-IDs.
+ST05/SAT-specific IDs are already **filled in with real values captured live on
+S4D / S/4HANA 1909 (2026-06-03)** (see **Component IDs** below) — no placeholders
+to fill. Re-record them with `/sap-gui-record` or `/sap-gui-probe` only if a
+later release moved a control (the SAT evaluation-desktop IDs embed program/
+screen names most prone to drift). The ALV export block at the bottom of each
+template uses the known SE16N-style IDs.
 
 ### Generate the filled-in VBScript
 
@@ -300,9 +301,10 @@ last line `HOTSPOTS=3`.
 
 ## Component IDs (for reference / debugging)
 
-The two GUI templates ship with **recorded-ID placeholders** (`PH_*` constants)
-— capture/verify them on first run per release with `/sap-gui-record` or
-`/sap-gui-probe`, then replace each `PH_*` constant in the VBS. The ALV export
+The two GUI templates ship with **real recorded IDs** (captured live on S4D /
+S/4HANA 1909, 2026-06-03 — no `PH_*` placeholders to fill in). Re-verify them per
+release with `/sap-gui-record` or `/sap-gui-probe` only if a control moved, then
+update the affected `Const` in the VBS. The ALV export
 mechanism (`pressToolbarContextButton "&MB_EXPORT"` → `selectContextMenuItem "&PC"`
 → "Text with Tabs" radio → `wnd[1]/usr/ctxtDY_PATH` + `ctxtDY_FILENAME`) is reused
 verbatim from `/sap-se16n` and is already filled in.

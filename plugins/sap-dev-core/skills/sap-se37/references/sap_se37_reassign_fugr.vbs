@@ -236,19 +236,26 @@ Err.Clear
 On Error GoTo 0
 
 ' ------ 7a. Inactive-objects worklist popup (if shown) ----------------------
+' Continue (btn[0]) ONLY: the popup is pre-filtered and the triggering FM
+' (plus its function-group includes) is pre-selected, so Continue activates
+' exactly them. Do NOT press Select All: on a shared DEV the worklist also
+' lists other developers' unrelated inactive objects (EC2/DEV102: 500+) and
+' Select All would co-activate every one. Matches the proven Continue-only
+' model in sap_se37_update.vbs; never re-add Select All.
 On Error Resume Next
 If InStr(oSession.ActiveWindow.Id, "wnd[1]") > 0 Then
     Err.Clear
-    Dim oSelAll
-    Set oSelAll = oSession.findById("wnd[1]/tbar[0]/btn[20]")
-    If Err.Number = 0 And Not (oSelAll Is Nothing) Then
-        WScript.Echo "INFO: Inactive-objects popup - Select All + Continue."
-        oSelAll.press
-        WScript.Sleep 500
+    Dim oWlCont
+    Set oWlCont = oSession.findById("wnd[1]/tbar[0]/btn[0]")
+    If Err.Number = 0 And Not (oWlCont Is Nothing) Then
+        WScript.Echo "INFO: Inactive-objects popup - Continue (pre-selected object only, no Select All)."
+        oWlCont.press
+        WScript.Sleep 1500
+    Else
+        Err.Clear
+        oSession.findById("wnd[1]").sendVKey VKEY_ENTER
+        WScript.Sleep 1500
     End If
-    Err.Clear
-    oSession.findById("wnd[1]").sendVKey VKEY_ENTER
-    WScript.Sleep 1500
 End If
 Err.Clear
 On Error GoTo 0

@@ -7,7 +7,7 @@ Fix ABAP `CALL FUNCTION` parameter issues found by sap-check-fm. Renames wrong p
 This skill reads the result file produced by **sap-check-fm**, reconnects to SAP to fetch the authoritative FM parameter lists, then proposes and applies fixes to the ABAP source file:
 
 - **RENAME** — `UNKNOWN_PARAM` entries: replaces the incorrect parameter name with the correct one by pairing it with the corresponding `MISSING_MANDATORY` entry or by fuzzy-matching against the FM's actual parameter list
-- **ADD STUB** — `MISSING_MANDATORY` entries (not already paired with a rename): inserts a new parameter line under the correct section keyword with a `" " " TODO` placeholder
+- **ADD STUB** — `MISSING_MANDATORY` entries (not already paired with a rename): inserts a new parameter line under the correct section keyword with a `space   " TODO` placeholder
 - **MOVE** — `WRONG_SECTION` entries: moves the parameter assignment from the wrong section keyword to the correct one
 
 A timestamped backup (`.bak`) is always created before the source file is modified.
@@ -15,7 +15,7 @@ A timestamped backup (`.bak`) is always created before the source file is modifi
 ## Workflow
 
 ```
-sap-check-fm → checkfm_result.txt → sap-fix-fm → patched ABAP source
+sap-check-fm → <abap-file>.check_fm.tsv → sap-fix-fm → patched ABAP source
 ```
 
 Run sap-check-fm first, then pass the same ABAP file to sap-fix-fm.
@@ -64,7 +64,7 @@ disk cache), reused across `sap-gen-abap`, `sap-check-fm`, and this skill.
 
 Or with explicit result file:
 ```
-/sap-fix-fm C:\src\ZPROGRAM.abap {WORK_TEMP}\checkfm_result.txt DEV_100
+/sap-fix-fm C:\src\ZPROGRAM.abap C:\src\ZPROGRAM.abap.check_fm.tsv DEV_100
 ```
 
 Or:

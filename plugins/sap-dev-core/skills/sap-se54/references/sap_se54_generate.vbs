@@ -12,6 +12,13 @@
 '   %%FUNC_GROUP%%       Function group for generated code  e.g. "ZHKT05"
 '   %%MAINT_TYPE%%       1 = one step, 2 = two step    e.g. "1"
 '   %%OVERVIEW_SCREEN%%  Overview screen number         e.g. "0010"
+'   %%DETAIL_SCREEN%%    Single (detail) screen number -- REQUIRED for two-step
+'                        (MAINT_TYPE=2); ignored for one-step
+'   %%PACKAGE%%          Target package for the generated FUGR/TOBJ objects;
+'                        empty -> Local Object ($TMP)
+'   %%TRANSPORT%%        Pre-resolved modifiable TR (from /sap-transport-request)
+'                        used when SAP prompts for a transport; empty + a TR
+'                        prompt appears -> ABORT_EMPTY_TR (never silently $TMP)
 '
 ' Component IDs recorded from SAP GUI 7.60 on S/4HANA 1909 (S4D).
 ' =============================================================================
@@ -23,14 +30,24 @@ Const AUTH_GROUP      = "%%AUTH_GROUP%%"
 Const FUNC_GROUP      = "%%FUNC_GROUP%%"
 Const MAINT_TYPE      = "%%MAINT_TYPE%%"
 Const OVERVIEW_SCREEN = "%%OVERVIEW_SCREEN%%"
+Const DETAIL_SCREEN   = "%%DETAIL_SCREEN%%"
+Const SAP_PACKAGE     = "%%PACKAGE%%"
+Const SAP_TRANSPORT   = "%%TRANSPORT%%"
 Const SESSION_PATH    = "%%SESSION_PATH%%"   ' empty / unsubstituted = use default
 
 Const VKEY_ENTER = 0
 Const VKEY_F6    = 6
 
-' Include shared attach helper.
+' Include shared attach helper + the shared locale-independent post-action popup
+' walker (KO007 package / KO008 transport / SAPLSETX / generic confirm, all by
+' DDIC control id). Both live in shared/scripts/, so derive the walker path from
+' the already-substituted attach-lib token.
 ExecuteGlobal CreateObject("Scripting.FileSystemObject") _
     .OpenTextFile("%%ATTACH_LIB_VBS%%", 1).ReadAll()
+Dim oDpFso, sDpDir
+Set oDpFso = CreateObject("Scripting.FileSystemObject")
+sDpDir = oDpFso.GetParentFolderName("%%ATTACH_LIB_VBS%%")
+ExecuteGlobal oDpFso.OpenTextFile(oDpFso.BuildPath(sDpDir, "sap_delete_popups.vbs"), 1).ReadAll()
 
 ' ------ 1. Attach to existing SAP GUI session (via shared attach helper) ----
 Dim oSession
@@ -51,28 +68,50 @@ oSession.findById("wnd[0]/usr/btnVIMDYNFLDS-PUSH_GMNT").Press
 WScript.Sleep 1000
 
 ' ------ 4. Handle "Create maintenance module" popup -------------------------
-' This popup appears when no maintenance dialog exists for the table.
+' This Yes/No popup appears when no maintenance dialog exists for the table.
+' Detect it locale-independently by its Yes button (btnSPOP-OPTION1) -- NEVER by
+' window title (was English-only). If wnd[1] is present but is NOT a Yes/No
+' confirm, surface it as an error rather than guessing.
 On Error Resume Next
-Dim oPopup
-Set oPopup = oSession.findById("wnd[1]")
+Dim oPopup, oYes
+Set oPopup = Nothing : Set oPopup = oSession.findById("wnd[1]")
 Dim bPopup
 bPopup = (Err.Number = 0) And Not (oPopup Is Nothing)
 Err.Clear
 On Error GoTo 0
 
 If bPopup Then
-    If InStr(oSession.findById("wnd[1]").Text, "Create maintenance module") > 0 Then
+    On Error Resume Next
+    Set oYes = Nothing : Set oYes = oSession.findById("wnd[1]/usr/btnSPOP-OPTION1")
+    Err.Clear
+    On Error GoTo 0
+    If Not (oYes Is Nothing) Then
         WScript.Echo "INFO: No existing dialog found. Pressing Yes to create..."
-        oSession.findById("wnd[1]/usr/btnSPOP-OPTION1").Press
+        oYes.Press
         WScript.Sleep 1000
     Else
-        WScript.Echo "ERROR: Unexpected popup: " & oSession.findById("wnd[1]").Text
+        Dim sPopMsg
+        sPopMsg = ""
+        On Error Resume Next
+        sPopMsg = oSession.findById("wnd[1]/usr/txtMESSTXT1").Text
+        On Error GoTo 0
+        WScript.Echo "ERROR: Unexpected popup at wnd[1]. " & sPopMsg
         WScript.Quit 1
     End If
 End If
 
 ' ------ 5. Verify we are on the Generation Environment screen ---------------
-If InStr(oSession.findById("wnd[0]").Text, "Generation Environment") = 0 Then
+' Probe a control that exists ONLY on that screen (the auth-group field
+' ctxtTDDAT-CCLASS) -- locale-independent, no title text.
+On Error Resume Next
+Dim oGenEnvProbe
+Set oGenEnvProbe = Nothing
+Set oGenEnvProbe = oSession.findById("wnd[0]/usr/ctxtTDDAT-CCLASS")
+Dim bOnGenEnv
+bOnGenEnv = (Err.Number = 0) And Not (oGenEnvProbe Is Nothing)
+Err.Clear
+On Error GoTo 0
+If Not bOnGenEnv Then
     Dim sStatus
     On Error Resume Next
     sStatus = oSession.findById("wnd[0]/sbar").Text
@@ -93,6 +132,25 @@ Else
 End If
 
 oSession.findById("wnd[0]/usr/txtTVDIR-LISTE").Text = OVERVIEW_SCREEN
+
+' Two-step maintenance needs a Single (detail) screen number. The pre-fix code
+' never filled it, so a two-step generation ran with an empty detail screen.
+If MAINT_TYPE = "2" Then
+    If Trim(DETAIL_SCREEN) = "" Then
+        WScript.Echo "ERROR: MAINT_TYPE=2 (two-step) requires a Single/detail screen number (%%DETAIL_SCREEN%%)."
+        WScript.Quit 1
+    End If
+    On Error Resume Next
+    oSession.findById("wnd[0]/usr/txtTVDIR-DETAIL").Text = DETAIL_SCREEN
+    If Err.Number <> 0 Then
+        WScript.Echo "ERROR: Could not fill Single/detail screen field (txtTVDIR-DETAIL): " & Err.Description
+        WScript.Quit 1
+    End If
+    Err.Clear
+    On Error GoTo 0
+    WScript.Echo "INFO: Two-step detail screen set to: " & DETAIL_SCREEN
+End If
+
 oSession.findById("wnd[0]/usr/radVIMDYNFLDS-CORR_CON_S").Select
 
 WScript.Echo "INFO: Parameters set - Auth:" & AUTH_GROUP & " FG:" & FUNC_GROUP & _
@@ -103,61 +161,41 @@ WScript.Echo "INFO: Pressing Create (F6)..."
 oSession.findById("wnd[0]").sendVKey VKEY_F6
 WScript.Sleep 3000
 
-' ------ 8. Handle Object Directory Entry popups -----------------------------
-' SAP may show multiple "Change Object Directory Entry" popups for FUGR and TOBJ.
-' Save each one with the default package ($TMP).
-Dim iLoop
-For iLoop = 1 To 10
-    On Error Resume Next
-    Dim oW1
-    Set oW1 = oSession.findById("wnd[1]")
-    Dim bW1
-    bW1 = (Err.Number = 0) And Not (oW1 Is Nothing)
-    Err.Clear
-    On Error GoTo 0
+' ------ 8. Handle Object Directory Entry / Transport popups -----------------
+' SAP shows one or more "Create Object Directory Entry" (KO007) popups for the
+' generated FUGR / TOBJ, then -- for a transportable package -- a transport
+' prompt (KO008-TRKORR). Dispatch the whole chain via the shared, locale-
+' independent walker (control-id-only). It:
+'   * fills the KO007 package from SAP_PACKAGE (empty -> Local Object),
+'   * fills the KO008 transport from SAP_TRANSPORT, and
+'   * returns "ABORT_EMPTY_TR" if SAP prompts for a transport but SAP_TRANSPORT
+'     is empty -- so we NEVER silently register the generated objects in $TMP
+'     when a transport was actually required.
+Dim dpLang
+dpLang = "E"
+Dim dpRes
+dpRes = WalkDeletePopups(oSession, SAP_PACKAGE, dpLang, SAP_TRANSPORT)
+If dpRes = "ABORT_EMPTY_TR" Then
+    WScript.Echo "ERROR: SAP prompted for a transport request but TRANSPORT is empty."
+    WScript.Echo "       Resolve a modifiable TR via /sap-transport-request and re-run,"
+    WScript.Echo "       or pass an empty PACKAGE to keep the objects local ($TMP)."
+    WScript.Echo "ABORT_EMPTY_TR"
+    WScript.Quit 1
+End If
 
-    If Not bW1 Then Exit For
-
-    If InStr(oSession.findById("wnd[1]").Text, "Object Directory") > 0 Then
-        On Error Resume Next
-        Dim sObjName
-        sObjName = oSession.findById("wnd[1]/usr/txtKO007-L_OBJ_NAME").Text
-        On Error GoTo 0
-        WScript.Echo "INFO: Saving Object Directory Entry for: " & sObjName
-        oSession.findById("wnd[1]/tbar[0]/btn[0]").Press
-        WScript.Sleep 2000
-    ElseIf InStr(oSession.findById("wnd[1]").Text, "Prompt for") > 0 Or _
-           InStr(oSession.findById("wnd[1]").Text, "Workbench") > 0 Or _
-           InStr(oSession.findById("wnd[1]").Text, "Transport") > 0 Then
-        ' Transport request popup - press Local Object or Enter
-        WScript.Echo "INFO: Transport dialog - assigning to Local Object..."
-        On Error Resume Next
-        oSession.findById("wnd[1]/tbar[0]/btn[7]").Press
-        If Err.Number <> 0 Then
-            Err.Clear
-            oSession.findById("wnd[1]").sendVKey VKEY_ENTER
-        End If
-        On Error GoTo 0
-        WScript.Sleep 2000
-    Else
-        WScript.Echo "WARNING: Unexpected popup: " & oSession.findById("wnd[1]").Text
-        oSession.findById("wnd[1]").sendVKey VKEY_ENTER
-        WScript.Sleep 1000
-    End If
-Next
-
-' ------ 9. Final status check -----------------------------------------------
+' ------ 9. Final status check (MessageType, not text) -----------------------
 Dim sFinalMsg, sFinalType
+sFinalMsg = "" : sFinalType = ""
 On Error Resume Next
 sFinalMsg  = oSession.findById("wnd[0]/sbar").Text
 sFinalType = oSession.findById("wnd[0]/sbar").MessageType
 On Error GoTo 0
 
-If sFinalType = "E" Then
-    WScript.Echo "ERROR: Generation failed - " & sFinalMsg
+If sFinalType = "E" Or sFinalType = "A" Then
+    WScript.Echo "ERROR: Generation failed [" & sFinalType & "] - " & sFinalMsg
     WScript.Quit 1
 End If
 
-WScript.Echo "INFO: SAP status: " & sFinalMsg
+WScript.Echo "INFO: SAP status [" & sFinalType & "]: " & sFinalMsg
 WScript.Echo "SUCCESS: Table maintenance dialog generated for " & UCase(TABLE_NAME) & "."
 WScript.Quit 0

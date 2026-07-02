@@ -40,28 +40,68 @@ oSession.findById("wnd[0]/usr/btnPUSH_DISPLAY").press
 WScript.Sleep 2000
 
 ' ------ 4. Determine result -------------------------------------------------
-' If the class exists, the Class Builder editor opens with tabsCTS tab strip.
-' If it does not exist, we stay on the SE24 initial screen with a status message.
+' If the class exists, the Class Builder editor opens. Depending on the user's
+' Utilities > Settings, that editor is either the FORM-based view (tabsCTS tab
+' strip) OR the SOURCE-CODE-based view (Program=SAPLSEO_CLEDITOR / txtDY0400_STATUS)
+' -- and source-code view is exactly the state /sap-se24 leaves classes in, so a
+' tabsCTS-only probe returned a false NOT_EXIST for those. If the class does NOT
+' exist, SE24 stays on the initial screen where ctxtSEOCLASS-CLSNAME still resolves
+' (mirror of sap_se11_check.vbs's staying-on-initial-screen logic -- locale-proof,
+' no title/.Text branching).
+
+' (a) Are we still on the SE24 initial screen? (name field only exists there.)
+Dim bStillInitial
 On Error Resume Next
-Dim oTabStrip
-Set oTabStrip = oSession.findById("wnd[0]/usr/tabsCTS")
-Dim bFound
-bFound = (Err.Number = 0 And Not (oTabStrip Is Nothing))
+Dim oInit : Set oInit = oSession.findById("wnd[0]/usr/ctxtSEOCLASS-CLSNAME")
+bStillInitial = (Err.Number = 0 And Not (oInit Is Nothing))
 Err.Clear
 On Error GoTo 0
 
-If bFound Then
-    WScript.Echo "INFO: Class " & UCase(CLASS_NAME) & " exists."
+' (b) Form-based Class Builder editor open? (tabsCTS tab strip)
+Dim bFormView
+On Error Resume Next
+Dim oTabStrip : Set oTabStrip = oSession.findById("wnd[0]/usr/tabsCTS")
+bFormView = (Err.Number = 0 And Not (oTabStrip Is Nothing))
+Err.Clear
+On Error GoTo 0
+
+' (c) Source-code-based Class Builder editor open?
+Dim bSrcView
+On Error Resume Next
+Dim oSrc : Set oSrc = oSession.findById("wnd[0]/usr/txtDY0400_STATUS")
+bSrcView = (Err.Number = 0 And Not (oSrc Is Nothing))
+If Not bSrcView Then
+    Err.Clear
+    bSrcView = (UCase(CStr(oSession.Info.Program)) = "SAPLSEO_CLEDITOR")
+End If
+Err.Clear
+On Error GoTo 0
+
+Dim sStatus, sStatusType
+On Error Resume Next
+sStatus = oSession.findById("wnd[0]/sbar").Text
+sStatusType = oSession.findById("wnd[0]/sbar").MessageType
+Err.Clear
+On Error GoTo 0
+
+If (bFormView Or bSrcView) And Not bStillInitial Then
+    WScript.Echo "INFO: Class " & UCase(CLASS_NAME) & " exists (editor open)."
     ' Navigate back to SE24 initial screen
     oSession.findById("wnd[0]/tbar[0]/okcd").text = "/nSE24"
     oSession.findById("wnd[0]").sendVKey VKEY_ENTER
     WScript.Sleep 500
     WScript.Echo "EXIST"
-Else
-    Dim sStatus
-    sStatus = oSession.findById("wnd[0]/sbar").Text
+ElseIf bStillInitial Then
+    ' Stayed on the initial screen -> genuinely not found (SAP leaves us here for
+    ' "class does not exist" regardless of logon language / sbar message type).
     WScript.Echo "INFO: " & sStatus
     WScript.Echo "NOT_EXIST"
+Else
+    ' Neither editor nor initial screen resolved -> ambiguous. Do NOT report
+    ' NOT_EXIST (that would misroute create-vs-update); surface the status.
+    WScript.Echo "INFO: Could not determine class state (Program=" & oSession.Info.Program & _
+                 "; sbar=" & sStatus & "; MessageType=" & sStatusType & ")."
+    WScript.Echo "UNKNOWN"
 End If
 
 WScript.Quit 0

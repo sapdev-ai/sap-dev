@@ -27,6 +27,7 @@ Task: $ARGUMENTS
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/language_independence_rules.md` | *(rule)* | GUI-scripting language independence — RFC-only validator, but rule applies to downstream deploy skills (sap-se11) the validated spec feeds |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/abap_code_quality_rules.md` | *(rule)* | ABAP code-quality rules — DDIC spec quality directly determines downstream ABAP quality (data-element vs. primitive, currency reference, length consistency); validation findings here surface ABAP-quality risk before code generation |
 | `sap-dev-core/shared/tables/sap_object_naming_rules.tsv` | *(read by helper)* | DDIC naming patterns (DDIC_DOMAIN / DDIC_DATAELEMENT / DDIC_TABLE). Custom override: `{custom_url}\sap_object_naming_rules.tsv` |
+| `sap-dev-core/shared/tables/domain_datatypes.tsv` | *(read directly)* | Valid SE11 domain data types + per-type length/decimals/sign rules — the authority for Step 2b (same table `/sap-se11` validates against) |
 | `sap-dev-core/shared/scripts/sap_check_object_name.ps1` | *(helper)* | Shared name validator invoked in Steps 2a / 3a / 4a |
 
 ---
@@ -47,14 +48,20 @@ The settings note below still applies to the OTHER keys.
 cmd /c if not exist "{WORK_TEMP}" mkdir "{WORK_TEMP}"
 ```
 
+Set `{RUN_TEMP}` = the per-run scratch dir (`Get-SapRunTemp` mints + creates `{work_dir}\temp\run_<id>`):
+```bash
+powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('RUN_TEMP=' + (Get-SapRunTemp))"
+```
+Per the CLAUDE.md "Two-bucket temp model" write this skill's per-run scratch (the `_run.json` log state and the Step 4f request files) under `{RUN_TEMP}`; keep `{WORK_TEMP}` (base) only for `Get-SapCurrentSessionPath -WorkTemp`.
+
 ---
 
 ## Step 0.5 — Start Logging
 
-Start a structured log run. State file: `{WORK_TEMP}\sap_docs_check_ddic_run.json`. Best-effort.
+Start a structured log run. State file: `{RUN_TEMP}\sap_docs_check_ddic_run.json`. Best-effort.
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{WORK_TEMP}\sap_docs_check_ddic_run.json" -Skill sap-docs-check-ddic -ParamsJson "{\"work_folder\":\"<WORK_FOLDER>\"}"
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{RUN_TEMP}\sap_docs_check_ddic_run.json" -Skill sap-docs-check-ddic -ParamsJson "{\"work_folder\":\"<WORK_FOLDER>\"}"
 ```
 
 ---
@@ -86,13 +93,22 @@ For each domain in `_domains.txt`:
   validator's stdout line. Exit `2` → log once and skip.
 
 ### 2b. Data Type Validation
-Valid SAP ABAP Dictionary data types:
-`CHAR`, `NUMC`, `DATS`, `TIMS`, `DEC`, `CURR`, `QUAN`, `UNIT`, `LANG`, `CLNT`, `INT1`, `INT2`, `INT4`, `INT8`, `FLTP`, `STRING`, `SSTRING`, `RAWSTRING`, `RAW`, `ACCP`, `DF16_DEC`, `DF16_RAW`, `DF34_DEC`, `DF34_RAW`
+
+Validate DATATYPE against
+`<SAP_DEV_CORE_SHARED_DIR>\tables\domain_datatypes.tsv` — the SE11 truth
+table `/sap-se11` uses (columns: `DATATYPE`, `DESCRIPTION`, `FIXED_LENGTH`,
+`MAX_LENGTH`, `DECIMALS_ALLOWED`, `SIGN_ALLOWED`, `OBSOLETE`, `NOTES`). Do
+NOT validate against a hardcoded inline list — an inline list drifts (the
+pre-2026-07 list omitted `CUKY`, so every currency-key domain false-failed
+with "invalid data type" while rule 4b-2 simultaneously required a CUKY
+reference).
 
 Check:
-- DATATYPE is in the valid list
-- LENGTH is appropriate for the data type (e.g., CURR needs DECIMALS)
-- If SIGN = `X`, data type should be numeric (DEC, CURR, QUAN, FLTP)
+- DATATYPE is a row in the TSV → otherwise **Error**: "invalid data type"
+- Row has `OBSOLETE` = `X` (`PREC`, `VARC`, `DF16_SCL`, `DF34_SCL`) → **Warning**: obsolete type, do not use
+- LENGTH respects the row's `FIXED_LENGTH` / `MAX_LENGTH` (e.g. `CUKY` fixed 5, `CHAR` up to 1333, `CURR` up to 17)
+- DECIMALS only for rows with `DECIMALS_ALLOWED` = `X` (e.g. CURR needs DECIMALS)
+- If SIGN = `X`, the row must have `SIGN_ALLOWED` = `X` (DEC, CURR, QUAN, FLTP)
 
 ---
 
@@ -270,8 +286,8 @@ matching a standard table (uppercase, doesn't appear in spec's
 `_tables.txt`):
 
 1. Collect `<ReferenceTable>\t<Ref.Field>\tTable <T> field <F> ReferenceTable\tCross-reference`
-   into `{WORK_TEMP}\spec_refs_request.txt`.
-2. Collect unique `<ReferenceTable>` names into `{WORK_TEMP}\struct_request.txt`.
+   into `{RUN_TEMP}\spec_refs_request.txt`.
+2. Collect unique `<ReferenceTable>` names into `{RUN_TEMP}\struct_request.txt`.
 3. Invoke `<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_rfc_lookup_struct.ps1`
    to populate `{work_folder}\_struct_signatures.txt` (same cache
    `/sap-gen-abap` Step 1.5e uses — gen-abap will reuse what this
@@ -335,13 +351,13 @@ Log the run-end record. Best-effort.
 On success:
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_docs_check_ddic_run.json" -Status SUCCESS -ExitCode 0
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_docs_check_ddic_run.json" -Status SUCCESS -ExitCode 0
 ```
 
 On failure:
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_docs_check_ddic_run.json" -Status FAILED -ExitCode 1 -ErrorClass <CLASS> -ErrorMsg "<short>"
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_docs_check_ddic_run.json" -Status FAILED -ExitCode 1 -ErrorClass <CLASS> -ErrorMsg "<short>"
 ```
 
 Suggested `<CLASS>`: `DDIC_CHECK_FAILED`, `INPUT_NOT_FOUND`.

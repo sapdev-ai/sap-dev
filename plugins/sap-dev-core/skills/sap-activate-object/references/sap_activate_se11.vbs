@@ -14,7 +14,8 @@
 '   3. Enter the name into the matching ctxtRSRD1-<key>_VAL field
 '   4. sendVKey 0 (Enter -> opens object in display mode)
 '   5. sendVKey 27 (Ctrl+F3 = Activate)
-'   6. If wnd[1] inactive worklist popup: btn[9] Select All, btn[0] Continue
+'   6. If wnd[1] inactive worklist popup: btn[0] Continue ONLY (pre-selected
+'      object; btn[9] Select All is the discriminator and is never pressed)
 '   7. Read sbar; expect "Object(s) activated"
 '   8. F3 back twice to leave the object and return to SE11 main
 '
@@ -229,14 +230,14 @@ Sub HandleWorklistPopup
                 Err.Clear
                 ' (a) Inactive-objects worklist popup. Discriminator: it
                 '     carries a Select All button at tbar[0]/btn[9]. DETECT
-                '     via btn[9] but deliberately do NOT press it — the
+                '     via btn[9] but deliberately do NOT press it -- the
                 '     triggering object and its dependent includes are
                 '     already pre-selected, so Continue (btn[0]) activates
                 '     exactly them. Pressing Select All would co-activate
                 '     every UNRELATED inactive object in the user's worklist
                 '     (e.g. EC2/DEV102: 10 strangers incl. a BAdI). Matches
                 '     the proven-safe SE38 model. Never fall back to Select
-                '     All if Continue doesn't clear it — the post-activate
+                '     All if Continue doesn't clear it -- the post-activate
                 '     DWINACTIV verify reports a still-inactive object as a
                 '     real failure (safety over a silent over-activation).
                 Set oBtn = Nothing

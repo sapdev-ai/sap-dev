@@ -60,14 +60,29 @@ End If
 On Error GoTo 0
 WScript.Sleep 1500
 
-Dim sTitle
-sTitle = oSession.findById("wnd[0]").Text
-If InStr(LCase(sTitle), "change") = 0 Then
-    WScript.Echo "ERROR: Could not enter Change mode. Title=[" & sTitle & "] Status=[" & _
-                 oSession.findById("wnd[0]/sbar").Text & "]"
+' Verify we entered Change mode -- locale-independently (per
+' language_independence_rules.md; mirrors sap_snro_check.vbs). On the SNRO
+' initial screen the name field ctxtNRIV-OBJECT is present; once the NRO opens in
+' Change mode we are off the initial screen (that field is gone) and the header
+' field txtTNROT-TXTSHORT is present. Title-text matching on "change" was
+' English-only and blocked all updates under ZH/JA logons.
+Dim bStillOnInitial, oInitProbe
+On Error Resume Next
+Set oInitProbe = Nothing
+Set oInitProbe = oSession.findById("wnd[0]/usr/ctxtNRIV-OBJECT")
+bStillOnInitial = (Err.Number = 0) And Not (oInitProbe Is Nothing)
+Err.Clear
+On Error GoTo 0
+If bStillOnInitial Then
+    Dim sInitStatus
+    sInitStatus = ""
+    On Error Resume Next
+    sInitStatus = oSession.findById("wnd[0]/sbar").Text
+    On Error GoTo 0
+    WScript.Echo "ERROR: Could not enter Change mode (still on initial screen). Status=[" & sInitStatus & "]"
     WScript.Quit 1
 End If
-WScript.Echo "INFO: " & sTitle
+WScript.Echo "INFO: NRO " & UCase(NRO_NAME) & " opened in Change mode."
 
 ' ------ 4. Update fields conditionally ----------------------------------
 If SHORT_TEXT <> "" Then

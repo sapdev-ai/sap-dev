@@ -9,8 +9,9 @@ description: |
   into incident clusters and produces ranked root-cause hypotheses with a
   recommended fix path.
   PURE READ-ONLY: this skill never writes to SAP. When a fix implies a write
-  (release a lock, reprocess an update) it only PROPOSES the gated command; the
-  matching reader's remediate mode owns the confirmation. With --fix, after
+  (release a lock, reprocess an update) it only points the operator at the
+  MANUAL SM12 / SM13 steps — the sm12/sm13 readers are read-only and have no
+  automated release/reprocess. With --fix, after
   presenting the hypotheses it hands a CUSTOM-CODE-DEFECT top hypothesis to
   /sap-fix-incident (the write-capable companion, which keeps its own
   confirmation gate + DEV-only / Z-Y-only guard rails) — /sap-diagnose itself
@@ -28,7 +29,9 @@ You triage a SAP incident the way a senior support consultant does — but in
 parallel, with full cross-source correlation. Take one anchor, fan out across
 the read-only readers, merge their evidence into incident clusters, and report
 ranked root-cause hypotheses plus the next concrete command. You NEVER modify
-the SAP system; remediation is handed off to a confirmation-gated reader mode.
+the SAP system; custom-code fixes are handed to `/sap-fix-incident` (gated), and
+lock/update remediation is surfaced as manual SM12 / SM13 operator steps (the
+readers are read-only — no automated release/reprocess exists).
 
 Task: $ARGUMENTS
 
@@ -106,8 +109,16 @@ C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypas
 
 Read `references/diagnose_source_matrix.tsv`, pick the reader set by the
 strongest anchor signal, honor `--sources` and `--depth` (quick = top-3; deep =
-all). Include `/sap-sm21` at standard+ when available. Echo
-`SOURCES_SELECTED: ...`.
+all). Echo `SOURCES_SELECTED: ...`.
+
+> **Not-yet-available readers.** The matrix lists some sources that have **no
+> reader skill yet** — `sm21` (system log), `queues` (qRFC/tRFC SMQ1/SMQ2), and
+> `gw_log` (Gateway/OData). These are marked `(manual)` in the TSV. Do **not**
+> try to invoke them via the Skill tool. Instead, name the manual transaction in
+> the report's `next_actions` (e.g. "run **SM21** for the window", "check
+> **SMQ1/SMQ2** for stuck queues", "check **/IWFND/ERROR_LOG**") so the operator
+> collects that evidence by hand. Only `st22`, `sm13`, `sm12`, `slg1`, `sm37`
+> (and `trace`, a separate skill) are callable readers today.
 
 ## Step 4 — Collect Evidence (fan-out)
 
@@ -156,13 +167,16 @@ confirm_by, refute_by, recommended_action }`. Hard rules:
 | custom-code defect | *(closed loop)* `/sap-fix-incident --incident <out>` — auto-chained by `--fix` (Step 8.5); or manually `/sap-explain-object <type> <name>` → `/sap-se38\|37\|24` fix |
 | config-missing | name the IMG/config table; verify read-only via `/sap-se16n` |
 | data-defect | point at the record (read-only `/sap-se16n`) |
-| lock-contention | *(gated)* `/sap-sm12 --release <lock>` — only with `--remediate` |
-| stuck update | *(gated)* `/sap-sm13 --reprocess <key>` — only with `--remediate` |
+| lock-contention | *(manual — operator-performed)* open **SM12** (`/nSM12`), find the reported row, confirm with the lock owner, then **Lock Entry → Delete** by hand. `/sap-sm12` is a **read-only reader** — there is no automated `--release`. |
+| stuck update | *(manual — operator-performed)* open **SM13** (`/nSM13`), find the failed record, confirm with the update owner, then **Repeat Update / Delete** by hand. `/sap-sm13` is a **read-only reader** — there is no automated `--reprocess`. |
 
 The orchestrator performs no write itself. With `--fix` it delegates the
 custom-code path to `/sap-fix-incident`, which owns its own confirmation gate
-(Rule 2) and guard rails; with `--remediate` it delegates lock/update writes to
-the reader's gated mode. Diagnose never mutates SAP directly under any flag.
+(Rule 2) and guard rails. For lock/update contention there is **no automated
+remediation** — the sm12/sm13 readers are read-only, so `--remediate` surfaces
+the **manual SM12 / SM13 steps above** (which the operator performs by hand)
+rather than invoking a dequeue/reprocess. Diagnose never mutates SAP directly
+under any flag.
 
 ## Step 8 — Emit Outputs
 
@@ -250,6 +264,7 @@ powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_
 ## Limitations
 
 - Coverage equals the installed readers; a missing reader is reported skipped.
-- No performance leg in v1 ("slow" routes to a future `/sap-trace`).
+- No performance leg in v1 ("slow" routes to `/sap-trace`, a separate skill —
+  invoke it directly for trace analysis; `/sap-diagnose` does not chain it).
 - Correlation is heuristic: explicit links are ground truth; temporal/identity/
   context edges are confidence-scored, hence the `confirm_by`/`refute_by` rule.

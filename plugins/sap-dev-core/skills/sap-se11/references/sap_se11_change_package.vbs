@@ -186,14 +186,57 @@ End If
 Err.Clear
 On Error GoTo 0
 
-' Handle any remaining popup
+' ------ 6b. Detect a refusal/lock message popup (locale-independent) ---------
+' A message-only popup interrupting the change (E071 lock, authorization, or
+' "package does not exist") is a genuine failure. Classify by DDIC control id
+' (txtMESSTXT1) -- NEVER by window title -- so it is caught under ZH/JA logons.
+' Previously the residual popup was blind-Enter'd and the run reported SUCCESS
+' with the object NOT moved (language_independence_rules.md).
+Dim oMsg1, oMsg2, oYesNo1, sMsg1, sMsg2, sPopWnd
+sPopWnd = ""
 On Error Resume Next
-If InStr(oSession.ActiveWindow.Id, "wnd[1]") > 0 Then
-    oSession.ActiveWindow.sendVKey VKEY_ENTER
-    WScript.Sleep 1000
-End If
-Err.Clear
+sPopWnd = oSession.ActiveWindow.Id
 On Error GoTo 0
+If InStr(sPopWnd, "wnd[1]") > 0 Or InStr(sPopWnd, "wnd[2]") > 0 Then
+    Dim sPfx
+    If InStr(sPopWnd, "wnd[2]") > 0 Then sPfx = "wnd[2]" Else sPfx = "wnd[1]"
+    On Error Resume Next
+    Set oMsg1 = Nothing : Set oMsg1 = oSession.findById(sPfx & "/usr/txtMESSTXT1")
+    Err.Clear
+    Set oYesNo1 = Nothing : Set oYesNo1 = oSession.findById(sPfx & "/usr/btnSPOP-OPTION1")
+    Err.Clear
+    On Error GoTo 0
+    If (Not (oMsg1 Is Nothing)) And (oYesNo1 Is Nothing) Then
+        On Error Resume Next
+        Set oMsg2 = Nothing : Set oMsg2 = oSession.findById(sPfx & "/usr/txtMESSTXT2")
+        Err.Clear
+        On Error GoTo 0
+        sMsg1 = "" : If Not (oMsg1 Is Nothing) Then sMsg1 = oMsg1.Text
+        sMsg2 = "" : If Not (oMsg2 Is Nothing) Then sMsg2 = oMsg2.Text
+        WScript.Echo "ERROR: SAP refused the package change: " & Trim(sMsg1 & " " & sMsg2)
+        On Error Resume Next
+        oSession.findById(sPfx & "/tbar[0]/btn[1]").press   ' Cancel if present
+        If Err.Number <> 0 Then : Err.Clear : oSession.findById(sPfx & "/tbar[0]/btn[0]").press : End If
+        Err.Clear
+        On Error GoTo 0
+        ReleaseSession oSession, wasLocked
+        WScript.Quit 1
+    ElseIf Not (oYesNo1 Is Nothing) Then
+        ' Yes/No confirm -> affirm.
+        On Error Resume Next
+        oYesNo1.press
+        Err.Clear
+        On Error GoTo 0
+        WScript.Sleep 1000
+    Else
+        ' Non-message confirm -> Continue.
+        On Error Resume Next
+        oSession.findById(sPfx & "/tbar[0]/btn[0]").press
+        Err.Clear
+        On Error GoTo 0
+        WScript.Sleep 1000
+    End If
+End If
 
 ' --- Release the session UI lock; navigate-back + report is read-only ---
 ReleaseSession oSession, wasLocked
@@ -201,13 +244,40 @@ If wasLocked Then WScript.Echo "INFO: Session UI lock released."
 
 ' ------ 7. Navigate back and report -----------------------------------------
 ' Press F15 (Back) or navigate away
+On Error Resume Next
 oSession.findById("wnd[0]/tbar[0]/btn[15]").press
 WScript.Sleep 500
+Err.Clear
+On Error GoTo 0
 
-Dim sStatus
+' ------ 8. SUCCESS gate: sbar not E/A AND no popup left on screen ------------
+Dim sStatus, sStatusType
+On Error Resume Next
 sStatus = oSession.findById("wnd[0]/sbar").Text
-WScript.Echo "INFO: Status: " & sStatus
+sStatusType = oSession.findById("wnd[0]/sbar").MessageType
+Err.Clear
+On Error GoTo 0
+WScript.Echo "STATUS_TYPE: " & sStatusType
+WScript.Echo "STATUS_TEXT: " & sStatus
 
+If sStatusType = "E" Or sStatusType = "A" Then
+    WScript.Echo "ERROR: Change package reported [" & sStatusType & "] " & sStatus
+    WScript.Quit 1
+End If
+
+Dim sFinalWnd
+sFinalWnd = ""
+On Error Resume Next
+sFinalWnd = oSession.ActiveWindow.Id
+On Error GoTo 0
+If InStr(sFinalWnd, "wnd[1]") > 0 Or InStr(sFinalWnd, "wnd[2]") > 0 Then
+    WScript.Echo "ERROR: A modal popup is still open after the change (" & sFinalWnd & ") -- move not confirmed."
+    WScript.Quit 1
+End If
+
+' The move is sbar-confirmed only inside the GUI; confirm authoritatively via
+' a TADIR re-read (SKILL.md Step 6b verify / /sap-dev-status).
+WScript.Echo "VERIFY_HINT: confirm TADIR-DEVCLASS=" & SAP_PACKAGE & " for " & UCase(OBJECT_NAME) & " via /sap-dev-status."
 WScript.Echo "SUCCESS: Package of " & UCase(OBJECT_TYPE) & " " & UCase(OBJECT_NAME) & _
              " changed from " & sOldPkg & " to " & SAP_PACKAGE & "."
 WScript.Quit 0

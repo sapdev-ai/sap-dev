@@ -57,12 +57,18 @@ cmd /c if not exist "{WORK_TEMP}" mkdir "{WORK_TEMP}"
 
 (`{WORK_TEMP}` = `{work_dir}\temp`.)
 
+Set `{RUN_TEMP}` = the per-run scratch dir (`Get-SapRunTemp` mints + creates `{work_dir}\temp\run_<id>`):
+```bash
+powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('RUN_TEMP=' + (Get-SapRunTemp))"
+```
+Per the CLAUDE.md "Two-bucket temp model" write this skill's `_run.json` log state under `{RUN_TEMP}`.
+
 ---
 
 ## Step 0.5 — Start Logging
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{WORK_TEMP}\sap_impact_analysis_run.json" -Skill sap-impact-analysis -ParamsJson "{}"
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{RUN_TEMP}\sap_impact_analysis_run.json" -Skill sap-impact-analysis -ParamsJson "{}"
 ```
 
 ---
@@ -149,7 +155,7 @@ Tie the findings to actions:
 ## Final — Log End
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_impact_analysis_run.json" -Status SUCCESS -ExitCode 0
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_impact_analysis_run.json" -Status SUCCESS -ExitCode 0
 ```
 
 (Object-not-found → `-ExitCode 1 -ErrorClass OBJECT_NOT_FOUND`; RFC failure →

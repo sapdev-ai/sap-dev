@@ -42,7 +42,7 @@ Task: $ARGUMENTS
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/skill_operating_rules.md` | Mandatory operating rules |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/ddic_excel_layout_rules.md` | DDIC Excel-spec authoring rules — naming-suffix consistency, primitive-type-as-DTEL trap, currency reference, column order, no merged data cells. Constrain meta-layout edits to remain compatible with the rule set. |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/language_independence_rules.md` | GUI-scripting language independence — offline layout editor, but rule applies to downstream deploy skills the spec feeds |
-| `<SAP_DEV_CORE_SHARED_DIR>/templates/spec_layout_schema.md` | Canonical schema for the `(Meta) Layout` sheet. Read this before generating or editing meta rows. |
+| `<SKILL_DIR>/templates/spec_layout_schema.md` | Canonical schema for the `(Meta) Layout` sheet. Read this before generating or editing meta rows. |
 | `<SAP_DEV_CORE_SHARED_DIR>/templates/spec_template.xlsx` | Canonical reference template. Default target when no workbook path is provided. `bootstrap` copies its `(Meta) Layout` sheet into other workbooks. |
 | `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_log_helper.ps1` | Structured logging. |
 | `<SKILL_DIR>/references/edit_meta_layout.py` | openpyxl helper — read/write meta sheet, perform structural edits, copy Meta sheet between workbooks. |
@@ -245,7 +245,10 @@ Behaviour:
    - Must not collide with any existing sheet name in this workbook.
    - No characters from `:\\/?*[]`.
 3. Rename the worksheet via openpyxl (`ws.title = new_name`).
-4. Update `meta.sections[<key>].sheet_name` to the new name.
+4. Update `meta.sections[*].sheet_name` for **every** section mapped to the
+   renamed sheet — sections can share one sheet (`interface_*` on
+   `Interface Contract`, `ddic_tables_*` on `Tables`), and updating only the
+   named section would break its siblings.
 5. Update any Excel **named ranges** that reference the old sheet name — scan
    `wb.defined_names` and rewrite the sheet portion of each affected range.
 6. Save.
@@ -259,7 +262,9 @@ Behaviour:
 |---|---|
 | `--dry-parse` | not set (skip the dry-parse phase) |
 
-Behaviour — read-only, never modifies the workbook.
+Behaviour — read-only, never modifies the workbook. Phase A runs through
+`references/edit_meta_layout.py validate <workbook>`; Phase B is orchestrated
+by the skill itself (the helper does not shell other skills).
 
 Phase A — **structural reconciliation**:
 
@@ -268,11 +273,16 @@ For every section in the meta Sections table, dispatch on `format`:
 **`format = kv` or `format = tsv`:**
 - The named worksheet exists. (Else FAIL.)
 - The `anchor_named_range` is defined and resolves on that sheet, OR the
-  `anchor_keyword` is found in column A of that sheet. (Else WARN.)
+  `anchor_keyword` is found on that sheet, scanned across **ALL columns**
+  (top-to-bottom, then left-to-right within each row) — the same scan
+  `/sap-docs-extract` performs, NOT just column A (e.g. `ddic_tables_fields`
+  anchors on `FIELDNAME` in column C). (Else WARN.)
 - For every column in the meta Columns table for this section:
   - `source_column_letter` is in range, OR `source_column_header` text is
     found on the anchor row. (Else WARN.)
-  - Required columns have a non-empty header cell. (Else FAIL.)
+  - Required columns have a non-empty header cell (`tsv` only — `kv`
+    sections have no on-sheet header row; their `source_column_header`
+    values are meta-comments like `(col A labels)`). (Else FAIL.)
 
 **`format = image`:**
 - The named worksheet exists. (Else FAIL.)
@@ -361,7 +371,7 @@ powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_
   the Markdown-bootstrap path was removed in favour of a single source of
   truth (the canonical workbook's Meta sheet).
 - The schema for the `(Meta) Layout` sheet is documented in
-  `<SAP_DEV_CORE_SHARED_DIR>/templates/spec_layout_schema.md`. Bump the
+  `<SKILL_DIR>/templates/spec_layout_schema.md`. Bump the
   schema's `version` row when changing it; the skill should refuse to
   operate on workbooks with a schema version it doesn't understand.
 - This skill never touches data sheets' content cells. Only headers, named

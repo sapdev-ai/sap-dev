@@ -142,7 +142,7 @@ If bStillOnInitial Then
     ' into the object's display screen. SE11 leaves us on the initial screen for
     ' "object not found" regardless of status-bar message type or logon language.
     ' Title-based fallback was English-only and produced false-positive EXIST
-    ' under JA logons (e.g. "ABAP ディクショナリ: 初期画面") — violation of
+    ' under JA logons (e.g. "ABAP Dictionary: Initial Screen" rendered in Japanese) -- violation of
     ' language_independence_rules.md (no .Text/title branching).
     If sMsgType = "E" Then
         WScript.Echo "INFO: Object " & UCase(OBJECT_NAME) & " not found. Status: " & sMsgText

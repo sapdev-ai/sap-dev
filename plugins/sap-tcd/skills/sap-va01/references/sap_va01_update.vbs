@@ -20,22 +20,37 @@
 '
 ' Tokens replaced at run time:
 '   %%ORDER_NUMBER%%     Sales order number      e.g. "1659"
-'   %%DEFINITION_FILE%%  Path to field defs      e.g. "{WORK_TEMP}\va02_fields.txt"
+'   %%DEFINITION_FILE%%  Path to field defs      e.g. "{RUN_TEMP}\va02_fields.txt"
+'   %%ALLOW_INCOMPLETE%% "X" = save even when SAP raises the incompletion
+'                        popup; anything else (default: empty) = abort
+'                        UNSAVED with ERROR: INCOMPLETE_DOCUMENT
+'
+' Locale-independent contract (language_independence_rules.md): screens are
+' identified by control ids (TAXI_TABSTRIP_OVERVIEW tabstrip, SPOP button
+' ids), results by sbar MessageType; titles / status texts are echoed for
+' diagnostics only. On success a machine-readable "ORDER: <number>" line is
+' echoed before the final SUCCESS line.
 '
 ' Component IDs recorded from SAP GUI 7.60 on S/4HANA 1909.
 ' =============================================================================
 
 Option Explicit
 
-Const ORDER_NUMBER    = "%%ORDER_NUMBER%%"
-Const DEFINITION_FILE = "%%DEFINITION_FILE%%"
+Const ORDER_NUMBER     = "%%ORDER_NUMBER%%"
+Const DEFINITION_FILE  = "%%DEFINITION_FILE%%"
+Const ALLOW_INCOMPLETE = "%%ALLOW_INCOMPLETE%%"   ' "X" = opt-in incomplete save
 
-Const VKEY_ENTER    = 0
-Const VKEY_F11_SAVE = 11
+Const VKEY_ENTER      = 0
+Const VKEY_F11_SAVE   = 11
+Const VKEY_F12_CANCEL = 12
 Const SESSION_PATH  = "%%SESSION_PATH%%"   ' empty / unsubstituted = use default
 
+' Include shared helpers (attach first; session-lock's pre-unlock sweep
+' reads from oSession).
 ExecuteGlobal CreateObject("Scripting.FileSystemObject") _
     .OpenTextFile("%%ATTACH_LIB_VBS%%", 1).ReadAll()
+ExecuteGlobal CreateObject("Scripting.FileSystemObject") _
+    .OpenTextFile("%%SESSION_LOCK_VBS%%", 1).ReadAll()
 
 ' ------ Helper: Find input field by name within a container (recursive) -----
 Function FindField(oContainer, sFieldName)
@@ -131,12 +146,37 @@ Sub SetFieldValue(oField, sValue)
     End Select
 End Sub
 
+' ------ Helper: abort WITHOUT saving and leave a clean session ---------------
+' Cancels any open popup (F12 commits nothing), releases the session lock
+' (its sweep clears residual modals), then leaves the transaction discarding
+' unsaved input (/n + ID-gated data-loss confirm). Echoes sErrLine last and
+' quits 1. Uses the script-global oSession / wasLocked.
+Sub AbortUnsaved(sErrLine)
+    On Error Resume Next
+    If InStr(oSession.ActiveWindow.Id, "wnd[1]") > 0 Then
+        oSession.findById("wnd[1]").sendVKey VKEY_F12_CANCEL
+        WScript.Sleep 800
+    End If
+    Err.Clear
+    On Error GoTo 0
+    ReleaseSession oSession, wasLocked
+    On Error Resume Next
+    oSession.findById("wnd[0]/tbar[0]/okcd").Text = "/n"
+    oSession.findById("wnd[0]").sendVKey VKEY_ENTER
+    WScript.Sleep 500
+    oSession.findById("wnd[1]/usr/btnSPOP-OPTION1").Press
+    Err.Clear
+    On Error GoTo 0
+    WScript.Echo sErrLine
+    WScript.Quit 1
+End Sub
+
 ' ------ 1. Attach to existing SAP GUI session (via shared attach helper) ----
 Dim oSession
 Set oSession = AttachSapSession(SESSION_PATH)
 
 ' ------ 2. Read definition file ---------------------------------------------
-Dim oFSO, oFile, sLine
+Dim oFSO, sLine
 Set oFSO = CreateObject("Scripting.FileSystemObject")
 
 If Not oFSO.FileExists(DEFINITION_FILE) Then
@@ -144,17 +184,35 @@ If Not oFSO.FileExists(DEFINITION_FILE) Then
     WScript.Quit 1
 End If
 
+' Parse into arrays: section, field name, value
+' NOTE: read via ADODB.Stream with explicit Charset="utf-8". FSO.OpenTextFile
+' decodes bytes with the system code page (cp932 on Japanese Windows, cp1252
+' on Western), which mangles UTF-8 multi-byte sequences -- JA/ZH values would
+' mojibake INTO the saved business record. ADODB.Stream decodes to the
+' Unicode that the SAP GUI controls expect.
 Dim arrSections(), arrFields(), arrValues()
 Dim iCount
 iCount = 0
 
-Set oFile = oFSO.OpenTextFile(DEFINITION_FILE, 1, False)
-Do While Not oFile.AtEndOfStream
-    sLine = oFile.ReadLine
-    If iCount = 0 And Len(sLine) > 0 Then
-        Do While Len(sLine) > 0 And Asc(Left(sLine, 1)) > 127
-            sLine = Mid(sLine, 2)
-        Loop
+Dim oStream, sAll, arrLines, iLine
+Set oStream = CreateObject("ADODB.Stream")
+oStream.Type = 2                    ' adTypeText
+oStream.Charset = "utf-8"
+oStream.Open
+oStream.LoadFromFile DEFINITION_FILE
+sAll = oStream.ReadText
+oStream.Close
+
+sAll = Replace(sAll, vbCrLf, vbLf)
+sAll = Replace(sAll, vbCr,   vbLf)
+arrLines = Split(sAll, vbLf)
+
+For iLine = 0 To UBound(arrLines)
+    sLine = arrLines(iLine)
+    ' Strip a residual BOM character on the first line (belt and braces --
+    ' ADODB.Stream normally consumes the UTF-8 BOM itself).
+    If iLine = 0 And Len(sLine) > 0 Then
+        If Left(sLine, 1) = ChrW(&HFEFF) Then sLine = Mid(sLine, 2)
     End If
 
     sLine = Trim(sLine)
@@ -186,10 +244,19 @@ Do While Not oFile.AtEndOfStream
             End If
         End If
     End If
-Loop
-oFile.Close
+Next
 
 WScript.Echo "INFO: Read " & iCount & " field definitions from file."
+
+' --- Lock the SAP session UI for the VA02 sales-order input + save critical section ---
+' Defence in depth (Rule 7): AppActivate guards external focus stealing;
+' LockSessionUI guards in-session input races. Released after the save.
+Dim wasLocked : wasLocked = TryLockSession(oSession)
+If wasLocked Then
+    WScript.Echo "INFO: Session UI locked for the VA02 sales-order input + save critical section."
+Else
+    WScript.Echo "INFO: LockSessionUI not available on this SAP GUI build; continuing without lock."
+End If
 
 ' ------ 3. Navigate to VA02 -------------------------------------------------
 WScript.Echo "INFO: Navigating to VA02..."
@@ -210,18 +277,26 @@ sStatus = oSession.findById("wnd[0]/sbar").Text
 sStatusType = oSession.findById("wnd[0]/sbar").MessageType
 If sStatusType = "E" Then
     WScript.Echo "ERROR: " & sStatus
+    ReleaseSession oSession, wasLocked
     WScript.Quit 1
 End If
 
-' Verify we reached change screen
-Dim sTitle
-sTitle = oSession.findById("wnd[0]").Text
-If InStr(sTitle, "Change") = 0 Or InStr(sTitle, "Overview") = 0 Then
-    WScript.Echo "ERROR: Failed to reach change screen. Title: " & sTitle
-    WScript.Echo "ERROR: Status: " & sStatus
+' Verify we reached the change overview screen -- locale-independent: probe
+' the overview tabstrip (TAXI_TABSTRIP_OVERVIEW) that the tab/field steps
+' below drive, not the translated window title.
+Dim oOvTab
+Set oOvTab = Nothing
+On Error Resume Next
+Set oOvTab = oSession.findById("wnd[0]/usr/tabsTAXI_TABSTRIP_OVERVIEW")
+Err.Clear
+On Error GoTo 0
+If oOvTab Is Nothing Then
+    WScript.Echo "ERROR: Failed to reach the change overview screen (TAXI_TABSTRIP_OVERVIEW not found)."
+    WScript.Echo "ERROR: Status (diagnostic): " & sStatus
+    ReleaseSession oSession, wasLocked
     WScript.Quit 1
 End If
-WScript.Echo "INFO: Change screen reached: " & sTitle
+WScript.Echo "INFO: Change overview screen reached."
 
 ' ------ 5. Fill header fields -----------------------------------------------
 Dim oUsr, oField, iFld
@@ -300,6 +375,7 @@ If iItemCount > 0 Then
 
     If oTable Is Nothing Then
         WScript.Echo "ERROR: Item table not found."
+        ReleaseSession oSession, wasLocked
         WScript.Quit 1
     End If
 
@@ -373,31 +449,63 @@ WScript.Echo "INFO: Saving sales order..."
 oSession.findById("wnd[0]").sendVKey VKEY_F11_SAVE
 WScript.Sleep 3000
 
-' Handle "Save Incomplete Document" popup
-Dim popCount, oPop, btnSave
+' ------ 8b. Save popups: incomplete-document guard ---------------------------
+' The incompletion popup is identified by its SPOP option-button control ids
+' (usr/btnSPOP-VAROPTION1 = Save, usr/btnSPOP-VAROPTION2 = Edit), never by
+' the translated title. Default: do NOT save an incomplete document -- back
+' out unsaved and fail loud. Opt-in via ALLOW_INCOMPLETE = "X". Any OTHER
+' popup at save time is unexpected: fail loud, never blind-dismiss.
+Dim popCount, btnSaveInc, btnEditInc, bIncompleteSaved, sPopId, sPopTitle
+bIncompleteSaved = False
 For popCount = 1 To 3
+    sPopId = ""
     On Error Resume Next
-    Set oPop = oSession.findById("wnd[1]")
-    If Err.Number <> 0 Then
-        Err.Clear
-        Exit For
-    End If
-    On Error GoTo 0
-
-    WScript.Echo "INFO: Popup: " & oPop.Text
-
-    On Error Resume Next
-    Set btnSave = oPop.findById("usr/btnSPOP-VAROPTION1")
-    If Err.Number = 0 Then
-        btnSave.Press
-    Else
-        Err.Clear
-        oPop.sendVKey VKEY_ENTER
-    End If
+    sPopId = oSession.ActiveWindow.Id
     Err.Clear
     On Error GoTo 0
-    WScript.Sleep 2000
+    If InStr(sPopId, "wnd[1]") = 0 Then Exit For
+
+    sPopTitle = ""
+    On Error Resume Next
+    sPopTitle = oSession.ActiveWindow.Text   ' diagnostic only
+    Err.Clear
+    On Error GoTo 0
+    WScript.Echo "INFO: Popup after save (diagnostic): " & sPopId & " -- " & sPopTitle
+
+    Set btnSaveInc = Nothing
+    On Error Resume Next
+    Set btnSaveInc = oSession.findById("wnd[1]/usr/btnSPOP-VAROPTION1")
+    Err.Clear
+    On Error GoTo 0
+
+    If Not (btnSaveInc Is Nothing) Then
+        If ALLOW_INCOMPLETE = "X" Then
+            WScript.Echo "INFO: Incompletion popup -- saving anyway (ALLOW_INCOMPLETE=X)."
+            btnSaveInc.Press
+            bIncompleteSaved = True
+            WScript.Sleep 2000
+        Else
+            ' Choose the non-save option (Edit) so the popup closes without
+            ' committing, then back out of the transaction unsaved.
+            Set btnEditInc = Nothing
+            On Error Resume Next
+            Set btnEditInc = oSession.findById("wnd[1]/usr/btnSPOP-VAROPTION2")
+            If Not (btnEditInc Is Nothing) Then btnEditInc.Press
+            Err.Clear
+            On Error GoTo 0
+            WScript.Sleep 1000
+            AbortUnsaved "ERROR: INCOMPLETE_DOCUMENT - incompletion log must be resolved" & vbCrLf & _
+                         "       The order was NOT saved. Re-run with --allow-incomplete to save an incomplete document."
+        End If
+    Else
+        AbortUnsaved "ERROR: Unexpected popup while saving: " & sPopId & " -- title (diagnostic): " & sPopTitle & vbCrLf & _
+                     "       Refusing to blind-dismiss. Save state UNKNOWN -- verify via VA03 before retrying."
+    End If
 Next
+
+' --- Release the session UI lock; result check is read-only ---
+ReleaseSession oSession, wasLocked
+If wasLocked Then WScript.Echo "INFO: Session UI lock released."
 
 ' ------ 9. Check result ------------------------------------------------------
 sStatus = oSession.findById("wnd[0]/sbar").Text
@@ -405,23 +513,30 @@ sStatusType = oSession.findById("wnd[0]/sbar").MessageType
 
 WScript.Echo "INFO: Status (" & sStatusType & "): " & sStatus
 
-' Navigate back to clean state
-sTitle = oSession.findById("wnd[0]").Text
-If InStr(sTitle, "Overview") > 0 Then
-    oSession.findById("wnd[0]/tbar[0]/okcd").Text = "/n"
-    oSession.findById("wnd[0]").sendVKey VKEY_ENTER
-    WScript.Sleep 500
-    On Error Resume Next
-    oSession.findById("wnd[1]/usr/btnSPOP-OPTION1").Press
-    Err.Clear
-    On Error GoTo 0
-    WScript.Sleep 500
-End If
+' Navigate back to a clean state unconditionally (locale-independent; the
+' data-loss confirm, if any, is dismissed by its SPOP control id).
+oSession.findById("wnd[0]/tbar[0]/okcd").Text = "/n"
+oSession.findById("wnd[0]").sendVKey VKEY_ENTER
+WScript.Sleep 500
+On Error Resume Next
+oSession.findById("wnd[1]/usr/btnSPOP-OPTION1").Press
+Err.Clear
+On Error GoTo 0
+WScript.Sleep 500
 
 If sStatusType = "E" Or sStatusType = "A" Then
     WScript.Echo "ERROR: Sales order update failed. " & sStatus
     WScript.Quit 1
 End If
 
+' Fail loud on anything but a positive success message: an empty or
+' unrecognized status after Save must never be reported as SUCCESS.
+If sStatusType <> "S" Then
+    WScript.Echo "ERROR: Could not confirm the save -- status bar type is '" & sStatusType & "' (expected S). Message: " & sStatus
+    WScript.Quit 1
+End If
+
+WScript.Echo "ORDER: " & ORDER_NUMBER
+If bIncompleteSaved Then WScript.Echo "WARNING: INCOMPLETE_DOCUMENT_SAVED"
 WScript.Echo "SUCCESS: Sales order " & ORDER_NUMBER & " updated in SAP."
 WScript.Quit 0

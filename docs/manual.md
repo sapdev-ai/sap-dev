@@ -1026,6 +1026,7 @@ p50/p95 duration, top error classes).
 | `sap-doctor` | Read-only environment preflight with a FIX per failure |
 | `sap-transport-request` / `sap-se01` | TR resolution policy / TR create-release-delete |
 | `sap-se38` / `sap-se37` / `sap-se24` / `sap-se11` / `sap-se91` | Deploy programs / FMs / classes / DDIC / message classes |
+| `sap-se21` / `sap-function-group` | Create / check / delete a development package / function group |
 | `sap-se41` / `sap-se51` / `sap-se54` | PF-status / screens / table-maintenance dialog |
 | `sap-se16n` | Query any table → tab-delimited download |
 | `sap-se19` / `sap-cmod` | BAdI implementations / enhancement projects |
@@ -1035,6 +1036,7 @@ p50/p95 duration, top error classes).
 | `sap-transport-readiness` / `sap-impact-analysis` / `sap-enhancement-advisor` / `sap-evidence-pack` | Delivery assurance |
 | `sap-stms` | Import a released TR through the landscape (gated PROD) |
 | `sap-diagnose` + `sap-st22`/`sap-sm13`/`sap-sm12`/`sap-slg1`/`sap-sm37` | Incident triage + readers |
+| `sap-sp02` | Display / export spool output requests |
 | `sap-fix-incident` / `sap-check-fix` | Test-first fix loop / check-and-fix router |
 | `sap-trace` | Analyse a recorded performance trace |
 | `sap-explain-object` / `sap-compare` / `sap-document-object` | Comprehension / cross-system diff / spec from object |

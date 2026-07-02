@@ -38,10 +38,15 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_
 ```
 Set `{WORK_TEMP}` / `{RUN_DIR}` as in `/sap-sm37`.
 
+Set `{RUN_TEMP}` = the per-run scratch dir (`Get-SapRunTemp` mints + creates `{work_dir}\temp\run_<id>`):
+```bash
+powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('RUN_TEMP=' + (Get-SapRunTemp))"
+```
+
 ## Step 0.5 — Start Logging
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{WORK_TEMP}\sap_sm13_run.json" -Skill sap-sm13 -ParamsJson "{}"
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{RUN_TEMP}\sap_sm13_run.json" -Skill sap-sm13 -ParamsJson "{}"
 ```
 
 ## Step 1 — Resolve the Anchor
@@ -64,10 +69,27 @@ C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypas
 ## Step 3 — Report
 Summarize total update records and `failed_updates=` from the `EVIDENCE:` line.
 
+## Remediation is manual (this skill is read-only)
+
+This skill **only reads** update-task records — it has **no `--reprocess` mode**
+and never re-runs a failed update. Reprocessing is a destructive action the
+operator performs by hand:
+
+1. Open **SM13** interactively (`/nSM13`), filter by the reported user / date /
+   window to find the failed update record.
+2. **Confirm with the update owner** whether to repeat or delete it — blindly
+   reprocessing can double-post a document (e.g. a second material movement or
+   accounting record).
+3. Repeat or delete the record manually in SM13 (**Update Records → Repeat
+   Update / Delete**).
+
+`/sap-diagnose` and `/sap-fix-incident` therefore point at these manual steps for
+a stuck update — they do not (and cannot) invoke an automated reprocess here.
+
 ## Final — Log End
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_sm13_run.json" -Status SUCCESS -ExitCode 0
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_sm13_run.json" -Status SUCCESS -ExitCode 0
 ```
 
 ## Known Issues
@@ -76,5 +98,7 @@ powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_
   (same day + user + program/tcode) and business keys, not the tight window.
 - **N+1 VBERROR lookup.** One VBERROR read per VBHDR row; `--top-n` (default 100)
   bounds it. Narrow the window for busy systems.
-- **Reprocess is gated.** Reprocessing an update is a write; this reader never
-  does it — `/sap-diagnose --remediate` proposes the command for confirmation.
+- **Reprocess is manual.** Reprocessing an update is a write; this reader never
+  does it and ships no reprocess mode — see "Remediation is manual" above.
+  `/sap-diagnose --remediate` surfaces the manual SM13 steps rather than an
+  automated reprocess.

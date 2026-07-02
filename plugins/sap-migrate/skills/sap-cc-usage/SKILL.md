@@ -14,7 +14,10 @@ description: |
   to the campaign's `source_profile`.
   SAFETY: if SCMON/SUSG has NO data (monitoring not active), the read returns
   NO_DATA and every object defaults to REMEDIATE — "no monitoring data" is never
-  read as "everything unused". The `conservative` policy never auto-decommissions;
+  read as "everything unused". A join-rate guard (`USAGE_JOIN:`) rejects a usage
+  file that matches zero inventory objects (and, without `--force-low-join`, one
+  matching < 10%) before anything is written — a wrong-system/wrong-format
+  export can never flag the estate unused. The `conservative` policy never auto-decommissions;
   it parks unused objects as REVIEW pending the `/sap-where-used-list`
   reference-safety check. `aggressive` flags all unused objects DECOMMISSION (no
   reference check — use with care). A short observation window emits a WINDOW_WARN
@@ -22,7 +25,7 @@ description: |
   Run after `/sap-cc-inventory`, before `/sap-cc-analyze`.
   Prerequisites: FILE/NONE need no SAP connection; SCMON/UPL need SAP NCo 3.1
   (32-bit) + a saved `source_profile` (or a pinned `/sap-login` connection).
-argument-hint: "--campaign <id> [--usage-source FILE|SCMON|UPL|NONE] [--usage-file <path>] [--source-profile <ref>] [--namespaces Z,Y] [--policy none|conservative|aggressive] [--min-exec 0]"
+argument-hint: "--campaign <id> [--usage-source FILE|SCMON|UPL|NONE] [--usage-file <path>] [--source-profile <ref>] [--namespaces Z,Y] [--policy none|conservative|aggressive] [--min-exec 0] [--force-low-join]"
 ---
 
 # SAP Custom-Code Migration — Usage & Decommission Scoping
@@ -69,12 +72,25 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_
 Set `{WORK_TEMP}` = `{work_dir}\temp` (create if needed) and
 `{CAMPAIGN_DIR}` = `{work_dir}\migrations\{campaign-id}`.
 
+Set `{RUN_TEMP}` = the per-run scratch dir (`Get-SapRunTemp` mints + creates
+`{work_dir}\temp\run_<id>`):
+
+```bash
+powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('RUN_TEMP=' + (Get-SapRunTemp))"
+```
+
+Per the CLAUDE.md "Two-bucket temp model" write this skill's per-run scratch
+(the log state file below) under `{RUN_TEMP}`, never at a fixed name under the
+`{WORK_TEMP}` root.
+
 ---
 
 ## Step 0.5 — Start Logging
 
+State file: `{RUN_TEMP}\sap_cc_usage_run.json`. Best-effort.
+
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{WORK_TEMP}\sap_cc_usage_run.json" -Skill sap-cc-usage -ParamsJson "{}"
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{RUN_TEMP}\sap_cc_usage_run.json" -Skill sap-cc-usage -ParamsJson "{}"
 ```
 
 ---
@@ -103,6 +119,12 @@ powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_
 - `--policy none|conservative|aggressive` — defaults to the brief's
   `scope.decommission_policy`, else `conservative`.
 - `--min-exec <n>` — "used" means `exec_count > n` (default 0).
+- `--force-low-join` — accept a usage file whose **join rate** (share of
+  inventory objects it matches) is below 10%. Without it, such a file is
+  rejected (`USAGE_JOIN_LOW`) because a low join usually means a wrong-system
+  or wrong-format export, and flagging the rest of the estate "unused" from it
+  would be dangerous. A file matching ZERO inventory objects is always rejected
+  (`USAGE_JOIN_ZERO`) — this flag does not override that.
 
 ---
 
@@ -142,7 +164,7 @@ powershell -ExecutionPolicy Bypass -File "<SKILL_DIR>\references\sap_cc_usage.ps
 ```
 
 Append any of `-UsageFile "<path>"`, `-UsageSource FILE|SCMON|UPL|NONE`,
-`-Policy conservative`, `-MinExec 0` to mirror the flags. For the **SCMON/UPL**
+`-Policy conservative`, `-MinExec 0`, `-ForceLowJoin` to mirror the flags. For the **SCMON/UPL**
 path, pass `-UsageSource SCMON -UsageFile {CAMPAIGN_DIR}\usage_scmon_export.tsv`
 (the Step 1.5 export) — the helper ingests it but stamps `usage_source=SCMON` in
 `usage.tsv` for provenance. The scoping helper itself needs no NCo (the RFC work
@@ -161,7 +183,8 @@ is done in Step 1.5).
 ## Step 3 — Interpret the Output
 
 ```
-USAGE: source=<src> policy=<p> min_exec=<n> matched=<n> file=<path>
+USAGE_JOIN: matched=<j> inventory=<n> rate=<pct>%
+USAGE: source=<src> policy=<p> min_exec=<n> matched=<j> file=<path>
 USED: <n> | UNUSED: <n> | UNKNOWN: <n>
 DECISION: REMEDIATE | COUNT: <n>
 DECISION: DECOMMISSION | COUNT: <n>
@@ -171,13 +194,23 @@ SCOPE: wrote <path>
 STATUS: OK | EMPTY | ERROR
 ```
 
+`USAGE_JOIN:` is the **join-rate guard** (always printed): `matched` counts the
+**inventory objects the usage data actually matched** (join hits — NOT
+usage-file rows; the `USAGE:` line's `matched=` is the same join-hit count).
+When a usage file was ingested and `matched=0`, the helper stops with
+`STATUS: ERROR USAGE_JOIN_ZERO (...)` and exit `2` **without writing anything**
+— a wrong-system/wrong-format export must never mark the estate unused. A join
+rate below 10% likewise stops with `STATUS: ERROR USAGE_JOIN_LOW (...)` unless
+`-ForceLowJoin` is passed.
+
 | Exit | Meaning |
 |---|---|
 | `0` | `STATUS: OK` — `usage.tsv` + `scope.tsv` written, `state.tsv` advanced. |
 | `1` | `STATUS: EMPTY` — inventory empty/missing (run `/sap-cc-inventory`). |
-| `2` | `STATUS: ERROR` — bad workspace / usage file / policy (see the `ERROR:` line). |
+| `2` | `STATUS: ERROR` — bad workspace / usage file / policy, **or the join guard fired** (`USAGE_JOIN_ZERO` / `USAGE_JOIN_LOW`: nothing written — verify the usage export comes from THIS campaign's source system, or pass `--force-low-join` only after confirming a genuinely small overlap). |
 
-Report the REMEDIATE / DECOMMISSION / REVIEW split and the savings %.
+Report the REMEDIATE / DECOMMISSION / REVIEW split, the join rate, and the
+savings %.
 
 ---
 
@@ -241,6 +274,10 @@ After any promotions, re-run `/sap-cc-campaign report` to refresh the dashboard.
   export lists sub-objects (method/FM names), parent usage may be under-counted
   — which errs SAFE (more REVIEW, never wrongful decommission). Rolled-up
   top-level exports give the best results.
+- **Join-rate guard.** A usage file matching zero inventory objects is rejected
+  (`USAGE_JOIN_ZERO`), and a join rate < 10% requires `--force-low-join`
+  (`USAGE_JOIN_LOW`) — both before any file is written. This blocks the
+  wrong-system/wrong-format export from silently flagging the estate unused.
 - **No downgrade.** Objects already past SCOPED keep their state; the decision
   is still updated and re-running is safe.
 
@@ -249,7 +286,7 @@ After any promotions, re-run `/sap-cc-campaign report` to refresh the dashboard.
 ## Final — Log End
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_cc_usage_run.json" -Status SUCCESS -ExitCode 0
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_cc_usage_run.json" -Status SUCCESS -ExitCode 0
 ```
 
 For exit `1` use `-Status SKIPPED -ExitCode 1 -ErrorClass CC_USAGE_NO_INVENTORY`;

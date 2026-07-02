@@ -88,12 +88,12 @@ Per the CLAUDE.md "Two-bucket temp model" write this skill's generated scratch (
 ## Step 0.5 — Start Logging
 
 Start a structured log run. The helper persists `run_id` in a state file
-(`{WORK_TEMP}\sap_check_fix_run.json`) so subsequent steps and the final
+(`{RUN_TEMP}\sap_check_fix_run.json`) so subsequent steps and the final
 log-end call append to the same run. Best-effort: silently no-ops if
 `userConfig.log_enabled=false` or the lib can't load.
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{WORK_TEMP}\sap_check_fix_run.json" -Skill sap-check-fix -ParamsJson "{\"request\":\"<REQUEST>\"}"
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{RUN_TEMP}\sap_check_fix_run.json" -Skill sap-check-fix -ParamsJson "{\"request\":\"<REQUEST>\"}"
 ```
 
 ---
@@ -198,20 +198,31 @@ Each check VBScript prints `EXIST` or `NOT_EXIST` (or `ERROR:`) on the last line
 
 ### Probe driver
 
-For each step (using SE38 as the example), generate a per-probe PS1, run it, then run cscript. Use the absolute path of the sibling skill's `references/` directory by going up 1 level from `<SKILL_DIR>` to the `skills/` folder.
+For each step (using SE38 as the example), write a per-probe PS1 to `{RUN_TEMP}`, run it (it materializes the `.vbs`), then run the `.vbs` with 32-bit cscript. Use the absolute path of the sibling skill's `references/` directory by going up 1 level from `<SKILL_DIR>` to the `skills/` folder.
 
+The sibling `sap_*_check.vbs` templates all declare `Const SESSION_PATH = "%%SESSION_PATH%%"` and `ExecuteGlobal`-include `%%ATTACH_LIB_VBS%%` (parallel-safe attach). **Both tokens MUST be substituted** — leaving `%%ATTACH_LIB_VBS%%` in place makes the FSO include try to open a file literally named `%%ATTACH_LIB_VBS%%` and the probe crashes before it reaches SAP.
+
+Write `{RUN_TEMP}\sap_check_fix_probe_se38.ps1`:
 ```powershell
 # Example for probe 1 (SE38):
 $content = [System.IO.File]::ReadAllText('<SKILL_DIR>\..\sap-se38\references\sap_se38_check.vbs', [System.Text.Encoding]::UTF8)
 $content = $content -replace '%%PROGRAM_NAME%%','THE_OBJECT_NAME'
+# Session-attach plumbing (mandatory — the check.vbs includes the attach lib).
+$content = $content -replace '%%SESSION_PATH%%', ''
+$content = $content -replace '%%ATTACH_LIB_VBS%%', '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 [System.IO.File]::WriteAllText('{RUN_TEMP}\sap_check_fix_probe_se38.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
+Write-Host 'Done'
 ```
 
-Then:
+Then run the PS1 (writes the VBS) and execute the VBS:
 ```bash
 powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_check_fix_probe_se38.ps1"
-cscript //NoLogo "{RUN_TEMP}\sap_check_fix_probe_se38.vbs"
+C:/Windows/SysWOW64/cscript.exe //NoLogo "{RUN_TEMP}\sap_check_fix_probe_se38.vbs"
 ```
+
+For probes 2–6 use the sibling template and its own token(s) (SE37 `%%FM_NAME%%`, SE24 `%%CLASS_NAME%%`, SE11 `%%OBJECT_TYPE%%` + `%%OBJECT_NAME%%`) plus the same two session-attach substitutions above, writing to `sap_check_fix_probe_<se37|se24|se11>.ps1` / `.vbs`.
 
 Token names per probe:
 
@@ -276,13 +287,13 @@ Log the run-end record. Best-effort: silently no-ops if logging disabled.
 On success:
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_check_fix_run.json" -Status SUCCESS -ExitCode 0
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_check_fix_run.json" -Status SUCCESS -ExitCode 0
 ```
 
 On failure (substitute `<CLASS>` and short message):
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_check_fix_run.json" -Status FAILED -ExitCode 1 -ErrorClass <CLASS> -ErrorMsg "<short>"
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_check_fix_run.json" -Status FAILED -ExitCode 1 -ErrorClass <CLASS> -ErrorMsg "<short>"
 ```
 
 Suggested `<CLASS>`: `CHECK_FIX_FAILED`, `DISPATCH_FAILED`.

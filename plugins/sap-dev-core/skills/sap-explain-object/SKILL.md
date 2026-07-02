@@ -64,12 +64,12 @@ Set `{RUN_TEMP}` = the per-run scratch dir (`Get-SapRunTemp` mints + creates `{w
 ```bash
 powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('RUN_TEMP=' + (Get-SapRunTemp))"
 ```
-Write this run's generated scratch (`explain_dl.vbs`) under `{RUN_TEMP}`; keep `{WORK_TEMP}` (base) for `{OUT}`, the log state, and `Get-SapCurrentSessionPath -WorkTemp`.
+Write this run's generated scratch (`explain_dl.vbs`) and the `_run.json` log state under `{RUN_TEMP}`; keep `{WORK_TEMP}` (base) for `{OUT}` and `Get-SapCurrentSessionPath -WorkTemp`.
 
 ## Step 0.5 — Start Logging (best-effort)
 
 ```bash
-powershell -NoProfile -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{WORK_TEMP}\sap_explain_object_run.json" -Skill sap-explain-object -ParamsJson "{\"args\":\"{RAW_ARGS}\"}"
+powershell -NoProfile -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{RUN_TEMP}\sap_explain_object_run.json" -Skill sap-explain-object -ParamsJson "{\"args\":\"{RAW_ARGS}\"}"
 ```
 The `-StateFile` carries the `run_id` between this start and the Final end event — pass the same path to both; no `RUN_ID=` capture is needed.
 
@@ -136,6 +136,7 @@ $vbs = ([System.IO.File]::ReadAllText("$skillSe24\references\sap_se24_check_and_
   Replace('%%CLASS_NAME%%','{OBJECT}').
   Replace('%%OUTPUT_FILE%%','{OUT}\source.txt').
   Replace('%%SESSION_PATH%%','').
+  Replace('%%SYNTAX_CHECK_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_syntax_check_lib.vbs').
   Replace('%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs')
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
@@ -185,11 +186,11 @@ Read `{OUT}\map.json` and `{OUT}\source.txt`. Write `{OUT}\dossier.md`:
 
 ## Step 8 — Report & Clean Up
 Print the `{OUT}` path and a 5-line summary. Leave `{OUT}` artifacts in place
-(read-only deliverable). Remove only scratch VBS in `{WORK_TEMP}`.
+(read-only deliverable). Remove only scratch VBS in `{RUN_TEMP}`.
 
 ## Final — Log End
 ```bash
-powershell -NoProfile -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_explain_object_run.json" -Status SUCCESS -ExitCode 0
+powershell -NoProfile -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_explain_object_run.json" -Status SUCCESS -ExitCode 0
 ```
 (On failure use `-Status FAILED -ExitCode 1`; for the not-found path add `-ErrorClass OBJECT_NOT_FOUND`. `-Status` must be one of `SUCCESS|FAILED|SKIPPED|EXISTED|ABANDONED`.)
 

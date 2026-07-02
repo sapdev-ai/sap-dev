@@ -54,7 +54,7 @@ Stage 4b: ATC      /nATC       (optional) tree node 14 → drill into the
                                 always triggered by --drill. Outputs
                                 <OUTPUT_PATH>.findings.tsv with one row
                                 per finding: PRIO | CHECK_ID | CHECK_TITLE
-                                | OBJECT | LINE | MSG_TEXT.
+                                | OBJ_NAME | OBJ_TYPE | MSG_TEXT | LINE.
    |
    v
 Final PASS / FAIL emitted with the findings.tsv path when available.
@@ -71,6 +71,8 @@ Final PASS / FAIL emitted with the findings.tsv path when available.
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/sap_gui_security_handling.md` | 4 / 4b | SAP GUI Security dialog handling — the Stage-4 result **download** and Stage-4b findings-TSV **export** are SAP-GUI-side file IO, so they can raise the modal "SAP GUI Security" dialog (which suspends the Scripting API and hangs cscript). Pre-check + OS-level watcher wrap both downloads. |
 | `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_gui_security_precheck.ps1` | 4 / 4b | Read-only allow-list pre-check (`saprules.xml`) — `ALLOWED` (exit 0) / `NOT_COVERED` (exit 1). |
 | `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_gui_security_sidecar.ps1` | 4 / 4b | OS-level (Win32) watcher that auto-dismisses the SAP GUI Security dialog (ticks Remember + clicks Allow). Launched as a background process before each download. |
+| `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_object_resolver.ps1` | 2b | Pre-flight existence check of the target (CLI mode, 32-bit PowerShell; emits `STATUS: RESOLVED\|NOT_FOUND\|AMBIGUOUS\|UNKNOWN_TYPE\|RFC_ERROR`). `NOT_FOUND` aborts the skill with `ATC_EMPTY_SCOPE` before any scope is built. |
+| `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_artifact_lib.ps1` | 6d | `New-SapScopeKey` / `Register-SapArtifact` — register the result TXT + findings TSV so `/sap-evidence-pack` collects them under the object's scope (Kind `atc_findings`). Best-effort; never changes the gate verdict. |
 | `<SKILL_DIR>/references/sap_sci_create_object_set.vbs` | 1 | Define the scope — programs / classes / FMs / interfaces / FUGRs |
 | `<SKILL_DIR>/references/sap_atc_create_run_series.vbs` | 2 | Schedule + trigger the ATC run |
 | `<SKILL_DIR>/references/sap_atc_check_run_status.vbs` | 3 | Read run state from the Monitor (read-only; safe to call in a poll loop) |
@@ -165,6 +167,42 @@ Run `/sap-login` first if no session is active.
 
 ---
 
+## Step 2b — Pre-flight: Resolve the Target Object (empty-scope guard)
+
+A typo'd / nonexistent `OBJECT_NAME` produces an EMPTY object set — the ATC
+run then COMPLETES with `P1=P2=P3=0` and would false-PASS the gate. Resolve
+the target via the shared object resolver BEFORE building any scope. CLI mode,
+32-bit PowerShell (SAP NCo is 32-bit); creds fall back to the pinned
+connection profile, so `-Token` alone works on a logged-in session:
+
+```bash
+C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_object_resolver.ps1" -Token "<KIND> <OBJECT_NAME>"
+```
+
+`<KIND>` mapping from `OBJECT_TYPE`: `PROGRAM`→`PROGRAM`, `CLASS`→`CLASS`,
+`INTERFACE`→`INTERFACE`, `FUGR`→`FUGR`, `TYPEGROUP`→`TYPEGROUP`. For `DDIC` /
+`WDYN` the resolver has no kind mapping — skip this pre-flight with a
+`WARN: existence unverified (no resolver mapping for <TYPE>)` and rely on the
+Stage-4 empty-scope gate (Step 6) instead.
+
+Read the `STATUS:` line of the output:
+
+- `STATUS: RESOLVED` → proceed to Stage 1. Remember this for the Stage-4 gate.
+- `STATUS: NOT_FOUND` → **ABORT the skill** — do not create the object set or
+  the run series. Report
+  `ERROR: ATC_EMPTY_SCOPE - <TYPE> <NAME> does not exist on the connected
+  system; an ATC run on a nonexistent object completes with 0/0/0 findings and
+  would false-PASS the gate.` Log-end with
+  `-Status FAILED -ExitCode 1 -ErrorClass ATC_EMPTY_SCOPE`.
+- `STATUS: RFC_ERROR` (or the resolver cannot run at all — no NCo, RFC-off
+  host) → emit `WARN: object existence UNVERIFIED (resolver: <status>)` and
+  continue; the Stage-4 gate then must NOT accept a 0/0/0 result as PASS
+  without the manual checked-object count (Step 6).
+- `STATUS: AMBIGUOUS` / `UNKNOWN_TYPE` → surface the resolver output and ask
+  the operator before proceeding.
+
+---
+
 ## Step 3 — Stage 1: Create Object Set (SCI)
 
 Fill `sap_sci_create_object_set.vbs` and run it. Tokens:
@@ -204,7 +242,14 @@ $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 > Explicit generator blocks for each stage are spelled out below
 > (Steps 4, 5, 6) so each stage is self-contained.
 
-Run via cscript. Expected last line:
+Run via 32-bit cscript (bare `cscript` resolves to the 64-bit host, which
+cannot bind the SAP GUI Scripting COM objects):
+
+```bash
+C:/Windows/SysWOW64/cscript.exe //NoLogo {RUN_TEMP}\sap_atc_stage1_run.vbs
+```
+
+Expected last line:
 `SUCCESS: Object set <NAME> created/updated with <TYPE> <NAME>.`
 
 If it fails with "Object set <NAME> already exists" or similar, that's
@@ -252,10 +297,21 @@ $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 [System.IO.File]::WriteAllText('{RUN_TEMP}\sap_atc_stage2_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 ```
 
-Run via cscript. Expected lines:
+Run via 32-bit cscript:
+
+```bash
+C:/Windows/SysWOW64/cscript.exe //NoLogo {RUN_TEMP}\sap_atc_stage2_run.vbs
+```
+
+Expected lines:
 `VARIANT: <S4HANA_READINESS | SYSTEM_DEFAULT>` (which variant the run will use)
 `PROVIDER: <provider-id | LOCAL>` (LOCAL = this system's own code; an id = central/remote)
 `SUCCESS: Run series <NAME> scheduled (object set <SET>, variant <ID>, provider <P>).`
+
+If Stage 2 instead ends with `ERROR: RUN_SERIES_NOT_FOUND ...` (exit 1), the
+freshly-saved series could not be matched on the node-12 grid and **nothing was
+executed** (the old last-row fallback that could fire someone else's series is
+removed). Re-record the grid per the error text; do not retry blindly.
 
 Confirm the `VARIANT:` line reports the variant you intended — if you passed
 `--variant=S4HANA_READINESS` but it reads `SYSTEM_DEFAULT`, the token was not
@@ -301,7 +357,9 @@ $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 
 Then loop:
 
-1. Run `{RUN_TEMP}\sap_atc_stage3_run.vbs` via cscript.
+1. Run `{RUN_TEMP}\sap_atc_stage3_run.vbs` via 32-bit cscript
+   (`C:/Windows/SysWOW64/cscript.exe //NoLogo` — never bare `cscript`, which
+   resolves to the 64-bit host and cannot bind the SAP GUI COM objects).
 2. Parse the last line:
    - `STATE=COMPLETED` → break, proceed to Stage 4.
    - `STATE=RUNNING` → wait `--poll-interval` seconds, retry.
@@ -312,8 +370,11 @@ Then loop:
    - `STATE=UNKNOWN:<raw>` → log and retry once; if it persists,
      fall back to "treat as RUNNING" until `--max-wait` elapses.
 
-Hard cap at `--max-wait` seconds (default 600). On timeout, abort
-with `ERROR: ATC run <NAME> did not complete within <N>s`.
+Hard cap at `--max-wait` seconds (default 600). On timeout, **ABORT** with
+`ERROR: ATC_POLL_TIMEOUT - ATC run <NAME> did not complete within <N>s` and
+log-end `-Status FAILED -ExitCode 1 -ErrorClass ATC_POLL_TIMEOUT`. Never fall
+through to Stage 4 — reading Manage Results for an unfinished run yields bogus
+0/0/0 counts.
 
 Implementation hint for the orchestrator (PowerShell):
 
@@ -321,15 +382,34 @@ Implementation hint for the orchestrator (PowerShell):
 $pollInterval = 15
 $maxWait      = 600
 $elapsed      = 0
-do {
-  $out = & cscript //NoLogo "{RUN_TEMP}\sap_atc_stage3_run.vbs"
-  $state = ($out -match '^STATE=(.+)$') | Out-Null; $Matches[1]
+$notFound     = 0
+while ($true) {
+  $out = & 'C:/Windows/SysWOW64/cscript.exe' //NoLogo '{RUN_TEMP}\sap_atc_stage3_run.vbs'
+  # $out is an ARRAY of lines; -match against an array never fills $Matches.
+  # Regex each single line and keep the last STATE= hit.
+  $state = ''
+  foreach ($line in @($out)) {
+    if ($line -match '^STATE=(.+)$') { $state = $Matches[1].Trim() }
+  }
   if ($state -eq 'COMPLETED') { break }
-  if ($state -eq 'FAILED')    { throw "ATC run failed" }
+  if ($state -eq 'FAILED')    { throw 'ERROR: ATC run failed (STATE=FAILED)' }
+  if ($state -eq 'NOT_FOUND') {
+    $notFound++
+    if ($notFound -ge 3) { throw "ERROR: run series not visible in the Run Monitor after $notFound polls" }
+  } else { $notFound = 0 }
+  if ($elapsed -ge $maxWait) {
+    throw "ERROR: ATC_POLL_TIMEOUT - not COMPLETED after ${maxWait}s (last STATE=$state); do NOT proceed to Stage 4"
+  }
   Start-Sleep -Seconds $pollInterval
   $elapsed += $pollInterval
-} while ($elapsed -lt $maxWait)
+}
+Write-Output "STATE=COMPLETED after ${elapsed}s"
 ```
+
+The `throw`s abort the block with a non-zero exit — treat any of them as a
+hard stop for the whole skill (log-end `ATC_POLL_TIMEOUT` on the timeout path,
+`ATC_RUN_SCHEDULE_FAILED` when the run never appeared); Stage 4 runs ONLY
+after the `STATE=COMPLETED` line.
 
 Don't echo the polling output to chat each iteration — that's noisy.
 Suppress and only show on state-change or timeout.
@@ -392,10 +472,34 @@ Parse the output for these lines:
 
 ```
 PRIORITY_COUNTS: P1=<n> P2=<n> P3=<n>
+COUNT_PLNERR=<n|NA>                ← planning-error count from the result row (NA = column unreadable)
 FILE: <path> (<size> bytes)        ← only on successful auto-download
 SAVE_HINT: <diagnostic>            ← only when auto-download skipped
 SUCCESS: Read result for run series <NAME>.
 ```
+
+**Parse failure is a FAIL, not 0/0/0.** When the Priority columns cannot be
+read, the VBS exits 1 with `ERROR: ATC_RESULT_PARSE_FAILED - priority columns
+not found (release/locale layout drift; re-record per SKILL.md)`. Report the
+gate as FAIL and log-end `-ErrorClass ATC_RESULT_PARSE_FAILED` — never treat
+unparsed counts as 0/0/0.
+
+**Fail-loud pre-checks (apply BEFORE the priority table):**
+
+1. `COUNT_PLNERR` > 0 → **FAIL** with `ERROR: ATC_PLAN_ERRORS - <n> object(s)
+   could not be planned/checked; the finding counts are not trustworthy`
+   (log-end `-ErrorClass ATC_PLAN_ERRORS`). Never PASS, regardless of
+   P1/P2/P3.
+2. `P1=0 P2=0 P3=0` is only a PASS when the run demonstrably checked >= 1
+   object. Evidence, in order of preference:
+   - Step 2b resolved the target (`STATUS: RESOLVED`) **and**
+     `COUNT_PLNERR=0` → accept the 0/0/0 as a genuinely clean PASS.
+   - otherwise (`COUNT_PLNERR=NA`, or Step 2b was skipped/UNVERIFIED — DDIC/
+     WDYN target, RFC-off host) → read the checked-object count manually:
+     open ATC > Manage Results, drill into the series row; the result display
+     header lists the objects checked. Only a count >= 1 makes the 0/0/0 a
+     PASS. **0 findings with 0 objects checked → FAIL** with
+     `ERROR: ATC_EMPTY_SCOPE` (log-end `-ErrorClass ATC_EMPTY_SCOPE`).
 
 Gate logic:
 
@@ -488,9 +592,11 @@ SUCCESS: Drilled findings for run series <NAME>.
 
 ### 6b.2 — Interpret + report
 
-The findings TSV has the header row:
+The findings TSV has the header row (matches `colHeaders` in
+`sap_atc_drill_findings.vbs`; `LINE` is blank on S/4HANA 1909 — the outer
+findings grid has no line-number column there):
 ```
-PRIO	CHECK_ID	CHECK_TITLE	OBJECT	LINE	MSG_TEXT
+PRIO	CHECK_ID	CHECK_TITLE	OBJ_NAME	OBJ_TYPE	MSG_TEXT	LINE
 ```
 
 When the gate FAILED, parse this TSV and surface the offending findings
@@ -538,6 +644,47 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\s
 `-SourceFile` is optional but improves attribution when the source the run
 checked is on disk (e.g. straight after `/sap-gen-abap` + deploy). Report
 `STATUS: RECORDED added=<n> updated=<n> skipped=<n>` as an INFO note.
+
+---
+
+## Step 6d — Register Artifacts for `/sap-evidence-pack` (best-effort)
+
+Register the ATC outputs into the artifact index so `/sap-evidence-pack` collects
+them by scope / ticket / date without scraping the filesystem — otherwise the
+audit pack permanently reports `atc_findings` as missing evidence. Register the
+result TXT (Stage 4 `--save-to`) and, when Stage 4b ran, the findings TSV
+(`<save-to>.findings.tsv`), both under Kind **`atc_findings`** (the name
+`/sap-evidence-pack` expects — see its `-Expected` list). **Best-effort: wrap in
+try/catch and NEVER change the gate verdict if registration fails** (mirrors
+`/sap-review-abap` Step 6).
+
+Run as one PowerShell block (pure file I/O — no SAP/RFC). Substitute
+`{TADIR_OBJ}` = the TADIR object code for `OBJECT_TYPE`
+(`PROGRAM`→`PROG`, `CLASS`→`CLAS`, `INTERFACE`→`INTF`, `FUGR`→`FUGR`,
+`TYPEGROUP`→`TYPE`, `DDIC`/`WDYN`→`` empty), `{OBJECT_NAME}`, the gate
+`{VERDICT}` (`PASS`/`FAIL` from the `GATE_VERDICT:` line), the `{RESULT_TXT}`
+(Stage-4 `--save-to`) path, the `{FINDINGS_TSV}` path (or empty when Stage 4b did
+not run), and `{TICKET}` (empty unless the operator supplied one):
+
+```powershell
+$shared = '<SAP_DEV_CORE_SHARED_DIR>\scripts'
+try {
+  . "$shared\sap_artifact_lib.ps1"
+  $obj   = [pscustomobject]@{ pgmid = 'R3TR'; object = '{TADIR_OBJ}'; obj_name = '{OBJECT_NAME}' }
+  # Scope key (falls back to a plain slug if the object code is empty, e.g. DDIC).
+  $scope = if ('{TADIR_OBJ}') { New-SapScopeKey -Resolved $obj } else { "OBJ_{OBJECT_NAME}" }
+  $verdict = if ('{VERDICT}' -eq 'PASS') { 'GO' } elseif ('{VERDICT}' -eq 'FAIL') { 'NO_GO' } else { '' }
+  if (Test-Path -LiteralPath '{RESULT_TXT}') {
+    Register-SapArtifact -Skill 'sap-atc' -ScopeKey $scope -Kind 'atc_findings' -Format 'txt' `
+        -Path '{RESULT_TXT}' -Object $obj -Verdict $verdict -Ticket '{TICKET}' | Out-Null
+  }
+  if ('{FINDINGS_TSV}' -and (Test-Path -LiteralPath '{FINDINGS_TSV}')) {
+    Register-SapArtifact -Skill 'sap-atc' -ScopeKey $scope -Kind 'atc_findings' -Format 'tsv' `
+        -Path '{FINDINGS_TSV}' -Object $obj -Verdict $verdict -Ticket '{TICKET}' | Out-Null
+  }
+  Write-Output "ARTIFACTS: registered scope=$scope"
+} catch { Write-Output "WARN: artifact registration skipped ($($_.Exception.Message))" }
+```
 
 ---
 
@@ -597,10 +744,17 @@ Best-effort: if you cannot read the counts, omit `-MetricsJson` — the run stil
 logs and the KPI degrades to `n/a`, never a wrong value.
 
 For other failure modes:
+- `-ErrorClass ATC_EMPTY_SCOPE` (Step 2b pre-flight `NOT_FOUND`, or a 0/0/0
+  result with 0 objects checked)
 - `-ErrorClass ATC_OBJ_SET_FAILED` (Stage 1 broke)
-- `-ErrorClass ATC_RUN_SCHEDULE_FAILED` (Stage 2 broke)
-- `-ErrorClass ATC_RUN_TIMEOUT` (Stage 3 ran out of wait time)
-- `-ErrorClass ATC_RESULT_PARSE_FAILED` (Stage 4 couldn't read counts)
+- `-ErrorClass ATC_RUN_SCHEDULE_FAILED` (Stage 2 broke, incl.
+  `RUN_SERIES_NOT_FOUND`)
+- `-ErrorClass ATC_POLL_TIMEOUT` (Stage 3 ran out of wait time — the Step-5
+  loop aborts; Stage 4 never runs)
+- `-ErrorClass ATC_RESULT_PARSE_FAILED` (Stage 4 couldn't read the Priority
+  counts — the VBS exits 1; never reported as 0/0/0)
+- `-ErrorClass ATC_PLAN_ERRORS` (`COUNT_PLNERR` > 0 — finding counts
+  untrustworthy)
 
 ---
 
@@ -667,8 +821,10 @@ the correct column is matched without relying on the invalid candidates raising
 an error first (on the tested kernel an unknown column id raises `-2147024809`,
 but that behaviour is not guaranteed across releases/locales — a build that
 returns `""` instead would never trip the fallthrough). Live repro confirmed the
-match lands on the right row via column `NAME` (e.g. row 80) instead of the
-last-row heuristic.
+match lands on the right row via column `NAME` (e.g. row 80). The last-row
+fallback itself is removed (2026-07-02): when no candidate column matches,
+Stage 2 aborts with `ERROR: RUN_SERIES_NOT_FOUND` (exit 1) without executing
+anything.
 
 **On a different release:** if Stage 2 errors with "check-variant input field
 could not be located", record the config screen via `/sap-gui-probe` or

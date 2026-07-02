@@ -36,7 +36,7 @@ function Finish([string]$status) {
     [void]$sb.AppendLine("TCODE`tDYNAME`tDYNUMB`tMSGTYP`tMSGSPRA`tMSGID`tMSGNR`tMSGV1`tMSGV2`tMSGV3`tMSGV4`tENV`tFLDNAME")
     foreach ($l in $global:resultLines) { if ($l -ne "") { [void]$sb.AppendLine($l) } }
     [System.IO.File]::WriteAllText($RESULT_FILE, $sb.ToString(), [System.Text.Encoding]::UTF8)
-    Write-Host $status
+    Write-Host ("STATUS: " + $status)
 }
 
 . "%%RFC_LIB_PS1%%"
@@ -72,6 +72,18 @@ foreach ($line in Get-Content -LiteralPath $BDC_FILE) {
 if ($bdcRows.Count -eq 0) { Finish "ERROR: No valid BDC records found in: $BDC_FILE"; exit 1 }
 Write-Host ("INFO: Parsed " + $bdcRows.Count + " BDC rows from $BDC_FILE")
 
+# Guard: refuse to post BDC data that still carries unsubstituted %%TOKENS%%
+# (e.g. bdc_recording_SE21.txt ships %%PACKAGE%% / %%DESCRIPTION%% /
+# %%TRANSPORT%% placeholders). Running it raw would type the literal token
+# text into SAP fields. Substitute into a {RUN_TEMP} copy first (SKILL.md
+# Step 2.5); this guard is the backstop.
+$tokenRows = @($bdcRows | Where-Object { $_.Program.Contains("%%") -or $_.Fnam.Contains("%%") -or $_.Fval.Contains("%%") })
+if ($tokenRows.Count -gt 0) {
+    foreach ($t in $tokenRows) { Write-Host ("TOKEN: " + $t.Fnam + " = " + $t.Fval) }
+    Finish "ERROR: unsubstituted %%tokens%% in BDC data ($($tokenRows.Count) row(s)) - substitute them into a {RUN_TEMP} copy before running (SKILL.md Step 2.5)."
+    exit 1
+}
+
 try {
     $fn = $g_dest.Repository.CreateFunction("ABAP4_CALL_TRANSACTION")
     $fn.SetValue("TCODE",       $TCODE)
@@ -98,16 +110,39 @@ try {
     exit 1
 }
 
-# Collect messages
+# Collect messages and decide the verdict on MSGTYP codes ONLY
+# (locale-independent -- never on translated message text):
+#   any 'E' or 'A' row            -> ERROR + exit 1
+#   no E/A but at least one 'W'   -> SUCCESS_WITH_WARNINGS
+#   otherwise                     -> SUCCESS
 $msgs = $fn.GetTable("MESS_TAB")
 $msgCount = $msgs.RowCount
+$errCount  = 0
+$warnCount = 0
 for ($i = 0; $i -lt $msgCount; $i++) {
     $msgs.CurrentIndex = $i
     $cols = @("TCODE","DYNAME","DYNUMB","MSGTYP","MSGSPRA","MSGID","MSGNR","MSGV1","MSGV2","MSGV3","MSGV4","ENV","FLDNAME")
     $vals = $cols | ForEach-Object { try { $msgs.GetString($_) } catch { "" } }
     Add-Line ($vals -join "`t")
+    $typ = ("" + $vals[3]).Trim().ToUpperInvariant()
+    if ($typ -eq "E" -or $typ -eq "A") {
+        $errCount++
+        $txt = @($vals[7], $vals[8], $vals[9], $vals[10] | Where-Object { ("" + $_).Trim() -ne "" }) -join " | "
+        Write-Host ("MSG: TYPE=" + $typ + " ID=" + ("" + $vals[5]).Trim() + " NUMBER=" + ("" + $vals[6]).Trim() + " TEXT=" + $txt)
+    } elseif ($typ -eq "W") {
+        $warnCount++
+    }
 }
 
 try { [SAP.Middleware.Connector.RfcDestinationManager]::RemoveDestination($g_rfcParams) | Out-Null } catch {}
-Finish "SUCCESS: Transaction $TCODE executed. $msgCount message(s)."
-exit 0
+
+if ($errCount -gt 0) {
+    Finish "ERROR: Transaction $TCODE returned $errCount E/A message(s) in MESS_TAB (of $msgCount total) - the posting failed."
+    exit 1
+} elseif ($warnCount -gt 0) {
+    Finish "SUCCESS_WITH_WARNINGS: Transaction $TCODE executed. $msgCount message(s), $warnCount warning(s)."
+    exit 0
+} else {
+    Finish "SUCCESS: Transaction $TCODE executed. $msgCount message(s)."
+    exit 0
+}

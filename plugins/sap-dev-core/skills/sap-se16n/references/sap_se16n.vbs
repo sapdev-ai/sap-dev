@@ -334,9 +334,23 @@ Err.Clear
 On Error GoTo 0
 
 If Not hasResult Then
+    ' Distinguish a genuine EMPTY RESULT SET from a QUERY FAILURE. Both leave no
+    ' result ALV, but an authorization failure / invalid-or-forbidden table / any
+    ' sbar error is NOT "0 rows" -- callers (e.g. /sap-transport-request Step 1b,
+    ' /sap-se01) must not read an auth failure as "row absent". Branch on the
+    ' locale-independent sbar MessageType (E/A), never on the text.
     WScript.Echo "INFO: No result ALV. Status bar = [" & sStatusType & "] " & sStatus
-    ' Write a marker file so caller can detect cleanly
     Dim oOut
+    If sStatusType = "E" Or sStatusType = "A" Then
+        ' Query failed -- marker + non-zero exit so the caller fails closed.
+        Set oOut = oFSO.CreateTextFile(OUTPUT_FILE, True, False)
+        oOut.WriteLine "QUERY_FAILED" & vbTab & sStatus
+        oOut.Close
+        WScript.Echo "ERROR: SE16N query failed [" & sStatusType & "]: " & sStatus
+        WScript.Echo "QUERY_FAILED"
+        WScript.Quit 1
+    End If
+    ' Genuine empty result set (SAP "no values selected" is S/I/W or blank).
     Set oOut = oFSO.CreateTextFile(OUTPUT_FILE, True, False)
     oOut.WriteLine "NO_DATA" & vbTab & sStatus
     oOut.Close
@@ -368,56 +382,35 @@ oResult.selectContextMenuItem "&PC"
 WScript.Sleep 800
 
 ' Format dialog (SAPLSPO5:0150). Each format is a radio at radSPOPLI-SELFLAG[col,0]
-' where col is the format index. Walk 0..6, read each radio's .Text label, and pick
-' the tab-delimited variant. Confirmed on S/4HANA 1909:
+' where col is the format index. The "Text with Tabs" (tab-delimited) variant sits
+' at the POSITIONAL index [1,0] on the tested releases. Confirmed on S/4HANA 1909:
 '   [0,0]=Unconverted  [1,0]=Text with Tabs  [2,0]=Rich text format
 '   [3,0]=HTML Format  [4,0]=In the clipboard
+' Select by position, NOT by reading the radio .Text label -- the label is
+' translated (English-only substring matching on "Tab"/"Spreadsheet" broke the
+' selection under ZH/JA/DE logons, silently exporting the wrong format).
 WScript.Sleep 500
-Dim radio, radioFound, labelText, basePath, colIdx
+Dim radioFound, colIdx
 radioFound = False
 Dim basePaths(1)
 basePaths(0) = "wnd[1]/usr/subSUBSCREEN_STEPLOOP:SAPLSPO5:0150/sub:SAPLSPO5:0150"
 basePaths(1) = "wnd[1]/usr/sub:SAPLSPO5:0150"
 Dim bp
 For Each bp In basePaths
-    For colIdx = 0 To 6
-        On Error Resume Next
-        Set radio = Nothing
-        Set radio = oSession.findById(bp & "/radSPOPLI-SELFLAG[" & colIdx & ",0]")
-        labelText = ""
-        If Err.Number = 0 And Not (radio Is Nothing) Then labelText = radio.Text
+    On Error Resume Next
+    oSession.findById(bp & "/radSPOPLI-SELFLAG[1,0]").select
+    If Err.Number = 0 Then
+        radioFound = True
         Err.Clear
         On Error GoTo 0
-        If Len(labelText) > 0 Then
-            ' Tab-delimited variants across releases / locales:
-            '   "Text with Tabs"     S/4HANA 1909+
-            '   "Spreadsheet"        ECC, older
-            '   "Tabellenkalkulation"  DE
-            ' Substring "Tab" matches "Text with Tabs" and "Tabellen..." both.
-            ' For locales whose label contains neither "Tab" nor "preadsheet",
-            ' the [1,0] fallback below catches the conventional position.
-            If InStr(1, labelText, "Tab",   1) > 0 _
-               Or InStr(1, labelText, "preadsheet", 1) > 0 Then
-                radio.select
-                radioFound = True
-                WScript.Echo "INFO: Selected tab-delimited radio at [" & colIdx & ",0] (label=" & labelText & ")"
-                Exit For
-            End If
-        End If
-    Next
-    If radioFound Then Exit For
-Next
-If Not radioFound Then
-    ' Fallback: try the conventional [1,0] (Text with Tabs on most modern releases)
-    On Error Resume Next
-    oSession.findById("wnd[1]/usr/subSUBSCREEN_STEPLOOP:SAPLSPO5:0150/sub:SAPLSPO5:0150/radSPOPLI-SELFLAG[1,0]").select
-    If Err.Number <> 0 Then
-        Err.Clear
-        oSession.findById("wnd[1]/usr/sub:SAPLSPO5:0150/radSPOPLI-SELFLAG[1,0]").select
+        WScript.Echo "INFO: Selected tab-delimited (Text with Tabs) radio at positional index [1,0]."
+        Exit For
     End If
     Err.Clear
     On Error GoTo 0
-    WScript.Echo "WARN: Tab-delimited label not located; selected fallback index [1,0]."
+Next
+If Not radioFound Then
+    WScript.Echo "WARN: Could not select the [1,0] format radio on either base path; accepting the dialog default."
 End If
 oSession.findById("wnd[1]/tbar[0]/btn[0]").press
 WScript.Sleep 600

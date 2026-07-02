@@ -84,40 +84,45 @@ Else
     WScript.Echo "INFO: No confirmation popup appeared (project may not exist)."
 End If
 
-' ------ ECC6: SAPLSETX language popup + Object Directory Entry (if any) ------
-Set oPop = oSession.findById("wnd[1]", False)
-If Not (oPop Is Nothing) Then
+' ------ Post-delete popup chain (loop, dispatch by control id) --------------
+' ECC6 can chain SEVERAL modals after the delete confirm -- e.g. the SAPLSETX
+' original-language popup AND a "Create Object Directory Entry" (KO007) AND the
+' transport popup (KO008), in either order. The old fixed 3-slot structure used
+' an If SETX / Else KO007 branch that handled only ONE of SETX/KO007 per screen,
+' leaving the other as a stuck modal. Loop instead (cap 6) and dispatch each by
+' its DDIC control id (locale-independent). Empty-TR on KO008 aborts loud.
+Dim iPop
+For iPop = 1 To 6
+    Set oPop = oSession.findById("wnd[1]", False)
+    If oPop Is Nothing Then Exit For
+
     Dim oSetx : Set oSetx = oSession.findById("wnd[1]/usr/ctxtRSETX-MASTERLANG", False)
+    Dim oDevc2 : Set oDevc2 = oSession.findById("wnd[1]/usr/ctxtKO007-L_DEVCLASS", False)
+    Dim oTr : Set oTr = oSession.findById("wnd[1]/usr/ctxtKO008-TRKORR", False)
+
     If Not (oSetx Is Nothing) Then
+        ' SAPLSETX original-vs-logon language popup.
         WScript.Echo "INFO: SAPLSETX original-language popup -- 'Maint. in orig. lang.'"
         oSession.findById("wnd[1]/usr/btnPUSH1").press
         WScript.Sleep 1500
-    Else
-        Dim oDevc2 : Set oDevc2 = oSession.findById("wnd[1]/usr/ctxtKO007-L_DEVCLASS", False)
-        If Not (oDevc2 Is Nothing) Then
-            If oDevc2.Text = "" And OBJDIR_PKG <> "" Then
-                oDevc2.Text = OBJDIR_PKG
-                Dim oLang2 : Set oLang2 = oSession.findById("wnd[1]/usr/ctxtKO007-L_MSTLANG", False)
-                If Not (oLang2 Is Nothing) Then
-                    If oLang2.Text = "" Then oLang2.Text = OBJDIR_LANG
-                End If
-                oSession.findById("wnd[1]/tbar[0]/btn[0]").press
-            ElseIf oDevc2.Text = "" Then
-                oSession.findById("wnd[1]/tbar[0]/btn[7]").press   ' Local Object
-            Else
-                oSession.findById("wnd[1]/tbar[0]/btn[0]").press
+    ElseIf Not (oDevc2 Is Nothing) Then
+        ' "Create Object Directory Entry" (KO007) -- ECC6.
+        If oDevc2.Text = "" And OBJDIR_PKG <> "" Then
+            oDevc2.Text = OBJDIR_PKG
+            Dim oLang2 : Set oLang2 = oSession.findById("wnd[1]/usr/ctxtKO007-L_MSTLANG", False)
+            If Not (oLang2 Is Nothing) Then
+                If oLang2.Text = "" Then oLang2.Text = OBJDIR_LANG
             End If
-            WScript.Echo "INFO: Object Directory Entry popup handled."
-            WScript.Sleep 1500
+            oSession.findById("wnd[1]/tbar[0]/btn[0]").press
+        ElseIf oDevc2.Text = "" Then
+            oSession.findById("wnd[1]/tbar[0]/btn[7]").press   ' Local Object
+        Else
+            oSession.findById("wnd[1]/tbar[0]/btn[0]").press
         End If
-    End If
-End If
-
-' ------ Handle optional post-delete transport popup (KO008-TRKORR) ----------
-Set oPop = oSession.findById("wnd[1]", False)
-If Not (oPop Is Nothing) Then
-    Dim oTr : Set oTr = oSession.findById("wnd[1]/usr/ctxtKO008-TRKORR", False)
-    If Not (oTr Is Nothing) Then
+        WScript.Echo "INFO: Object Directory Entry popup handled."
+        WScript.Sleep 1500
+    ElseIf Not (oTr Is Nothing) Then
+        ' Transport-request popup (KO008). Empty TR must ABORT, never blind-Enter.
         If SAP_TRANSPORT = "" Then
             WScript.Echo "ERROR: SAP prompted for a transport request but TRANSPORT is empty."
             WScript.Echo "       Resolve a TR via /sap-transport-request and re-run."
@@ -129,10 +134,22 @@ If Not (oPop Is Nothing) Then
         oSession.findById("wnd[1]").sendVKey VKEY_ENTER
         WScript.Sleep 1200
     Else
+        ' An unrecognized popup -- dismiss once with Enter, then re-test the loop.
         WScript.Echo "INFO: Dismissing popup after delete (Enter)..."
         oPop.sendVKey VKEY_ENTER
         WScript.Sleep 1000
     End If
+Next
+
+' ------ Stuck-modal guard ---------------------------------------------------
+' A popup still open after the chain means the delete did not complete; do not
+' fall through to a false SUCCESS.
+Set oPop = oSession.findById("wnd[1]", False)
+If Not (oPop Is Nothing) Then
+    WScript.Echo "ERROR: A modal popup is still open after the delete chain (unhandled dialog)."
+    WScript.Echo "       Inspect via /sap-gui-object-details and re-record if a control id changed."
+    ReleaseSession oSession, wasLocked
+    WScript.Quit 1
 End If
 
 ' ------ Read status ---------------------------------------------------------

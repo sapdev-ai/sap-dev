@@ -21,6 +21,13 @@
 '   %%BP_GROUPING%%     BP Grouping key (blank = default)
 '   %%DEFINITION_FILE%% Path to field definitions
 '
+' Locale-independent contract (language_independence_rules.md): screens and
+' popups are identified by control ids (BUS_JOEL_MAIN-CREATION_GROUP for the
+' Create screen, btnBUTTON_1 for the role-change popup), results by sbar
+' MessageType; titles / status texts are echoed for diagnostics only. On
+' success a machine-readable "BP: <number>" line is echoed before the final
+' SUCCESS line.
+'
 ' Component IDs recorded from SAP GUI 7.60 on S/4HANA 1909.
 ' =============================================================================
 
@@ -136,12 +143,59 @@ Sub SetFieldValue(oField, sValue)
     End Select
 End Sub
 
+' ------ Helper: longest digit run in a string --------------------------------
+Function LongestDigitRun(sText)
+    Dim sBest, sCur, i, ch
+    sBest = "" : sCur = ""
+    For i = 1 To Len(sText)
+        ch = Mid(sText, i, 1)
+        If ch >= "0" And ch <= "9" Then
+            sCur = sCur & ch
+        Else
+            If Len(sCur) > Len(sBest) Then sBest = sCur
+            sCur = ""
+        End If
+    Next
+    If Len(sCur) > Len(sBest) Then sBest = sCur
+    LongestDigitRun = sBest
+End Function
+
+' ------ Helper: saved-document number from the status bar --------------------
+' Locale-independent: prefers the sbar's structured MessageParameter values
+' (the raw document number in any logon language; not exposed on every SAP
+' GUI build, hence the On Error guards), falls back to the longest digit run
+' in the localized message text.
+Function ExtractSavedId(oSess, sFallbackText)
+    Dim sId, oBar, iP, sCand
+    sId = ""
+    On Error Resume Next
+    Set oBar = Nothing
+    Set oBar = oSess.findById("wnd[0]/sbar")
+    If Err.Number = 0 And Not (oBar Is Nothing) Then
+        For iP = 0 To 7
+            Err.Clear
+            sCand = ""
+            sCand = Trim(CStr(oBar.MessageParameter(iP)))
+            If Err.Number = 0 And sCand <> "" Then
+                If sCand = LongestDigitRun(sCand) Then
+                    sId = sCand   ' first pure-digit parameter wins
+                    Exit For
+                End If
+            End If
+        Next
+    End If
+    Err.Clear
+    On Error GoTo 0
+    If sId = "" Then sId = LongestDigitRun(sFallbackText)
+    ExtractSavedId = sId
+End Function
+
 ' ------ 1. Attach to existing SAP GUI session (via shared attach helper) ----
 Dim oSession
 Set oSession = AttachSapSession(SESSION_PATH)
 
 ' ------ 2. Read definition file ---------------------------------------------
-Dim oFSO, oFile, sLine
+Dim oFSO, sLine
 Set oFSO = CreateObject("Scripting.FileSystemObject")
 
 If Not oFSO.FileExists(DEFINITION_FILE) Then
@@ -149,18 +203,35 @@ If Not oFSO.FileExists(DEFINITION_FILE) Then
     WScript.Quit 1
 End If
 
+' Parse into arrays: section, field name, value
+' NOTE: read via ADODB.Stream with explicit Charset="utf-8". FSO.OpenTextFile
+' decodes bytes with the system code page (cp932 on Japanese Windows, cp1252
+' on Western), which mangles UTF-8 multi-byte sequences -- JA/ZH values would
+' mojibake INTO the saved business record. ADODB.Stream decodes to the
+' Unicode that the SAP GUI controls expect.
 Dim arrSections(), arrFields(), arrValues()
 Dim iCount
 iCount = 0
 
-Set oFile = oFSO.OpenTextFile(DEFINITION_FILE, 1, False)
-Do While Not oFile.AtEndOfStream
-    sLine = oFile.ReadLine
-    ' Strip UTF-8 BOM if present on first line
-    If iCount = 0 And Len(sLine) > 0 Then
-        Do While Len(sLine) > 0 And Asc(Left(sLine, 1)) > 127
-            sLine = Mid(sLine, 2)
-        Loop
+Dim oStream, sAll, arrLines, iLine
+Set oStream = CreateObject("ADODB.Stream")
+oStream.Type = 2                    ' adTypeText
+oStream.Charset = "utf-8"
+oStream.Open
+oStream.LoadFromFile DEFINITION_FILE
+sAll = oStream.ReadText
+oStream.Close
+
+sAll = Replace(sAll, vbCrLf, vbLf)
+sAll = Replace(sAll, vbCr,   vbLf)
+arrLines = Split(sAll, vbLf)
+
+For iLine = 0 To UBound(arrLines)
+    sLine = arrLines(iLine)
+    ' Strip a residual BOM character on the first line (belt and braces --
+    ' ADODB.Stream normally consumes the UTF-8 BOM itself).
+    If iLine = 0 And Len(sLine) > 0 Then
+        If Left(sLine, 1) = ChrW(&HFEFF) Then sLine = Mid(sLine, 2)
     End If
 
     sLine = Trim(sLine)
@@ -192,8 +263,7 @@ Do While Not oFile.AtEndOfStream
             End If
         End If
     End If
-Loop
-oFile.Close
+Next
 
 WScript.Echo "INFO: Read " & iCount & " field definitions from file."
 
@@ -218,15 +288,33 @@ WScript.Echo "INFO: Creating new Business Partner (Organization)..."
 oSession.findById("wnd[0]/tbar[1]/btn[29]").Press  ' Create Organization
 WScript.Sleep 1000
 
-' Verify we are on Create screen
-Dim sTitle
-sTitle = oSession.findById("wnd[0]").Text
-If InStr(sTitle, "Create") = 0 Then
-    WScript.Echo "ERROR: Failed to enter Create mode. Title: " & sTitle
+' Verify we are on the Create screen -- locale-independent: probe the
+' create-only Grouping field (BUS_JOEL_MAIN-CREATION_GROUP) instead of the
+' translated window title.
+Dim oUsrProbe
+Set oUsrProbe = Nothing
+On Error Resume Next
+Set oUsrProbe = oSession.findById("wnd[0]/usr")
+Err.Clear
+On Error GoTo 0
+Dim bCreateMode
+bCreateMode = False
+If Not (oUsrProbe Is Nothing) Then
+    If Not (FindField(oUsrProbe, "BUS_JOEL_MAIN-CREATION_GROUP") Is Nothing) Then bCreateMode = True
+End If
+If Not bCreateMode Then
+    Dim sSbarDiag
+    sSbarDiag = ""
+    On Error Resume Next
+    sSbarDiag = oSession.findById("wnd[0]/sbar").Text
+    Err.Clear
+    On Error GoTo 0
+    WScript.Echo "ERROR: Failed to enter Create mode (BUS_JOEL_MAIN-CREATION_GROUP not found)."
+    WScript.Echo "       Status (diagnostic): " & sSbarDiag
     ReleaseSession oSession, wasLocked
     WScript.Quit 1
 End If
-WScript.Echo "INFO: Create screen reached: " & sTitle
+WScript.Echo "INFO: Create screen reached."
 
 ' ------ 4. Set header fields (Role, Grouping, BP Number) --------------------
 ' IMPORTANT: Setting a non-default role triggers a popup "Change to another BP
@@ -243,16 +331,38 @@ If BP_ROLE <> "" And BP_ROLE <> "000000" Then
         oRole.Key = BP_ROLE
         WScript.Sleep 500
 
-        ' Handle the "Change to another BP role" popup
+        ' Handle the "Change to another BP role" popup -- identified by its
+        ' btnBUTTON_1 (Create) control id, never by the translated title.
+        ' Any other popup here is unexpected: fail loud, never blind-dismiss.
+        Dim sRoleWnd
+        sRoleWnd = ""
         On Error Resume Next
-        Dim oPopup
-        Set oPopup = oSession.findById("wnd[1]")
-        If Err.Number = 0 And Not (oPopup Is Nothing) Then
-            oSession.findById("wnd[1]/usr/btnBUTTON_1").Press   ' "Create" button
-            WScript.Sleep 2000
-            Err.Clear
-        End If
+        sRoleWnd = oSession.ActiveWindow.Id
+        Err.Clear
         On Error GoTo 0
+        If InStr(sRoleWnd, "wnd[1]") > 0 Then
+            Dim oRoleBtn
+            Set oRoleBtn = Nothing
+            On Error Resume Next
+            Set oRoleBtn = oSession.findById("wnd[1]/usr/btnBUTTON_1")
+            Err.Clear
+            On Error GoTo 0
+            If Not (oRoleBtn Is Nothing) Then
+                oRoleBtn.Press   ' "Create" button
+                WScript.Sleep 2000
+            Else
+                Dim sRoleTitle
+                sRoleTitle = ""
+                On Error Resume Next
+                sRoleTitle = oSession.ActiveWindow.Text   ' diagnostic only
+                Err.Clear
+                On Error GoTo 0
+                WScript.Echo "ERROR: Unexpected popup after role selection: " & sRoleWnd & " -- title (diagnostic): " & sRoleTitle
+                WScript.Echo "       Refusing to blind-dismiss."
+                ReleaseSession oSession, wasLocked
+                WScript.Quit 1
+            End If
+        End If
 
         ' Re-acquire oUsr after screen refresh
         Set oUsr = oSession.findById("wnd[0]/usr")
@@ -383,24 +493,29 @@ If sSaveType = "W" Then
     WScript.Sleep 2000
 End If
 
-' Handle popups (transport, etc.)
+' ------ 6b. Post-save popup guard --------------------------------------------
+' The BP transaction never raises a workbench transport popup -- business
+' partners are not workbench objects. Any modal at this point is unexpected:
+' fail loud instead of blind-dismissing (a guessed keypress on a REAL
+' business record could commit or discard the wrong thing). ReleaseSession
+' sweeps the modal (F12) so the operator gets a clean session back.
+Dim sPopId, sPopTitle
+sPopId = ""
 On Error Resume Next
-If InStr(oSession.ActiveWindow.Id, "wnd[1]") > 0 Then
-    WScript.Echo "INFO: Popup detected."
-    oSession.findById("wnd[1]/tbar[0]/btn[7]").Press  ' Local Object
-    If Err.Number <> 0 Then
-        Err.Clear
-        oSession.ActiveWindow.sendVKey VKEY_ENTER
-    End If
-    WScript.Sleep 2000
-End If
-
-If InStr(oSession.ActiveWindow.Id, "wnd[1]") > 0 Then
-    oSession.ActiveWindow.sendVKey VKEY_ENTER
-    WScript.Sleep 1000
-End If
+sPopId = oSession.ActiveWindow.Id
 Err.Clear
 On Error GoTo 0
+If InStr(sPopId, "wnd[1]") > 0 Then
+    sPopTitle = ""
+    On Error Resume Next
+    sPopTitle = oSession.ActiveWindow.Text   ' diagnostic only
+    Err.Clear
+    On Error GoTo 0
+    WScript.Echo "ERROR: Unexpected popup after save: " & sPopId & " -- title (diagnostic): " & sPopTitle
+    WScript.Echo "       Refusing to blind-dismiss. Resolve the popup manually, then re-run."
+    ReleaseSession oSession, wasLocked
+    WScript.Quit 1
+End If
 
 ' --- Release the session UI lock; result check is read-only ---
 ReleaseSession oSession, wasLocked
@@ -411,8 +526,16 @@ sStatus = oSession.findById("wnd[0]/sbar").Text
 Dim sStatusType
 sStatusType = oSession.findById("wnd[0]/sbar").MessageType
 
-' Capture the title which may contain the created BP number
+' The post-save title often carries the new BP number -- diagnostic only.
+Dim sTitle
 sTitle = oSession.findById("wnd[0]").Text
+WScript.Echo "INFO: Post-save title (diagnostic): " & sTitle
+
+' Extract the machine-readable BP number BEFORE leaving the screen
+' (navigation clears the structured sbar properties).
+Dim sBpId
+sBpId = BP_NUMBER
+If sBpId = "" And sStatusType = "S" Then sBpId = ExtractSavedId(oSession, sStatus)
 
 ' Navigate back to clean state
 oSession.findById("wnd[0]/tbar[0]/okcd").Text = "/n"
@@ -431,5 +554,17 @@ If sStatusType = "E" Or sStatusType = "A" Then
     WScript.Quit 1
 End If
 
+' Fail loud on anything but a positive success message: an empty or
+' unrecognized status after Save must never be reported as SUCCESS.
+If sStatusType <> "S" Then
+    WScript.Echo "ERROR: Could not confirm the save -- status bar type is '" & sStatusType & "' (expected S). Message: " & sStatus
+    WScript.Quit 1
+End If
+
+If sBpId <> "" Then
+    WScript.Echo "BP: " & sBpId
+Else
+    WScript.Echo "WARNING: Could not extract the saved BP number from the status bar."
+End If
 WScript.Echo "SUCCESS: Business Partner created in SAP. " & sStatus
 WScript.Quit 0

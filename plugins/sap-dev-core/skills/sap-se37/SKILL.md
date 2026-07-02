@@ -48,7 +48,7 @@ Task: $ARGUMENTS
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/language_independence_rules.md` | GUI-scripting language independence — identify by component ID + DDIC field name, status-bar checks via `MessageType` codes (S/W/E/I/A), VKey instead of menu-text, no branching on `.Text`/`.Tooltip`/window titles |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/abap_code_quality_rules.md` | ABAP code-quality rules — deployed FM source must follow modern syntax, OOP scaffolds, no literal MESSAGE strings, perf-band-appropriate SQL. Run `/sap-check-abap` and `/sap-check-fm` before deploy when the source isn't generator-emitted. |
 | `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_error_hints.ps1` | frequently_errors recorder. The Final step feeds deploy syntax/activation errors (`-Action record -Source SE37 -RawOutputFile ...`) so FM/METHOD-related failures are captured to the team store. Best-effort; never changes the verdict. |
-| `<SAP_DEV_CORE_SHARED_DIR>/rules/sap_gui_security_handling.md` | SAP GUI Security dialog handling — the **source upload** (Step 5a, via Utilities > Upload — reads the file from disk, no clipboard) and the check-and-fix **FM source download** (Step A) are both SAP-GUI-side file IO, so either can raise the modal "SAP GUI Security" dialog (which suspends the Scripting API and hangs cscript). Pre-check + OS-level watcher wrap each of those file-IO steps. |
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/sap_gui_security_handling.md` | SAP GUI Security dialog handling — the check-and-fix **FM source download** (Step A) is SAP-GUI-side file IO, so it can raise the modal "SAP GUI Security" dialog (which suspends the Scripting API and hangs cscript); pre-check + OS-level watcher wrap that download. (The source **upload** pastes via the Windows clipboard + SendKeys — SAP GUI reads no file — so it does NOT trip the dialog; it uses the OS-level foreground guard instead.) |
 | `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_gui_security_precheck.ps1` | Read-only allow-list pre-check (`saprules.xml`) — `ALLOWED` (exit 0) / `NOT_COVERED` (exit 1). Used by Step A before the source download. |
 | `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_gui_security_sidecar.ps1` | OS-level (Win32) watcher that auto-dismisses the SAP GUI Security dialog (ticks Remember + clicks Allow). Launched as a background process before the Step A download. |
 
@@ -506,8 +506,10 @@ $content = $content.Replace('%%ATTACH_LIB_VBS%%',   '<SAP_DEV_CORE_SHARED_DIR>\s
 # OS-level foreground guard for the clipboard paste (Source tab editor is loaded
 # via clipboard + SendKeys now, not the S/4-only Utilities>Upload menu).
 $content = $content.Replace('%%FOREGROUND_GUARD_PS1%%', '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_gui_foreground_guard.ps1')
-# Post-activate RFC gate (FM -> FG -> SAPL<FG> active in PROGDIR): se37 PS1 + the
-# generic se11 verify VBS Sub. Catches the inactive-FG-framework false-success.
+# Post-activate RFC gate (FM -> FG -> SAPL<FG> active in PROGDIR + no pending
+# DWINACTIV row for the FM): se37 PS1 + the generic se11 verify VBS Sub. Catches
+# the inactive-FG-framework and inactive-FM false-successes. If the helper
+# can't run it emits WARNING: POST_ACTIVATE_VERIFY_UNAVAILABLE (see Step 6).
 $content = $content.Replace('%%POST_ACTIVATE_VERIFY_PS1%%', '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_se37_post_activate_verify.ps1')
 $content = $content.Replace('%%POST_ACTIVATE_VERIFY_VBS%%', '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_se11_post_activate_verify.vbs')
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
@@ -536,39 +538,19 @@ Run:
 powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_se37_update_run.ps1"
 ```
 
-### Execute (with SAP GUI Security guard)
+### Execute
 
-The SE37 source upload uses **Utilities > Upload**, which reads the source from a
-local file via SAP GUI (SAP-GUI-side file IO) — no clipboard, no SendKeys. So,
-exactly like the Step A download path, it can raise the modal **SAP GUI
-Security** dialog when the source path isn't allow-listed, and that modal
-suspends the Scripting API, hanging the cscript indefinitely. Per
-`shared/rules/sap_gui_security_handling.md`, pre-check the rules and run the
-OS-level watcher around the upload. Run as one PowerShell block (the 32-bit
-cscript is inside it). Substitute `THE_SOURCE_PATH` (the absolute source path SAP
-GUI will read — the same value used for `%%ABAP_SOURCE_FILE%%`) and `THE_SID` /
-`THE_CLIENT` with the pinned system / client:
+The SE37 source upload pastes the source into the Source-code editor via the
+**Windows clipboard + SendKeys** (the S/4-only *Utilities > Upload* menu path
+does not exist on NW 7.31 / ECC6 — the 2026-06-22 EC2 blocker). SAP GUI never
+reads the file itself, so this path does **not** trip the modal SAP GUI Security
+dialog and needs no OS-level watcher. It DOES need the OS-level **foreground
+guard** so Ctrl+V lands in SAP and not in whatever app the user is editing in —
+that guard is invoked from inside the VBS (via `%%FOREGROUND_GUARD_PS1%%`), so
+just run the 32-bit cscript:
 
 ```powershell
-$shared = '<SAP_DEV_CORE_SHARED_DIR>\scripts'
-$src    = 'THE_SOURCE_PATH'   # the local file SAP GUI's Upload menu will read
-# 1. Pre-check the allow-list (read-only; informational + lets us skip the watcher).
-& "$shared\sap_gui_security_precheck.ps1" -Path $src -Access r -System 'THE_SID' -Client 'THE_CLIENT' -Transaction 'SE37' | Out-Host
-$allowed = ($LASTEXITCODE -eq 0)
-# 2. If not already allow-listed, launch the OS-level watcher BEFORE the (blocking)
-#    upload. It detects the #32770 dialog and clicks Remember+Allow, which also
-#    persists a rule so subsequent runs pre-check ALLOWED.
-$watcher = $null
-if (-not $allowed) {
-    $watcher = Start-Process powershell -PassThru -WindowStyle Hidden -ArgumentList @(
-        '-NoProfile','-ExecutionPolicy','Bypass','-File',"$shared\sap_gui_security_sidecar.ps1",'-TimeoutSeconds','45')
-    Start-Sleep -Milliseconds 800
-}
-# 3. Run the upload + save + activate + syntax check (32-bit cscript). If the dialog
-#    appears it blocks here until the watcher dismisses it; then the upload completes.
 & 'C:/Windows/SysWOW64/cscript.exe' //NoLogo '{RUN_TEMP}\sap_se37_update_run.vbs'
-# 4. Reap the watcher.
-if ($watcher) { $watcher | Wait-Process -Timeout 50 -ErrorAction SilentlyContinue }
 ```
 
 Proceed to Step 6 to evaluate the result.
@@ -811,9 +793,11 @@ $content = $content -replace '%%ATTACH_LIB_VBS%%', '<SAP_DEV_CORE_SHARED_DIR>\sc
 # OS-level foreground guard for the clipboard paste (the Source tab editor is
 # loaded via clipboard + SendKeys now, not the S/4-only Utilities>Upload menu).
 $content = $content -replace '%%FOREGROUND_GUARD_PS1%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_gui_foreground_guard.ps1'
-# Post-activate RFC gate (FM -> FG -> SAPL<FG> active in PROGDIR): the se37 PS1
-# + the generic se11 verify VBS Sub. Catches the inactive-FG-framework false-
-# success (clean Ctrl+F2 grid + GUI sbar but FM not RFC-usable).
+# Post-activate RFC gate (FM -> FG -> SAPL<FG> active in PROGDIR + no pending
+# DWINACTIV row for the FM): the se37 PS1 + the generic se11 verify VBS Sub.
+# Catches the inactive-FG-framework and inactive-FM false-successes (clean
+# Ctrl+F2 grid + GUI sbar but FM not RFC-usable). If the helper can't run it
+# emits WARNING: POST_ACTIVATE_VERIFY_UNAVAILABLE (see Step 6).
 $content = $content -replace '%%POST_ACTIVATE_VERIFY_PS1%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_se37_post_activate_verify.ps1'
 $content = $content -replace '%%POST_ACTIVATE_VERIFY_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_se11_post_activate_verify.vbs'
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
@@ -1058,7 +1042,9 @@ cscript //NoLogo {RUN_TEMP}\sap_se37_reassign_fugr_run.vbs
 - **Re-activate after reassign.** The reassign leaves the FM **inactive**
   in the new function group. The VBS automatically presses Activate
   (`wnd[0]/tbar[1]/btn[27]` = Ctrl+F3) and dismisses the inactive-objects
-  worklist popup with Select All (`wnd[1]/tbar[0]/btn[20]`) + Enter.
+  worklist popup with Continue (`wnd[1]/tbar[0]/btn[0]`) only — the
+  triggering FM is pre-selected; Select All is never pressed (on a shared
+  DEV it would co-activate other developers' inactive objects).
 - Successful sbar messages: `Function module <FM> reassigned` then
   `Object(s) activated`.
 
@@ -1175,6 +1161,13 @@ After success, proceed to Step 7 (cleanup). Skip Step 6.
 ## Step 6 — Report Result
 
 **On success** (output contains `SUCCESS:`):
+- **Tri-state verdict.** The create/update VBS runs the mandatory post-activate
+  RFC verify (`sap_se37_post_activate_verify.ps1`) before printing `SUCCESS:`.
+  If the output ALSO contains `WARNING: POST_ACTIVATE_VERIFY_UNAVAILABLE - <reason>`,
+  the verify could not run (no RFC creds / NCo missing / endpoint unreachable):
+  report the deploy as **SUCCESS_UNVERIFIED** — not SUCCESS — and suggest
+  `/sap-dev-status` to confirm the FM. A verify failure (`INACTIVE` / `MISSING`)
+  exits as a hard `ERROR:` and never reaches this branch.
 - Tell the user the function module was deployed and activated.
 - Show the full script output as a code block.
 
@@ -1185,8 +1178,8 @@ After success, proceed to Step 7 (cleanup). Skip Step 6.
 |---|---|---|
 | `SE37 function module name field not found` | Component ID mismatch | Use SAP Scripting Recorder to find correct ID |
 | `Create dialog did not appear` | FM already exists or wrong name | Check name or use update flow |
-| `Could not open Upload menu` | Menu path differs by SAP version | Use Scripting Recorder to record correct menu path |
-| `Upload dialog interaction failed` | Upload dialog IDs differ | Re-record the upload step |
+| `Could not place source on clipboard` | Clipboard staging failed (all fallbacks) | Retry; ensure no other process is locking the clipboard |
+| `SAP GUI window is not the OS foreground window` | Foreground guard could not bring SAP GUI to front before Ctrl+V | Close the app stealing focus and retry; do NOT paste blind |
 | `Syntax check failed` | ABAP syntax errors | See **Step 6a** below |
 | `Statement is not accessible` | Source file missing FUNCTION/ENDFUNCTION wrapper, or inactive versions in function group | Ensure source includes `FUNCTION <name>.` ... `ENDFUNCTION.` |
 | `Source file not found` | Wrong path or file not written | Verify path, re-run Step 2 |
@@ -1475,18 +1468,21 @@ on all lines — a false positive resolved by activating first.
 
 After Ctrl+F3 (`wnd[0]/tbar[1]/btn[27]`) SAP may show modal `wnd[1]` titled
 `Inactive Objects for <USER>` listing the FM and any inactive siblings in the
-function group. The popup has only a single toolbar button
-(`wnd[1]/tbar[0]/btn[0]` = Continue) — there is no Select-All button. Pressing
-Continue with no rows selected does nothing and the popup hangs.
+function group. The triggering FM and its function-group includes arrive
+**pre-selected**, so Continue alone activates exactly them.
 
-**Required dismissal** (used by `sap_se37_update.vbs` and
+**Required dismissal — Continue only** (used by `sap_se37_update.vbs` and
 `sap_se37_reassign_fugr.vbs`):
 
 ```vbs
-oSession.findById("wnd[1]").sendVKey 26   ' Ctrl+A = select all worklist rows
-WScript.Sleep 500
-oSession.findById("wnd[1]/tbar[0]/btn[0]").press   ' Continue
+oSession.findById("wnd[1]/tbar[0]/btn[0]").press   ' Continue (pre-selected rows only)
 ```
+
+Never send `sendVKey 26` (Ctrl+A = Select All) first — the worklist also
+lists every other inactive object of the same locality, and on a shared DEV
+(EC2/DEV102: 500+ unrelated inactive objects) Select All would co-activate
+other developers' objects. If the popup stays open after Continue, fail loud
+(the syntax check / post-activate verify reports the still-inactive FM).
 
 The popup may take up to ~10 s to appear after pressing btn[27]; poll the
 active window before assuming it didn't appear.
@@ -1658,18 +1654,23 @@ VBScript is case-insensitive, so `Dim iF` declares a variable named `IF` —
 the keyword. This causes runtime error 619 on any line that uses `iF`.
 Use `idxFld`, `iFld`, `idx`, etc. instead.
 
-### Inactive Objects popup: Select All required before Continue
+### Inactive Objects popup: Continue only — NEVER Select All
 
 The "Inactive Objects" worklist popup (`wnd[1]`) appears after pressing
-Activate (`tbar[1]/btn[27]`). Pressing `btn[0]` (Continue) **with nothing
-selected** leaves the popup open — no objects are activated. Always send
-`sendVKey 26` (Ctrl+A = Select All) before pressing Continue:
+Activate (`tbar[1]/btn[27]`). SAP pre-filters the popup and pre-selects the
+triggering FM plus its function-group includes, so pressing `btn[0]`
+(Continue) activates exactly them. Do **NOT** send `sendVKey 26` (Ctrl+A =
+Select All) first: the worklist also lists every other inactive object of the
+same locality, and on a shared DEV (EC2/DEV102 carries 500+ unrelated
+inactive objects) Select All would co-activate other developers' objects:
 
 ```vbs
-oSession.findById("wnd[1]").sendVKey 26   ' Select All
-WScript.Sleep 500
-oSession.findById("wnd[1]/tbar[0]/btn[0]").press  ' Continue
+oSession.findById("wnd[1]/tbar[0]/btn[0]").press  ' Continue (pre-selected object only)
 ```
+
+If the popup stays open after Continue, fail loud (the syntax check /
+post-activate RFC verify reports the still-inactive FM) — never fall back to
+Select All.
 
 The popup may also appear several seconds after pressing Activate (especially
 when sibling function-group objects are also inactive). Poll for up to ~10s

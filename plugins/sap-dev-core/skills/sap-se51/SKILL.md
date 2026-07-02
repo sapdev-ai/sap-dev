@@ -311,6 +311,7 @@ Proceed to Step 6 to evaluate the result.
 | `WARNING: Could not set short description` | Attributes field path differs | Check component IDs for this SAP release |
 | `WARNING: Could not find flow logic editor` | Editor path differs by SAP version | Use Scripting Recorder to capture editor path |
 | `WARNING: Activation errors` | Flow logic syntax errors | Show log, check flow logic content |
+| `ERROR: Activation failed - …` + `FAILED: Screen … was NOT activated.` | Activation ended with status-bar `E`/`A` (flow logic syntax error, missing `TABLES`, …); the VBS exits 1 (pre-fix this degraded to a WARNING and still logged SUCCESS) | Fix the flow logic / program source and re-run |
 
 **Add Layout Element / Rebuild modes** (log files `sap_se51_add_element.log` /
 `sap_se51_layout_rebuild.log`):

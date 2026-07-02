@@ -71,12 +71,25 @@ cmd /c if not exist "{WORK_TEMP}" mkdir "{WORK_TEMP}"
 
 Set `{CAMPAIGN_DIR}` = `{work_dir}\migrations\{campaign-id}`.
 
+Set `{RUN_TEMP}` = the per-run scratch dir (`Get-SapRunTemp` mints + creates
+`{work_dir}\temp\run_<id>`):
+
+```bash
+powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('RUN_TEMP=' + (Get-SapRunTemp))"
+```
+
+Per the CLAUDE.md "Two-bucket temp model" write this skill's per-run scratch
+(the log state file below) under `{RUN_TEMP}`, never at a fixed name under the
+`{WORK_TEMP}` root.
+
 ---
 
 ## Step 0.5 — Start Logging
 
+State file: `{RUN_TEMP}\sap_cc_inventory_run.json`. Best-effort.
+
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{WORK_TEMP}\sap_cc_inventory_run.json" -Skill sap-cc-inventory -ParamsJson "{}"
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{RUN_TEMP}\sap_cc_inventory_run.json" -Skill sap-cc-inventory -ParamsJson "{}"
 ```
 
 ---
@@ -145,10 +158,13 @@ runs in any PowerShell.
    /sap-se16n TRDIR NAME=Z* select=NAME,SUBC
    ```
 
-3. **Ingest the exports** (plain `powershell` — no 32-bit / NCo needed):
+3. **Ingest the exports** (plain `powershell` — no 32-bit / NCo needed). Each
+   `/sap-se16n` run writes its export to its OWN per-run scratch dir and
+   reports the path (`{RUN_TEMP}\se16n_<TABLE>.txt` of THAT run) — pass those
+   reported paths here:
 
    ```bash
-   powershell -ExecutionPolicy Bypass -File "<SKILL_DIR>\references\sap_cc_inventory.ps1" -CampaignDir "{CAMPAIGN_DIR}" -SourceMode GUI -TadirFile "{WORK_TEMP}\se16n_TADIR.txt" -TrdirFile "{WORK_TEMP}\se16n_TRDIR.txt" -Packages "ZHK*"
+   powershell -ExecutionPolicy Bypass -File "<SKILL_DIR>\references\sap_cc_inventory.ps1" -CampaignDir "{CAMPAIGN_DIR}" -SourceMode GUI -TadirFile "<path se16n reported for TADIR>" -TrdirFile "<path se16n reported for TRDIR>" -Packages "ZHK*"
    ```
 
    Pass the same `-Packages` / `-Namespace` / `-Types` / `-Exclude` flags as RFC
@@ -168,14 +184,22 @@ The helper prints:
 TYPE: <OBJECT> | COUNT: <n>
 ...
 INVENTORY: total=<n> new=<n> existing=<n> file=<path>
-STATUS: OK | EMPTY | ERROR
+STATUS: OK | PARTIAL failed_slices=<k> | EMPTY | ERROR
 ```
 
 | Exit | Meaning |
 |---|---|
 | `0` | `STATUS: OK` — `inventory.tsv` written, `state.tsv` upserted. |
 | `1` | `STATUS: EMPTY` — no in-scope objects found. Re-check `--namespace`/`--packages`. |
-| `2` | `STATUS: ERROR` — bad workspace, profile not found/ambiguous, or RFC failure (see the `ERROR:` line). |
+| `2` | `STATUS: ERROR` — bad workspace, profile not found/ambiguous, or RFC failure. Also emitted when EVERY namespace/package slice failed (one `ERROR:` line per slice) — nothing is written then, so a previous good inventory is never clobbered. |
+| `3` | `STATUS: PARTIAL failed_slices=<k>` — (RFC mode) `<k>` namespace/package slice(s) failed while others succeeded (one `ERROR: RFC_READ_TABLE TADIR failed for [...]` line each). `inventory.tsv` / `state.tsv` **are** written but are **INCOMPLETE**. |
+
+**A PARTIAL inventory must NOT silently become the campaign scope.** On exit
+`3`, STOP the pipeline: report which slices failed, fix the cause (RFC error,
+authorization, bad pattern) and re-run until `STATUS: OK` — or get the
+operator's **explicit** approval to proceed with the reduced scope. Never run
+`/sap-cc-usage` on a PARTIAL inventory as if it were complete: every object in
+a failed slice would silently fall out of the migration campaign.
 
 Render a short summary (total + new/existing + the per-type breakdown). On
 success, recommend the next step:
@@ -224,8 +248,9 @@ powershell -ExecutionPolicy Bypass -File "<SKILL_DIR>\..\sap-cc-campaign\referen
 ## Final — Log End
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_cc_inventory_run.json" -Status SUCCESS -ExitCode 0
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_cc_inventory_run.json" -Status SUCCESS -ExitCode 0
 ```
 
 For exit `1` use `-Status SKIPPED -ExitCode 1 -ErrorClass CC_INVENTORY_EMPTY`;
-for exit `2` use `-Status FAILED -ExitCode 2 -ErrorClass CC_INVENTORY_RFC`.
+for exit `2` use `-Status FAILED -ExitCode 2 -ErrorClass CC_INVENTORY_RFC`;
+for exit `3` use `-Status FAILED -ExitCode 3 -ErrorClass CC_INVENTORY_PARTIAL`.

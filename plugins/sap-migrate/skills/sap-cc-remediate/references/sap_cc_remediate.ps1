@@ -9,8 +9,13 @@
 #            rewrite; FLAG rules only report (no change). DRY-RUN -- never
 #            advances state, never touches SAP. Human reviews the diffs (gate).
 #   record : given a deploy/recheck results file (obj_name,obj_type,outcome with
-#            outcome VERIFIED|DEPLOYED|FAILED), advance state TRIAGED->REMEDIATED
-#            (DEPLOYED) / ->VERIFIED (VERIFIED), and stamp the fixlog. Offline.
+#            outcome VERIFIED|DEPLOYED|FAILED), advance the ledger and stamp the
+#            fixlog. Offline. Allowed transitions:
+#              TRIAGED    -> REMEDIATED  (outcome DEPLOYED)
+#              TRIAGED    -> VERIFIED    (outcome VERIFIED; deploy + recheck in one pass)
+#              REMEDIATED -> VERIFIED    (outcome VERIFIED; recheck after an earlier DEPLOYED record)
+#              REMEDIATED -> TRIAGED     (outcome FAILED; recheck failed -- back into the loop)
+#            Any other jump is blocked (illegal transition; state unchanged).
 #
 # SAFETY: only objects whose state is TRIAGED and tier is exactly R1 are touched.
 # Objects with tier '?' (unclassified findings), R2/R3/R4, or DRAFT-pattern
@@ -322,10 +327,17 @@ try {
         $key = "$nm|$ty"
         if ($stIdx.ContainsKey($key)) {
             $r = $stateRows[$stIdx[$key]]
-            if ($r.state -eq 'TRIAGED') {
-                if ($out -eq 'VERIFIED') { $r.state = 'VERIFIED'; $r.updated_on = $today }
-                elseif ($out -eq 'DEPLOYED') { $r.state = 'REMEDIATED'; $r.updated_on = $today }
-            }
+            # Ledger transition table (see header). VERIFIED is reachable from
+            # TRIAGED (deploy + recheck recorded in one pass) AND from
+            # REMEDIATED (recheck recorded after an earlier DEPLOYED record --
+            # without this, a deployed object could never reach VERIFIED and
+            # the campaign wedged at "await ATC re-check"). A FAILED recheck on
+            # a REMEDIATED object returns it to TRIAGED so the remediation loop
+            # picks it up again. Everything else (e.g. SCOPED -> VERIFIED) is
+            # an illegal jump and is blocked.
+            if ($out -eq 'VERIFIED' -and $r.state -in @('TRIAGED','REMEDIATED')) { $r.state = 'VERIFIED'; $r.updated_on = $today }
+            elseif ($out -eq 'DEPLOYED' -and $r.state -eq 'TRIAGED') { $r.state = 'REMEDIATED'; $r.updated_on = $today }
+            elseif ($out -eq 'FAILED' -and $r.state -eq 'REMEDIATED') { $r.state = 'TRIAGED'; $r.updated_on = $today }
         }
         if ($fix.ContainsKey($key)) {
             $fr = $fix[$key]

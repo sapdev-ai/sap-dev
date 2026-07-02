@@ -69,10 +69,10 @@ Per the CLAUDE.md "Two-bucket temp model" write this skill's generated scratch (
 
 ## Step 0.5 — Start Logging
 
-Start a structured log run. State file: `{WORK_TEMP}\sap_rfc_wrapper_class_run.json`. Best-effort.
+Start a structured log run. State file: `{RUN_TEMP}\sap_rfc_wrapper_class_run.json`. Best-effort.
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{WORK_TEMP}\sap_rfc_wrapper_class_run.json" -Skill sap-rfc-wrapper-class -ParamsJson "{\"class\":\"<CLASS>\",\"method\":\"<METHOD>\"}"
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{RUN_TEMP}\sap_rfc_wrapper_class_run.json" -Skill sap-rfc-wrapper-class -ParamsJson "{\"class\":\"<CLASS>\",\"method\":\"<METHOD>\"}"
 ```
 
 ---
@@ -339,13 +339,13 @@ Log the run-end record. Best-effort.
 On success:
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_rfc_wrapper_class_run.json" -Status SUCCESS -ExitCode 0
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_rfc_wrapper_class_run.json" -Status SUCCESS -ExitCode 0
 ```
 
 On failure:
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_rfc_wrapper_class_run.json" -Status FAILED -ExitCode 1 -ErrorClass <CLASS> -ErrorMsg "<short>"
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_rfc_wrapper_class_run.json" -Status FAILED -ExitCode 1 -ErrorClass <CLASS> -ErrorMsg "<short>"
 ```
 
 Suggested `<CLASS>`: `RFC_WRAPPER_FAILED`, `SE37_FAILED`, `RFC_LOGON_FAILED`.

@@ -499,12 +499,22 @@ If errors are reported, attempt up to **3 fix iterations**:
 
 ```
 Loop iter = 1..3:
-  /sap-fix-abap <Z<PROGRAM_ID>.abap> --reasons "<output of check-abap>"
-  /sap-check-abap <Z<PROGRAM_ID>.abap>
+  /sap-fix-abap <work_folder>/Z<PROGRAM_ID>.abap <work_folder>/Z<PROGRAM_ID>.abap.check.tsv
+  /sap-check-abap <work_folder>/Z<PROGRAM_ID>.abap
   if no errors: break
 After 3 iterations:
   STOP. Surface remaining errors to the user with a numbered list.
 ```
+
+fix-abap's contract is `<file> [<result-tsv>]` — pass the `.check.tsv` result
+file check-abap just wrote (there is no `--reasons` flag). fix-abap presents
+a fix plan and asks for confirmation before applying; inside this bounded
+loop YOU review that plan and confirm on the operator's behalf (per your
+brief authority) — apply only the fixes fix-abap classifies **Auto**
+(semantics-preserving; NAMING / UNUSED / SQL_STRICT_COMMA / LINE_* /
+CLASS_DEF_AFTER_EVENT), never the Manual-classified codes. Manual findings
+that survive the loop go on the numbered STOP list. The operator's decision
+point remains Step 2g (pre-deploy confirmation).
 
 If FM signatures matter, `/sap-check-fm` runs in parallel — chain it the
 same way against `<Z<PROGRAM_ID>.abap>` and feed errors to `/sap-fix-fm`.

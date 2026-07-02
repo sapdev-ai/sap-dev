@@ -101,8 +101,15 @@ Patterns to scan (case-insensitive, regex):
 |---|---|
 | `^\s*REPORT\s+(\w+)` or `^\s*PROGRAM\s+(\w+)` | `PROGRAM` |
 | `^\s*FORM\s+(\w+)` | `SUBROUTINE` |
-| `^\s*CLASS\s+(\w+)\s+DEFINITION(?!.*\bLOCAL\b)` (skip rows containing `LOCAL`) | `GLOBAL_CLASS` |
+| `^\s*CLASS\s+(\w+)\s+DEFINITION\b` — classify by shape: a name matching `^(lcl_\|ltcl_\|ltc_\|lif_)` (case-insensitive), or a definition WITHOUT the `PUBLIC` addition (the addition may sit on a continuation line before the statement's closing period), is an in-source **local** class / test class; only a definition WITH the `PUBLIC` addition is a global class. Skip `DEFINITION DEFERRED` and `DEFINITION LOCAL FRIENDS` lines entirely. | `GLOBAL_CLASS` (PUBLIC definitions) / `LOCAL_CLASS` (in-source local classes) |
 | `^\s*(?:METHODS|CLASS-METHODS)\s+(\w+)` (inside global CLASS DEFINITION blocks only) | `METHOD` |
+
+> The shipped `sap_object_naming_rules.tsv` deliberately has NO `LOCAL_CLASS`
+> row: the validator returns exit code `2` (UNKNOWN_TYPE) for local classes,
+> which per the exit-code rule below is logged once and skipped — so `lcl_*` /
+> `ltcl_*` classes are never checked against the `^ZCL_` global-class pattern.
+> Shops that want to enforce a local-class convention add a `LOCAL_CLASS` row
+> to `{custom_url}\sap_object_naming_rules.tsv`.
 
 For each match, call:
 
@@ -457,6 +464,8 @@ Read the result TSV file. The file has a header section (STATUS, ABAP_FILE, NAMI
 | `UNUSED` | WARNING | Variable declared but never referenced in the source |
 | `SQL_TABLE_NOT_FOUND` | ERROR | SQL table not found in SAP Dictionary |
 | `SQL_FIELD_NOT_FOUND` | ERROR | SQL field not found in the referenced table |
+| `SQL_STRICT_COMMA` | ERROR | (Phase 5f) Strict-mode SQL (`@` host variables) with a space-separated field list — the SELECT list must be comma-separated (§9) |
+| `METHOD_PARAM_NOT_FOUND` | ERROR | Named parameter in a method call does not exist in the local class's method signature |
 | `SELECT_IN_LOOP` | ERROR | `SELECT` inside `LOOP AT itab` — pre-select instead (quality rule §12) |
 | `FOR_ALL_ENTRIES_NO_GUARD` | ERROR | `FOR ALL ENTRIES` without `IF lt_keys IS NOT INITIAL` — empty driver reads ALL rows (§12) |
 | `MESSAGE_E_IN_METHOD` | ERROR | `MESSAGE e/a/x` inside CLASS method — causes UNCAUGHT_EXCEPTION short dump (§11) |

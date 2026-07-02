@@ -1,11 +1,12 @@
 OBJECT_TYPE	PATTERN	EXAMPLE	DESCRIPTION
+# DEFAULT rules describe what /sap-gen-abap actually emits. Stricter shop conventions (e.g. SUBROUTINE ^F_, METHOD ^M_) belong in the {custom_url}\sap_object_naming_rules.tsv override.
 PACKAGE	^Z[A-Z0-9_]*$	ZHK_DEV	Customer-namespace package
 PROGRAM	^Z[A-Z0-9_]*$	ZHKMM015R01	Customer-namespace program (max 40 chars per SAP)
-SUBROUTINE	^F_[A-Z0-9_]+$	F_GET_DATA	FORM (subroutine) starts with F_
+SUBROUTINE	^[A-Z_][A-Z0-9_]*$	GET_DATA	FORM (subroutine) - any identifier; /sap-gen-abap emits unprefixed FORM names (get_data)
 FUNCTION_GROUP	^Z[A-Z0-9_]*$	ZFGSALES	Function group starts with Z (industry convention)
 FUNCTION_MODULE	^Z_[A-Z0-9_]+$	Z_GET_CUSTOMER	Function module starts with Z_ (industry convention)
-GLOBAL_CLASS	^ZCL_[A-Z0-9_]+$	ZCL_HELPER	Global class starts with ZCL_ (industry convention)
-METHOD	^M_[A-Z0-9_]+$	M_GET_DATA	Method of global class starts with M_ (industry convention)
+GLOBAL_CLASS	^(ZCL_|ZCX_|ZIF_)[A-Z0-9_]+$	ZCL_HELPER	Global class ZCL_ / exception class ZCX_ / interface ZIF_ (industry convention)
+METHOD	^[A-Z_][A-Z0-9_]*$	GET_DATA	Method - any identifier; /sap-gen-abap emits unprefixed method names (run, test_*)
 DDIC_DOMAIN	^Z[A-Z0-9_]*$	ZHKDM_KEY15	Customer-namespace domain (max 30 chars per SAP)
 DDIC_DATAELEMENT	^Z[A-Z0-9_]*$	ZHKDE_KEY151	Customer-namespace data element (max 30 chars per SAP)
 DDIC_STRUCTURE	^Z[A-Z0-9_]*$	ZHKDS_ORDER	Customer-namespace structure (max 30 chars per SAP)

@@ -872,6 +872,9 @@ try {
             }
             $json = $payload | ConvertTo-Json -Compress
             $b64  = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($json))
+            # Transient: the base64 payload (carrying the plaintext) lives in this
+            # env var only for the child RFC-ping process below and is removed in
+            # the finally block. Same-user in-process exposure only; never persisted.
             $env:SAPDEV_RFC_PING_PAYLOAD = $b64
             try {
                 $out = & $psSys32 -NoProfile -ExecutionPolicy Bypass -Command $childCmd 2>&1

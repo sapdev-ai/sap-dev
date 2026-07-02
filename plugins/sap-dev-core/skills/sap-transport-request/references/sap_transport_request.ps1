@@ -1,8 +1,15 @@
 # =============================================================================
 # sap_transport_request.ps1  -  Check or Create SAP Transport Request via NCo
 #
-# Checks if a given transport request is modifiable. If not (released or
-# not found), creates a new workbench transport request.
+# VERIFY-ONLY on a candidate: when a TR number is passed, the script checks
+# whether it is modifiable and NEVER falls through to creating a substitute.
+# A non-modifiable candidate (released / in release / not found) exits 1 with
+# `RESULT: TR_NOT_MODIFIABLE trkorr=<TR> status=<...>`; an unverifiable one
+# (wrapper missing / transient RFC error) exits 1 with
+# `RESULT: TR_UNVERIFIED reason=<...>`. The CALLER re-prompts per the
+# way_to_get_transport_request policy loop (shared/rules/tr_resolution.md).
+# Creation runs ONLY when the caller explicitly routed a create: empty
+# %%TRANSPORT_REQUEST%% (the SKILL.md Create Path) or the -CreateNew switch.
 #
 # TR_READ_REQUEST is NOT a remote-enabled FM, so the verify branch routes
 # the call through Z_GENERIC_RFC_WRAPPER_TBL (deployed by /sap-dev-init).
@@ -38,7 +45,23 @@
 #                                Empty / unknown mode normalises to GUI
 #                                (safe-by-default: refuse rather than
 #                                silently use RFC).
+#
+# Parameters (passed at invocation, NOT token-substituted):
+#   -CreateNew                   Switch. Explicit permission to create a new
+#                                TR (equivalent to routing with an empty
+#                                %%TRANSPORT_REQUEST%%). Without it a
+#                                non-empty candidate is verify-only.
+#   -Description <text>          TR short text, built by the CALLER per
+#                                rule_of_tr_description /
+#                                tr_description_template
+#                                (tr_resolution.md section 3). Empty ->
+#                                last-resort literal default (create section).
 # =============================================================================
+
+param(
+    [switch]$CreateNew,
+    [string]$Description = ""
+)
 
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $ErrorActionPreference = 'Stop'
@@ -197,15 +220,30 @@ function Get-TrStatusViaWrapper {
 
 # --- 2. Check existing TR if provided ---------------------------------------
 # $sTrkorr already trimmed above (the verify-guardrail consumed it).
-$bNeedCreate = $true
+# VERIFY-ONLY contract: a non-empty candidate NEVER falls through to
+# creation. An unverifiable (wrapper missing / transient RFC error) or
+# non-modifiable candidate exits non-zero with a machine-parseable RESULT
+# line; the CALLER re-prompts per the way_to_get_transport_request policy
+# loop (tr_resolution.md section 2). Silently substituting a fresh TR here
+# bypassed that loop and sprawled requests.
+# Creation is reached ONLY via an empty TR input (the SKILL.md Create Path
+# route) or the explicit -CreateNew switch.
+$bNeedCreate = ($sTrkorr -eq "") -or $CreateNew
+$exitCode = 0
 
-if ($sTrkorr -ne "") {
+if ($sTrkorr -ne "" -and -not $CreateNew) {
     Write-Host "INFO: Checking transport request $sTrkorr via Z_GENERIC_RFC_WRAPPER_TBL..."
     $sStatus = Get-TrStatusViaWrapper -Dest $g_dest -Trkorr $sTrkorr
     if ($null -eq $sStatus) {
-        Write-Host "INFO: Could not verify TR $sTrkorr via wrapper. Will create a new transport request."
+        Write-Host "ERROR: Could not verify TR $sTrkorr (wrapper missing or RFC error). NOT creating a substitute TR."
+        Write-Host "RESULT: TR_UNVERIFIED reason=wrapper_unavailable_or_rfc_error trkorr=$sTrkorr"
+        Write-Host "RESULT_STATUS: TR_UNVERIFIED"
+        $exitCode = 1
     } elseif ($sStatus -eq "") {
-        Write-Host "INFO: TR $sTrkorr not found in system. Will create a new transport request."
+        Write-Host "ERROR: TR $sTrkorr not found in this system. NOT creating a substitute TR."
+        Write-Host "RESULT: TR_NOT_MODIFIABLE trkorr=$sTrkorr status=NOT_FOUND"
+        Write-Host "RESULT_STATUS: TR_NOT_MODIFIABLE"
+        $exitCode = 1
     } else {
         Write-Host "INFO: TR $sTrkorr status = $sStatus"
         if ($sStatus -eq "D" -or $sStatus -eq "L") {
@@ -213,11 +251,13 @@ if ($sTrkorr -ne "") {
             # by owner). Treat both as usable for development work.
             Write-Host "RESULT_TR: $sTrkorr"
             Write-Host "RESULT_STATUS: EXISTING_MODIFIABLE"
-            $bNeedCreate = $false
-        } elseif ($sStatus -eq "R" -or $sStatus -eq "O" -or $sStatus -eq "N") {
-            Write-Host "INFO: TR $sTrkorr is released/in-release ($sStatus). Will create a new one."
         } else {
-            Write-Host "INFO: TR $sTrkorr has unrecognised status '$sStatus'. Will create a new one."
+            # R / O / N = released or release in progress; anything else is
+            # an unrecognised status code. Either way: not modifiable.
+            Write-Host "ERROR: TR $sTrkorr is not modifiable (status '$sStatus'). NOT creating a substitute TR."
+            Write-Host "RESULT: TR_NOT_MODIFIABLE trkorr=$sTrkorr status=$sStatus"
+            Write-Host "RESULT_STATUS: TR_NOT_MODIFIABLE"
+            $exitCode = 1
         }
     }
 }
@@ -256,6 +296,15 @@ if ($bNeedCreate -and $normalizedMode -eq "GUI") {
 # Try the modern names first, fall back to legacy on RfcInvalidParameterException.
 if ($bNeedCreate) {
     Write-Host "INFO: Creating new workbench transport request (sap_dev_mode=$normalizedMode)..."
+    # Description: built by the CALLER per rule_of_tr_description /
+    # tr_description_template (tr_resolution.md section 3) and passed via
+    # -Description. The historical literal remains ONLY as a last-resort
+    # default for an empty parameter. E07T short text is CHAR60 -- truncate
+    # defensively.
+    $sDescription = $Description.Trim()
+    if ($sDescription -eq "") { $sDescription = "Basic Tools for sap-dev AI TR" }
+    if ($sDescription.Length -gt 60) { $sDescription = $sDescription.Substring(0, 60) }
+    Write-Host "INFO: TR description: $sDescription"
     $sNewTR = ""
     $sCreateError = ""
 
@@ -265,7 +314,7 @@ if ($bNeedCreate) {
     )) {
         try {
             $fnCreate = $g_dest.Repository.CreateFunction("CTS_API_CREATE_CHANGE_REQUEST")
-            $fnCreate.SetValue($variant.Desc, "Basic Tools for sap-dev AI TR")
+            $fnCreate.SetValue($variant.Desc, $sDescription)
             $fnCreate.SetValue($variant.Cat,  $variant.CatVal)
             $fnCreate.SetValue("CLIENT",      $g_sapClient)
             $fnCreate.SetValue("OWNER",       $g_sapUser)
@@ -288,8 +337,9 @@ if ($bNeedCreate) {
     } else {
         Write-Host "ERROR: $sCreateError"
         Write-Host "RESULT_STATUS: ERROR"
+        $exitCode = 1
     }
 }
 
 try { [SAP.Middleware.Connector.RfcDestinationManager]::RemoveDestination($g_rfcParams) | Out-Null } catch {}
-exit 0
+exit $exitCode

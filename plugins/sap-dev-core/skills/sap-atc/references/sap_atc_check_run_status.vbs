@@ -2,7 +2,7 @@
 ' sap_atc_check_run_status.vbs  -  Stage 3: Read the State of a Run Series
 '                                          on the ATC Run Monitor
 '
-' Drives /nATC, navigates to tree node "13" (Run Monitor — see Screenshot 1),
+' Drives /nATC, navigates to tree node "13" (Run Monitor -- see Screenshot 1),
 ' refreshes the grid, finds the row whose Run Series column matches
 ' %%RUN_SERIES_NAME%%, and reads its State + Phases-completed signals.
 '
@@ -71,7 +71,7 @@ Err.Clear
 ' F8 hop the subsequent findById on wnd[0]/usr/shell/shellcont[0]/shell
 ' fails because the grid doesn't exist on screen 1000.
 '
-' We don't press a dedicated Refresh toolbar button — the original recording
+' We don't press a dedicated Refresh toolbar button -- the original recording
 ' used tbar[1]/btn[8] (F8 in application toolbar), but on modern S/4HANA
 ' builds the application toolbar is collapsed to btnvhmore. F8 sent to
 ' wnd[0] (sendVKey 8) advances the selection screen and works on every
@@ -82,7 +82,7 @@ Dim sScrNum : sScrNum = CStr(oSess.Info.ScreenNumber)
 On Error GoTo 0
 WScript.Echo "INFO: After tree node 13 doubleClick: Program=" & sScrPgm & " Screen=" & sScrNum
 If sScrNum = "1000" Then
-    WScript.Echo "INFO: Landed on selection screen — pressing F8 to advance to result grid."
+    WScript.Echo "INFO: Landed on selection screen -- pressing F8 to advance to result grid."
     On Error Resume Next
     oSess.findById("wnd[0]").sendVKey VKEY_F8
     WScript.Sleep 2000
@@ -95,7 +95,7 @@ On Error GoTo 0
 ' VBScript subtlety: when findById raises inside On Error Resume Next, the
 ' `Set oGrid = ...` assignment never completes. If we then reach an
 ' `If oGrid Is Nothing` check, VBScript raises "Object Required" on the
-' `Is Nothing` operator because oGrid was never bound to an object — it
+' `Is Nothing` operator because oGrid was never bound to an object -- it
 ' stays as Variant/Empty after Dim. The fix is to (a) explicitly bind
 ' oGrid to Nothing FIRST so it's a proper object reference, and
 ' (b) gate subsequent checks with IsObject() rather than `Is Nothing`,
@@ -190,28 +190,28 @@ Dim sDecoded : sDecoded = "UNKNOWN:" & sStateRaw
 ' are never the sole match path. The glyph in each trailing comment documents
 ' what the ChrW() builds -- the runtime literal stays ASCII, only the comment
 ' carries the character. JA wording is live-observed. ZH: the COMPLETED word is
-' live-verified on S4D 1909 -- STATE_ICON shows "状态：已完成" (icon @DF); the
+' live-verified on S4D 1909 -- STATE_ICON shows "zhuangtai: yi-wancheng" (icon @DF); the
 ' RUNNING / ERROR words are best-effort (those states were absent at capture
 ' time). The icon-ID prefixes stay authoritative for every logon language.
-Dim JA_FINISHED : JA_FINISHED = ChrW(&H7D42) & ChrW(&H4E86)                ' 終了   shuuryou      = finished
-Dim JA_COMPLETE : JA_COMPLETE = ChrW(&H5B8C) & ChrW(&H4E86)                ' 完了   kanryou       = complete
-Dim JA_INPROC   : JA_INPROC   = ChrW(&H51E6) & ChrW(&H7406) & ChrW(&H4E2D) ' 処理中 shori-chuu    = in process
-Dim JA_RUNNING  : JA_RUNNING  = ChrW(&H5B9F) & ChrW(&H884C) & ChrW(&H4E2D) ' 実行中 jikkou-chuu   = running
-Dim JA_ERROR    : JA_ERROR    = ChrW(&H30A8) & ChrW(&H30E9) & ChrW(&H30FC) ' エラー eraa          = error
-Dim JA_FAILED   : JA_FAILED   = ChrW(&H5931) & ChrW(&H6557)                ' 失敗   shippai       = failed
-Dim JA_ABORTED  : JA_ABORTED  = ChrW(&H4E2D) & ChrW(&H6B62)                ' 中止   chuushi       = aborted
-Dim ZH_FINISHED : ZH_FINISHED = ChrW(&H5DF2) & ChrW(&H5B8C) & ChrW(&H6210) ' 已完成 yi-wancheng   = completed  (LIVE-VERIFIED S4D 1909: "状态：已完成")
-Dim ZH_COMPLETE : ZH_COMPLETE = ChrW(&H5B8C) & ChrW(&H6210)                ' 完成   wancheng      = complete   (LIVE-VERIFIED: substring of "状态：已完成")
-Dim ZH_INPROC   : ZH_INPROC   = ChrW(&H5904) & ChrW(&H7406) & ChrW(&H4E2D) ' 处理中 chuli-zhong   = in process (best-effort; state not observed)
-Dim ZH_RUNNING  : ZH_RUNNING  = ChrW(&H8FD0) & ChrW(&H884C) & ChrW(&H4E2D) ' 运行中 yunxing-zhong = running    (best-effort; state not observed)
-Dim ZH_ERROR    : ZH_ERROR    = ChrW(&H9519) & ChrW(&H8BEF)                ' 错误   cuowu         = error      (best-effort; state not observed)
-Dim ZH_FAILED   : ZH_FAILED   = ChrW(&H5931) & ChrW(&H8D25)                ' 失败   shibai        = failed     (best-effort; state not observed)
-Dim ZH_ABORTED  : ZH_ABORTED  = ChrW(&H5DF2) & ChrW(&H53D6) & ChrW(&H6D88) ' 已取消 yi-quxiao     = cancelled  (best-effort; state not observed)
+Dim JA_FINISHED : JA_FINISHED = ChrW(&H7D42) & ChrW(&H4E86)                ' shuuryou      = finished
+Dim JA_COMPLETE : JA_COMPLETE = ChrW(&H5B8C) & ChrW(&H4E86)                ' kanryou       = complete
+Dim JA_INPROC   : JA_INPROC   = ChrW(&H51E6) & ChrW(&H7406) & ChrW(&H4E2D) ' shori-chuu    = in process
+Dim JA_RUNNING  : JA_RUNNING  = ChrW(&H5B9F) & ChrW(&H884C) & ChrW(&H4E2D) ' jikkou-chuu   = running
+Dim JA_ERROR    : JA_ERROR    = ChrW(&H30A8) & ChrW(&H30E9) & ChrW(&H30FC) ' eraa          = error
+Dim JA_FAILED   : JA_FAILED   = ChrW(&H5931) & ChrW(&H6557)                ' shippai       = failed
+Dim JA_ABORTED  : JA_ABORTED  = ChrW(&H4E2D) & ChrW(&H6B62)                ' chuushi       = aborted
+Dim ZH_FINISHED : ZH_FINISHED = ChrW(&H5DF2) & ChrW(&H5B8C) & ChrW(&H6210) ' yi-wancheng   = completed  (LIVE-VERIFIED S4D 1909 status text)
+Dim ZH_COMPLETE : ZH_COMPLETE = ChrW(&H5B8C) & ChrW(&H6210)                ' wancheng      = complete   (LIVE-VERIFIED: substring of the completed-status text)
+Dim ZH_INPROC   : ZH_INPROC   = ChrW(&H5904) & ChrW(&H7406) & ChrW(&H4E2D) ' chuli-zhong   = in process (best-effort; state not observed)
+Dim ZH_RUNNING  : ZH_RUNNING  = ChrW(&H8FD0) & ChrW(&H884C) & ChrW(&H4E2D) ' yunxing-zhong = running    (best-effort; state not observed)
+Dim ZH_ERROR    : ZH_ERROR    = ChrW(&H9519) & ChrW(&H8BEF)                ' cuowu         = error      (best-effort; state not observed)
+Dim ZH_FAILED   : ZH_FAILED   = ChrW(&H5931) & ChrW(&H8D25)                ' shibai        = failed     (best-effort; state not observed)
+Dim ZH_ABORTED  : ZH_ABORTED  = ChrW(&H5DF2) & ChrW(&H53D6) & ChrW(&H6D88) ' yi-quxiao     = cancelled  (best-effort; state not observed)
 
 ' Match against:
 '   * SAP icon prefixes (locale-independent; @03/@DF/@AC = success-ish,
 '     @2F/@BZ = in-process, @5B/@5C = error). S/4HANA 1909 returns @DF
-'     for the green-flag "Finished" state — verified live.
+'     for the green-flag "Finished" state -- verified live.
 '   * Tooltip stems in EN / JA / ZH (ZH best-effort). The literal text after
 '     \Q is the translatable tooltip.
 If InStr(sStateLow, "finish") > 0 Or InStr(sStateLow, "compl") > 0 Or _

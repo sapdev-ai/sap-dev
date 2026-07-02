@@ -31,8 +31,12 @@
 # Output grammar (parseable; matches the sap-cc line style):
 #   INVENTORY: total=<n> new=<n> existing=<n> file=<path>
 #   TYPE: <OBJECT> | COUNT: <n>
-#   STATUS: OK | STATUS: EMPTY | STATUS: ERROR
-# Exit: 0 ok | 1 empty (no objects in scope) | 2 error (bad workspace / RFC / missing export)
+#   STATUS: OK | STATUS: PARTIAL failed_slices=<k> | STATUS: EMPTY | STATUS: ERROR
+# Exit: 0 ok | 1 empty (no objects in scope) | 2 error (bad workspace / RFC /
+#       missing export; also when ALL namespace/package slices fail -- nothing
+#       is written then) | 3 partial (RFC mode: <k> slice(s) failed, others
+#       succeeded; inventory.tsv IS written but INCOMPLETE -- it must not
+#       silently become the campaign scope)
 
 [CmdletBinding()]
 param(
@@ -92,6 +96,11 @@ function Parse-Se16nExport([string]$path){
     $lines = @(Get-Content -LiteralPath $path)
     if ($lines.Count -lt 1) { return $out }
     if ($lines[0] -match '^NO_DATA') { return $out }   # SE16N "no values found" marker
+    # SE16N read FAILURE marker (auth / lock / invalid table). Distinct from an
+    # empty result: an unreadable export must NOT be parsed as an inventory.
+    # Return the empty structure -> the header check downstream fails closed
+    # (exit 2) rather than treating "QUERY_FAILED<TAB>msg" as a data header.
+    if ($lines[0] -match '^QUERY_FAILED') { return $out }
     $hdr = @($lines[0].Split("`t") | ForEach-Object { $_.Trim() })
     for ($i = 0; $i -lt $hdr.Count; $i++){ if (-not $out.idx.ContainsKey((Norm $hdr[$i]))) { $out.idx[(Norm $hdr[$i])] = $i } }
     for ($i = 1; $i -lt $lines.Count; $i++){ if ($lines[$i].Trim()) { $out.rows += ,@($lines[$i].Split("`t")) } }
@@ -99,8 +108,11 @@ function Parse-Se16nExport([string]$path){
 }
 
 # Shared emit: write inventory.tsv + upsert state.tsv + per-type counts.
-# Returns the process exit code (0 ok / 1 empty).
-function Emit-Inventory([string]$CampaignDir,$allRows,$subcMap){
+# Returns the process exit code (0 ok / 1 empty / 3 partial). A non-zero
+# $FailedSlices (RFC mode: per-WHERE RFC_READ_TABLE failures) downgrades an OK
+# run to STATUS: PARTIAL -- the files are written, but the caller must treat
+# the inventory as incomplete, never as the campaign scope.
+function Emit-Inventory([string]$CampaignDir,$allRows,$subcMap,[int]$FailedSlices = 0){
     $invPath = Join-Path $CampaignDir 'inventory.tsv'
     if ($allRows.Count -eq 0) {
         Write-Utf8NoBom $invPath "obj_name`tobj_type`tsub_type`tpackage`tapp_component`tauthor`tcreated_on`tchanged_on`r`n"
@@ -146,6 +158,10 @@ function Emit-Inventory([string]$CampaignDir,$allRows,$subcMap){
     $byType = $allRows | Group-Object OBJECT | Sort-Object Name
     foreach ($g in $byType) { Write-Output "TYPE: $($g.Name) | COUNT: $($g.Count)" }
     Write-Output "INVENTORY: total=$($allRows.Count) new=$($newLines.Count) existing=$existingHit file=$invPath"
+    if ($FailedSlices -gt 0) {
+        Write-Output "STATUS: PARTIAL failed_slices=$FailedSlices"
+        return 3
+    }
     Write-Output 'STATUS: OK'
     return 0
 }
@@ -323,15 +339,28 @@ try {
         }
     }
 
-    # Fetch + dedupe on OBJECT|OBJ_NAME.
+    # Fetch + dedupe on OBJECT|OBJ_NAME. Track failed slices: a namespace/
+    # package WHERE that errors out silently missing from the inventory would
+    # otherwise become the campaign scope.
     $acc = @{}
+    $failedSlices = 0
     foreach ($w in $wheres) {
         $rows = @()
         try { $rows = @(Read-TadirRows $dest $w) }
-        catch { Write-Output "ERROR: RFC_READ_TABLE TADIR failed for [$w]: $($_.Exception.Message)" }
+        catch { $failedSlices++; Write-Output "ERROR: RFC_READ_TABLE TADIR failed for [$w]: $($_.Exception.Message)" }
         foreach ($r in $rows) { $acc["$($r.OBJECT)|$($r.OBJ_NAME)"] = $r }
     }
     $allRows = Apply-Filters @($acc.Values)
+
+    # Any failure + nothing read (covers the all-slices-failed case) => hard
+    # ERROR, and do NOT write inventory.tsv / state.tsv (an empty write would
+    # clobber a previous good inventory with nothing).
+    if ($failedSlices -gt 0 -and @($allRows).Count -eq 0) {
+        Write-Output "ERROR: $failedSlices of $($wheres.Count) TADIR slice(s) failed and no rows were read -- inventory NOT written"
+        Write-Output 'STATUS: ERROR'
+        Disconnect-SapRfc
+        exit 2
+    }
 
     # sub_type enrichment (PROG only, namespace-enumeration path).
     $subcMap = @{}
@@ -345,7 +374,7 @@ try {
     }
 
     Disconnect-SapRfc
-    exit (Emit-Inventory $CampaignDir $allRows $subcMap)
+    exit (Emit-Inventory $CampaignDir $allRows $subcMap $failedSlices)
 }
 catch {
     try { Disconnect-SapRfc } catch {}

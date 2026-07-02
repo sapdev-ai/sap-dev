@@ -178,12 +178,12 @@ cd sap-dev
 node scripts/check-consistency.mjs
 ```
 
-Should print (counts grow as the repo grows — the shape is what matters):
+Should print (counts grow and shrink as the waves migrate — the shape is what matters):
 ```
-OK: 4 plugins, 78 skills, all manifests aligned at the same version, Tier 3 attach contract clean, 10 non-ASCII warning(s), 30 run-temp warning(s), screen-baseline coverage 7/119 (112 unbaselined)
+OK: 4 plugins, 78 skills, all manifests aligned at the same version, Tier 3 attach contract clean, 34 run-temp warning(s), 4 known-missing reference warning(s), 51 cscript-host warning(s) (51 bare cscript, 0 wscript), 41 locale-literal warning(s), screen-baseline coverage 8/121 (113 unbaselined)
 ```
 
-On failure, the script lists each non-conforming file with a specific reason. The check covers:
+On failure, the script lists each non-conforming file with a specific reason. The check covers (2026-07-02: grown from seven to eleven conditions):
 
 1. Legacy `For Each oCandidate In oApp.Children` (and its variant patterns) → must not appear in non-exempt operational VBS.
 2. VBS with `Const SESSION_PATH` but no `%%ATTACH_LIB_VBS%%` include → the helper will be undefined at runtime.
@@ -191,7 +191,11 @@ On failure, the script lists each non-conforming file with a specific reason. Th
 4. VBS with `%%ATTACH_LIB_VBS%%` include but no `AttachSapSession(...)` call → dead include.
 5. SKILL.md that wraps a template requiring `%%ATTACH_LIB_VBS%%` but doesn't substitute it → the runtime VBS will fail to attach.
 6. SKILL.md that passes `{RUN_TEMP}` to `Get-SapCurrentSessionPath -WorkTemp` → **hard error** (that call derives `{work_dir}\runtime` from the parent, so a run-scoped path relocates `session_registry.json`; keep the base `{WORK_TEMP}` there). Layer 2.
-7. SKILL.md that writes fixed-named generated scratch under the shared `{WORK_TEMP}` base instead of `{RUN_TEMP}` → **run-temp warning** (the Bucket-A coordination files are exempt via `RUN_TEMP_SHARED_ALLOWLIST`). Layer 2.
+7. SKILL.md that writes fixed-named generated scratch under the shared `{WORK_TEMP}` base instead of `{RUN_TEMP}` → **run-temp warning**. Widened 2026-07-02 from `.vbs`/`.ps1` to also cover fixed-name `.json`/`.xml`/`.log`/`.txt` state and scratch files (the `sap_*_run.json` state files a parallel wave is migrating). Bucket-A coordination files are exempt via `RUN_TEMP_SHARED_ALLOWLIST`, kept in sync with `SHARED_ALLOWLIST` in `scripts/run-temp-hook.mjs`. Layer 2.
+8. SKILL.md that references an implementation file which does not exist on disk (`references/<file>`, `<SKILL_DIR>/<file>`, `<SAP_DEV_CORE_SHARED_DIR>/<file>`) → **hard error** (added 2026-07-02 after the ghost-implementation findings; the two review-verified ghosts in `KNOWN_MISSING_REFERENCES` emit a WARN pending their re-implementation).
+9. SKILL.md that invokes bare `cscript` (without the `C:\Windows\SysWOW64\` prefix — SAP GUI COM needs the 32-bit host) or any `wscript` (blocks with a MsgBox per `WScript.Echo`) → **warning**, to be promoted once the waves migrate the existing invocations.
+10. `references/*.vbs` line that branches on translated GUI text — `InStr(...)` against a curated English literal ("resulted in errors", "locked", "Initial Screen", ...) or an `LCase(<title>) = "..."` compare — outside comments/`WScript.Echo` → **locale-literal warning** (`shared/rules/language_independence_rules.md`).
+11. Shipped `.ps1`/`.vbs` (skills' `references/` + sap-dev-core `shared/scripts/`) containing a non-ASCII byte without a UTF-8 BOM → **hard error** (promoted from WARN on 2026-07-02 once the tree reached zero offenders; use `--`/`->` in comments and `ChrW()` for runtime non-ASCII).
 
 ---
 

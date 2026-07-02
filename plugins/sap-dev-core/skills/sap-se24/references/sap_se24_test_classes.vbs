@@ -166,7 +166,34 @@ On Error Resume Next
 If InStr(oSession.ActiveWindow.Id, "wnd[1]") > 0 Then oSession.ActiveWindow.sendVKey VKEY_ENTER : WScript.Sleep 800
 Err.Clear
 On Error GoTo 0
-WScript.Echo "INFO: Local Test Classes include open (Program=" & oSession.Info.Program & ")."
+
+' GATE: confirm the LOCAL TEST-CLASS editor is actually active BEFORE any
+' upload/save. btn[35] (Ctrl+F11) switches into the CCAU include, whose editor
+' runs Program=SAPLSEO_CLEDITOR (verified S/4HANA 1909). If the navigation drifted
+' (control moved on this release/locale) we would still be on the MAIN class
+' source (DY0400) -- uploading + saving there would OVERWRITE the main include
+' with test-only source. Never fall through to Upload in that case.
+Dim sEdProg
+On Error Resume Next
+sEdProg = UCase(CStr(oSession.Info.Program))
+Err.Clear
+On Error GoTo 0
+' Still on the main source-code screen? (DY0400 status field only exists there.)
+Dim bStillMain
+On Error Resume Next
+Dim oMainProbe : Set oMainProbe = oSession.findById("wnd[0]/usr/txtDY0400_STATUS")
+bStillMain = (Err.Number = 0 And Not (oMainProbe Is Nothing))
+Err.Clear
+On Error GoTo 0
+If sEdProg <> "SAPLSEO_CLEDITOR" Or bStillMain Then
+    WScript.Echo "ERROR: CCAU_EDITOR_NOT_REACHED -- the Local Test Classes editor did not open" & vbCrLf & _
+                 "       (Program=" & sEdProg & "; still on main source=" & bStillMain & ")." & vbCrLf & _
+                 "       Aborting so the test source is not saved over the main class include." & vbCrLf & _
+                 "       Re-record the CCAU navigation (btn[35]/Ctrl+F11) via /sap-gui-record."
+    ReleaseSession oSession, wasLocked
+    WScript.Quit 1
+End If
+WScript.Echo "INFO: Local Test Classes include open (Program=" & sEdProg & ")."
 
 ' ------ 4. Upload the test source into the current (test-class) editor -------
 WScript.Echo "INFO: Uploading test source: " & TEST_SOURCE_FILE
@@ -187,11 +214,14 @@ If Not bUp Then
 End If
 WScript.Sleep 2000
 
-' "Save before upload?" -> No (btnBUTTON_2).
+' "Save before upload?" -> No (btnBUTTON_2). Detect by control id (locale-proof),
+' not by the translated popup title.
 On Error Resume Next
 If InStr(oSession.ActiveWindow.Id, "wnd[1]") > 0 Then
-    If InStr(oSession.findById("wnd[1]").Text, "Save") > 0 Then
-        oSession.findById("wnd[1]/usr/btnBUTTON_2").press
+    Dim oSaveNo : Set oSaveNo = oSession.findById("wnd[1]/usr/btnBUTTON_2")
+    If Err.Number = 0 And Not (oSaveNo Is Nothing) Then
+        Err.Clear
+        oSaveNo.press
         WScript.Sleep 1500
     End If
 End If
@@ -228,7 +258,17 @@ If InStr(oSession.ActiveWindow.Id, "wnd[1]") > 0 Then
     Dim oTR : Set oTR = oSession.findById("wnd[1]/usr/ctxtKO008-TRKORR")
     If Err.Number = 0 And Not (oTR Is Nothing) Then
         Err.Clear
-        If SAP_TRANSPORT <> "" Then oTR.Text = SAP_TRANSPORT
+        ' TR popup: never blind-Enter with an empty TRANSPORT (that silently
+        ' registers as Local Object / $TMP). Abort loud so /sap-transport-request
+        ' can resolve a TR and the run is re-tried.
+        If SAP_TRANSPORT = "" Then
+            On Error GoTo 0
+            WScript.Echo "ERROR: ABORT_EMPTY_TR -- SAP prompted for a transport request but TRANSPORT is empty."
+            WScript.Echo "       Resolve a TR via /sap-transport-request and re-run."
+            ReleaseSession oSession, wasLocked
+            WScript.Quit 1
+        End If
+        oTR.Text = SAP_TRANSPORT
         oSession.findById("wnd[1]").sendVKey VKEY_ENTER
         WScript.Sleep 1000
     Else
@@ -295,6 +335,16 @@ End If
 Err.Clear
 On Error GoTo 0
 
+' ------ 8. Final status-bar gate (MessageType, locale-independent) -----------
+' Read the sbar MessageType BEFORE releasing the session; an E/A there means the
+' save/activate did not stick (locked object, TR error, activation failure).
+Dim sBarText, sBarType
+On Error Resume Next
+sBarText = oSession.findById("wnd[0]/sbar").Text
+sBarType = oSession.findById("wnd[0]/sbar").MessageType
+Err.Clear
+On Error GoTo 0
+
 ReleaseSession oSession, wasLocked
 If wasLocked Then WScript.Echo "INFO: Session UI lock released."
 
@@ -303,9 +353,13 @@ If oFSO.FileExists(TEST_SOURCE_FILE & ".upload.txt") Then oFSO.DeleteFile TEST_S
 Err.Clear
 On Error GoTo 0
 
-On Error Resume Next
-WScript.Echo "INFO: SAP status: " & oSession.findById("wnd[0]/sbar").Text
-On Error GoTo 0
+WScript.Echo "INFO: SAP status: " & sBarText & " (MessageType=" & sBarType & ")"
+
+If sBarType = "E" Or sBarType = "A" Then
+    WScript.Echo "ERROR: SAP reported a " & sBarType & "-message on save/activate -- test classes NOT saved."
+    WScript.Echo "       Status: " & sBarText
+    WScript.Quit 1
+End If
 
 If bSyntaxOK Then
     WScript.Echo "SUCCESS: Local test classes uploaded and activated for " & UCase(CLASS_NAME) & "."

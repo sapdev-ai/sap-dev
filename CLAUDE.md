@@ -375,8 +375,11 @@ radios + results-grid IDs (PLACEHOLDER constants in
 `/sap-activate-object <OBJECT_TYPE> <OBJECT_NAME>` activates an inactive
 repository object outside of a deploy flow (e.g. when an object was left
 inactive after a failed activation). It routes by type to SE38 / SE37 / SE24
-/ SE11, handles the inactive-objects worklist popup (Select All + Continue),
-and verifies via `PROGDIR` (programs / FM includes) and `DWINACTIV`. The
+/ SE11, handles the inactive-objects worklist popup (Continue only — the
+triggering object arrives pre-selected; Select All is never pressed because
+it would co-activate other developers' unrelated inactive objects on a
+shared DEV), and verifies via `PROGDIR` (programs / FM includes) and
+`DWINACTIV`. The
 inactive-objects worklist popup is filtered by SAP based on the **locality**
 (transportable vs local — `TADIR-DEVCLASS` starts with `$`) of the triggering
 object.

@@ -506,7 +506,10 @@ End If
 
 ' ------ 8. Activate (Ctrl+F3) --------------------------------------------------
 WScript.Echo "INFO: Activating..."
-oSession.findById("wnd[0]/tbar[1]/btn[27]").press
+' BUGFIX (sap-dev-init 2026-05-11): tbar[1]/btn[27].press silently no-ops on
+' some S/4HANA 1909 sessions when editor focus is on the field grid. Ctrl+F3
+' (sendVKey 27) is always honoured.
+oSession.findById("wnd[0]").sendVKey 27
 WScript.Sleep 2000
 
 ' Dismiss all activation popups. See sap_se11_table_create.vbs for the

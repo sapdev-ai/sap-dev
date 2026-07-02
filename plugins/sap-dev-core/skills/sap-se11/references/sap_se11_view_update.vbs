@@ -276,6 +276,65 @@ WScript.Sleep 1000
 Err.Clear
 On Error GoTo 0
 
+' ------ 4b. Join Conditions tab (for Database views with >1 table) -----------
+' Pre-fix (2026-07-02): the JOIN_CONDITIONS section was parsed into arrJoins
+' but never applied, so an update that changed join conditions ended SUCCESS
+' with the joins untouched. Same fill pattern as sap_se11_view_create.vbs
+' Step 7 -- rows are written top-down, so re-stating existing joins is
+' idempotent and new joins land on the first free rows after them.
+If iJoinCount > 0 Then
+    WScript.Echo "INFO: Setting join conditions..."
+    On Error Resume Next
+    oSession.findById("wnd[0]/usr/tabsTABSTRIP_DD26/tabpJOIN").select
+    WScript.Sleep 500
+
+    Dim sJoinBase, aJoinFields, iJRow
+    sJoinBase = "wnd[0]/usr/tabsTABSTRIP_DD26/tabpJOIN/ssubSS_JOIN:SAPLSD31:"
+
+    For i = 0 To iJoinCount - 1
+        aJoinFields = Split(arrJoins(i), vbTab)
+        iJRow = i
+
+        ' Fill join condition fields
+        oSession.findById(sJoinBase & "0901/tblSAPLSD31TC_JOIN_TAB/ctxtDD28S-LTAB[0," & iJRow & "]").Text = UCase(aJoinFields(0))
+        If Err.Number <> 0 Then
+            Err.Clear
+            oSession.findById(sJoinBase & "0601/tblSAPLSD31TC_JOIN_TAB/ctxtDD28S-LTAB[0," & iJRow & "]").Text = UCase(aJoinFields(0))
+        End If
+        oSession.findById(sJoinBase & "0901/tblSAPLSD31TC_JOIN_TAB/ctxtDD28S-LFIELDNAME[1," & iJRow & "]").Text = UCase(aJoinFields(1))
+        If Err.Number <> 0 Then
+            Err.Clear
+            oSession.findById(sJoinBase & "0601/tblSAPLSD31TC_JOIN_TAB/ctxtDD28S-LFIELDNAME[1," & iJRow & "]").Text = UCase(aJoinFields(1))
+        End If
+        oSession.findById(sJoinBase & "0901/tblSAPLSD31TC_JOIN_TAB/ctxtDD28S-RTAB[2," & iJRow & "]").Text = UCase(aJoinFields(2))
+        If Err.Number <> 0 Then
+            Err.Clear
+            oSession.findById(sJoinBase & "0601/tblSAPLSD31TC_JOIN_TAB/ctxtDD28S-RTAB[2," & iJRow & "]").Text = UCase(aJoinFields(2))
+        End If
+        oSession.findById(sJoinBase & "0901/tblSAPLSD31TC_JOIN_TAB/ctxtDD28S-RFIELDNAME[3," & iJRow & "]").Text = UCase(aJoinFields(3))
+        If Err.Number <> 0 Then
+            Err.Clear
+            oSession.findById(sJoinBase & "0601/tblSAPLSD31TC_JOIN_TAB/ctxtDD28S-RFIELDNAME[3," & iJRow & "]").Text = UCase(aJoinFields(3))
+        End If
+
+        If Err.Number <> 0 Then
+            WScript.Echo "WARNING: Could not set join at row " & iJRow & ": " & Err.Description
+            Err.Clear
+        End If
+        WScript.Sleep 200
+
+        If i < iJoinCount - 1 Then
+            oSession.findById("wnd[0]").sendVKey VKEY_ENTER
+            WScript.Sleep 500
+        End If
+    Next
+
+    oSession.findById("wnd[0]").sendVKey VKEY_ENTER
+    WScript.Sleep 1000
+    Err.Clear
+    On Error GoTo 0
+End If
+
 ' ------ 5. View Fields tab -- Scan existing + add new fields ------------------
 If iFieldCount > 0 Then
     WScript.Echo "INFO: Updating view fields..."
@@ -508,7 +567,10 @@ WScript.Echo "INFO: Saved."
 ' ------ 7. Activate (Ctrl+F3) -----------------------------------------------
 WScript.Echo "INFO: Activating..."
 On Error Resume Next
-oSession.findById("wnd[0]/tbar[1]/btn[27]").press
+' BUGFIX (sap-dev-init 2026-05-11): tbar[1]/btn[27].press silently no-ops on
+' some S/4HANA 1909 sessions when editor focus is on the field grid. Ctrl+F3
+' (sendVKey 27) is always honoured.
+oSession.findById("wnd[0]").sendVKey 27
 WScript.Sleep 3000
 If InStr(oSession.ActiveWindow.Id, "wnd[1]") > 0 Then
     oSession.ActiveWindow.sendVKey VKEY_ENTER
@@ -523,8 +585,16 @@ sFinalMsg  = oSession.findById("wnd[0]/sbar").Text
 sFinalType = oSession.findById("wnd[0]/sbar").MessageType
 On Error GoTo 0
 
-If sFinalType = "E" Then
-    WScript.Echo "WARNING: Activation may have errors - " & sFinalMsg
+' Activation gate (same contract as sap_se11_table_update.vbs): sbar E/A
+' means the object was NOT activated -- fail loudly instead of degrading to
+' a WARNING followed by an unconditional SUCCESS (the pre-fix false-success).
+' MessageType "W" stays a warning and proceeds.
+If sFinalType = "E" Or sFinalType = "A" Then
+    WScript.Echo "ERROR: Activation failed - " & sFinalMsg
+    WScript.Echo "FAILED: View " & UCase(OBJECT_NAME) & " was NOT activated."
+    WScript.Quit 1
+ElseIf sFinalType = "W" Then
+    WScript.Echo "WARNING: " & sFinalMsg
 Else
     WScript.Echo "INFO: SAP status: " & sFinalMsg
 End If

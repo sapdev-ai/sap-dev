@@ -83,7 +83,8 @@ SAP system, then token-substitute and run via 32-bit cscript:
 
 ```powershell
 $skillDir  = '<SKILL_DIR>'
-$workTemp  = '{WORK_TEMP}'
+$workTemp  = '{WORK_TEMP}'   # base dir -- ONLY for Get-SapCurrentSessionPath -WorkTemp
+$runTemp   = '{RUN_TEMP}'    # per-run scratch -- generated *_run.vbs / *_run.ps1 go here
 $mode      = 'THE_MODE'
 $paramsMap = @{ {{PARAM_MAP_HINT}} }   # populated from Step 1 parsing
 
@@ -112,9 +113,9 @@ $content = $content -replace '%%ATTACH_LIB_VBS%%', '<SAP_DEV_CORE_SHARED_DIR>\sc
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 
-[System.IO.File]::WriteAllText("$workTemp\{{SKILL_NAME}}_run.vbs", $content, [System.Text.UnicodeEncoding]::new($false, $true))
+[System.IO.File]::WriteAllText("$runTemp\{{SKILL_NAME}}_run.vbs", $content, [System.Text.UnicodeEncoding]::new($false, $true))
 
-C:/Windows/SysWOW64/cscript.exe //NoLogo "$workTemp\{{SKILL_NAME}}_run.vbs"
+C:/Windows/SysWOW64/cscript.exe //NoLogo "$runTemp\{{SKILL_NAME}}_run.vbs"
 ```
 
 Read the script's stdout. Last line is `DONE` (success) or `ERROR: <text>`
@@ -151,7 +152,7 @@ reference end-state in its final `step_NN_after.txt`.
 ## Final — Log end and report
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\{{SKILL_NAME}}_run.json" -Status SUCCESS -ExitCode 0
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\{{SKILL_NAME}}_run.json" -Status SUCCESS -ExitCode 0
 ```
 
 On failure, swap `-Status FAILED -ExitCode 1 -ErrorClass <CLASS> -ErrorMsg "<short>"`.

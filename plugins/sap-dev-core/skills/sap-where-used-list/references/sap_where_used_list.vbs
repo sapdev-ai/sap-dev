@@ -186,16 +186,59 @@ On Error GoTo 0
 ' SAP shows "In which environment ...?" with a tree/list of scopes
 ' (Programs, Classes, Function modules, Database tables, etc.).
 ' tbar[0]/btn[7] = Select All; tbar[0]/btn[0] = Continue.
+'
+' The scope popup appearing is ALSO the confirmation that Where-Used actually
+' started -- i.e. the object EXISTS. If the object does not exist, SAP raises an
+' E-message on the initial screen and NO scope popup appears; we must NOT then
+' fall through to "has usages".
+Dim bScopePopup : bScopePopup = False
 On Error Resume Next
 If InStr(oSess.ActiveWindow.Id, "wnd[1]") > 0 Then
-    WScript.Echo "INFO: Scope popup -- Select All + Continue."
-    oSess.findById("wnd[1]/tbar[0]/btn[7]").press
-    WScript.Sleep 600
-    oSess.findById("wnd[1]/tbar[0]/btn[0]").press
-    WScript.Sleep 2000
+    ' Fingerprint the scope popup by its Select-All toolbar button.
+    Dim oSelAll : Set oSelAll = Nothing
+    Set oSelAll = oSess.findById("wnd[1]/tbar[0]/btn[7]")
+    If Err.Number = 0 And Not (oSelAll Is Nothing) Then
+        Err.Clear
+        bScopePopup = True
+        WScript.Echo "INFO: Scope popup -- Select All + Continue."
+        oSelAll.press
+        WScript.Sleep 600
+        oSess.findById("wnd[1]/tbar[0]/btn[0]").press
+        WScript.Sleep 2000
+    End If
 End If
 Err.Clear
 On Error GoTo 0
+
+' --- 5a. Existence gate ----------------------------------------------------
+' If NO scope popup appeared, either the object does not exist (Where-Used could
+' not start) or the run went straight to a "no usages" popup / a rendered list.
+' Read the initial-screen state + sbar to tell "nonexistent/error" from a valid
+' immediate result. The name field only resolves while we are still on the
+' initial screen (locale-proof, mirrors sap_se11_check.vbs).
+If Not bScopePopup Then
+    Dim bBackOnInitial
+    On Error Resume Next
+    Dim oInitProbe : Set oInitProbe = Nothing
+    Set oInitProbe = oSess.findById(sNameId)
+    bBackOnInitial = (Err.Number = 0 And Not (oInitProbe Is Nothing))
+    Err.Clear
+    Dim sGateType : sGateType = ""
+    sGateType = oSess.findById("wnd[0]/sbar").MessageType
+    Dim sGateText : sGateText = ""
+    sGateText = oSess.findById("wnd[0]/sbar").Text
+    Dim bAnyPopup : bAnyPopup = (InStr(oSess.ActiveWindow.Id, "wnd[1]") > 0)
+    On Error GoTo 0
+    ' Still on the initial screen with no follow-up popup => Where-Used never ran.
+    ' An E/A message here means the object does not exist (or is not readable).
+    If bBackOnInitial And Not bAnyPopup Then
+        WScript.Echo "INFO: SAP status: [" & sGateType & "] " & sGateText
+        ReleaseSession oSess, wasLocked
+        WScript.Echo "ERROR: Where-Used List did not start for " & sType & " " & sName & _
+                     " -- the object may not exist (still on the initial screen)."
+        WScript.Quit 1
+    End If
+End If
 
 ' --- 6. Branch: NOT_FOUND vs LIST_RENDERED --------------------------------
 '
@@ -211,12 +254,23 @@ sActive = oSess.ActiveWindow.Id
 On Error GoTo 0
 
 If InStr(sActive, "wnd[1]") > 0 Then
+    ' Fingerprint the "no usages" popup: it is an SPOP information/confirm dialog
+    ' carrying btnSPOP-OPTION1 but WITHOUT the scope popup's Select-All toolbar
+    ' button (tbar[0]/btn[7]). A bare OPTION1 probe is too generic -- a re-shown
+    ' scope popup or another modal also carries OPTION1, and dismissing it as
+    ' "no usages" would emit a delete-safe verdict for an object that still has
+    ' (or could not be checked for) usages.
     Dim oOpt : Set oOpt = Nothing
+    Dim oScopeSel : Set oScopeSel = Nothing
     On Error Resume Next
     Set oOpt = oSess.findById("wnd[1]/usr/btnSPOP-OPTION1")
+    Err.Clear
+    Set oScopeSel = oSess.findById("wnd[1]/tbar[0]/btn[7]")
+    Err.Clear
     On Error GoTo 0
-    If Not (oOpt Is Nothing) Then
-        WScript.Echo "INFO: 'No usages' popup -- pressing OPTION1 to dismiss."
+    Dim bNoUsagesPopup : bNoUsagesPopup = (Not (oOpt Is Nothing)) And (oScopeSel Is Nothing)
+    If bNoUsagesPopup Then
+        WScript.Echo "INFO: 'No usages' popup (SPOP OPTION1, no scope toolbar) -- pressing OPTION1 to dismiss."
         oOpt.press
         WScript.Sleep 1200
         Dim sSb : sSb = "" : Dim sSt : sSt = ""
@@ -233,16 +287,34 @@ If InStr(sActive, "wnd[1]") > 0 Then
         ReleaseSession oSess, wasLocked
         WScript.Echo "NOT_FOUND: " & sType & " " & sName & " has no usages in the selected scope."
         WScript.Quit 0
+    ElseIf Not (oOpt Is Nothing) Then
+        ' A popup with OPTION1 but ALSO the scope toolbar (or another unexpected
+        ' modal) is not a confirmed "no usages" -- do NOT emit a delete-safe verdict.
+        WScript.Echo "ERROR: Unexpected popup after scope selection (OPTION1 present with scope toolbar)."
+        WScript.Echo "       Cannot confirm 'no usages' safely; re-run or inspect via /sap-gui-object-details."
+        ReleaseSession oSess, wasLocked
+        WScript.Quit 1
     End If
 End If
 
 ' --- 7. List rendered: optionally print to spool ---------------------------
+' Gate on sbar MessageType first: an E/A here means Where-Used errored (e.g. the
+' object could not be read) rather than produced a usage list -- never report
+' "has usages" on an error.
+Dim sSb2, sSt2
+On Error Resume Next
+sSb2 = oSess.findById("wnd[0]/sbar").Text
+sSt2 = oSess.findById("wnd[0]/sbar").MessageType
+On Error GoTo 0
+If sSt2 = "E" Or sSt2 = "A" Then
+    WScript.Echo "INFO: SAP status: [" & sSt2 & "] " & sSb2
+    ReleaseSession oSess, wasLocked
+    WScript.Echo "ERROR: Where-Used List reported a " & sSt2 & "-message for " & sType & " " & sName & _
+                 " -- cannot determine usages (object may not exist / not readable)."
+    WScript.Quit 1
+End If
+
 If Not bToSpool Then
-    Dim sSb2, sSt2
-    On Error Resume Next
-    sSb2 = oSess.findById("wnd[0]/sbar").Text
-    sSt2 = oSess.findById("wnd[0]/sbar").MessageType
-    On Error GoTo 0
     WScript.Echo "INFO: SAP status: [" & sSt2 & "] " & sSb2
     WScript.Echo "INFO: Where-Used list is on screen; TO_SPOOL=X not set, leaving the list visible."
     ReleaseSession oSess, wasLocked

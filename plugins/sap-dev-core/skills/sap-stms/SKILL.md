@@ -79,10 +79,16 @@ Set `{WORK_TEMP}` = `{work_dir}\temp`; `{RUN}` = `{WORK_TEMP}\stms\<run>`:
 cmd /c if not exist "{WORK_TEMP}\stms" mkdir "{WORK_TEMP}\stms"
 ```
 
+Set `{RUN_TEMP}` = the per-run scratch dir (`Get-SapRunTemp` mints + creates `{work_dir}\temp\run_<id>`):
+```bash
+powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('RUN_TEMP=' + (Get-SapRunTemp))"
+```
+Per the CLAUDE.md "Two-bucket temp model" write this skill's `_run.json` log state under `{RUN_TEMP}` (the working files already live in the per-run `{RUN}`); keep `{WORK_TEMP}` (base) only for `Get-SapCurrentSessionPath -WorkTemp`.
+
 ## Step 0.5 — Start Logging (best-effort)
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{WORK_TEMP}\sap_stms_run.json" -Skill sap-stms -ParamsJson "{}"
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{RUN_TEMP}\sap_stms_run.json" -Skill sap-stms -ParamsJson "{}"
 ```
 
 ---
@@ -132,8 +138,10 @@ Print the queue (or the TR's position) and whether the TR is already imported.
 ## L1 — Read the import log
 
 Substitute + run `sap_stms_log_read.vbs`. Tokens: `%%TARGET_SID%%`, `%%TR%%`,
-`%%OUTPUT_FILE%%`. It opens the import history / log for the TR in the system and
-reads the **return code**.
+`%%OUTPUT_FILE%%`. It **navigates into the named target system's import queue**
+(double-clicks the `%%TARGET_SID%%` row on the STMS_IMPORT overview) before
+reading, so the RC is read from the RIGHT system — not whatever queue
+`/nSTMS_IMPORT` happened to land on. Then it reads the **return code**.
 
 ## L2 — Map RC -> verdict and report
 
@@ -144,9 +152,15 @@ reads the **return code**.
 | `8` | ERROR (import errors — activation / generation failures) |
 | `12` | FATAL (cancelled / system error) |
 | (none / not found) | NOT_IMPORTED |
+| (target queue not reachable) | QUEUE_NOT_REACHED |
 
 `STATUS: LOG tr=<TR> system=<SID> rc=<0|4|8|12|-> verdict=<...>`. **RC 8/12 is a
-failure even if the queue row shows "done"** — say so plainly.
+failure even if the queue row shows "done"** — say so plainly. A
+`verdict=QUEUE_NOT_REACHED` means the reader could **not** open the
+`%%TARGET_SID%%` queue (system not in the overview, or the queue view differs on
+this release) — it deliberately did **not** read another queue's RC and did not
+stamp the SID as verified. Re-record `OpenTargetQueue` candidate IDs via
+`/sap-gui-record` on STMS_IMPORT; do not treat it as a successful import.
 
 ---
 
@@ -193,9 +207,18 @@ Never skip W3. There is no `--apply`-style bypass for a production import.
 Substitute the VBS and run it (32-bit cscript). It locks the session
 (`%%SESSION_LOCK_VBS%%`), navigates to the target queue, and — **only after
 positively verifying the selected row's `TRKORR` equals `<TR>` and the screen is
-the intended target's queue** — presses Import Request, fills the options
-(`--client`, `--immediate` vs scheduled, `--leave-in-queue`), and confirms. If it
-cannot verify the row == `<TR>`, it ABORTS without importing.
+the intended target's queue** — presses Import Request, fills the target
+`--client`, and confirms. If it cannot verify the row == `<TR>`, it ABORTS
+without importing (exit 1).
+
+> **`--immediate` / `--leave-in-queue` are not yet wired.** The import-options
+> checkboxes are release-specific and have **no recorded control IDs** in the VBS.
+> If either `%%IMMEDIATE%%` or `%%LEAVE_IN_QUEUE%%` is passed as a truthy value
+> (`1`/`X`/`true`), the VBS **fails loud** with `ERROR: STMS_OPTION_UNSUPPORTED`
+> (exit 1) rather than silently importing with the queue default. Leave both `0`
+> (the example below) until you record the checkbox IDs via `/sap-gui-record` on
+> the STMS_IMPORT options dialog and wire them in. **All abort/error paths now
+> exit 1** (were exit 0) so the caller never reads a failed import as success.
 
 ```powershell
 $shared = '<SAP_DEV_CORE_SHARED_DIR>\scripts'
@@ -208,8 +231,8 @@ $vbs = $vbs.Replace('%%SESSION_PATH%%',    '')        # or the --session value
 $vbs = $vbs.Replace('%%TR%%',              'THE_TR')
 $vbs = $vbs.Replace('%%TARGET_SID%%',      'THE_SID')
 $vbs = $vbs.Replace('%%TARGET_CLIENT%%',   'THE_CLIENT')
-$vbs = $vbs.Replace('%%IMMEDIATE%%',       '1')       # 1 = import now, 0 = scheduled
-$vbs = $vbs.Replace('%%LEAVE_IN_QUEUE%%',  '0')
+$vbs = $vbs.Replace('%%IMMEDIATE%%',       '0')       # MUST be 0 until the options checkboxes are calibrated (a truthy value -> STMS_OPTION_UNSUPPORTED)
+$vbs = $vbs.Replace('%%LEAVE_IN_QUEUE%%',  '0')       # MUST be 0 until calibrated (see note above)
 $vbs = $vbs.Replace('%%OUTPUT_FILE%%',     '{RUN}\import.json')
 [IO.File]::WriteAllText('{RUN}\stms_import_run.vbs', $vbs, [System.Text.UnicodeEncoding]::new($false, $true))
 ```
@@ -234,9 +257,15 @@ sign-off").
 STATUS: IMPORTED tr=<TR> target=<SID>/<client> rc=<0|4|8|12> verdict=<OK|OK_WITH_WARNINGS|ERROR|FATAL>
 STATUS: QUEUED tr=<TR> target=<SID>            (scheduled, not yet run)
 STATUS: ALREADY_IMPORTED tr=<TR> target=<SID>
-STATUS: COULD_NOT_IMPORT reason=<no-auth|not-released|no-go|not-in-queue|not-calibrated>
+STATUS: COULD_NOT_IMPORT reason=<no-auth|not-released|no-go|not-in-queue|not-calibrated|STMS_OPTION_UNSUPPORTED|verify-failed|queue-not-found>
 STATUS: BLOCKED reason=<prod-not-confirmed|tr-not-released>
 ```
+
+The import VBS exits **1** on every abort/error (`ABORTED` / `IMPORT_ERROR` in
+`import.json`) and **0** only on `IMPORT_SUBMITTED`. Treat a non-zero exit (or an
+`import.json` `result` other than `IMPORT_SUBMITTED`) as `COULD_NOT_IMPORT` — the
+`detail` field carries the reason code (e.g. `STMS_OPTION_UNSUPPORTED`,
+`verify-failed`, `not-in-queue`, `not-calibrated`).
 
 ---
 
@@ -252,7 +281,7 @@ DEV/QA refresh — discourage for production (import individual TRs there).
 ## Final — Log End
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_stms_run.json" -Status SUCCESS -ExitCode 0
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_stms_run.json" -Status SUCCESS -ExitCode 0
 ```
 
 | Outcome | Status / ExitCode / ErrorClass |

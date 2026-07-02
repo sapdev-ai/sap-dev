@@ -42,6 +42,13 @@ const SHARED_ALLOWLIST = new Set([
   'sap_session_broker.ps1',
   'sap_session_broker_com.vbs',
   'sap_attach_lib.vbs',
+  // 2026-07-02 (hook widened to .json/.xml/.log/.txt): Bucket-A coordination
+  // state; keep in sync with RUN_TEMP_SHARED_ALLOWLIST in check-consistency.mjs.
+  'connections.json',
+  'session_dev_defaults.json',
+  'work_dir.txt',
+  'run-temp-hook.log',           // this hook's own audit trail (appended below)
+  'sap_active_session.json',     // legacy Phase-4.1 pin; historical references only
 ].map((s) => s.toLowerCase()));
 
 const MODE = (process.env.SAPDEV_RUNTEMP_HOOK || 'block').toLowerCase();
@@ -62,13 +69,17 @@ function resolveWorkDir() {
 const norm = (s) => String(s == null ? '' : s).replace(/\//g, '\\').toLowerCase();
 
 function findRootScripts(text, tempRoot) {
-  // Match  <tempRoot>\<basename>.vbs|ps1  where <basename> has no path
+  // Match  <tempRoot>\<basename>.<ext>  where <basename> has no path
   // separator (i.e. a DIRECT child of the temp root, not a run_<id> subdir),
-  // plus the literal {work_temp}\<name>.vbs|ps1 token form (defensive).
+  // plus the literal {work_temp}\<name>.<ext> token form (defensive).
+  // ext: generated scripts (.vbs/.ps1) plus fixed-name scratch/state files
+  // (.json/.xml/.log/.txt -- widened 2026-07-02, mirroring the static gate).
+  // The (?![a-z0-9]) tail keeps .json from prefix-matching .jsonl (se19's
+  // stable-path cross-run ledger).
   const esc = tempRoot.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const res = [
-    new RegExp(esc + '\\\\([^\\\\/"\'\\s]+\\.(?:vbs|ps1))', 'gi'),
-    /\{work_temp\}\\([^\\/"'\s]+\.(?:vbs|ps1))/gi,
+    new RegExp(esc + '\\\\([^\\\\/"\'\\s]+\\.(?:vbs|ps1|json|xml|log|txt))(?![a-z0-9])', 'gi'),
+    /\{work_temp\}\\([^\\/"'\s]+\.(?:vbs|ps1|json|xml|log|txt))(?![a-z0-9])/gi,
   ];
   const hits = new Set();
   for (const re of res) {

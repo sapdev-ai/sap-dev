@@ -10,7 +10,7 @@
 ' where the HEX-ID is locale-independent and the label is in the user's
 ' logon language. Matching only the English literal "ERROR" against MSGTYPE
 ' (the pre-2026-05-27 behaviour) silently dropped real errors on ZH / JA /
-' KO logons — the script reported SYNTAX_ERRORS=0, proceeded to Activate,
+' KO logons -- the script reported SYNTAX_ERRORS=0, proceeded to Activate,
 ' the "Activate anyway?" popup got blind-dismissed, and the verify
 ' heuristic declared SUCCESS while PROGDIR still showed STATE='I'.
 '
@@ -20,7 +20,7 @@
 '     ExecuteGlobal CreateObject("Scripting.FileSystemObject") _
 '         .OpenTextFile("%%SYNTAX_CHECK_LIB_VBS%%", 1).ReadAll()
 '
-' Encoding: this source itself is ASCII — non-Latin labels are emitted via
+' Encoding: this source itself is ASCII -- non-Latin labels are emitted via
 ' ChrW() so the file survives re-saving in non-UTF tooling.
 ' =============================================================================
 
@@ -43,13 +43,13 @@ Function GetSyntaxErrorWord(sLang)
         Case "S", "ES" : GetSyntaxErrorWord = "Error"
         Case "I", "IT" : GetSyntaxErrorWord = "Errore"
         Case "P", "PT" : GetSyntaxErrorWord = "Erro"
-        Case "1", "ZH" : GetSyntaxErrorWord = ChrW(&H9519) & ChrW(&H8BEF)                ' 错误 (zh-CN)
-        Case "M", "ZF" : GetSyntaxErrorWord = ChrW(&H932F) & ChrW(&H8AA4)                ' 錯誤 (zh-TW)
-        Case "J", "JA" : GetSyntaxErrorWord = ChrW(&H30A8) & ChrW(&H30E9) & ChrW(&H30FC) ' エラー (ja)
-        Case "3", "KO" : GetSyntaxErrorWord = ChrW(&HC624) & ChrW(&HB958)                ' 오류 (ko)
+        Case "1", "ZH" : GetSyntaxErrorWord = ChrW(&H9519) & ChrW(&H8BEF)                ' cuowu (zh-CN)
+        Case "M", "ZF" : GetSyntaxErrorWord = ChrW(&H932F) & ChrW(&H8AA4)                ' cuowu (zh-TW)
+        Case "J", "JA" : GetSyntaxErrorWord = ChrW(&H30A8) & ChrW(&H30E9) & ChrW(&H30FC) ' eraa (ja)
+        Case "3", "KO" : GetSyntaxErrorWord = ChrW(&HC624) & ChrW(&HB958)                ' oryu (ko)
         Case "R", "RU" : GetSyntaxErrorWord = ChrW(&H041E) & ChrW(&H0448) & _
                                               ChrW(&H0438) & ChrW(&H0431) & _
-                                              ChrW(&H043A) & ChrW(&H0430)                ' Ошибка (ru)
+                                              ChrW(&H043A) & ChrW(&H0430)                ' Oshibka (ru)
         Case Else      : GetSyntaxErrorWord = ""
     End Select
 End Function
@@ -61,7 +61,7 @@ End Function
 '   doesn't carry the SAP icon-string convention.
 '
 '   Examples:
-'     "@5C\Q错误@"   -> "5C"
+'     "@5C\Q<localized-error-word>@" -> "5C"
 '     "@03\QError@"  -> "03"
 '     "E"            -> ""
 '     ""             -> ""
@@ -81,11 +81,11 @@ End Function
 '   True iff a syntax-check grid MSGTYPE cell represents an ERROR (vs a
 '   warning / info / continuation row). Two-tier classification:
 '
-'     1. Legacy ASCII literals "1" / "E" — for grids that surface a
+'     1. Legacy ASCII literals "1" / "E" -- for grids that surface a
 '        bare type letter rather than an icon-string.
-'     2. Localized-word match — InStr the cell against
+'     2. Localized-word match -- InStr the cell against
 '        GetSyntaxErrorWord(sLogonLang). Primary path on non-EN logons.
-'     3. Icon-ID match — extract <HEX-ID> from "@<HEX-ID>\Q...@" and
+'     3. Icon-ID match -- extract <HEX-ID> from "@<HEX-ID>\Q...@" and
 '        check against {03 ICON_FAILURE, 0A legacy, 5C ICON_LED_RED on
 '        S/4HANA 1909, AT / AY ICON_MESSAGE_ERROR}. Locale-independent
 '        fallback for icon sets we have not added a localized word for
@@ -190,7 +190,7 @@ End Function
 
 ' -----------------------------------------------------------------------------
 ' SafeGetCell(oGrid, iRow, sCol)
-'   Read ONE ALV cell defensively — returns "" instead of raising a runtime
+'   Read ONE ALV cell defensively -- returns "" instead of raising a runtime
 '   error when the column id does not exist on this grid, the row is out of
 '   range, or the Scripting engine otherwise refuses the read.
 '
@@ -202,7 +202,7 @@ End Function
 '   create paths the block-level "On Error Resume Next" had already been
 '   cancelled by a stray "On Error GoTo 0" (left over from closing the narrow
 '   per-Info.Language guard), so that throw aborted the whole script AFTER the
-'   object had already activated cleanly — a FALSE error on a clean check
+'   object had already activated cleanly -- a FALSE error on a clean check
 '   (2026-06-22 S4D wrapper-FM deploy). This helper carries its OWN
 '   On Error Resume Next, so the read is immune to the caller's current
 '   error-handling mode: a missing column can never turn a clean check into a

@@ -54,10 +54,10 @@ Per the CLAUDE.md "Two-bucket temp model" write this skill's generated scratch (
 
 ## Step 0.5 — Start Logging
 
-Start a structured log run. State file: `{WORK_TEMP}\sap_fix_fm_run.json`. Best-effort.
+Start a structured log run. State file: `{RUN_TEMP}\sap_fix_fm_run.json`. Best-effort.
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{WORK_TEMP}\sap_fix_fm_run.json" -Skill sap-fix-fm -ParamsJson "{\"abap_file\":\"<ABAP_FILE>\",\"result_tsv\":\"<TSV>\"}"
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{RUN_TEMP}\sap_fix_fm_run.json" -Skill sap-fix-fm -ParamsJson "{\"abap_file\":\"<ABAP_FILE>\",\"result_tsv\":\"<TSV>\"}"
 ```
 
 ---
@@ -66,7 +66,7 @@ powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_
 
 Extract from `$ARGUMENTS`:
 - **ABAP source file path** — required. Ask if not provided.
-- **Result file path** — optional; default is `{WORK_TEMP}\checkfm_result.txt`.
+- **Result file path** — optional; default is `<abap-file>.check_fm.tsv` (the per-input result `/sap-check-fm` writes next to the ABAP source — parallel-session safe, unlike the old shared fixed-name file under the temp base).
 
 Verify both files exist:
 ```bash
@@ -144,7 +144,7 @@ Resolve cache directory + system ID (see "Step 0 — Resolve Work Directory"):
 Build a one-name-per-line file of the unique FM names with fixable issues (from Step 2):
 
 ```powershell
-'FM1','FM2','FM3' | Set-Content '{WORK_TEMP}\sap_getfmparams_names.txt' -Encoding UTF8
+'FM1','FM2','FM3' | Set-Content '{RUN_TEMP}\sap_getfmparams_names.txt' -Encoding UTF8
 ```
 
 Then write `{RUN_TEMP}\sap_getfmparams_run.ps1`:
@@ -157,8 +157,8 @@ $content = $content -replace '%%SAP_USER%%',       ''
 $content = $content -replace '%%SAP_PASSWORD%%',   ''
 $content = $content -replace '%%SAP_LANGUAGE%%',   ''
 $content = $content -replace '%%RFC_LIB_PS1%%',    '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_rfc_lib.ps1'
-$content = $content -replace '%%REQUEST_FILE%%',   '{WORK_TEMP}\sap_getfmparams_names.txt'
-$content = $content -replace '%%RESULT_FILE%%',    '{WORK_TEMP}\getfmparams_result.txt'
+$content = $content -replace '%%REQUEST_FILE%%',   '{RUN_TEMP}\sap_getfmparams_names.txt'
+$content = $content -replace '%%RESULT_FILE%%',    '{RUN_TEMP}\getfmparams_result.txt'
 $content = $content -replace '%%CACHE_DIR%%',      '{FM_CACHE_DIR}'
 $content = $content -replace '%%SYSTEM_ID%%',      '{SYSTEM_ID}'
 $content = $content -replace '%%TTL_STD_DAYS%%',   '30'      # or userConfig.fm_cache_ttl_std_days
@@ -174,7 +174,7 @@ Run:
 C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_getfmparams_run.ps1"
 ```
 
-Read `{WORK_TEMP}\getfmparams_result.txt`. Each line is:
+Read `{RUN_TEMP}\getfmparams_result.txt`. Each line is:
 ```
 FM_NAME<TAB>SECTION<TAB>PARAM_NAME<TAB>OPTIONAL<TAB>TYPE_REF<TAB>TYPE_KIND
 ```
@@ -208,8 +208,10 @@ For each `UNKNOWN_PARAM` in a given FM + section:
 For each `MISSING_MANDATORY` that was **not** already paired with an UNKNOWN_PARAM rename:
 - Propose adding a new parameter line under the correct section keyword in the CALL FUNCTION block:
   ```
-        NEW_PARAM   = " "  " TODO: provide value
+        NEW_PARAM   = space   " TODO: provide value
   ```
+  (`space` — not `" "`: in ABAP the first `"` would start a comment, making
+  the stub invalid syntax.)
   Note the TYPE_REF from the FM definition to help the user understand what value is needed.
 
 ### Fix type: MOVE (WRONG_SECTION)
@@ -296,14 +298,14 @@ After (if adding `CENTRALDATA`):
   CALL FUNCTION 'BAPI_BUPA_CREATE_FROM_DATA'
     EXPORTING
       PARTNERCATEGORY   = p_cat
-      CENTRALDATA        = " "  " TODO: ls_central (type BAPIBUS1006_CENTRAL)
+      CENTRALDATA        = space   " TODO: ls_central (type BAPIBUS1006_CENTRAL)
 ```
 
 If the section keyword does not yet exist in the block, add the section keyword and parameter line before the next section keyword or the closing `.`:
 
 ```
     EXPORTING
-      CENTRALDATA        = " "  " TODO: provide value (type BAPIBUS1006_CENTRAL)
+      CENTRALDATA        = space   " TODO: provide value (type BAPIBUS1006_CENTRAL)
 ```
 
 ### Applying MOVE (WRONG_SECTION)
@@ -325,7 +327,7 @@ Report:
 ## Step 10 — Clean Up
 
 ```bash
-cmd /c del {WORK_TEMP}\getfmparams_result.txt
+cmd /c del {RUN_TEMP}\getfmparams_result.txt
 ```
 
 ---
@@ -337,13 +339,13 @@ Log the run-end record. Best-effort.
 On success:
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_fix_fm_run.json" -Status SUCCESS -ExitCode 0
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_fix_fm_run.json" -Status SUCCESS -ExitCode 0
 ```
 
 On failure:
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_fix_fm_run.json" -Status FAILED -ExitCode 1 -ErrorClass <CLASS> -ErrorMsg "<short>"
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_fix_fm_run.json" -Status FAILED -ExitCode 1 -ErrorClass <CLASS> -ErrorMsg "<short>"
 ```
 
 Suggested `<CLASS>`: `FIX_FM_FAILED`, `BACKUP_FAILED`, `RFC_LOGON_FAILED`.

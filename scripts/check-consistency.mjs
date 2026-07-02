@@ -7,6 +7,17 @@
 //   - marketplace top-level version != metadata.version
 //   - metadata.total_skills != actual sum across plugins
 //   - metadata.total_plugins != number of plugin entries
+//   - SKILL.md references an implementation file (references/..., <SKILL_DIR>/...,
+//     <SAP_DEV_CORE_SHARED_DIR>/...) that does not exist on disk (the two
+//     review-verified ghosts in KNOWN_MISSING_REFERENCES emit WARN instead)
+//   - Shipped .ps1/.vbs contains a non-ASCII byte without a UTF-8 BOM
+//     (promoted from WARN on 2026-07-02 once the tree reached zero offenders)
+//   - SKILL.md passes {RUN_TEMP} to Get-SapCurrentSessionPath -WorkTemp
+//   - A committed screen baseline (.screens.json) is malformed
+// WARN-level ratchets (do not fail the build yet): Phase-4 broker hints,
+// build-KPI enrichment, Step-0 work_dir resolution, {WORK_TEMP}-root scratch
+// (.vbs/.ps1/.json/.xml/.log/.txt), bare-cscript / wscript invocations,
+// locale-literal GUI-text branching, missing screen baselines.
 
 import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
 import { join, dirname, resolve, basename } from 'node:path';
@@ -324,13 +335,14 @@ for (const plugin of mp.plugins) {
 // Scope: every shipped .ps1 / .vbs under each plugin's
 // skills/<skill>/references/ plus sap-dev-core's shared/scripts/.
 //
-// Reported as an INFORMATIONAL warning, NOT a hard failure: the current tree
-// carries pre-existing non-ASCII (em-dashes in comment headers and in
-// WScript.Echo / Write-Host diagnostic strings, plus a handful of localized
-// CJK comparison literals) that predate this guard. Surfacing offenders as
-// warnings flags new regressions to contributors without breaking the build
-// or forcing a tree-wide rewrite. Bytes are read raw (Buffer) so the BOM
-// detection and the > 0x7F scan are not perturbed by any decoding assumption.
+// HARD ERROR since 2026-07-02 (was an informational WARN): the pre-existing
+// debt -- 13 files carrying em-dashes / arrows / CJK glyphs in comments and
+// WScript.Echo diagnostics -- was cleaned to ASCII in the same change, so any
+// hit now is a fresh regression. Runtime non-ASCII strings stay expressible
+// via ChrW()/[char]; a leading UTF-8 BOM remains the explicit opt-in for a
+// file that genuinely needs non-ASCII bytes. Bytes are read raw (Buffer) so
+// the BOM detection and the > 0x7F scan are not perturbed by any decoding
+// assumption.
 // ---------------------------------------------------------------------------
 
 function listShippedScripts(sourceAbs) {
@@ -355,8 +367,6 @@ function listShippedScripts(sourceAbs) {
   return out;
 }
 
-const encodingWarnings = [];
-
 for (const plugin of mp.plugins) {
   const sourceRel = plugin.source.replace(/^\.\//, '').replace(/\/$/, '');
   const sourceAbs = join(repoRoot, sourceRel);
@@ -372,7 +382,7 @@ for (const plugin of mp.plugins) {
       if (b > 0x7F) {
         const cp = buf.toString('utf8', i).codePointAt(0);
         const cpHex = 'U+' + cp.toString(16).toUpperCase().padStart(4, '0');
-        encodingWarnings.push(`${plugin.name}: ${rel} has a non-ASCII byte at line ${line} (${cpHex}) without a UTF-8 BOM; Windows PowerShell 5.1 / cscript read BOM-less .ps1/.vbs as the ANSI codepage and will mojibake it at runtime — re-save as ASCII (e.g. '--' for an em-dash, ChrW() for runtime non-ASCII strings) or prepend a UTF-8 BOM if the non-ASCII is intentional`);
+        errors.push(`${plugin.name}: ${rel} has a non-ASCII byte at line ${line} (${cpHex}) without a UTF-8 BOM; Windows PowerShell 5.1 / cscript read BOM-less .ps1/.vbs as the ANSI codepage and will mojibake it at runtime — re-save as ASCII (e.g. '--' for an em-dash, ChrW() for runtime non-ASCII strings) or prepend a UTF-8 BOM if the non-ASCII is intentional`);
         break;
       }
     }
@@ -534,6 +544,15 @@ const RUN_TEMP_SHARED_ALLOWLIST = new Set([
   'sap_session_broker.ps1',      // shipped broker        (home: shared/scripts)
   'sap_session_broker_com.vbs',  // shipped broker COM    (home: shared/scripts)
   'sap_attach_lib.vbs',          // shipped attach helper (home: shared/scripts)
+  // 2026-07-02 (gate widened to .json/.xml/.log/.txt): Bucket-A coordination
+  // state that a DIFFERENT session must find at a predictable path.
+  'connections.json',            // multi-profile store   (home: {work_dir}\runtime)
+  'session_dev_defaults.json',   // per-(AI-session x connection) dev defaults (home: {work_dir}\runtime)
+  'work_dir.txt',                // durable work_dir pointer (home: %APPDATA%\sapdev-ai)
+  'run-temp-hook.log',           // the run-temp hook's own cross-run audit trail ({WORK_TEMP} root by design)
+  'sap_active_session.json',     // LEGACY Phase-4.1 pin file, removed in 4.2; only referenced in
+                                 // historical "this file is gone" notes -- keep allowlisted so those
+                                 // notes don't WARN; do not reintroduce the file itself
 ].map(s => s.toLowerCase()));
 
 for (const plugin of mp.plugins) {
@@ -570,20 +589,284 @@ for (const plugin of mp.plugins) {
     if (/Get-SapCurrentSessionPath\s+-WorkTemp\s+'?\{RUN_TEMP\}'?/.test(md)) {
       errors.push(`${plugin.name}: skills/${skillEntry}/SKILL.md passes {RUN_TEMP} to Get-SapCurrentSessionPath -WorkTemp; that derives {work_dir}\\runtime from the parent and would relocate session_registry.json. Keep the base '{WORK_TEMP}' on that call; only the skill's own scratch goes under {RUN_TEMP}.`);
     }
-    // (d) Ratcheting WARN: a skill writing a GENERATED script (.vbs/.ps1) to the
-    //     shared base {WORK_TEMP} root is unmigrated -- two concurrent runs collide
-    //     on that fixed name (generate-then-cscript TOCTOU -> wrong-object deploy;
-    //     the 2026-06-20 sap_se38_update_run.vbs cross-session clobber). Move per-run
-    //     scratch to {RUN_TEMP} (Get-SapRunTemp). Widened from the narrow *_run.*
-    //     pattern to ANY {WORK_TEMP}\<name>.vbs|ps1, minus the cross-session
-    //     RUN_TEMP_SHARED_ALLOWLIST (Bucket A). Informational until full coverage,
-    //     then promote to a hard error. See CLAUDE.md "Two-bucket temp model".
-    const workTempScripts = [...md.matchAll(/\{WORK_TEMP\}\\([^\s'"\\]+\.(?:vbs|ps1))/gi)]
+    // (d) Ratcheting WARN: a skill writing a GENERATED script (.vbs/.ps1) or a
+    //     fixed-name scratch/state file (.json/.xml/.log/.txt -- widened
+    //     2026-07-02) to the shared base {WORK_TEMP} root is unmigrated -- two
+    //     concurrent runs collide on that fixed name (generate-then-cscript
+    //     TOCTOU -> wrong-object deploy; the 2026-06-20 sap_se38_update_run.vbs
+    //     cross-session clobber; same-shape risk for the sap_*_run.json state
+    //     files a parallel wave W9 is migrating). Move per-run scratch to
+    //     {RUN_TEMP} (Get-SapRunTemp), minus the cross-session
+    //     RUN_TEMP_SHARED_ALLOWLIST (Bucket A). The trailing (?![A-Za-z0-9])
+    //     keeps .json from prefix-matching .jsonl (se19's cross-run safety
+    //     ledger is deliberately a stable-path .jsonl). Informational until
+    //     full coverage, then promote to a hard error. See CLAUDE.md
+    //     "Two-bucket temp model".
+    const workTempScripts = [...md.matchAll(/\{WORK_TEMP\}\\([^\s'"\\]+\.(?:vbs|ps1|json|xml|log|txt))(?![A-Za-z0-9])/gi)]
       .map(m => m[1])
       .filter(name => !RUN_TEMP_SHARED_ALLOWLIST.has(name.toLowerCase()));
     if (workTempScripts.length > 0) {
       const uniq = [...new Set(workTempScripts)].sort();
-      runTempWarnings.push(`${plugin.name}: skills/${skillEntry}/SKILL.md writes generated script(s) under the shared base {WORK_TEMP} (${uniq.join(', ')}); move per-run scratch to {RUN_TEMP} (Get-SapRunTemp) so concurrent runs don't collide (CLAUDE.md "Two-bucket temp model")`);
+      runTempWarnings.push(`${plugin.name}: skills/${skillEntry}/SKILL.md writes generated script(s)/state file(s) under the shared base {WORK_TEMP} (${uniq.join(', ')}); move per-run scratch to {RUN_TEMP} (Get-SapRunTemp) so concurrent runs don't collide (CLAUDE.md "Two-bucket temp model")`);
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Referenced-implementation existence gate (added 2026-07-02).
+//
+// The 2026-07-02 full-repo review found two SHIPPED skills whose SKILL.md
+// routes operations through references/ files that were never committed
+// ("ghost implementations"): sap-gui-screen-check (sap_screen_check.ps1 +
+// sap_screen_check_probe.vbs) and sap-docs-layout (edit_meta_layout.py +
+// shared/templates/spec_layout_schema.md). CI verified token substitution but
+// never that a referenced file EXISTS, so the ghosts shipped silently. This
+// gate makes a missing referenced implementation a HARD ERROR.
+//
+// Extraction (tuned against the 2026-07-02 tree for zero false positives):
+//   * `references/<relpath>.<ext>` -- optionally prefixed by a skill name
+//     (`skills/sap-x/references/...` or `sap-x/references/...`), which then
+//     resolves against THAT skill. ext in {vbs,ps1,py,abap,json,tsv,txt,md}.
+//   * `<SKILL_DIR>/<relpath>.<ext>` -- current-skill-relative.
+//   * `<SAP_DEV_CORE_SHARED_DIR>/<relpath>.<ext>` -- resolves under
+//     plugins/sap-dev-core/shared/ (how sap-docs-layout references its
+//     missing schema template).
+// Ignored as generated outputs / non-concrete mentions:
+//   * paths directly prefixed by {RUN_TEMP} / {WORK_TEMP} (runtime copies);
+//   * anything carrying placeholder or glob characters (<stem>, %%TOKEN%%,
+//     *, {var}) -- those never survive the [A-Za-z0-9_.\-] path charset.
+// Cross-skill fallback: a reference that does not resolve in the current
+// skill counts as found when the same references-relative path exists in ANY
+// other skill (sap-explain-object legitimately reads sap-se24's download
+// template via a PS variable, which hides the owning skill from the regex).
+// The gate targets never-committed files, which exist in NO skill.
+//
+// Missing file => HARD ERROR, except the KNOWN_MISSING allowlist below, which
+// emits WARN. Empty since wave W11 re-implemented both 2026-07-02 ghosts
+// (sap-gui-screen-check sap_screen_check.ps1 + sap_screen_check_probe.vbs;
+// sap-docs-layout edit_meta_layout.py + the schema doc, relocated to
+// <SKILL_DIR>/templates/spec_layout_schema.md). The mechanism stays for
+// future review-verified ghosts -- do NOT add entries without a
+// review-verified reason string.
+// ---------------------------------------------------------------------------
+
+const KNOWN_MISSING_REFERENCES = new Map([]);
+
+const refExistWarnings = [];
+{
+  const REF_EXTS = 'vbs|ps1|py|abap|json|tsv|txt|md';
+  const SEG = String.raw`[A-Za-z0-9_.\-]+`;
+  const RELPATH = String.raw`(?:${SEG}[\\/])*${SEG}\.(?:${REF_EXTS})`;
+  const reRefs = new RegExp(String.raw`(?:skills[\\/])?(?:(${SEG})[\\/])?references[\\/]+(${RELPATH})\b`, 'g');
+  const reSkillRel = new RegExp(String.raw`<SKILL_DIR>[\\/]+(${RELPATH})\b`, 'g');
+  const reSharedRel = new RegExp(String.raw`<SAP_DEV_CORE_SHARED_DIR>[\\/]+(${RELPATH})\b`, 'g');
+
+  // All skill dirs across plugins, for explicit-skill + cross-skill resolution.
+  const skillDirsByName = new Map();
+  for (const plugin of mp.plugins) {
+    const sourceRel = plugin.source.replace(/^\.\//, '').replace(/\/$/, '');
+    const skillsDir = join(repoRoot, sourceRel, 'skills');
+    if (!existsSync(skillsDir)) continue;
+    for (const entry of readdirSync(skillsDir)) {
+      const full = join(skillsDir, entry);
+      if (statSync(full).isDirectory()) skillDirsByName.set(entry, full);
+    }
+  }
+  const sharedDirAbs = join(repoRoot, 'plugins', 'sap-dev-core', 'shared');
+
+  const allowReason = (skillEntry, rel) => {
+    const allow = KNOWN_MISSING_REFERENCES.get(skillEntry);
+    if (!allow) return null;
+    const norm = rel.replace(/\\/g, '/').toLowerCase();
+    for (const f of allow.files) {
+      const fn = f.replace(/\\/g, '/').toLowerCase();
+      if (norm === fn || norm.endsWith('/' + fn)) return allow.reason;
+    }
+    return null;
+  };
+
+  for (const plugin of mp.plugins) {
+    const sourceRel = plugin.source.replace(/^\.\//, '').replace(/\/$/, '');
+    const skillsDir = join(repoRoot, sourceRel, 'skills');
+    if (!existsSync(skillsDir)) continue;
+    for (const skillEntry of readdirSync(skillsDir)) {
+      const skillMdPath = join(skillsDir, skillEntry, 'SKILL.md');
+      if (!existsSync(skillMdPath)) continue;
+      const lines = readFileSync(skillMdPath, 'utf8').split(/\r?\n/);
+      const reported = new Set();
+
+      const report = (rel, lineNo, where) => {
+        const key = where + '|' + rel.toLowerCase();
+        if (reported.has(key)) return;
+        reported.add(key);
+        const reason = allowReason(skillEntry, rel);
+        if (reason) {
+          refExistWarnings.push(`${plugin.name}: skills/${skillEntry}/SKILL.md:${lineNo} references ${where}${rel} -- known missing, pending W11 re-implementation (${reason})`);
+        } else {
+          errors.push(`${plugin.name}: skills/${skillEntry}/SKILL.md:${lineNo} references ${where}${rel} which does not exist on disk; a shipped SKILL.md must not route through uncommitted implementation files -- commit the file, fix the path, or (review-verified ghosts only) add it to KNOWN_MISSING_REFERENCES with a reason`);
+        }
+      };
+
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        let m;
+        reRefs.lastIndex = 0;
+        while ((m = reRefs.exec(line)) !== null) {
+          const pre = line.slice(Math.max(0, m.index - 14), m.index);
+          if (/\{(RUN|WORK)_TEMP\}[\\/]*$/i.test(pre)) continue; // runtime copy, not the shipped template
+          const rel = m[2].replace(/\\/g, '/');
+          const explicitSkill = m[1] && skillDirsByName.has(m[1]) ? m[1] : null;
+          if (explicitSkill) {
+            if (!existsSync(join(skillDirsByName.get(explicitSkill), 'references', ...rel.split('/')))) {
+              report(rel, i + 1, `${explicitSkill}/references/`);
+            }
+            continue;
+          }
+          if (existsSync(join(skillsDir, skillEntry, 'references', ...rel.split('/')))) continue;
+          let foundElsewhere = false;
+          for (const dir of skillDirsByName.values()) {
+            if (existsSync(join(dir, 'references', ...rel.split('/')))) { foundElsewhere = true; break; }
+          }
+          if (!foundElsewhere) report(rel, i + 1, 'references/');
+        }
+        reSkillRel.lastIndex = 0;
+        while ((m = reSkillRel.exec(line)) !== null) {
+          const rel = m[1].replace(/\\/g, '/');
+          if (/^references\//i.test(rel)) continue; // handled by the references/ form above
+          if (!existsSync(join(skillsDir, skillEntry, ...rel.split('/')))) report(rel, i + 1, '<SKILL_DIR>/');
+        }
+        reSharedRel.lastIndex = 0;
+        while ((m = reSharedRel.exec(line)) !== null) {
+          const rel = m[1].replace(/\\/g, '/');
+          if (!existsSync(join(sharedDirAbs, ...rel.split('/')))) report(rel, i + 1, '<SAP_DEV_CORE_SHARED_DIR>/');
+        }
+      }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Bare cscript / wscript invocation gate (added 2026-07-02). WARN-level.
+//
+// SAP GUI Scripting COM binds only from a 32-bit host: a bare `cscript`
+// resolves to the 64-bit binary on x64 Windows and the generated VBS fails
+// (the recurring "false-success / no destination" class), so every SKILL.md
+// invocation must spell the 32-bit host explicitly --
+// C:\Windows\SysWOW64\cscript.exe (either slash form, quoted or bare).
+// `wscript(.exe)` is never acceptable for these templates: the attach-lib
+// diagnostics echo via WScript.Echo, which under wscript renders each echo
+// as a BLOCKING MsgBox. WARN (not ERROR) while the parallel remediation
+// waves migrate the existing bare invocations; promote once the count
+// ratchets to zero. Comment lines (leading ' or #) inside embedded snippets
+// are skipped -- the gate targets copy-pasteable invocations.
+// ---------------------------------------------------------------------------
+
+const cscriptWarnings = [];
+let bareCscriptCount = 0;
+let wscriptCount = 0;
+for (const plugin of mp.plugins) {
+  const sourceRel = plugin.source.replace(/^\.\//, '').replace(/\/$/, '');
+  const skillsDir = join(repoRoot, sourceRel, 'skills');
+  if (!existsSync(skillsDir)) continue;
+  for (const skillEntry of readdirSync(skillsDir)) {
+    const skillMdPath = join(skillsDir, skillEntry, 'SKILL.md');
+    if (!existsSync(skillMdPath)) continue;
+    const lines = readFileSync(skillMdPath, 'utf8').split(/\r?\n/);
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (/^\s*['#]/.test(line)) continue; // embedded VBS/PS comment, not an invocation
+      const tokRe = /\b(cscript|wscript)(\.exe)?(?![\w.])/gi;
+      let m;
+      while ((m = tokRe.exec(line)) !== null) {
+        const after = line.slice(m.index + m[0].length);
+        // Invocation-ish: optional closing quote, whitespace, then an argument
+        // (//switch, quoted/tokenized/variable path, drive path, or .\path).
+        if (!/^["']?\s+(\/\/|["'{$]|[A-Za-z]:|\.[\\/])/.test(after)) continue;
+        const before = line.slice(0, m.index);
+        if (m[1].toLowerCase() === 'wscript') {
+          wscriptCount++;
+          cscriptWarnings.push(`${plugin.name}: skills/${skillEntry}/SKILL.md:${i + 1} invokes wscript -- blocks with MsgBox under attach-lib echoes; use C:\\Windows\\SysWOW64\\cscript.exe //NoLogo instead`);
+        } else if (!/syswow64[\\/]+$/i.test(before)) {
+          bareCscriptCount++;
+          cscriptWarnings.push(`${plugin.name}: skills/${skillEntry}/SKILL.md:${i + 1} invokes bare cscript (picks the 64-bit host; SAP GUI COM needs 32-bit) -- prefix C:\\Windows\\SysWOW64\\ per CLAUDE.md / feedback_sap_gui_vbs_must_be_32bit`);
+        }
+      }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Locale-literal gate (added 2026-07-02). WARN-level ratchet.
+//
+// language_independence_rules.md forbids branching on translated GUI text,
+// yet the 2026-07-02 review found ~40 shipped lines that InStr() SAP screen
+// text against English literals ("resulted in errors", "locked", "Initial
+// Screen", ...) or compare LCase(<title var>) against English window titles.
+// Those paths silently misbehave on ZH/JA/DE logons (the product is declared
+// EN/ZH/JA). This gate flags, in references/*.vbs:
+//   lines that are NOT comments, do NOT contain WScript.Echo (localized text
+//   is allowed in diagnostics), and either
+//     (a) compare a lowercased *title* variable: LCase(..Title..) = "...", or
+//     (b) call InStr(...) whose argument text (from the InStr( onward, code
+//         part only) contains a quoted English literal from the curated list.
+// Curated literals keep the signal high -- every 2026-07-02 hit was verified
+// real locale-dependence (41/41). WARN until the waves migrate the hits to
+// control-ID / MessageType / icon-ID checks; then promote.
+// ---------------------------------------------------------------------------
+
+const LOCALE_PHRASES = [
+  'error', 'locked', 'saved', 'does not exist', 'initial screen',
+  'resulted in errors', 'is inconsistent', 'generation environment',
+  'create maintenance', 'workbench', 'transport request', 'view',
+];
+
+// Code part of a VBS line: strip a trailing '-comment, respecting "strings".
+function vbsCodePart(line) {
+  let out = '';
+  let inStr = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (inStr) { out += c; if (c === '"') inStr = false; continue; }
+    if (c === '"') { inStr = true; out += c; continue; }
+    if (c === "'") break;
+    out += c;
+  }
+  return out;
+}
+function vbsQuotedStrings(code) {
+  const out = [];
+  const re = /"((?:[^"]|"")*)"/g;
+  let m;
+  while ((m = re.exec(code)) !== null) out.push(m[1]);
+  return out;
+}
+
+const localeLiteralWarnings = [];
+for (const plugin of mp.plugins) {
+  const sourceRel = plugin.source.replace(/^\.\//, '').replace(/\/$/, '');
+  const sourceAbs = join(repoRoot, sourceRel);
+  for (const { skill, file, abs } of listVbsTemplates(join(sourceAbs, 'skills'))) {
+    const lines = readFileSync(abs, 'utf8').split(/\r?\n/);
+    for (let i = 0; i < lines.length; i++) {
+      const raw = lines[i];
+      if (/^\s*'/.test(raw)) continue;
+      if (/WScript\.Echo/i.test(raw)) continue;
+      const code = vbsCodePart(raw);
+      if (!code.trim()) continue;
+      const titleHit = /LCase\s*\(\s*\w*Title\w*\s*\)\s*=/i.test(code);
+      let phrase = null;
+      const instrIdx = code.search(/InStr\s*\(/i);
+      if (instrIdx >= 0) {
+        for (const q of vbsQuotedStrings(code.slice(instrIdx))) {
+          const ql = q.toLowerCase();
+          const hit = LOCALE_PHRASES.find(p => ql.includes(p));
+          if (hit) { phrase = hit; break; }
+        }
+      }
+      if (titleHit || phrase) {
+        const kind = titleHit ? 'window-title compare (LCase(..Title..) = ...)' : `InStr against English literal "${phrase}"`;
+        localeLiteralWarnings.push(`${plugin.name}: ${skill}/${file}:${i + 1} ${kind} -- locale-dependent; branch on control ID / sbar MessageType / icon-ID instead (shared/rules/language_independence_rules.md)`);
+      }
     }
   }
 }
@@ -592,9 +875,6 @@ if (errors.length === 0) {
   let summary = `OK: ${mp.plugins.length} plugins, ${totalSkills} skills, all manifests aligned at version ${mp.version}, Tier 3 attach contract clean`;
   if (phase4Warnings.length > 0) {
     summary += `, ${phase4Warnings.length} Phase-4 warning(s)`;
-  }
-  if (encodingWarnings.length > 0) {
-    summary += `, ${encodingWarnings.length} non-ASCII warning(s)`;
   }
   if (ledgerWarnings.length > 0) {
     summary += `, ${ledgerWarnings.length} build-KPI warning(s)`;
@@ -605,13 +885,24 @@ if (errors.length === 0) {
   if (runTempWarnings.length > 0) {
     summary += `, ${runTempWarnings.length} run-temp warning(s)`;
   }
+  if (refExistWarnings.length > 0) {
+    summary += `, ${refExistWarnings.length} known-missing reference warning(s)`;
+  }
+  if (cscriptWarnings.length > 0) {
+    summary += `, ${cscriptWarnings.length} cscript-host warning(s) (${bareCscriptCount} bare cscript, ${wscriptCount} wscript)`;
+  }
+  if (localeLiteralWarnings.length > 0) {
+    summary += `, ${localeLiteralWarnings.length} locale-literal warning(s)`;
+  }
   summary += `, ${baselineCoverage}`;
   console.log(summary);
   for (const w of phase4Warnings) console.warn('  WARN: ' + w);
-  for (const w of encodingWarnings) console.warn('  WARN: ' + w);
   for (const w of ledgerWarnings) console.warn('  WARN: ' + w);
   for (const w of step0Warnings) console.warn('  WARN: ' + w);
   for (const w of runTempWarnings) console.warn('  WARN: ' + w);
+  for (const w of refExistWarnings) console.warn('  WARN: ' + w);
+  for (const w of cscriptWarnings) console.warn('  WARN: ' + w);
+  for (const w of localeLiteralWarnings) console.warn('  WARN: ' + w);
   for (const w of baselineWarnings) console.warn('  WARN: ' + w);
   process.exit(0);
 } else {
@@ -620,10 +911,6 @@ if (errors.length === 0) {
   if (phase4Warnings.length > 0) {
     console.error(`\nPhase-4 warnings (informational):`);
     for (const w of phase4Warnings) console.error('  WARN: ' + w);
-  }
-  if (encodingWarnings.length > 0) {
-    console.error(`\nNon-ASCII source warnings (informational):`);
-    for (const w of encodingWarnings) console.error('  WARN: ' + w);
   }
   if (ledgerWarnings.length > 0) {
     console.error(`\nBuild-KPI gate-enrichment warnings (informational):`);
@@ -636,6 +923,18 @@ if (errors.length === 0) {
   if (runTempWarnings.length > 0) {
     console.error(`\nRun-scoped temp ({RUN_TEMP}) warnings (informational):`);
     for (const w of runTempWarnings) console.error('  WARN: ' + w);
+  }
+  if (refExistWarnings.length > 0) {
+    console.error(`\nKnown-missing reference warnings (allowlisted ghosts, pending W11):`);
+    for (const w of refExistWarnings) console.error('  WARN: ' + w);
+  }
+  if (cscriptWarnings.length > 0) {
+    console.error(`\nBare-cscript / wscript warnings (informational; ${bareCscriptCount} bare cscript, ${wscriptCount} wscript):`);
+    for (const w of cscriptWarnings) console.error('  WARN: ' + w);
+  }
+  if (localeLiteralWarnings.length > 0) {
+    console.error(`\nLocale-literal warnings (informational):`);
+    for (const w of localeLiteralWarnings) console.error('  WARN: ' + w);
   }
   console.error(`\n${baselineCoverage}`);
   if (baselineWarnings.length > 0) {

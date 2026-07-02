@@ -65,12 +65,12 @@ Per the CLAUDE.md "Two-bucket temp model" write this skill's generated scratch (
 ## Step 0.5 — Start Logging
 
 Start a structured log run. The helper persists `run_id` in a state file
-(`{WORK_TEMP}\sap_call_bdc_run.json`) so subsequent steps and the final
+(`{RUN_TEMP}\sap_call_bdc_run.json`) so subsequent steps and the final
 log-end call append to the same run. Best-effort: silently no-ops if
 `userConfig.log_enabled=false` or the lib can't load.
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{WORK_TEMP}\sap_call_bdc_run.json" -Skill sap-call-bdc -ParamsJson "{\"bdc_file\":\"<BDC_FILE>\"}"
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{RUN_TEMP}\sap_call_bdc_run.json" -Skill sap-call-bdc -ParamsJson "{\"bdc_file\":\"<BDC_FILE>\"}"
 ```
 
 ---
@@ -113,7 +113,7 @@ if ($bdcFile) {
 Replace `THE_TCODE` with the actual transaction code and `<SKILL_DIR>` with the absolute path
 to this skill directory.
 
-- **File found** → use its full path. Tell user: "Found BDC file: `<filename>`". Proceed to Step 3.
+- **File found** → use its full path. Tell user: "Found BDC file: `<filename>`". Proceed to Step 2.5 — **never execute a recording without the token substitution (Step 2.5) and the mandatory preview + confirmation (Step 2.6)**.
 - **Not found** → tell user: "No BDC file found starting with `<tcode>` in the bdc/ folder."
   Offer to help create one (see BDC File Format below). **Stop here.**
 
@@ -137,6 +137,84 @@ The file is **tab-delimited** with fixed-width columns:
 | 2 | 1 | `T` = transaction header, `X` = screen start, space = field |
 | 3 | 120+ | Transaction code (T lines), empty (X lines), or field name |
 | 4 | varies | Flags (T lines), empty (X lines), or field value |
+
+### Shipped recordings are DEMO TEMPLATES — adapt before use
+
+The three recordings in `bdc/` were captured on a demo system and carry
+**hardcoded demo values**. They exist to show the format and MUST be adapted
+(Step 2.5) before running against any real system:
+
+| File | Hardcoded demo data |
+|---|---|
+| `bdc_recording_BP.txt` | **Changes the existing BP partner `27`** (`BUS_JOEL_MAIN-CHANGE_NUMBER = 27`), org names `Vendor`/`test1`, a Beijing (CN) address, validity date `2020.03.17` |
+| `bdc_recording_MM01.txt` | Creates material `ZZZTEST01` with material type `Z000` (a customer-specific type that may not exist on the target system), base unit `PC`, then auto-answers a `SAPLSPO1 0300` confirm popup with `=YES` |
+| `bdc_recording_SE21.txt` | A parameterized template — carries `%%PACKAGE%%` / `%%DESCRIPTION%%` / `%%TRANSPORT%%` tokens that MUST be substituted (Step 2.5) or the literal token text would be posted to SAP (the runner refuses this) |
+
+**Date values are user-DATFM-dependent.** BDC replays field values through the
+*executing user's* format settings (SU3 → Defaults → date format). A recorded
+date like `2020.03.17` posts correctly only when the executing user's DATFM
+matches the recording user's — adapt date values to the executing user's
+format during Step 2.5.
+
+---
+
+## Step 2.5 — Substitute Recording Tokens (when present)
+
+Scan the found BDC file for `%%` token markers:
+
+```powershell
+if (Select-String -LiteralPath 'THE_BDC_FILE' -Pattern '%%' -SimpleMatch -Quiet) { 'TOKENS_PRESENT' } else { 'NO_TOKENS' }
+```
+
+- **`NO_TOKENS`** → use the file as-is; continue with Step 2.6.
+- **`TOKENS_PRESENT`** → the recording is a parameterized template (e.g.
+  `bdc_recording_SE21.txt` with `%%PACKAGE%%`, `%%DESCRIPTION%%`,
+  `%%TRANSPORT%%`). **Never run it raw.** Resolve a value for every token:
+  - `%%TRANSPORT%%` — resolve via `/sap-transport-request` (never prompt the
+    user for a TR directly).
+  - Other tokens (`%%PACKAGE%%`, `%%DESCRIPTION%%`, ...) — take from the task
+    context; ask the user if missing.
+
+  Then write a substituted copy into `{RUN_TEMP}` and use THAT path as the BDC
+  file in all later steps. Use `String.Replace` on the file content — do NOT
+  retype the lines (the recording's real TAB delimiters must survive):
+
+```powershell
+$src = [System.IO.File]::ReadAllText('THE_BDC_FILE', [System.Text.Encoding]::UTF8)
+$src = $src.Replace('%%PACKAGE%%',     'THE_PACKAGE')
+$src = $src.Replace('%%DESCRIPTION%%', 'THE_DESCRIPTION')
+$src = $src.Replace('%%TRANSPORT%%',   'THE_TRANSPORT')
+[System.IO.File]::WriteAllText('{RUN_TEMP}\bdc_THE_TCODE_filled.txt', $src, [System.Text.Encoding]::UTF8)
+Write-Host 'Done'
+```
+
+  (Substitute only the tokens the file actually contains.) The runner
+  backstops this step: if the BDC data still contains `%%` at execution time
+  it refuses with `STATUS: ERROR: unsubstituted %%tokens%% in BDC data ...`
+  (exit 1) before calling the transaction.
+
+---
+
+## Step 2.6 — Preview and Confirm (MANDATORY)
+
+BDC recordings perform **business-data writes**. Before executing ANY
+recording — shipped or user-supplied — parse the (substituted) BDC file and
+show the user exactly what will be posted:
+
+1. **TCODE** — from the `T` header line.
+2. **Screen sequence** — each `X` line as `<program> <dynpro>`.
+3. **Field = value list** — every field line (column 3 = field name,
+   column 4 = value). Skip `BDC_OKCODE` / `BDC_CURSOR` / `BDC_SUBSCR` rows
+   for readability (show them on request). Flag anything that looks like demo
+   data (see "Shipped recordings are DEMO TEMPLATES" above).
+
+Then ask for explicit confirmation, e.g.:
+
+> This will run **<TCODE>** in system <SID> client <CLIENT>, posting the field
+> values above (display mode <DISMODE>, update mode <UPDMODE>). Proceed?
+
+**Only continue past this step after the user's explicit confirmation.** If
+the user declines or wants changes, stop (or loop back to Step 2.5).
 
 ---
 
@@ -163,7 +241,11 @@ Language, Transaction Code, Display Mode, Update Mode, plus the BDC file path fr
 
 ## Step 4 — Generate the Filled-In PowerShell and Execute
 
+**Precondition: the user explicitly confirmed the preview in Step 2.6.**
+
 This step fills in the PowerShell template with parameters and runs it via 32-bit `powershell.exe`.
+`THE_BDC_FILE` below is the **substituted `{RUN_TEMP}` copy from Step 2.5** when the
+recording carried `%%TOKENS%%`, else the original `bdc/` path.
 
 > **Why 32-bit?** SAP NCo 3.1 is registered in the 32-bit GAC (`C:\Windows\Microsoft.NET\assembly\GAC_32`)
 > when installed for .NET 4.0 32-bit. Running via the 32-bit PowerShell ensures the assembly loads.
@@ -184,7 +266,7 @@ $content = $content.Replace('%%TCODE%%',        'THE_TCODE')
 $content = $content.Replace('%%BDC_FILE%%',     'THE_BDC_FILE')
 $content = $content.Replace('%%DISMODE%%',      'THE_DISMODE')
 $content = $content.Replace('%%UPDMODE%%',      'THE_UPDMODE')
-$content = $content.Replace('%%RESULT_FILE%%',  '{WORK_TEMP}\bdc_result_THE_TCODE.txt')
+$content = $content.Replace('%%RESULT_FILE%%',  '{RUN_TEMP}\bdc_result_THE_TCODE.txt')
 [System.IO.File]::WriteAllText('{RUN_TEMP}\sap_bdc_filled.ps1', $content, [System.Text.Encoding]::UTF8)
 Write-Host 'Done'
 ```
@@ -204,17 +286,31 @@ C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypas
 
 ## Step 5 — Handle Results
 
-Read the result file `{WORK_TEMP}\bdc_result_<TCODE>.txt`.
+Read the result file `{RUN_TEMP}\bdc_result_<TCODE>.txt`. The verdict is
+decided on the MESS_TAB `MSGTYP` codes ONLY (locale-independent — never on
+translated message text). Both stdout's final line and the file's first line
+carry it as `STATUS: <verdict>`:
 
-**On success** (output contains `STATUS: SUCCESS:`):
+| `STATUS:` verdict | Meaning | Exit code |
+|---|---|---|
+| `SUCCESS: ...` | Transaction executed; MESS_TAB has no E/A and no W rows | 0 |
+| `SUCCESS_WITH_WARNINGS: ...` | Executed; no E/A rows, but at least one `W` row — surface the W rows from the result file to the user | 0 |
+| `ERROR: ...` | At least one MSGTYP `E`/`A` row (each echoed to stdout as `MSG: TYPE=<t> ID=<id> NUMBER=<nr> TEXT=<MSGV1..4>`), an RFC/call failure, or unsubstituted `%%tokens%%` in the BDC data | 1 |
+
+**On `SUCCESS`:**
 - Tell the user the BDC was executed successfully
 - Show message summary from the BDCMSGCOLL table
-- Open the result file in Excel: `Start-Process "{WORK_TEMP}\bdc_result_<TCODE>.txt"`
+- Open the result file in Excel: `Start-Process "{RUN_TEMP}\bdc_result_<TCODE>.txt"`
 
-**On failure** (output contains `STATUS: ERROR:`): Diagnose from the error message:
+**On `SUCCESS_WITH_WARNINGS`:** same as SUCCESS, plus list every `W` row
+(MSGID/MSGNR/MSGV1..4) so the user can judge whether the posting is complete.
+
+**On `ERROR`:** Diagnose from the error message and the echoed `MSG:` lines:
 
 | Error | Cause | Fix |
 |---|---|---|
+| `E/A message(s) in MESS_TAB` | The transaction rejected the posting (see `MSG: TYPE=... ID=... NUMBER=...` lines) | Fix the recording data for this system (field values, dates per user DATFM, existing keys) and re-run |
+| `unsubstituted %%tokens%% in BDC data` | A template recording was run without Step 2.5 | Substitute the tokens into a `{RUN_TEMP}` copy (Step 2.5), re-run |
 | `RFC connection failed` | Wrong server/credentials | Verify SAP connection details in settings.json |
 | `NCo 3.1 not found in GAC_32` | SAP NCo 3.1 not installed for .NET 4.0 32-bit | Install SAP NCo 3.1 for .NET 4.0 (32-bit) per SAP Note |
 | `BDC file not found` | File path wrong or moved | Verify BDC file exists in `bdc/` folder |
@@ -249,7 +345,7 @@ The result file contains all 13 fields of the BDCMSGCOLL structure:
 cmd /c del {RUN_TEMP}\sap_bdc_run.ps1 {RUN_TEMP}\sap_bdc_filled.ps1
 ```
 
-The result file `{WORK_TEMP}\bdc_result_<TCODE>.txt` is kept for user review.
+The result file `{RUN_TEMP}\bdc_result_<TCODE>.txt` is kept for user review.
 
 ---
 
@@ -259,13 +355,13 @@ Log the run-end record. Best-effort: silently no-ops if logging disabled.
 On success:
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_call_bdc_run.json" -Status SUCCESS -ExitCode 0
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_call_bdc_run.json" -Status SUCCESS -ExitCode 0
 ```
 
 On failure (substitute `<CLASS>` and short message):
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_call_bdc_run.json" -Status FAILED -ExitCode 1 -ErrorClass <CLASS> -ErrorMsg "<short>"
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_call_bdc_run.json" -Status FAILED -ExitCode 1 -ErrorClass <CLASS> -ErrorMsg "<short>"
 ```
 
 Suggested `<CLASS>`: `BDC_FAILED`, `BDC_FILE_NOT_FOUND`, `RFC_LOGON_FAILED`.

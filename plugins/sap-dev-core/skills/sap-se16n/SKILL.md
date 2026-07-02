@@ -248,8 +248,19 @@ if ($watcher) { $watcher | Wait-Process -Timeout 45 -ErrorAction SilentlyContinu
 | Last line | Meaning |
 |---|---|
 | `ROWS=<n>` (n ≥ 1) | Query returned `n` data rows. Output file is tab-delimited with a header line. |
-| `ROWS=0 (NO_DATA)` | "No values found" or empty result set. Output file contains a single line `NO_DATA<TAB><status text>`. |
-| `ERROR: …` | Failure — show the full output and stop. |
+| `ROWS=0 (NO_DATA)` | **Genuine empty result set** ("no values found"). Exit 0. Output file contains a single line `NO_DATA<TAB><status text>`. |
+| `QUERY_FAILED` | **The query FAILED** — authorization error, invalid/forbidden table, or any status-bar error (`MessageType` `E`/`A`) after the table-name Enter or F8. Exit 1. Output file's first line is `QUERY_FAILED<TAB><status text>`. **This is NOT "0 rows".** Consumers MUST treat it as an error, never as "row/object absent" (see the consumer note below). |
+| `ERROR: …` | Navigation / layout / file-write failure — show the full output and stop. |
+
+**QUERY_FAILED vs NO_DATA — the critical distinction.** An authorization failure,
+a forbidden table, or an sbar error leaves no result ALV — exactly like a genuine
+empty result set does. The VBS branches on the locale-independent `sbar.MessageType`
+(`E`/`A` → `QUERY_FAILED` + exit 1; otherwise → `NO_DATA` + exit 0), never on the
+translated status text. Callers that read `E070`/`E071` via this skill (e.g.
+`/sap-transport-request` Step 1b, `/sap-se01` release/delete pre-checks,
+`/sap-cc-inventory` GUI ingest) previously read an auth failure as "TR/object not
+found" and could steer to a new TR or proceed on an empty inventory — they now
+distinguish `QUERY_FAILED` and fail closed.
 
 **Output file** (`{RUN_TEMP}\se16n_<TABLE>.txt`):
 - First line = header (technical field names)
@@ -336,9 +347,18 @@ runtime and matches `Tab` or `preadsheet` substrings, then falls back to
 - The `SELECT` list filters output columns by toggling MARK checkboxes; column
   ordering in the output file follows SAP's natural ordering, not the order in
   the SELECT list.
-- Pooled / cluster tables that SE16N forbids reading return `NO_DATA` with a
-  message like "Display of cluster table not allowed" — surface this to the
-  user.
+- Pooled / cluster tables that SE16N forbids reading, and tables the user is not
+  authorized to read, surface as `QUERY_FAILED` (sbar `MessageType` `E`/`A`,
+  exit 1) — **not** `NO_DATA`. Surface the message to the user; do not treat it
+  as "0 rows".
+- **ECC6 / 7.31 limitation.** SE16N availability and screen layout differ on
+  older releases: on some ECC6 systems SE16N is not installed (only `SE16`) or
+  the selection-criteria table control / export dialog uses different control
+  IDs, so this skill may not be portable there. `/sap-se01`'s create + verify
+  chain depends on SE16N (`E070`/`E07T` reads) — on ECC6 prefer the RFC path
+  (`RFC_READ_TABLE` / `sap_tr_object_entries.ps1`) where a helper exists, and
+  re-record the SE16N control IDs with `/sap-gui-record` if the GUI path is
+  required.
 - Date values must be passed as 8-digit `YYYYMMDD` (e.g. `20240131`) — SAP DATS
   fields accept this regardless of the logon user's date personalization
   (`USR01-DATFM`), so it is locale-independent. Do NOT use a separator form such

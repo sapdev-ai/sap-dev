@@ -40,6 +40,7 @@ Function TopWin()
         If CtrlExists("wnd[" & i & "]") Then TopWin = "wnd[" & i & "]" : Exit Function
     Next
 End Function
+Dim gAbortEmptyTr : gAbortEmptyTr = False
 Sub HandleTransport()
     Dim pass, w
     For pass = 1 To 6
@@ -57,7 +58,13 @@ Sub HandleTransport()
             End If
             WScript.Sleep 1500
         ElseIf CtrlExists(w & "/usr/ctxtKO008-TRKORR") Then
-            If TRKORR <> "" Then oSession.findById(w & "/usr/ctxtKO008-TRKORR").Text = TRKORR
+            ' TR popup: empty TR must ABORT loud, never blind-Continue (which
+            ' silently registers the object as Local Object / raises an error).
+            If TRKORR = "" Then
+                gAbortEmptyTr = True
+                Exit Sub
+            End If
+            oSession.findById(w & "/usr/ctxtKO008-TRKORR").Text = TRKORR
             oSession.findById(w & "/tbar[0]/btn[0]").Press
             WScript.Sleep 1500
         Else
@@ -106,6 +113,18 @@ End If
 ' Object directory + transport request (auto-creates the implementing class)
 HandleTransport
 WScript.Sleep 1000
+If gAbortEmptyTr Then
+    WScript.Echo "ERROR: ABORT_EMPTY_TR -- SAP prompted for a transport request but TRKORR is empty."
+    WScript.Echo "       Resolve a TR via /sap-transport-request and re-run the create."
+    WScript.Quit 1
+End If
+' Stuck-modal guard: if a popup is still up after the handler loop, do not
+' fall through to a false SUCCESS.
+If TopWin() <> "wnd[0]" And TopWin() <> "" Then
+    WScript.Echo "ERROR: A modal popup is still open after transport handling (unhandled dialog)."
+    WScript.Echo "       Inspect via /sap-gui-object-details and re-record if a control id changed."
+    WScript.Quit 1
+End If
 
 ' Return to the implementation if SAP navigated into the interface view
 If Not CtrlExists("wnd[0]/usr/txtRSEXSCRN-ACTIVE") Then

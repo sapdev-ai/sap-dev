@@ -8,7 +8,9 @@ description: |
   DEFAULT / ASK / CREATE_NEW flow so callers never have to ask the user
   themselves. When a new TR is required, delegates creation to /sap-se01
   (GUI mode) or to its built-in RFC creator (CTS_API_CREATE_CHANGE_REQUEST).
-  Honours rule_of_tr_description for the description text.
+  Honours rule_of_tr_description for the description text. An unverifiable
+  or non-modifiable candidate TR is re-prompted per the policy loop —
+  never silently replaced by a freshly created TR.
   Prerequisites: SAP profile saved via /sap-login (RFC password required).
   SAP NCo 3.1 (32-bit, .NET 4.0) in GAC for RFC paths; active SAP GUI session
   (use /sap-login first) is additionally required when way_to_get_transport_request=CREATE_NEW
@@ -173,9 +175,11 @@ caller. Do NOT fall through to Steps 2-4 from the GUI branch.
 1. Build the description locally using the same `rule_of_tr_description`
    algorithm (see `<SAP_DEV_CORE_SHARED_DIR>/rules/tr_resolution.md` §3).
 2. Fall through to Steps 2-4 below — they use the RFC
-   `CTS_API_CREATE_CHANGE_REQUEST` path. Pass `%%TR_INPUT%%` empty and
-   `%%SAP_DEV_MODE%%` set to `RFC` (or `BDC`) so the PS1's guardrail
-   permits creation.
+   `CTS_API_CREATE_CHANGE_REQUEST` path. Pass `%%TRANSPORT_REQUEST%%` empty
+   and `%%SAP_DEV_MODE%%` set to `RFC` (or `BDC`) so the PS1's guardrail
+   permits creation, and pass the description built in item 1 via the
+   `-Description` argument at execution (Step 3) — the PS1 falls back to a
+   generic literal only when `-Description` arrives empty.
 
 ### Mid-session policy change
 
@@ -209,7 +213,8 @@ Parse the resulting `{RUN_TEMP}\se16n_E070.txt`:
 
 | Observation | Outcome |
 |---|---|
-| `ROWS=0 (NO_DATA)` | TR not found in this system. Loop back to the Step 1a prompt (DEFAULT/ASK) — invite the user to enter a different number or type `new`. |
+| `ROWS=0 (NO_DATA)` | TR genuinely not found in this system (empty result set). Loop back to the Step 1a prompt (DEFAULT/ASK) — invite the user to enter a different number or type `new`. |
+| `QUERY_FAILED` (se16n exits 1; the output file's first line is `QUERY_FAILED<TAB><msg>`) | The `E070` read itself FAILED (authorization / lock / invalid table) — the candidate's status is UNKNOWN. Do **NOT** treat as "not found" and do **NOT** create a new TR (a transient error would otherwise cause TR sprawl). Surface the message; offer to retry or verify in SE01, then re-prompt per the Step 1a policy loop. |
 | `TRSTATUS = D` or `L` | Modifiable. Output `RESULT_TR: <candidate>` / `RESULT_STATUS: EXISTING_MODIFIABLE`. **STOP** — skip Steps 2-4. Apply persistence per Step 1a policy. |
 | `TRSTATUS = R`, `O`, or `N` | Released / release in progress / released with errors. Tell the user `<candidate>` is not modifiable; loop or offer to create a fresh TR via the Create Path. |
 | Any other code | Unrecognized status — show the row to the user and ask whether to proceed or create a new TR. |
@@ -224,6 +229,15 @@ Fall through to **Steps 2-4** below. The PS1's verify branch routes
 `TR_READ_REQUEST` through `Z_GENERIC_RFC_WRAPPER_TBL` (TR_READ_REQUEST is not
 remote-enabled, so the direct NCo path fails to bind the deep `TRWBO_REQUEST`
 structure). The wrapper must already be deployed via `/sap-dev-init`.
+
+**The PS1 is verify-only on this route — it NEVER creates a substitute TR
+when given a candidate.** Interpret its machine lines:
+
+| Line (exit code) | Meaning | Action under `DEFAULT` / `ASK` |
+|---|---|---|
+| `RESULT_TR: <TR>` + `RESULT_STATUS: EXISTING_MODIFIABLE` (0) | Candidate is modifiable | Use it; persist per the Step 1a policy. |
+| `RESULT: TR_NOT_MODIFIABLE trkorr=<TR> status=<R\|O\|N\|NOT_FOUND\|...>` (1) | Candidate is released / release in progress / not found | **Re-prompt the user per the Step 1a policy loop** ("provide a different modifiable TR, or `new`"). NEVER silently substitute a freshly created TR. |
+| `RESULT: TR_UNVERIFIED reason=<...>` (1) | Wrapper missing / transient RFC error — the candidate's status is UNKNOWN | Do NOT treat as not-found and do NOT create. Surface the reason; offer to retry, or to verify via `/sap-se16n` on `E070` (works whenever a GUI session exists), then re-prompt per the Step 1a policy loop. |
 
 ---
 
@@ -293,17 +307,31 @@ Execute via **32-bit PowerShell** (SAP NCo 3.1 is registered in the 32-bit GAC):
 C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_tr_run.ps1"
 ```
 
+On the **create** route (Step 1a Create Path RFC/BDC branch — `THE_TR` set
+empty), append the description built per `rule_of_tr_description`:
+```bash
+C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_tr_run.ps1" -Description "<built description>"
+```
+(`-CreateNew` may additionally be passed to make the create intent explicit;
+an empty TR input already implies it.) On the **verify** route (`THE_TR`
+non-empty) pass no extra arguments — the PS1 is verify-only there and NEVER
+falls through to creating a TR.
+
 ---
 
 ## Step 4 — Interpret Results
 
-Parse the script output for `RESULT_TR:` and `RESULT_STATUS:` lines.
+Parse the script output for `RESULT_TR:` and `RESULT_STATUS:` lines (and, on
+verify failures, the machine lines `RESULT: TR_UNVERIFIED reason=<...>` /
+`RESULT: TR_NOT_MODIFIABLE trkorr=<...> status=<...>`).
 
 | RESULT_STATUS | Meaning | Action |
 |---|---|---|
 | `EXISTING_MODIFIABLE` | Provided TR is still modifiable | Report: "Transport request `<TR>` is modifiable and ready to use." Persistence per Step 1a (policy-driven). |
 | `NEWLY_CREATED` | New TR was created | Report: "Created new transport request `<TR>`." Persistence per Step 1a: `DEFAULT` → save automatically; `ASK` → ask the user once; `CREATE_NEW` → do NOT save. Persist via the SESSION writer (`sap_dev_default.ps1` / `Set-SapUserSetting -Scope Session`), NOT `/update-config`. |
-| `ERROR` | Something went wrong | Show full output and diagnose (see error table below). |
+| `TR_NOT_MODIFIABLE` | Candidate TR is released / release in progress / not found (`status=` on the `RESULT:` line); **nothing was created** (exit 1) | Under `DEFAULT`/`ASK`, re-prompt the user per the Step 1a policy loop ("different modifiable TR, or `new`"). NEVER silently substitute a new TR. |
+| `TR_UNVERIFIED` | Wrapper missing / transient RFC error — candidate status UNKNOWN; **nothing was created** (exit 1) | Do NOT treat as not-found. Surface the `reason=`; offer retry or a GUI verify via `/sap-se16n` on `E070`, then re-prompt per the Step 1a policy loop. |
+| `ERROR` | Something went wrong (create failure exits 1 too) | Show full output and diagnose (see error table below). |
 
 ### Error Diagnosis
 
@@ -341,7 +369,7 @@ On failure:
 powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_tr_run.json" -Status FAILED -ExitCode 1 -ErrorClass <CLASS> -ErrorMsg "<short>"
 ```
 
-Suggested `<CLASS>`: `TR_RESOLUTION_FAILED`, `TR_NOT_MODIFIABLE`, `RFC_LOGON_FAILED`.
+Suggested `<CLASS>`: `TR_RESOLUTION_FAILED`, `TR_NOT_MODIFIABLE`, `TR_UNVERIFIED`, `RFC_LOGON_FAILED`.
 
 ---
 

@@ -52,8 +52,8 @@ ExecuteGlobal CreateObject("Scripting.FileSystemObject") _
 ' ----------------------------------------------------------------------------
 ' FindFunctionEditorShell(oSess) -> the SE37 Source-code editor shell, or Nothing
 '   The Function Builder Source tab hosts an AbapEditor GuiShell. Its full id is
-'   release-specific — the subscreen dynpro number varies (EC2 / NW 7.31 =
-'   ssubSCREEN_HEADER:SAPLEDITOR_START:8430; other releases differ) — so we WALK
+'   release-specific -- the subscreen dynpro number varies (EC2 / NW 7.31 =
+'   ssubSCREEN_HEADER:SAPLEDITOR_START:8430; other releases differ) -- so we WALK
 '   the tabpSOURCE subtree for the shell whose id ends in
 '   "cntlEDITOR/shellcont/shell", with the observed EC2 id as a fast-path first.
 '   (Mirrors the release-robust grid walk in sap_syntax_check_lib.vbs.)
@@ -116,7 +116,7 @@ WScript.Sleep 1000
 ' Poll for the FM name field (up to ~5s). When we arrive at SE37 straight
 ' from a prior editor screen the session can still be mid-transition; a
 ' single Sleep + immediate hard-quit was the 2026-06-22 EC2 first-run
-' false failure (the field DOES exist on 7.31 — it just wasn't ready yet).
+' false failure (the field DOES exist on 7.31 -- it just wasn't ready yet).
 On Error Resume Next
 Dim oFMField, iWaitFld
 Set oFMField = Nothing
@@ -246,8 +246,8 @@ WScript.Echo "INFO: Function module created, now in Function Builder."
 ' --- Lock the SAP session UI for the source paste + save + activate + syntax check critical section ---
 ' Per Rule 7: LockSessionUI blocks user input races inside SAP. Source is now
 ' pasted into the editor via the Windows clipboard + SendKeys (the Utilities >
-' Upload menu is S/4-only — its positional path does not exist on NW 7.31 /
-' ECC6, the 2026-06-22 EC2 hard blocker), so — like sap-se38 — we ALSO use the
+' Upload menu is S/4-only -- its positional path does not exist on NW 7.31 /
+' ECC6, the 2026-06-22 EC2 hard blocker), so -- like sap-se38 -- we ALSO use the
 ' OS-level foreground guard below so Ctrl+V can never land in another app.
 Dim wasLocked : wasLocked = TryLockSession(oSession)
 If wasLocked Then
@@ -257,7 +257,7 @@ Else
 End If
 
 ' ------ 6. Navigate to Source code tab and paste source via clipboard --------
-' (Interface tabs are filled AFTER the paste — see step 7 below. The paste may
+' (Interface tabs are filled AFTER the paste -- see step 7 below. The paste may
 '  reset the interface from *" comment lines; filling tabs afterwards keeps the
 '  interface matching the parsed FM definition.)
 '
@@ -495,7 +495,7 @@ Err.Clear
 On Error GoTo 0
 WScript.Echo "INFO: Saved."
 
-' ------ 9. Activate (Ctrl+F3) — must activate BEFORE syntax check ---------
+' ------ 9. Activate (Ctrl+F3) -- must activate BEFORE syntax check ---------
 ' If the function group has an inactive version, syntax check reports
 ' "Statement is not accessible" for ALL lines. Activating first resolves this.
 WScript.Echo "INFO: Activating..."
@@ -505,12 +505,12 @@ WScript.Sleep 3000
 
 ' Handle "Inactive Objects" worklist popup.
 ' Poll up to ~10s (popup may appear late when sibling FUGR objects are inactive).
-' Press Continue (btn[0]) ONLY — the FM and its function-group includes are
+' Press Continue (btn[0]) ONLY -- the FM and its function-group includes are
 ' pre-selected, so Continue activates exactly them. Do NOT Select All
 ' (Ctrl+A / sendVKey 26): that co-activates every UNRELATED inactive object
 ' in the user's worklist (EC2/DEV102 had 10 strangers incl. a BAdI). This
 ' matches the proven-safe SE38 model. Fail loud (never re-add Select All) if
-' the worklist persists — the syntax check below reports an inactive FM as a
+' the worklist persists -- the syntax check below reports an inactive FM as a
 ' real error (safety over a silent over-activation).
 Dim iWaitAct
 For iWaitAct = 1 To 10
@@ -518,7 +518,7 @@ For iWaitAct = 1 To 10
     WScript.Sleep 1000
 Next
 If InStr(oSession.ActiveWindow.Id, "wnd[1]") > 0 Then
-    WScript.Echo "INFO: Inactive objects worklist — Continue (pre-selected object only, no Select All)..."
+    WScript.Echo "INFO: Inactive objects worklist -- Continue (pre-selected object only, no Select All)..."
     Err.Clear
     oSession.findById("wnd[1]/tbar[0]/btn[0]").press  ' Continue
     WScript.Sleep 5000
@@ -533,9 +533,9 @@ If InStr(oSession.ActiveWindow.Id, "wnd[1]") > 0 Then
     End If
 End If
 
-' Handle "Activation errors" popup (wnd[2]) — press Activate to proceed
+' Handle "Activation errors" popup (wnd[2]) -- press Activate to proceed
 If InStr(oSession.ActiveWindow.Id, "wnd[2]") > 0 Then
-    WScript.Echo "WARNING: Activation errors — pressing Activate anyway..."
+    WScript.Echo "WARNING: Activation errors -- pressing Activate anyway..."
     On Error Resume Next
     oSession.findById("wnd[2]/usr/btnSPOP-VAROPTION1").press
     If Err.Number <> 0 Then
@@ -552,7 +552,7 @@ End If
 Err.Clear
 On Error GoTo 0
 
-' ------ 10. Syntax check (Ctrl+F2) — read error grid -----------------------
+' ------ 10. Syntax check (Ctrl+F2) -- read error grid -----------------------
 WScript.Echo "INFO: Running syntax check..."
 oSession.findById("wnd[0]/tbar[1]/btn[26]").press  ' Ctrl+F2 Check
 WScript.Sleep 3000
@@ -586,9 +586,9 @@ If Err.Number = 0 And Not (oSyntaxGrid Is Nothing) Then
     Err.Clear
     If nSyntaxRows > 0 Then
         ' --- Resolve logon language so the shared IsErrorMsgType classifier
-        ' can match SAP's localized "Error" label in MSGTYPE (e.g. ZH "错误",
-        ' JA "エラー"). Icon-ID prefix is the locale-independent fallback
-        ' inside the helper — see shared/scripts/sap_syntax_check_lib.vbs.
+        ' can match SAP's localized "Error" label in MSGTYPE (e.g. ZH "cuowu",
+        ' JA "eraa"). Icon-ID prefix is the locale-independent fallback
+        ' inside the helper -- see shared/scripts/sap_syntax_check_lib.vbs.
         ' Per-row classification replaces the previous over-eager "any
         ' finding = error" behaviour: warnings should not block activation,
         ' only real errors should.
@@ -631,11 +631,11 @@ If Err.Number = 0 And Not (oSyntaxGrid Is Nothing) Then
             WScript.Echo "INFO: Syntax check passed (" & nSyntaxRows & " warning(s) only, no blocking errors)."
         End If
     Else
-        WScript.Echo "INFO: Syntax check passed — no findings."
+        WScript.Echo "INFO: Syntax check passed -- no findings."
     End If
 Else
     Err.Clear
-    ' Grid not found — fall back to status bar check
+    ' Grid not found -- fall back to status bar check
     Dim sSyntaxMsg, sSyntaxType
     sSyntaxMsg  = oSession.findById("wnd[0]/sbar").Text
     sSyntaxType = oSession.findById("wnd[0]/sbar").MessageType
@@ -644,7 +644,7 @@ Else
         bSyntaxOK = False
         WScript.Echo "ERROR: Syntax check failed - " & sSyntaxMsg
     ElseIf sSyntaxMsg = "" Then
-        WScript.Echo "INFO: Syntax check — no findings (sbar empty, AbapEditor may swallow messages)."
+        WScript.Echo "INFO: Syntax check -- no findings (sbar empty, AbapEditor may swallow messages)."
     Else
         WScript.Echo "INFO: Syntax check passed."
     End If

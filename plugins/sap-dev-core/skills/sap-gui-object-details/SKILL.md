@@ -120,7 +120,7 @@ Template: `./references/sap_gui_object_details.vbs`. Tokens:
 | `%%MAX_DEPTH%%` | Optional recursion cap; default `10` |
 | `%%OUTPUT_FILE%%` | Absolute path of the output file (UTF-16 LE) |
 
-Default output file: `{WORK_TEMP}\sap_gui_objects_<MODE>.txt`.
+Default output file: `{RUN_TEMP}\sap_gui_objects_<MODE>.txt`.
 
 Write `{RUN_TEMP}\sap_gui_object_details_run.ps1`:
 ```powershell
@@ -132,7 +132,7 @@ $content  = $content.Replace('%%FILTER%%','THE_FILTER')
 $content  = $content.Replace('%%WINDOW%%','THE_WINDOW')
 $content  = $content.Replace('%%MAX_DEPTH%%','10')
 $content  = $content.Replace('%%OUTPUT_FILE%%','THE_OUTPUT_FILE')
-[System.IO.File]::WriteAllText("$workTemp\sap_gui_object_details_run.vbs", $content, [System.Text.UnicodeEncoding]::new($false, $true))
+[System.IO.File]::WriteAllText("{RUN_TEMP}\sap_gui_object_details_run.vbs", $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 
@@ -156,7 +156,7 @@ program, screen, user/client/system) followed by mode-specific sections.
 
 Open it with:
 ```bash
-powershell -Command "Get-Content '{WORK_TEMP}\sap_gui_objects_<MODE>.txt' -Encoding Unicode"
+powershell -Command "Get-Content '{RUN_TEMP}\sap_gui_objects_<MODE>.txt' -Encoding Unicode"
 ```
 
 Or read selected lines directly with the `read_file` tool.

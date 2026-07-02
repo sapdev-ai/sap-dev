@@ -17,6 +17,12 @@
 '   %%BP_NUMBER%%       Business Partner number
 '   %%DEFINITION_FILE%% Path to field definitions
 '
+' Locale-independent contract (language_independence_rules.md): screens are
+' identified by control ids / Changeable probes (BUT000-NAME_ORG1), results
+' by sbar MessageType; titles / status texts are echoed for diagnostics
+' only. On success a machine-readable "BP: <number>" line is echoed before
+' the final SUCCESS line.
+'
 ' Component IDs recorded from SAP GUI 7.60 on S/4HANA 1909.
 ' =============================================================================
 
@@ -29,8 +35,12 @@ Const VKEY_ENTER    = 0
 Const VKEY_F11_SAVE = 11
 Const SESSION_PATH  = "%%SESSION_PATH%%"   ' empty / unsubstituted = use default
 
+' Include shared helpers (attach first; session-lock's pre-unlock sweep
+' reads from oSession).
 ExecuteGlobal CreateObject("Scripting.FileSystemObject") _
     .OpenTextFile("%%ATTACH_LIB_VBS%%", 1).ReadAll()
+ExecuteGlobal CreateObject("Scripting.FileSystemObject") _
+    .OpenTextFile("%%SESSION_LOCK_VBS%%", 1).ReadAll()
 
 ' ------ Helper: Find input field by name within a container (recursive) -----
 Function FindField(oContainer, sFieldName)
@@ -131,7 +141,7 @@ Dim oSession
 Set oSession = AttachSapSession(SESSION_PATH)
 
 ' ------ 2. Read definition file ---------------------------------------------
-Dim oFSO, oFile, sLine
+Dim oFSO, sLine
 Set oFSO = CreateObject("Scripting.FileSystemObject")
 
 If Not oFSO.FileExists(DEFINITION_FILE) Then
@@ -139,18 +149,35 @@ If Not oFSO.FileExists(DEFINITION_FILE) Then
     WScript.Quit 1
 End If
 
+' Parse into arrays: section, field name, value
+' NOTE: read via ADODB.Stream with explicit Charset="utf-8". FSO.OpenTextFile
+' decodes bytes with the system code page (cp932 on Japanese Windows, cp1252
+' on Western), which mangles UTF-8 multi-byte sequences -- JA/ZH values would
+' mojibake INTO the saved business record. ADODB.Stream decodes to the
+' Unicode that the SAP GUI controls expect.
 Dim arrSections(), arrFields(), arrValues()
 Dim iCount
 iCount = 0
 
-Set oFile = oFSO.OpenTextFile(DEFINITION_FILE, 1, False)
-Do While Not oFile.AtEndOfStream
-    sLine = oFile.ReadLine
-    ' Strip UTF-8 BOM if present on first line
-    If iCount = 0 And Len(sLine) > 0 Then
-        Do While Len(sLine) > 0 And Asc(Left(sLine, 1)) > 127
-            sLine = Mid(sLine, 2)
-        Loop
+Dim oStream, sAll, arrLines, iLine
+Set oStream = CreateObject("ADODB.Stream")
+oStream.Type = 2                    ' adTypeText
+oStream.Charset = "utf-8"
+oStream.Open
+oStream.LoadFromFile DEFINITION_FILE
+sAll = oStream.ReadText
+oStream.Close
+
+sAll = Replace(sAll, vbCrLf, vbLf)
+sAll = Replace(sAll, vbCr,   vbLf)
+arrLines = Split(sAll, vbLf)
+
+For iLine = 0 To UBound(arrLines)
+    sLine = arrLines(iLine)
+    ' Strip a residual BOM character on the first line (belt and braces --
+    ' ADODB.Stream normally consumes the UTF-8 BOM itself).
+    If iLine = 0 And Len(sLine) > 0 Then
+        If Left(sLine, 1) = ChrW(&HFEFF) Then sLine = Mid(sLine, 2)
     End If
 
     sLine = Trim(sLine)
@@ -182,10 +209,19 @@ Do While Not oFile.AtEndOfStream
             End If
         End If
     End If
-Loop
-oFile.Close
+Next
 
 WScript.Echo "INFO: Read " & iCount & " field definitions from file."
+
+' --- Lock the SAP session UI for the BP multi-tab input + save critical section ---
+' Defence in depth (Rule 7): AppActivate guards external focus stealing;
+' LockSessionUI guards in-session input races. Released after the save.
+Dim wasLocked : wasLocked = TryLockSession(oSession)
+If wasLocked Then
+    WScript.Echo "INFO: Session UI locked for the BP multi-tab input + save critical section."
+Else
+    WScript.Echo "INFO: LockSessionUI not available on this SAP GUI build; continuing without lock."
+End If
 
 ' ------ 3. Navigate to BP and open partner ----------------------------------
 WScript.Echo "INFO: Navigating to BP transaction..."
@@ -213,6 +249,7 @@ If oSession.findById("wnd[0]/sbar").MessageType = "E" Then
     Err.Clear
     On Error GoTo 0
     WScript.Echo "ERROR: " & sStatus
+    ReleaseSession oSession, wasLocked
     WScript.Quit 1
 End If
 
@@ -221,13 +258,16 @@ WScript.Echo "INFO: Switching to Change mode..."
 oSession.findById("wnd[0]/tbar[1]/btn[6]").Press   ' Switch Display/Change (F6)
 WScript.Sleep 1000
 
-Dim sTitle
-sTitle = oSession.findById("wnd[0]").Text
-If InStr(sTitle, "Change") = 0 Then
-    WScript.Echo "ERROR: Failed to switch to Change mode. Title: " & sTitle
+' Locale-independent gate: an authorization / lock failure surfaces as an E
+' in the status bar (the partner stays in display mode).
+Dim sSwStatus, sSwType
+sSwStatus = oSession.findById("wnd[0]/sbar").Text
+sSwType = oSession.findById("wnd[0]/sbar").MessageType
+If sSwType = "E" Or sSwType = "A" Then
+    WScript.Echo "ERROR: Failed to switch to Change mode. " & sSwStatus
+    ReleaseSession oSession, wasLocked
     WScript.Quit 1
 End If
-WScript.Echo "INFO: Change mode reached: " & sTitle
 
 ' ------ 5. Switch to General Data view --------------------------------------
 WScript.Echo "INFO: Switching to General Data view..."
@@ -237,6 +277,27 @@ WScript.Sleep 1000
 ' ------ 6. Fill tab fields --------------------------------------------------
 Dim oUsr
 Set oUsr = oSession.findById("wnd[0]/usr")
+
+' Verify the partner is actually editable -- locale-independent: probe a
+' General Data field's Changeable property instead of the translated title.
+Dim oProbeField
+Set oProbeField = FindField(oUsr, "BUT000-NAME_ORG1")
+If Not (oProbeField Is Nothing) Then
+    Dim bEditable
+    bEditable = False
+    On Error Resume Next
+    bEditable = oProbeField.Changeable
+    Err.Clear
+    On Error GoTo 0
+    If Not bEditable Then
+        WScript.Echo "ERROR: Business Partner is still in display mode (BUT000-NAME_ORG1 not changeable)."
+        WScript.Echo "       Check locks / authorizations. Status (diagnostic): " & oSession.findById("wnd[0]/sbar").Text
+        ReleaseSession oSession, wasLocked
+        WScript.Quit 1
+    End If
+Else
+    WScript.Echo "INFO: BUT000-NAME_ORG1 not found on the current tab; skipping the change-mode probe."
+End If
 
 ' Collect unique tab IDs in order
 Dim arrTabs()
@@ -324,42 +385,49 @@ If sSaveType = "W" Then
     WScript.Sleep 2000
 End If
 
-' Handle popups (transport, etc.)
+' ------ 7b. Post-save popup guard --------------------------------------------
+' The BP transaction never raises a workbench transport popup -- business
+' partners are not workbench objects. Any modal at this point is unexpected:
+' fail loud instead of blind-dismissing (a guessed keypress on a REAL
+' business record could commit or discard the wrong thing). ReleaseSession
+' sweeps the modal (F12) so the operator gets a clean session back.
+Dim sPopId, sPopTitle
+sPopId = ""
 On Error Resume Next
-If InStr(oSession.ActiveWindow.Id, "wnd[1]") > 0 Then
-    WScript.Echo "INFO: Popup detected."
-    oSession.findById("wnd[1]/tbar[0]/btn[7]").Press  ' Local Object
-    If Err.Number <> 0 Then
-        Err.Clear
-        oSession.ActiveWindow.sendVKey VKEY_ENTER
-    End If
-    WScript.Sleep 2000
-End If
-
-If InStr(oSession.ActiveWindow.Id, "wnd[1]") > 0 Then
-    oSession.ActiveWindow.sendVKey VKEY_ENTER
-    WScript.Sleep 1000
-End If
+sPopId = oSession.ActiveWindow.Id
 Err.Clear
 On Error GoTo 0
+If InStr(sPopId, "wnd[1]") > 0 Then
+    sPopTitle = ""
+    On Error Resume Next
+    sPopTitle = oSession.ActiveWindow.Text   ' diagnostic only
+    Err.Clear
+    On Error GoTo 0
+    WScript.Echo "ERROR: Unexpected popup after save: " & sPopId & " -- title (diagnostic): " & sPopTitle
+    WScript.Echo "       Refusing to blind-dismiss. Resolve the popup manually, then re-run."
+    ReleaseSession oSession, wasLocked
+    WScript.Quit 1
+End If
+
+' --- Release the session UI lock; result check is read-only ---
+ReleaseSession oSession, wasLocked
+If wasLocked Then WScript.Echo "INFO: Session UI lock released."
 
 ' ------ 8. Check result -----------------------------------------------------
 sStatus = oSession.findById("wnd[0]/sbar").Text
 Dim sStatusType
 sStatusType = oSession.findById("wnd[0]/sbar").MessageType
 
-' Navigate back to clean state
-sTitle = oSession.findById("wnd[0]").Text
-If InStr(sTitle, "Change") > 0 Or InStr(sTitle, "Display") > 0 Then
-    oSession.findById("wnd[0]/tbar[0]/okcd").Text = "/n"
-    oSession.findById("wnd[0]").sendVKey VKEY_ENTER
-    WScript.Sleep 500
-    On Error Resume Next
-    oSession.findById("wnd[1]/usr/btnSPOP-OPTION1").Press
-    Err.Clear
-    On Error GoTo 0
-    WScript.Sleep 500
-End If
+' Navigate back to a clean state unconditionally (locale-independent; the
+' data-loss confirm, if any, is dismissed by its SPOP control id).
+oSession.findById("wnd[0]/tbar[0]/okcd").Text = "/n"
+oSession.findById("wnd[0]").sendVKey VKEY_ENTER
+WScript.Sleep 500
+On Error Resume Next
+oSession.findById("wnd[1]/usr/btnSPOP-OPTION1").Press
+Err.Clear
+On Error GoTo 0
+WScript.Sleep 500
 
 WScript.Echo "INFO: Status (" & sStatusType & "): " & sStatus
 
@@ -368,5 +436,13 @@ If sStatusType = "E" Or sStatusType = "A" Then
     WScript.Quit 1
 End If
 
+' Fail loud on anything but a positive success message: an empty or
+' unrecognized status after Save must never be reported as SUCCESS.
+If sStatusType <> "S" Then
+    WScript.Echo "ERROR: Could not confirm the save -- status bar type is '" & sStatusType & "' (expected S). Message: " & sStatus
+    WScript.Quit 1
+End If
+
+WScript.Echo "BP: " & BP_NUMBER
 WScript.Echo "SUCCESS: Business Partner " & BP_NUMBER & " updated in SAP."
 WScript.Quit 0

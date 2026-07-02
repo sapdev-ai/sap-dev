@@ -79,14 +79,14 @@ Set `{RUN_TEMP}` = the per-run scratch dir (`Get-SapRunTemp` mints + creates `{w
 ```bash
 powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('RUN_TEMP=' + (Get-SapRunTemp))"
 ```
-Per the CLAUDE.md "Two-bucket temp model" write this skill's generated scratch (`*_run.ps1`) under `{RUN_TEMP}`; keep `{WORK_TEMP}` (base) only for the log state.
+Per the CLAUDE.md "Two-bucket temp model" write this skill's per-run state (the `_run.json` log state) under `{RUN_TEMP}`; `{WORK_TEMP}` (base) stays the anchor only.
 
 ---
 
 ## Step 0.5 — Start Logging
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{WORK_TEMP}\sap_dev_clean_run.json" -Skill sap-dev-clean -ParamsJson "{}"
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{RUN_TEMP}\sap_dev_clean_run.json" -Skill sap-dev-clean -ParamsJson "{}"
 ```
 
 ---
@@ -516,9 +516,10 @@ than reporting the clean as fully complete.
 
 ## Step 6 — Clean Up
 
-```bash
-cmd /c del "{RUN_TEMP}\sap_dev_clean_run.ps1"
-```
+Nothing to delete — this skill generates no scratch scripts of its own (it
+delegates to sub-skills and runs shipped shared scripts directly); its only
+per-run file is the `{RUN_TEMP}\sap_dev_clean_run.json` log state, which the
+Final block below still needs and the stale-run sweep reclaims.
 
 (The shared status checker is invoked indirectly via `/sap-dev-status`,
 which manages its own temp file.)
@@ -528,13 +529,13 @@ which manages its own temp file.)
 ## Final — Log End
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_dev_clean_run.json" -Status SUCCESS -ExitCode 0
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_dev_clean_run.json" -Status SUCCESS -ExitCode 0
 ```
 
 On failure (substitute `<CLASS>` and short message):
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_dev_clean_run.json" -Status FAILED -ExitCode 1 -ErrorClass <CLASS> -ErrorMsg "<short>"
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_dev_clean_run.json" -Status FAILED -ExitCode 1 -ErrorClass <CLASS> -ErrorMsg "<short>"
 ```
 
 Suggested `<CLASS>`: `DEV_CLEAN_FM_FAILED`, `DEV_CLEAN_DDIC_FAILED`,

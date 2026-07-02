@@ -24,7 +24,7 @@
 '   %%SAP_PASSWORD%%   SAP password
 '   %%SAP_LANGUAGE%%   Logon language                e.g. "EN"
 '   %%ABAP_FILE%%      Full path to ABAP source file e.g. "C:\src\ZPROGRAM.abap"
-'   %%RESULT_FILE%%    Full path to write results    e.g. "{WORK_TEMP}\checkfm_result.txt"
+'   %%RESULT_FILE%%    Full path to write results    e.g. "C:\src\ZPROGRAM.abap.check_fm.tsv"
 ' =============================================================================
 Option Explicit
 

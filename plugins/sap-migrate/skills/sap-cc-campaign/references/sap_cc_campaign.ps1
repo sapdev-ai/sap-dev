@@ -20,6 +20,9 @@
 #   METRIC:   <name> | VALUE: <int>          (-1 = not applicable yet)
 #             names: decommission_savings_pct, atc_clean_pct, auto_fix_rate_pct,
 #                    unmatched_findings_pct
+#   INFO:     auto_fix_rate attempts=<n> auto=<a> excluded=<k> (...)
+#             (audit line for the auto-fix denominator: R1 apply-attempt rows
+#              only; assist / SOURCE_MISSING / non-R1 fixlog rows are excluded)
 #   SIGNOFF:  gate=<g> status=<APPROVED|PENDING|REJECTED> owner=<o> date=<d>   (report/signoff)
 #   NEXT:     skill=<name|MANUAL|DONE> reason=<text> [gate=<scope_signoff|dryrun_review>]
 #   INIT: <text> | EXISTED: <text> | REPORT: <text>
@@ -157,22 +160,36 @@ function Emit-Counts($rows){
 # Render an int metric for the dashboard: -1 => "n/a" (could-not-compute), else "<v>%".
 function Pct([int]$v){ if($v -lt 0){ return 'n/a' } else { return "$v%" } }
 
-# Auto-fix rate from remediation\fixlog.tsv: share of attempted objects that the
-# R1 mechanical rules actually rewrote (auto_changes > 0). Distinguishes "0%
-# auto-fixable" from "no remediation attempted yet" (-1 => n/a, empty/no file).
+# Auto-fix rate from remediation\fixlog.tsv: share of R1 auto-apply ATTEMPT
+# rows that the R1 mechanical rules actually rewrote (auto_changes > 0). The
+# denominator counts ONLY rows for objects whose ledger tier is R1 with a real
+# apply attempt -- assist rows (AI_CONTEXT_*) and SOURCE_MISSING rows carry
+# auto_changes=0 BY DESIGN and would dilute the management-facing number, so
+# they (and non-R1 objects) are excluded and reported in `excluded` for audit.
+# Distinguishes "0% auto-fixable" from "no attempt yet" (-1 => n/a).
 function Get-AutoFix([string]$dir){
-    $res = [ordered]@{ rate = -1; auto = 0; total = 0 }
+    $res = [ordered]@{ rate = -1; auto = 0; total = 0; excluded = 0 }
     $p = Join-Path $dir 'remediation\fixlog.tsv'
     if(-not (Test-Path -LiteralPath $p)){ return $res }
     try {
         $rows = @(Import-Csv -LiteralPath $p -Delimiter "`t")
-        $tot = $rows.Count
-        if($tot -gt 0){
-            $auto = @($rows | Where-Object {
-                $n = 0; [void][int]::TryParse([string]$_.auto_changes, [ref]$n); $n -gt 0
-            }).Count
-            $res.total = $tot; $res.auto = $auto
-            $res.rate  = [int][math]::Round(100.0 * $auto / $tot)
+        if($rows.Count -eq 0){ return $res }
+        $tierByKey = @{}
+        foreach($lr in (Get-Ledger $dir)){ $tierByKey[("$($lr.obj_name)|$($lr.obj_type)").ToUpper()] = [string]$lr.tier }
+        $attTot = 0; $attAuto = 0; $excl = 0
+        foreach($fr in $rows){
+            $k = ("$($fr.obj_name)|$($fr.obj_type)").ToUpper()
+            $st = [string]$fr.status
+            $isR1 = ($tierByKey.ContainsKey($k) -and ($tierByKey[$k] -eq 'R1'))
+            if((-not $isR1) -or ($st -eq 'SOURCE_MISSING') -or ($st -like 'AI_CONTEXT*')){ $excl++; continue }
+            $attTot++
+            $n = 0; [void][int]::TryParse([string]$fr.auto_changes, [ref]$n)
+            if($n -gt 0){ $attAuto++ }
+        }
+        $res.excluded = $excl
+        if($attTot -gt 0){
+            $res.total = $attTot; $res.auto = $attAuto
+            $res.rate  = [int][math]::Round(100.0 * $attAuto / $attTot)
         }
     } catch {}
     return $res
@@ -246,6 +263,7 @@ function Emit-Metrics($rows,[string]$dir){
     Write-Output "METRIC: decommission_savings_pct | VALUE: $save"
     Write-Output "METRIC: atc_clean_pct | VALUE: $atc"
     Write-Output "METRIC: auto_fix_rate_pct | VALUE: $($af.rate)"
+    Write-Output "INFO: auto_fix_rate attempts=$($af.total) auto=$($af.auto) excluded=$($af.excluded) (excluded: assist/SOURCE_MISSING/non-R1 fixlog rows)"
     Write-Output "METRIC: unmatched_findings_pct | VALUE: $($um.pct)"
 }
 
@@ -295,11 +313,11 @@ function Recommend-Next($rows,$gates,$skipKeys){
     $needFix = CW $rem { $_.state -eq 'TRIAGED' -and ([string]$_.tier) -eq 'R1' }
     if($needFix -gt 0){
         $g = if($gates.dryrun_review){ 'dryrun_review' } else { '' }
-        return [pscustomobject]@{ skill='/sap-cc-remediate'; reason="$needFix R1 object(s) ready for mechanical remediation (--tier R1, dry-run first)"; gate=$g }
+        return [pscustomobject]@{ skill='/sap-cc-remediate'; reason="$needFix R1 object(s) ready for mechanical remediation (action apply = dry-run; review diffs, deploy, then action record)"; gate=$g }
     }
     $needVerify = CW $rem { $_.state -eq 'REMEDIATED' }
     if($needVerify -gt 0){
-        return [pscustomobject]@{ skill='/sap-cc-remediate'; reason="$needVerify remediated object(s) await ATC re-check (--recheck)"; gate='' }
+        return [pscustomobject]@{ skill='/sap-cc-remediate'; reason="$needVerify remediated object(s) await ATC re-check (/sap-atc --variant=S4HANA_READINESS per object, then action record with the outcomes)"; gate='' }
     }
     $needTransport = CW $active { $_.state -eq 'VERIFIED' }
     if($needTransport -gt 0){
@@ -379,7 +397,7 @@ function Build-Dashboard([string]$dir,$rows,[string]$phase,$patCounts){
     $L.Add("|--------|-------|")
     $L.Add("| Decommission savings | $save% (objects retired without remediation) |")
     $L.Add("| ATC-clean after remediation | $(Pct $atc) |")
-    $L.Add("| Auto-fix rate (R1 mechanical) | $(Pct $af.rate) ($($af.auto)/$($af.total) objects rewritten by rule) |")
+    $L.Add("| Auto-fix rate (R1 mechanical) | $(Pct $af.rate) ($($af.auto)/$($af.total) R1 attempt rows rewritten by rule; $($af.excluded) excluded: assist/missing-source/non-R1) |")
     $L.Add("| Unresolved findings (need human triage) | $(Pct $um.pct) ($($um.unmatched)/$($um.total) findings UNMATCHED) |")
     $L.Add("")
     $L.Add("## Unresolved findings (feed for /sap-cc-learn)")

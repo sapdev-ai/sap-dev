@@ -144,7 +144,10 @@ TAB_01	SZA1_D0100-SMTP_ADDR	info@testcompany.com
 
 ### Write the definition file
 
-1. Write the field definitions to: `{WORK_TEMP}\<BP_NUMBER>_fields.txt`
+1. Write the field definitions to: `{RUN_TEMP}\<BP_NUMBER>_fields.txt`
+   - For a new BP with an auto-assigned number use `{RUN_TEMP}\bp_new_fields.txt`.
+   - The per-run directory keeps concurrent sessions from clobbering each other's files.
+   - Write the file as UTF-8 (the VBS reads it via ADODB.Stream `Charset="utf-8"`, so JA/ZH values survive intact).
    - Use the tab-separated format above.
    - Include only the tabs and fields the user wants to set.
    - If the user references an existing BP, use BP Display to look up field values.
@@ -187,13 +190,18 @@ powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_bp_check_run.ps1"
 ### Execute
 
 ```bash
-cscript //NoLogo {RUN_TEMP}\sap_bp_check_run.vbs
+C:\Windows\SysWOW64\cscript.exe //NoLogo {RUN_TEMP}\sap_bp_check_run.vbs
 ```
 
 **Parse the last line of output:**
 - `EXIST` → partner exists → proceed to Step 5a (Update).
 - `NOT_EXIST` → partner does not exist → proceed to Step 5b (Create).
-- `ERROR:` → show full output and stop.
+- `ERROR:` → show full output and stop. The verdict is structural: the Open BP
+  dialog staying open with an E message = `NOT_EXIST`; the dialog closing
+  cleanly = `EXIST`; failing to reach BP / the Open dialog at all (e.g. missing
+  transaction authorization) or any other state is `ERROR` — never create
+  against an undetermined partner. Each verdict line echoes the sbar
+  MessageId/MessageNumber for diagnosis.
 
 ---
 
@@ -208,6 +216,7 @@ Write `{RUN_TEMP}\sap_bp_update_run.ps1`:
 $content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_bp_update.vbs', [System.Text.Encoding]::UTF8)
 $content = $content -replace '%%BP_NUMBER%%','THE_BP_NUMBER'
 $content = $content -replace '%%DEFINITION_FILE%%','THE_DEFINITION_FILE'
+$content = $content -replace '%%SESSION_LOCK_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_session_lock.vbs'
 # Phase 3.5 session-attach plumbing.
 $sessionPath = ''
 $content = $content -replace '%%SESSION_PATH%%', $sessionPath
@@ -227,7 +236,7 @@ powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_bp_update_run.ps1"
 ### Execute
 
 ```bash
-cscript //NoLogo {RUN_TEMP}\sap_bp_update_run.vbs
+C:\Windows\SysWOW64\cscript.exe //NoLogo {RUN_TEMP}\sap_bp_update_run.vbs
 ```
 
 Proceed to Step 6 to evaluate the result.
@@ -287,7 +296,7 @@ powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_bp_create_run.ps1"
 ### Execute
 
 ```bash
-cscript //NoLogo {RUN_TEMP}\sap_bp_create_run.vbs
+C:\Windows\SysWOW64\cscript.exe //NoLogo {RUN_TEMP}\sap_bp_create_run.vbs
 ```
 
 Proceed to Step 6 to evaluate the result.
@@ -298,6 +307,11 @@ Proceed to Step 6 to evaluate the result.
 
 **On success** (output contains `SUCCESS:`):
 - Tell the user the Business Partner was created/updated.
+- Parse the machine-readable `BP: <number>` line (echoed right before
+  `SUCCESS:`) for the saved partner number (on create with auto-assignment it
+  is extracted from the status bar's structured message parameters, digit-run
+  fallback). If it is missing (extraction warning), look the number up via the
+  echoed post-save title / status text.
 - Show the full script output as a code block.
 
 **On failure** (output contains `ERROR:`):
@@ -308,8 +322,11 @@ Proceed to Step 6 to evaluate the result.
 | `does not exist` | BP not found (Update) | Create first or check BP number |
 | `Failed to enter Create mode` | Navigation issue | Ensure BP transaction is accessible |
 | `Failed to switch to Change mode` | Authorization issue | Check user authorizations |
+| `still in display mode` | Partner locked by another user or not editable | Check locks (SM12) / authorizations, re-run |
 | `Validation error` | Missing required fields | Check Name, Country, and other mandatory fields |
 | `Business Partner creation failed` | SAP validation error | Check status bar message, fix field values |
+| `Could not confirm the save` | Save ended without an S status (warning left standing, empty status) | Read the echoed status text; verify via Step 4 whether the partner was saved |
+| `Unexpected popup` | Unknown modal appeared — the script refuses to blind-dismiss real business-record dialogs | Resolve the popup manually in SAP GUI, then re-run |
 | `has not been assigned to any customer accounts group` | Grouping incompatible with role | Ask user for valid grouping for the chosen role |
 | `Enter the external customer number` | Grouping uses external numbering | Provide a BP number via `%%BP_NUMBER%%` |
 | `Required field Language Key` | Language key missing for role | Add `ADDR1_DATA-LANGU` to definition file |
@@ -320,9 +337,11 @@ Proceed to Step 6 to evaluate the result.
 
 ## Step 7 — Clean Up
 
-Delete all temporary files (including the field definition file):
+Delete the temporary files this run created — only the exact definition file
+written in Step 2 (`<BP_NUMBER>_fields.txt` or `bp_new_fields.txt`), never a
+wildcard over a shared directory:
 ```bash
-cmd /c del {RUN_TEMP}\sap_bp_check_run.vbs & del {RUN_TEMP}\sap_bp_check_run.ps1 & del {RUN_TEMP}\sap_bp_create_run.vbs & del {RUN_TEMP}\sap_bp_create_run.ps1 & del {RUN_TEMP}\sap_bp_update_run.vbs & del {RUN_TEMP}\sap_bp_update_run.ps1 & del {WORK_TEMP}\*_fields.txt
+cmd /c del {RUN_TEMP}\sap_bp_check_run.vbs & del {RUN_TEMP}\sap_bp_check_run.ps1 & del {RUN_TEMP}\sap_bp_create_run.vbs & del {RUN_TEMP}\sap_bp_create_run.ps1 & del {RUN_TEMP}\sap_bp_update_run.vbs & del {RUN_TEMP}\sap_bp_update_run.ps1 & del {RUN_TEMP}\<BP_NUMBER>_fields.txt
 ```
 
 ---

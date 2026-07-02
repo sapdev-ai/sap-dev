@@ -1,18 +1,22 @@
 # sap-cc-analyze helper -- S/4 readiness ATC orchestration spine (OFFLINE)
 #
 # Two deterministic, file-only actions (no SAP/RFC/GUI here -- the ATC run
-# itself is delegated to /sap-atc). NOTE: /sap-atc currently runs the system
-# DEFAULT ATC check variant; it does NOT yet accept S4HANA_READINESS as a
-# variant argument (see SKILL.md "Design note: readiness variant"). Until that
-# lands, point /sap-atc at a system whose default variant IS S4HANA_READINESS,
-# or run the readiness ATC manually and ingest its per-finding export here:
+# itself is delegated to /sap-atc, invoked with --variant=S4HANA_READINESS so
+# the readiness variant runs; /sap-atc fails loud when it cannot set that
+# variant). Alternatively run the readiness ATC manually and ingest its
+# per-finding export here:
 #
 #   prepare : scope.tsv -> findings\analyze_worklist.tsv (REMEDIATE objects
 #             still in SCOPED state), optionally capped by -Limit. This is the
 #             list the orchestrator loops /sap-atc over.
 #   ingest  : parse ATC result file(s) -> findings\findings_raw.tsv (append +
-#             dedupe), then advance state.tsv SCOPED -> ANALYZED for every
-#             object that was run (worklist) or that produced findings.
+#             dedupe), then advance state.tsv SCOPED -> ANALYZED only for
+#             objects the ingested evidence covers: a finding row, or a
+#             checked-object row (all finding columns blank -- coverage
+#             evidence only, never appended as a finding). Worklist objects
+#             with no evidence keep their prior state and are counted on the
+#             INFO: line, so a partially-run ATC loop can never record unrun
+#             objects as analyzed-clean.
 #
 # The ingest parser is header-alias tolerant: it maps common ATC export column
 # names onto the canonical findings schema; unmapped canonical columns are left
@@ -29,6 +33,7 @@
 #   FINDINGS: total=<n> new=<n> objects_with_findings=<n> file=<path>
 #   PRIORITY: <p> | COUNT: <n>
 #   ANALYZED: <n>
+#   INFO: <n> of <m> worklist objects not covered by this ingest
 #   STATUS: OK | EMPTY | ERROR
 # Exit: 0 ok | 1 empty (nothing to do) | 2 error
 
@@ -194,7 +199,8 @@ try {
 
     # Parse + normalize all result rows to the canonical schema.
     $normRows = @()
-    $objsWithFindings = @{}
+    $objsWithFindings = @{}   # objects with at least one real finding row (upper-cased name)
+    $coveredObjs = @{}        # every object the ingested evidence mentions (upper-cased name)
     # Backfill obj_type from the campaign ledger when the ATC export omits it
     # (the /sap-atc Stage-4b drill TSV has OBJECT but no type column). Without
     # this, findings carry a blank obj_type and triage's per-object (name|type)
@@ -216,8 +222,13 @@ try {
             foreach ($col in $CANON_ORDER){ $rec[$col] = if ($map.ContainsKey($col)) { (Field $row $map[$col]).Trim() } else { '' } }
             if (-not $rec['obj_name']) { continue }
             if (-not $rec['obj_type'] -and $typeByName.ContainsKey($rec['obj_name'].ToUpper())) { $rec['obj_type'] = $typeByName[$rec['obj_name'].ToUpper()] }
+            $coveredObjs[$rec['obj_name'].ToUpper()] = $true
+            # A row with no finding content is a checked-object marker (e.g. a
+            # clean object listed in a checked-objects export): it is coverage
+            # evidence only -- never fabricate an empty finding from it.
+            if (-not ($rec['check_id'] -or $rec['priority'] -or $rec['message_id'] -or $rec['message_text'])) { continue }
             $normRows += [pscustomobject]$rec
-            $objsWithFindings["$($rec['obj_name'])"] = $true
+            $objsWithFindings[$rec['obj_name'].ToUpper()] = $true
         }
     }
 
@@ -243,27 +254,34 @@ try {
     $rawOut = @($rawHeader) + $existingLines + $newLines
     Write-Utf8NoBom $rawPath (($rawOut -join "`r`n") + "`r`n")
 
-    # Objects to mark ANALYZED = the prepared worklist (the run-set the operator
-    # was told to run -- now analyzable-only, after prepare's type filter) plus
-    # any object that produced findings. A clean object leaves no result row, so
-    # the worklist is the only evidence it was run; when running a subset, prepare
-    # a per-batch worklist (use -Limit) so "worklist == what was run" stays true.
-    $analyzeSet = @{}
-    $wlPath = Join-Path $findingsDir 'analyze_worklist.tsv'
-    if (Test-Path -LiteralPath $wlPath){
-        $wl = @(Get-Content -LiteralPath $wlPath)
-        for ($i = 1; $i -lt $wl.Count; $i++){ if ($wl[$i].Trim()){ $f = $wl[$i].Split("`t"); $analyzeSet["$((Field $f 0))|$((Field $f 1))"] = $true } }
-    }
-    # Advance state SCOPED -> ANALYZED.
+    # Advance state SCOPED -> ANALYZED -- but ONLY for objects the ingested
+    # evidence actually covers (a finding row, or a checked-object marker row).
+    # The prepared worklist alone is NOT evidence a run happened: a partially
+    # run ATC loop must leave unrun objects SCOPED instead of recording them
+    # analyzed-clean. Clean objects advance via a checked-objects export row
+    # (see SKILL.md Step 2 "Record clean objects as checked").
     $today = (Get-Date).ToString('yyyy-MM-dd')
     $stateRows = @(Read-StateRows $statePath)
     $analyzedCount = 0
     foreach ($r in $stateRows){
-        $key = "$($r.obj_name)|$($r.obj_type)"
-        $run = $analyzeSet.ContainsKey($key) -or $objsWithFindings.ContainsKey($r.obj_name)
-        if ($run -and $r.state -eq 'SCOPED'){ $r.state = 'ANALYZED'; $r.updated_on = $today; $analyzedCount++ }
+        if ($r.state -eq 'SCOPED' -and $coveredObjs.ContainsKey("$($r.obj_name)".ToUpper())){
+            $r.state = 'ANALYZED'; $r.updated_on = $today; $analyzedCount++
+        }
     }
     Write-StateRows $statePath $stateRows
+
+    # Worklist coverage summary: worklist objects with no evidence in this
+    # ingest stayed in their prior state -- surface how many.
+    $wlTotal = 0; $wlUncovered = 0
+    $wlPath = Join-Path $findingsDir 'analyze_worklist.tsv'
+    if (Test-Path -LiteralPath $wlPath){
+        $wl = @(Get-Content -LiteralPath $wlPath)
+        for ($i = 1; $i -lt $wl.Count; $i++){
+            if (-not $wl[$i].Trim()) { continue }
+            $f = $wl[$i].Split("`t"); $wlTotal++
+            if (-not $coveredObjs.ContainsKey((Field $f 0).Trim().ToUpper())) { $wlUncovered++ }
+        }
+    }
 
     # Summary.
     $allRaw = @()
@@ -274,6 +292,7 @@ try {
     Write-Output "FINDINGS: total=$($allRaw.Count) new=$($newLines.Count) objects_with_findings=$objCount file=$rawPath"
     foreach ($p in ($byPrio.Keys | Sort-Object)){ Write-Output "PRIORITY: $p | COUNT: $($byPrio[$p])" }
     Write-Output "ANALYZED: $analyzedCount"
+    Write-Output "INFO: $wlUncovered of $wlTotal worklist objects not covered by this ingest"
     Write-Output 'STATUS: OK'; exit 0
 }
 catch {

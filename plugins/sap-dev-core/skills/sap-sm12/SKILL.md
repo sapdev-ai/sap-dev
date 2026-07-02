@@ -39,10 +39,15 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_
 ```
 Set `{WORK_TEMP}` / `{RUN_DIR}` as in `/sap-sm37`.
 
+Set `{RUN_TEMP}` = the per-run scratch dir (`Get-SapRunTemp` mints + creates `{work_dir}\temp\run_<id>`):
+```bash
+powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('RUN_TEMP=' + (Get-SapRunTemp))"
+```
+
 ## Step 0.5 — Start Logging
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{WORK_TEMP}\sap_sm12_run.json" -Skill sap-sm12 -ParamsJson "{}"
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{RUN_TEMP}\sap_sm12_run.json" -Skill sap-sm12 -ParamsJson "{}"
 ```
 
 ## Step 1 — Resolve the Anchor
@@ -65,10 +70,26 @@ C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypas
 ## Step 3 — Report
 Summarize `locks=` (or the `skipped` reason if ENQUEUE_READ is not RFC-callable).
 
+## Remediation is manual (this skill is read-only)
+
+This skill **only reads** the enqueue table — it has **no `--release` mode** and
+never dequeues a lock. Releasing a lock is a destructive action the operator
+performs by hand:
+
+1. Open **SM12** interactively (`/nSM12`), filter by the reported user / table /
+   lock argument to find the exact row.
+2. **Confirm with the lock owner** that the lock is genuinely stale / safe to
+   drop (a live transaction may be mid-edit — deleting its lock can corrupt the
+   in-flight change).
+3. Delete the entry manually in SM12 (**Lock Entry → Delete**).
+
+`/sap-diagnose` and `/sap-fix-incident` therefore point at these manual steps for
+lock contention — they do not (and cannot) invoke an automated release here.
+
 ## Final — Log End
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_sm12_run.json" -Status SUCCESS -ExitCode 0
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_sm12_run.json" -Status SUCCESS -ExitCode 0
 ```
 
 ## Known Issues
@@ -78,5 +99,6 @@ powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_
 - **Lock argument → business key.** `GARG` (client + key) is captured as
   `object_keys.LOCKARG`; it correlates lock-to-lock but is not decoded into a
   named business key.
-- **Releasing a lock is gated.** This reader never dequeues; `/sap-diagnose
-  --remediate` proposes the command for confirmation.
+- **Releasing a lock is manual.** This reader never dequeues and ships no
+  release mode; see "Remediation is manual" above. `/sap-diagnose --remediate`
+  surfaces the manual SM12 steps rather than an automated dequeue.

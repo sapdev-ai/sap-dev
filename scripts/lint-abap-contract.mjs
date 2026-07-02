@@ -38,8 +38,25 @@
 // Exit: 0 when no ERROR findings, 1 when any ERROR finding, 2 on bad invocation.
 
 import { readFileSync, existsSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs';
-import { join, dirname, basename } from 'node:path';
+import { join, dirname, basename, resolve, isAbsolute } from 'node:path';
 import { tmpdir } from 'node:os';
+import { fileURLToPath } from 'node:url';
+
+// Anchor for CLI path resolution: this script's repo root (scripts/..). The
+// --selftest is cwd-independent by construction (in-memory sources + mkdtemp
+// under the OS tmpdir); this anchor additionally lets the documented fixture
+// commands (`node scripts/lint-abap-contract.mjs tests/fixtures/...
+// --work-folder tests/fixtures/... --fixture`, see .github/workflows/
+// validate.yml + tests/fixtures/README.md) be replayed from ANY cwd: a
+// relative CLI path is tried against the cwd first (unchanged behavior for
+// every currently-working invocation), then against the repo root as a
+// fallback instead of dying with "file not found".
+const SCRIPT_REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+function resolveCliPath(p) {
+  if (!p || isAbsolute(p) || existsSync(p)) return p;
+  const fromRoot = resolve(SCRIPT_REPO_ROOT, p);
+  return existsSync(fromRoot) ? fromRoot : p;
+}
 
 // ---------------------------------------------------------------------------
 // Finding model
@@ -745,10 +762,11 @@ if (argv.length === 0) {
 }
 const fixture = argv.includes('--fixture');
 const wfIdx = argv.indexOf('--work-folder');
-const workFolder = wfIdx >= 0 ? argv[wfIdx + 1] : '';
-const fileArg = argv.find((a, i) => !a.startsWith('--') && (wfIdx < 0 || i !== wfIdx + 1));
+const workFolder = resolveCliPath(wfIdx >= 0 ? argv[wfIdx + 1] : '');
+const rawFileArg = argv.find((a, i) => !a.startsWith('--') && (wfIdx < 0 || i !== wfIdx + 1));
+const fileArg = resolveCliPath(rawFileArg);
 if (!fileArg || !existsSync(fileArg)) {
-  console.error(`ERROR: file not found: ${fileArg}`);
+  console.error(`ERROR: file not found: ${rawFileArg}`);
   process.exit(2);
 }
 const { file, findings, skipped, fixtureMode } = lintFile(fileArg, workFolder, { fixture });

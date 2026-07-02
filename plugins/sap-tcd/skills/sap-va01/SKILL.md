@@ -6,8 +6,10 @@ description: |
   check (VA03 Display), order creation (VA01) with header/item handling,
   order update (VA02), and save. Field values are provided as tab-separated
   section/field/value triples in a definition file.
+  By default an order that SAP reports as INCOMPLETE at save time is NOT
+  saved (fail-loud); pass --allow-incomplete to save it anyway.
   Prerequisites: Active SAP GUI session (use /sap-login first).
-argument-hint: "<order-number-or-action> [field-values-to-set]"
+argument-hint: "<order-number-or-action> [field-values-to-set] [--allow-incomplete]"
 ---
 
 # SAP VA01 Sales Order Maintenance Skill
@@ -83,6 +85,7 @@ powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_
 | Distribution channel | Distribution channel (for Create only) | `00` |
 | Division | Division (for Create only) | `00` |
 | Field values | Header, sales, and item fields (see format below) | See Step 2 |
+| `--allow-incomplete` | Optional flag: save even when SAP raises the incomplete-document popup. Default (flag absent): the script chooses the non-save option, backs out, and fails with `ERROR: INCOMPLETE_DOCUMENT` | (omit) |
 
 **Common Order Type Keys:**
 
@@ -170,8 +173,10 @@ HEADER	VBKD-BSTKD	PO-REF-002-UPDATED
 
 ### Write the definition file
 
-1. Write the field definitions to: `{WORK_TEMP}\va01_<ORDER_NUMBER>_fields.txt`
-   - For new orders use a descriptive name: `{WORK_TEMP}\va01_new_fields.txt`
+1. Write the field definitions to: `{RUN_TEMP}\va01_<ORDER_NUMBER>_fields.txt`
+   - For new orders use a descriptive name: `{RUN_TEMP}\va01_new_fields.txt`
+   - The per-run directory keeps concurrent sessions from clobbering each other's files.
+   - Write the file as UTF-8 (the VBS reads it via ADODB.Stream `Charset="utf-8"`, so JA/ZH values survive intact).
    - Use the tab-separated format above.
    - Include only the fields the user wants to set.
 2. Confirm the file by reading it back.
@@ -215,13 +220,16 @@ powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_va01_check_run.ps1"
 ### Execute
 
 ```bash
-cscript //NoLogo {RUN_TEMP}\sap_va01_check_run.vbs
+C:\Windows\SysWOW64\cscript.exe //NoLogo {RUN_TEMP}\sap_va01_check_run.vbs
 ```
 
 **Parse the last line of output:**
 - `EXIST` → order exists → proceed to Step 5a (Update via VA02).
 - `NOT_EXIST` → order does not exist → tell user the order was not found.
-- `ERROR:` → show full output and stop.
+- `ERROR:` → show full output and stop. The check reports `NOT_EXIST` only for the
+  known VA03 not-found message (V1 302, matched via the locale-independent
+  MessageId/MessageNumber); any other error state (authorization, lock, unexpected
+  screen/popup) is `ERROR`.
 
 ---
 
@@ -236,6 +244,11 @@ Write `{RUN_TEMP}\sap_va01_update_run.ps1`:
 $content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_va01_update.vbs', [System.Text.Encoding]::UTF8)
 $content = $content -replace '%%ORDER_NUMBER%%','THE_ORDER_NUMBER'
 $content = $content -replace '%%DEFINITION_FILE%%','THE_DEFINITION_FILE'
+$content = $content -replace '%%SESSION_LOCK_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_session_lock.vbs'
+# Incomplete-document policy: '' (default) = abort unsaved on the incompletion
+# popup; 'X' ONLY when the user passed --allow-incomplete.
+$allowIncomplete = ''
+$content = $content -replace '%%ALLOW_INCOMPLETE%%', $allowIncomplete
 # Phase 3.5 session-attach plumbing.
 $sessionPath = ''
 $content = $content -replace '%%SESSION_PATH%%', $sessionPath
@@ -255,7 +268,7 @@ powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_va01_update_run.ps1"
 ### Execute
 
 ```bash
-cscript //NoLogo {RUN_TEMP}\sap_va01_update_run.vbs
+C:\Windows\SysWOW64\cscript.exe //NoLogo {RUN_TEMP}\sap_va01_update_run.vbs
 ```
 
 Proceed to Step 6 to evaluate the result.
@@ -280,6 +293,10 @@ $content = $content -replace '%%DIST_CHANNEL%%','THE_DIST_CHANNEL'
 $content = $content -replace '%%DIVISION%%','THE_DIVISION'
 $content = $content -replace '%%DEFINITION_FILE%%','THE_DEFINITION_FILE'
 $content = $content -replace '%%SESSION_LOCK_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_session_lock.vbs'
+# Incomplete-document policy: '' (default) = abort unsaved on the incompletion
+# popup; 'X' ONLY when the user passed --allow-incomplete.
+$allowIncomplete = ''
+$content = $content -replace '%%ALLOW_INCOMPLETE%%', $allowIncomplete
 # Phase 3.5 session-attach plumbing.
 $sessionPath = ''
 $content = $content -replace '%%SESSION_PATH%%', $sessionPath
@@ -299,7 +316,7 @@ powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_va01_create_run.ps1"
 ### Execute
 
 ```bash
-cscript //NoLogo {RUN_TEMP}\sap_va01_create_run.vbs
+C:\Windows\SysWOW64\cscript.exe //NoLogo {RUN_TEMP}\sap_va01_create_run.vbs
 ```
 
 Proceed to Step 6 to evaluate the result.
@@ -310,7 +327,12 @@ Proceed to Step 6 to evaluate the result.
 
 **On success** (output contains `SUCCESS:`):
 - Tell the user the sales order was created/updated.
-- The status bar message contains the order number (e.g., "Standard Order 1659 has been saved.").
+- Parse the machine-readable `ORDER: <number>` line (echoed right before
+  `SUCCESS:`) for the saved order number. If it is missing (extraction
+  warning), look the number up via VA03 / the echoed status text.
+- If the output also contains `WARNING: INCOMPLETE_DOCUMENT_SAVED`, tell the
+  user the order was saved with an unresolved incompletion log
+  (`--allow-incomplete` was in effect).
 - Show the full script output as a code block.
 
 **On failure** (output contains `ERROR:`):
@@ -321,12 +343,15 @@ Proceed to Step 6 to evaluate the result.
 | `Order type ... has not been defined` | Invalid order type for sales area | Check order type key and sales area |
 | `does not exist in TVAK` | Order type key doesn't exist | Verify order type key |
 | `is not in the database or has been archived` | Order not found (Update) | Check order number |
-| `Failed to reach create screen` | Initial screen error | Check order type and sales area values |
-| `Failed to reach change screen` | Order can't be opened for change | Check order status/authorization |
+| `Failed to reach the create overview screen` | Initial screen error | Check order type and sales area values |
+| `Failed to reach the change overview screen` | Order can't be opened for change | Check order status/authorization |
 | `Header validation failed` | Required header field missing | Ensure Sold-To Party is set |
 | `Item validation failed` | Invalid item data | Check material number, quantity |
 | `Item table not found` | Screen structure issue | Contact support |
 | `Item column not found` | Wrong field name for item | Verify field name (see table below) |
+| `INCOMPLETE_DOCUMENT` | SAP raised the incompletion popup at save; the order was NOT saved (default policy) | Add the missing data (see the incompletion log in VA01/VA02), or re-run with `--allow-incomplete` to save anyway |
+| `Unexpected popup while saving` | Unknown modal at save time — the script refuses to blind-dismiss; nothing was saved | Resolve the popup manually in SAP GUI, then re-run |
+| `Could not confirm the save` | Save ended without an S status (warning left standing, empty status) | Read the echoed status text; verify via Step 4 whether the order was saved before retrying |
 | `No SAP GUI session found` | Not logged in | Run login step first |
 | `Definition file not found` | Wrong path | Verify file path and re-run Step 2 |
 
@@ -334,9 +359,11 @@ Proceed to Step 6 to evaluate the result.
 
 ## Step 7 — Clean Up
 
-Delete all temporary files:
+Delete the temporary files this run created — only the exact definition file
+written in Step 2 (`va01_<ORDER_NUMBER>_fields.txt` or `va01_new_fields.txt`),
+never a wildcard over a shared directory:
 ```bash
-cmd /c del {RUN_TEMP}\sap_va01_check_run.vbs & del {RUN_TEMP}\sap_va01_check_run.ps1 & del {RUN_TEMP}\sap_va01_create_run.vbs & del {RUN_TEMP}\sap_va01_create_run.ps1 & del {RUN_TEMP}\sap_va01_update_run.vbs & del {RUN_TEMP}\sap_va01_update_run.ps1 & del {WORK_TEMP}\va01_*_fields.txt
+cmd /c del {RUN_TEMP}\sap_va01_check_run.vbs & del {RUN_TEMP}\sap_va01_check_run.ps1 & del {RUN_TEMP}\sap_va01_create_run.vbs & del {RUN_TEMP}\sap_va01_create_run.ps1 & del {RUN_TEMP}\sap_va01_update_run.vbs & del {RUN_TEMP}\sap_va01_update_run.ps1 & del {RUN_TEMP}\va01_<ORDER_NUMBER>_fields.txt
 ```
 
 ---

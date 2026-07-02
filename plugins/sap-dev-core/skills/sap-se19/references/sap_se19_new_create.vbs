@@ -79,6 +79,7 @@ End Sub
 
 ' Handle the standard SAPLSTRD object-directory + transport popups, wherever
 ' they appear (wnd[1] or wnd[2]). Identifies by DDIC field id, not by title.
+Dim gAbortEmptyTr : gAbortEmptyTr = False
 Sub HandleTransport()
     Dim pass, w
     For pass = 1 To 6
@@ -95,8 +96,13 @@ Sub HandleTransport()
             End If
             WScript.Sleep 1500
         ElseIf CtrlExists(w & "/usr/ctxtKO008-TRKORR") Then
-            ' Prompt for transportable workbench request
-            If TRKORR <> "" Then SetText w & "/usr/ctxtKO008-TRKORR", TRKORR
+            ' Prompt for transportable workbench request. Empty TR must ABORT loud,
+            ' never blind-Continue (which silently falls back to Local Object).
+            If TRKORR = "" Then
+                gAbortEmptyTr = True
+                Exit Sub
+            End If
+            SetText w & "/usr/ctxtKO008-TRKORR", TRKORR
             PressIf w & "/tbar[0]/btn[0]"         ' Continue
             WScript.Sleep 1500
         Else
@@ -131,6 +137,11 @@ WScript.Sleep 2000
 ' Object directory + TR for the enhancement implementation
 HandleTransport
 WScript.Sleep 1000
+If gAbortEmptyTr Then
+    WScript.Echo "ERROR: ABORT_EMPTY_TR -- SAP prompted for a transport request but TRKORR is empty."
+    WScript.Echo "       Resolve a TR via /sap-transport-request and re-run the create."
+    WScript.Quit 1
+End If
 
 ' ---- 3. Create BAdI Implementations popup (table control) ------------------
 Dim sTbl
@@ -162,6 +173,11 @@ End If
 ' Object directory + TR for the implementing class
 HandleTransport
 WScript.Sleep 1000
+If gAbortEmptyTr Then
+    WScript.Echo "ERROR: ABORT_EMPTY_TR -- SAP prompted for a transport request but TRKORR is empty."
+    WScript.Echo "       Resolve a TR via /sap-transport-request and re-run the create."
+    WScript.Quit 1
+End If
 
 ' Some releases re-show a confirmation popup; press Continue if present
 If CtrlExists("wnd[1]/tbar[0]/btn[0]") And Not CtrlExists("wnd[1]/usr/ctxtKO008-TRKORR") Then

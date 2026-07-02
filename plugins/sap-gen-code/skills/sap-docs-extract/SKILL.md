@@ -1,13 +1,13 @@
 ---
 name: sap-docs-extract
 description: |
-  Reads a SAP design document (Excel .xlsx, Word .doc/.docx, PDF), or an existing
+  Reads a SAP design document (Excel .xlsx, Word .docx, PDF), or an existing
   work folder, and extracts structured information into separate text files by
   information type: program summary, domains, data elements, tables, error
   messages, text elements, and process logic.
 
   Input — any of:
-    * Path to a design document (.xlsx / .doc / .docx / .pdf) — extract creates
+    * Path to a design document (.xlsx / .docx / .pdf) — extract creates
       a fresh work folder, dumps the document to {doc_name}_raw.txt, then
       proceeds with structuring.
     * Path to an existing work folder containing {doc_name}_raw.txt.
@@ -18,8 +18,10 @@ description: |
   confirmation or logging. Optionally chain /sap-docs-convert afterwards to
   apply customer-specific normalisation rules.
 
-  If the input file format is not one of .xlsx, .doc, .docx, or .pdf (and is
-  not an existing work folder or `_raw.txt` file), abort with the error:
+  Legacy binary .doc files are NOT supported (no working extraction path) —
+  abort with guidance to save the file as .docx in Word first. If the input
+  file format is not one of .xlsx, .docx, or .pdf (and is not an existing
+  work folder or `_raw.txt` file), abort with the error:
   "ERROR: Unsupported file format."
 argument-hint: "<path-to-document  OR  work-folder  OR  _raw.txt>"
 ---
@@ -94,7 +96,7 @@ powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_
 Extract the path argument from `$ARGUMENTS`.
 
 If no path is given, ask the user:
-> "Please provide the path to the design document (.xlsx / .doc / .docx / .pdf), an existing work folder, or a `_raw.txt` file."
+> "Please provide the path to the design document (.xlsx / .docx / .pdf), an existing work folder, or a `_raw.txt` file."
 
 Classify the argument using this decision table (evaluate rules in order; the
 first matching rule wins):
@@ -103,8 +105,9 @@ first matching rule wins):
 |---|---|---|---|
 | 1 | Argument is a file ending in `_raw.txt` | Use it directly | 1a |
 | 2 | Argument is an existing directory | Locate the single `_raw.txt` inside | 1b |
-| 3 | Argument is a file with extension `.xlsx`, `.doc`, `.docx`, or `.pdf` | Create work folder and dump to `_raw.txt` | 1c |
-| 4 | None of the above | Abort with: `ERROR: Unsupported file format.` | — |
+| 3 | Argument is a file with extension `.xlsx`, `.docx`, or `.pdf` | Create work folder and dump to `_raw.txt` | 1c |
+| 4 | Argument is a file with extension `.doc` (legacy binary Word — no working extraction path) | Abort with: `ERROR: .doc (legacy binary Word) is not supported. Open the file in Word, save it as .docx, then re-run /sap-docs-extract.` | — |
+| 5 | None of the above | Abort with: `ERROR: Unsupported file format.` | — |
 
 
 ### 1a. Raw text file (`*_raw.txt`)
@@ -122,7 +125,7 @@ Get-ChildItem -Path "{work_folder}" -Filter "*_raw.txt"
 If zero or multiple `_raw.txt` files exist, abort with the error message:
 "ERROR: Expected exactly one `_raw.txt` file in the directory."
 
-### 1c. Design document (.xlsx / .doc / .docx / .pdf) — produces the raw file
+### 1c. Design document (.xlsx / .docx / .pdf) — produces the raw file
 
 If the argument is a document file with one of those extensions, create a
 fresh work folder and dump the document to plain text first:
@@ -147,6 +150,16 @@ fresh work folder and dump the document to plain text first:
    import openpyxl
    path = r"THE_DOCUMENT_PATH"
    output = r"THE_OUTPUT_PATH"
+
+   def clean(c):
+       # Cell sanitization (chain contract): embedded TAB -> single space,
+       # embedded newline (Alt+Enter cell, routine in JA specs) -> "; ".
+       # MUST happen BEFORE cells are joined with \t and rows with \n.
+       s = "" if c is None else str(c)
+       s = s.replace("\t", " ")
+       s = s.replace("\r\n", "; ").replace("\n", "; ").replace("\r", "; ")
+       return s
+
    wb = openpyxl.load_workbook(path)
    lines = []
    for sheet_name in wb.sheetnames:
@@ -154,16 +167,22 @@ fresh work folder and dump the document to plain text first:
        lines.append(f"========== Sheet: {sheet_name} (rows={ws.max_row}, cols={ws.max_column}) ==========")
        for row_idx, row in enumerate(ws.iter_rows(min_row=1, max_row=ws.max_row, values_only=True), start=1):
            if any(c is not None for c in row):
-               cells = ["" if c is None else str(c) for c in row]
+               cells = [clean(c) for c in row]
                lines.append(f"R{row_idx}\t" + "\t".join(cells))
        lines.append("")
    with open(output, "w", encoding="utf-8") as f:
        f.write("\n".join(lines))
    ```
 
-   **For Word (.docx)** — Python with python-docx:
+   **For Word (.docx)** — Python with python-docx (same `clean()` sanitization
+   for table cells — .docx cells routinely contain newlines):
    ```python
    from docx import Document
+
+   def clean(s):
+       s = s.replace("\t", " ")
+       return s.replace("\r\n", "; ").replace("\n", "; ").replace("\r", "; ")
+
    doc = Document(r"THE_DOCUMENT_PATH")
    lines = []
    for para in doc.paragraphs:
@@ -172,17 +191,28 @@ fresh work folder and dump the document to plain text first:
    for table_idx, table in enumerate(doc.tables):
        lines.append(f"========== Table {table_idx + 1} ==========")
        for row in table.rows:
-           cells = [cell.text.strip() for cell in row.cells]
+           cells = [clean(cell.text.strip()) for cell in row.cells]
            lines.append("\t".join(cells))
    with open(r"THE_OUTPUT_PATH", "w", encoding="utf-8") as f:
        f.write("\n".join(lines))
    ```
 
-   **For Word (.doc)** — use the Read tool on the file, then write the content
-   to the output file with the Write tool.
+   **For Word (.doc)** — legacy binary OLE format: there is **no working
+   extraction path** (the Read tool cannot parse it). Abort with:
+   > "ERROR: .doc (legacy binary Word) is not supported. Open the file in
+   > Word and save it as .docx, then re-run /sap-docs-extract."
 
    **For PDF (.pdf)** — use the Read tool on the .pdf path; write the extracted
-   text to the output file with the Write tool.
+   text to the output file with the Write tool. Apply the same sanitization to
+   any table-like lines you emit with tab-separated cells.
+
+   > **Cell sanitization is part of the chain contract**: in `_raw.txt` (and
+   > every `_*.txt` derived from it) **1 row = 1 line and 1 cell = 1 field** —
+   > an embedded TAB becomes a single space, an embedded newline becomes
+   > `"; "`, always applied BEFORE joining cells with TAB and rows with
+   > newline. Downstream consumers (`/sap-docs-convert`, `/sap-docs-check-ddic`,
+   > `/sap-docs-check-process`, `/sap-gen-abap`) rely on this invariant when
+   > splitting rows and cells.
 
 After 1c completes you have a populated `{work_folder}/{doc_name}_raw.txt`.
 
@@ -211,7 +241,7 @@ ERROR: This workbook has no (Meta) Layout sheet. Either:
     the canonical template.
 ```
 
-For non-xlsx inputs (`.docx`, `.doc`, `.pdf`), there is no Meta sheet —
+For non-xlsx inputs (`.docx`, `.pdf`), there is no Meta sheet —
 proceed with text-based extraction by inspecting `_raw.txt` directly and
 inferring sections from natural document structure (headings, table
 boundaries, well-known keywords).
@@ -439,6 +469,8 @@ Report to the user:
   - `/sap-docs-convert {work_folder}` *(optional)* to apply customer-specific
     field/type/flag rules from `spec_conversion_rules.tsv` before validation
   - `/sap-docs-check-process {work_folder}` to validate process logic
+  - `/sap-docs-check-ddic {work_folder}` to validate DDIC definitions
+  - `/sap-gen-abap {work_folder}/{doc_name}_process.txt` to generate ABAP code
 
 End the log run. Use `EXISTED` if the work folder already contained the
 output files (and you only verified them); use `SUCCESS` for a fresh
@@ -448,5 +480,3 @@ extraction; use `FAILED` with an `ErrorClass` if any step blocked progress
 ```bash
 powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_docs_extract_run.json" -Status SUCCESS -ExitCode 0
 ```
-  - `/sap-docs-check-ddic {work_folder}` to validate DDIC definitions
-  - `/sap-gen-abap {work_folder}/{doc_name}_process.txt` to generate ABAP code

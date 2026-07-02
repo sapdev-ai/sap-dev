@@ -74,7 +74,7 @@ Per the CLAUDE.md "Two-bucket temp model" write this skill's generated scratch (
 ## Step 0.5 — Start Logging
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{WORK_TEMP}\sap_doctor_run.json" -Skill sap-doctor -ParamsJson "{}"
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{RUN_TEMP}\sap_doctor_run.json" -Skill sap-doctor -ParamsJson "{}"
 ```
 
 ---
@@ -204,7 +204,7 @@ cmd /c del "{RUN_TEMP}\sap_doctor_checks_run.ps1"
 ## Final — Log End
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_doctor_run.json" -Status SUCCESS -ExitCode 0
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_doctor_run.json" -Status SUCCESS -ExitCode 0
 ```
 
 (For a `BLOCKED` verdict set `-Status FAILED -ExitCode 1 -ErrorClass DOCTOR_BLOCKED`.)

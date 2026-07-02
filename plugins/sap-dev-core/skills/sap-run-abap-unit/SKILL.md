@@ -16,7 +16,7 @@ description: |
   parsing" below).
   Prerequisites: Active SAP GUI session (use /sap-login first); developer
   authorization to run ABAP Unit (S_DEVELOP on the object).
-argument-hint: "<OBJECT_NAME> [--type=PROGRAM|CLASS] [--with-coverage] [--min-coverage=<n>] [--risk-level=harmless|dangerous|critical] [--mode=GUI] [--save-to=<PATH>]"
+argument-hint: "<OBJECT_NAME> [--type=PROGRAM|CLASS] [--with-coverage] [--min-coverage=<n>] [--mode=GUI] [--save-to=<PATH>]"
 ---
 
 # SAP ABAP Unit Runner
@@ -38,6 +38,7 @@ Task: $ARGUMENTS
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/language_independence_rules.md` | GUI-scripting language independence -- identify by component ID, status via `MessageType`, VKey over menu-text, no `.Text`/`.Tooltip` branching |
 | `<SKILL_DIR>/references/sap_se38_run_aunit.vbs` | Run + parse for a PROGRAM target (SE38) |
 | `<SKILL_DIR>/references/sap_se24_run_aunit.vbs` | Run + parse for a global CLASS target (SE24) |
+| `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_artifact_lib.ps1` | `New-SapScopeKey` / `Register-SapArtifact` — register the result JSON so `/sap-evidence-pack` collects it under the object's scope (Kind `unit_results`). Best-effort; never changes the verdict. |
 
 ---
 
@@ -68,7 +69,10 @@ The trigger and result parse were verified end-to-end on S4D (2026-06-03):
   for the `PERCENTAGE`-column tree instead of hardcoding the path. Verified live:
   SE38 `33.33%` (report) and SE24 `50.00%` (class with a `CCAU` test relation). A
   self-testing class with no production code under test ("no test relation") has no
-  coverage tree ⇒ `coverage=NA`.
+  coverage tree ⇒ `coverage=NA`. When a requested coverage read comes back NA, the
+  VBS emits a `COVERAGE_REASON:` line first — `screen unreachable (...)` when the
+  coverage menu never reached the AUCV display, `value cell not found (...)` when
+  AUCV opened but no `PERCENTAGE` tree exists — so the NA is diagnosable.
 
 These are program-name / message-type / row-count signals — all language-neutral.
 On a **different release**, if the alert-grid path shifts, the VBS prints
@@ -121,7 +125,7 @@ powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_
 | `--type=<T>` | no | `PROGRAM` | `PROGRAM` (SE38) or `CLASS` (SE24). Auto-detection by RFC arrives in Phase 2; until then default `PROGRAM`, pass `--type=CLASS` for a global class. |
 | `--with-coverage` | no | off (or brief mandatory) | Also measure code coverage via a second "Unit Tests With Coverage" run → sets `coverage=<pct>` instead of `NA`. Runs the suite twice (the RFC backend does it once). |
 | `--min-coverage=<n>` | no | brief `MODE_MIN_COVERAGE` / blank | Coverage threshold (percent). **Implies `--with-coverage`.** Gates per `aunit_coverage_gate` (warn / block). |
-| `--risk-level=<L>` | no | `dangerous` | Cap on the AUnit risk level executed; the client's `SAUNIT_CLIENT_SETUP` is the real gate. |
+| `--risk-level=<L>` | no | — | **NOT IMPLEMENTED — reserved.** No `%%RISK_LEVEL%%` token exists in either aunit VBS, so the flag has no effect on what executes (the client's `SAUNIT_CLIENT_SETUP` governs the executed risk level). If the operator passes it, say so explicitly in the report instead of silently ignoring it. Do not fake-wire it. |
 | `--mode=<M>` | no | `GUI` | Phase 1 implements `GUI` only. `RFC` / `ADT` resolve to GUI with an INFO note until Phase 2 / 3. |
 | `--save-to=<PATH>` | no | `{RUN_TEMP}\aunit_<NAME>.json` | JSON result file. |
 
@@ -175,6 +179,7 @@ lines (one per failure, `class|method|kind|message`) precede it.
 | VBS line | Meaning | Action |
 |---|---|---|
 | `UNIT_TEST_RUN: EXECUTED methods=N passed=P failed=F errors=E skipped=S coverage=<pct\|NA>` | Parsed result | compute verdict below |
+| `COVERAGE_REASON: <screen unreachable (...) \| value cell not found (...)>` | Why a requested coverage read returned NA (precedes the EXECUTED line) | quote it in the unverified/FAIL report |
 | `UNIT_TEST_RUN: SKIPPED:NO_TESTS` | No `FOR TESTING` classes | verdict N/A, exit 0 |
 | `UNIT_TEST_RUN: NEEDS_RECORDING program=<P> screen=<S>` | Result grid not resolvable on this release | see "First-time setup"; do not claim pass/fail |
 | `ERROR: ...` | Fatal (object missing / not opened) | surface + stop |
@@ -183,25 +188,72 @@ lines (one per failure, `class|method|kind|message`) precede it.
 
 ```
 tests:    ok if failed=0 AND errors=0, else fail
-coverage: na    when coverage=NA (no --with-coverage)
-          ok    when coverage >= --min-coverage (or no --min-coverage set)
-          below when coverage < --min-coverage
+coverage: na         when coverage was NOT requested (no --with-coverage / --min-coverage)
+          ok         when measured coverage >= --min-coverage (or no --min-coverage set)
+          below      when measured coverage < --min-coverage
+          unverified when coverage WAS requested but the run returned coverage=NA
+                     (see the COVERAGE_REASON line for why)
 ```
 
-Emit: `AUNIT_VERDICT: PASS|FAIL  tests=ok|fail  coverage=ok|below(C%<min%)|na`
+Emit: `AUNIT_VERDICT: PASS|FAIL|COVERAGE_UNVERIFIED  tests=ok|fail  coverage=ok|below(C%<min%)|na|unverified`
 
 - `tests=fail` → **FAIL**.
-- coverage below min → **WARN** by default; **FAIL** only when `aunit_coverage_gate=block`.
-- otherwise **PASS**.
+- `coverage=unverified` with `--min-coverage` → **FAIL** — an unmeasured run
+  can never prove the requested threshold, even when `aunit_coverage_gate=warn`.
+  (Pre-2026-07-02 this slipped through as `coverage=na` → PASS.)
+- `coverage=unverified` with only `--with-coverage` → verdict
+  **COVERAGE_UNVERIFIED** — the tests result stands, but never report a plain
+  PASS while a requested measurement is missing; quote the `COVERAGE_REASON:`
+  text.
+- measured coverage below min → **WARN** by default; **FAIL** only when
+  `aunit_coverage_gate=block`.
+- otherwise **PASS**. `coverage=na` is acceptable ONLY when coverage was not
+  requested.
 
 Write the JSON result to `--save-to`:
 
 ```json
 { "object":"<NAME>", "object_type":"PROGRAM", "backend":"GUI",
   "summary":{"methods":N,"passed":P,"failed":F,"errors":E,"skipped":S},
-  "coverage":{"measured":true,"percent":C},   // measured:false (omit percent) when results-only
+  "coverage":{"measured":true,"percent":C},   // measured:false (omit percent) when results-only;
+                                              // measured:false,"requested":true,"reason":"<COVERAGE_REASON>"
+                                              // when coverage was requested but returned NA
   "alerts":[{"test_class":"...","method":"...","kind":"failure","message":"..."}],
-  "verdict":"PASS|FAIL" }
+  "verdict":"PASS|FAIL|COVERAGE_UNVERIFIED" }
+```
+
+---
+
+## Step 4b — Register the Result for `/sap-evidence-pack` (best-effort)
+
+Register the result JSON into the artifact index so `/sap-evidence-pack` collects
+it by scope / ticket / date — otherwise the audit pack permanently reports
+`unit_results` as missing evidence. Kind is **`unit_results`** (the name
+`/sap-evidence-pack` expects — see its `-Expected` list). **Best-effort: wrap in
+try/catch and NEVER change the verdict if registration fails** (mirrors
+`/sap-review-abap` Step 6). Skip on `SKIPPED:NO_TESTS` / `NEEDS_RECORDING` (no
+result to register).
+
+Run as one PowerShell block (pure file I/O — no SAP/RFC). Substitute
+`{TADIR_OBJ}` = `PROG` when `--type=PROGRAM` else `CLAS`; `{OBJECT_NAME}`; the
+`{SAVE_TO}` result-JSON path; `{VERDICT}` = the `AUNIT_VERDICT:` token
+(`PASS`/`FAIL`/`COVERAGE_UNVERIFIED`); `{COVERAGE_STATE}` = `CHECKED_FINDINGS`
+when `tests=fail`, `COULD_NOT_CHECK` when coverage was requested but came back
+`unverified`, else `CHECKED_CLEAN`; `{TICKET}` (empty unless supplied):
+
+```powershell
+$shared = '<SAP_DEV_CORE_SHARED_DIR>\scripts'
+try {
+  . "$shared\sap_artifact_lib.ps1"
+  $obj   = [pscustomobject]@{ pgmid = 'R3TR'; object = '{TADIR_OBJ}'; obj_name = '{OBJECT_NAME}' }
+  $scope = New-SapScopeKey -Resolved $obj
+  $verdict = switch ('{VERDICT}') { 'PASS' { 'GO' } 'FAIL' { 'NO_GO' } default { 'GO_WITH_WARNINGS' } }
+  if (Test-Path -LiteralPath '{SAVE_TO}') {
+    Register-SapArtifact -Skill 'sap-run-abap-unit' -ScopeKey $scope -Kind 'unit_results' -Format 'json' `
+        -Path '{SAVE_TO}' -Object $obj -Coverage '{COVERAGE_STATE}' -Verdict $verdict -Ticket '{TICKET}' | Out-Null
+    Write-Output "ARTIFACTS: registered scope=$scope"
+  }
+} catch { Write-Output "WARN: artifact registration skipped ($($_.Exception.Message))" }
 ```
 
 ---
@@ -212,7 +264,10 @@ Summarise: object + type, methods/passed/failed, the `AUNIT_VERDICT` line, and
 each failure (`class::method -- message`). On `SKIPPED:NO_TESTS` say so plainly.
 On `NEEDS_RECORDING` surface the captured `program=/screen=` and the "Result
 parsing" steps. When `--with-coverage` ran, report the coverage percent and the
-gate outcome (ok / below-min warn-or-block).
+gate outcome (ok / below-min warn-or-block). When coverage was requested but
+came back NA, lead with `COVERAGE_UNVERIFIED` (or the FAIL under
+`--min-coverage`) plus the `COVERAGE_REASON:` text — never present such a run
+as a clean PASS.
 
 ---
 
@@ -235,6 +290,8 @@ reads it for `aunit_first_pass_pct` / `aunit_coverage_avg`. Best-effort: omit on
 | All tests pass | `-Status SUCCESS -ExitCode 0` |
 | Test failures | `-Status FAILED -ExitCode 1 -ErrorClass AUNIT_TESTS_FAILED -ErrorMsg "failed=F"` |
 | No test classes | `-Status SKIPPED -ExitCode 0` |
+| Coverage requested but NA, `--min-coverage` set | `-Status FAILED -ExitCode 1 -ErrorClass AUNIT_COVERAGE_UNVERIFIED -ErrorMsg "coverage=NA under --min-coverage=<n>: <COVERAGE_REASON>"` |
+| Coverage requested but NA, only `--with-coverage` | `-Status SUCCESS -ExitCode 0` with `"verdict":"COVERAGE_UNVERIFIED"` in `-MetricsJson` |
 | Result grid unresolved | `-Status FAILED -ExitCode 2 -ErrorClass AUNIT_GUI_PARSE_FAILED` |
 | Object missing / not opened | `-Status FAILED -ExitCode 2 -ErrorClass AUNIT_OBJECT_MISSING` |
 

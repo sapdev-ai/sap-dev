@@ -26,9 +26,13 @@
 '
 ' Output (last lines, parseable):
 '   PRIORITY_COUNTS: P1=<n> P2=<n> P3=<n>
+'   COUNT_PLNERR=<n|NA>            (planning-error count from the same row;
+'                                   NA = column not readable on this release)
 '   FILE: <absolute path>          (only when download succeeded)
 '   SAVE_HINT: <diagnostic>        (when download was skipped or failed)
 '   SUCCESS: Read result for run series <NAME>.
+'   ERROR: ATC_RESULT_PARSE_FAILED - priority columns not found (exit 1 --
+'                                   the gate must FAIL; never falls back 0/0/0)
 '   ERROR: ...
 ' =============================================================================
 
@@ -184,14 +188,31 @@ Dim p2 : p2 = ReadPrioCount(oGrid, foundRow, 2)
 Dim p3 : p3 = ReadPrioCount(oGrid, foundRow, 3)
 
 If p1 < 0 And p2 < 0 And p3 < 0 Then
-    WScript.Echo "WARN: Could not parse Priority columns; falling back to 0/0/0 (column IDs may differ on this release)."
-    p1 = 0 : p2 = 0 : p3 = 0
+    ' Fail LOUD: the pre-2026-07-02 code degraded to 0/0/0 + SUCCESS here,
+    ' which turned a release/locale layout drift into a gate PASS.
+    WScript.Echo "ERROR: ATC_RESULT_PARSE_FAILED - priority columns not found (release/locale layout drift; re-record per SKILL.md)"
+    WScript.Quit 1
 End If
 If p1 < 0 Then p1 = 0
 If p2 < 0 Then p2 = 0
 If p3 < 0 Then p3 = 0
 
 WScript.Echo "PRIORITY_COUNTS: P1=" & p1 & " P2=" & p2 & " P3=" & p3
+
+' Planning-error count from the same result row (column COUNT_PLNERR --
+' verified live on the S/4HANA 1909 Manage Results grid; see the SKILL.md
+' Component IDs table). The SKILL.md gate treats >0 as ATC_PLAN_ERRORS
+' (never PASS) and uses =0 as evidence the planner processed the scope
+' cleanly. NA = column not readable on this release.
+Dim sPlnErr : sPlnErr = ""
+On Error Resume Next
+sPlnErr = Trim(oGrid.GetCellValue(foundRow, "COUNT_PLNERR"))
+On Error GoTo 0
+If IsNumeric(sPlnErr) Then
+    WScript.Echo "COUNT_PLNERR=" & CLng(sPlnErr)
+Else
+    WScript.Echo "COUNT_PLNERR=NA"
+End If
 
 ' --- Trigger Local-File export from the OUTER grid (no drill-in) --------
 '

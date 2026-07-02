@@ -68,11 +68,17 @@ End If
 
 ' Optional transport request popup
 Dim pass, w
+Dim bAbortEmptyTr : bAbortEmptyTr = False
 For pass = 1 To 4
     w = TopWin()
     If w = "wnd[0]" Or w = "" Then Exit For
     If CtrlExists(w & "/usr/ctxtKO008-TRKORR") Then
-        If TRKORR <> "" Then oSession.findById(w & "/usr/ctxtKO008-TRKORR").Text = TRKORR
+        ' Empty TR must ABORT, never blind-Continue (Local Object / error fallback).
+        If TRKORR = "" Then
+            bAbortEmptyTr = True
+            Exit For
+        End If
+        oSession.findById(w & "/usr/ctxtKO008-TRKORR").Text = TRKORR
         oSession.findById(w & "/tbar[0]/btn[0]").Press
         WScript.Sleep 1500
     ElseIf CtrlExists(w & "/usr/btnBUTTON_1") Then
@@ -100,6 +106,19 @@ For pass = 1 To 4
         Exit For
     End If
 Next
+
+If bAbortEmptyTr Then
+    WScript.Echo "ERROR: ABORT_EMPTY_TR -- SAP prompted for a transport request but TRKORR is empty."
+    WScript.Echo "       Resolve a TR via /sap-transport-request and re-run the delete."
+    WScript.Quit 1
+End If
+' Stuck-modal guard: a popup still open means the delete chain did not complete;
+' do not fall through to a false SUCCESS.
+If TopWin() <> "wnd[0]" And TopWin() <> "" Then
+    WScript.Echo "ERROR: A modal popup is still open after the delete chain (unhandled dialog)."
+    WScript.Echo "       Inspect via /sap-gui-object-details and re-record if a control id changed."
+    WScript.Quit 1
+End If
 
 Dim sType, sMsg
 sType = oSession.findById("wnd[0]/sbar").MessageType

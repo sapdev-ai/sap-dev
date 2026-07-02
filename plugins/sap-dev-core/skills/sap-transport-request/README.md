@@ -18,8 +18,10 @@ flows.
    - **`ASK`** — ask the user each time; offer to save the answer as the new
      default
    - **`CREATE_NEW`** — always create a fresh TR; never persist
-3. If a TR is required and `CREATE_NEW` is in effect (or the existing one is
-   no longer modifiable), render a description per `rule_of_tr_description`
+3. If a TR is required and `CREATE_NEW` is in effect (or the user chose
+   `new` after a non-modifiable / unverifiable candidate — the skill
+   re-prompts per policy, it never silently substitutes a fresh TR), render
+   a description per `rule_of_tr_description`
    (`ASK` / `PATTERN` / `FIXED` / `RANDOM`) using
    `tr_description_template`, truncated to 60 chars
 4. Delegate creation to `/sap-se01` (GUI mode) or call

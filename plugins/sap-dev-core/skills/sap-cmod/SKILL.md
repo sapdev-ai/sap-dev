@@ -189,6 +189,11 @@ Parse the output lines:
 - `ASSIGNMENT: <enh>` (one per line) + `COUNT: <n>` — assigned enhancements (`MODACT`).
 - `TADIR_ORPHAN: <pkg>` (only when `EXISTS: NO`) — a leftover directory entry
   from a prior delete. Warn the user: a fresh create may re-attach to `<pkg>`.
+- `ERROR: RFC_READ_TABLE failed on <TABLE> …` (exit 2) — a read **failed**; the
+  script fails closed rather than emitting a misleading `COUNT: 0` /
+  `SE38_MODE: create`. Do NOT proceed with create/delete decisions — surface the
+  error and retry. `WARN: RFC_READ_TABLE failed on <TABLE> …` marks a
+  non-decision field (DEVCLASS / short text / orphan check) whose value is unknown.
 
 Other actions: `-Action status` (MODATTR only), `-Action assignments`
 (MODACT), `-Action components -Enhancement <ENH>` (MODSAP — used by Step 12),
@@ -385,7 +390,8 @@ Enhancements are made of components. To edit one, look the components up in
    For each `PROJECT: <name>|<status>|<label>` returned, run **Step 8**
    (`/sap-cmod activate <name>`) and confirm `STATUS_LABEL: ACTIVE` via Step 3.
    If `COUNT: 0`, the enhancement isn't assigned to any project yet — assign it
-   first (Step 5), then activate.
+   first (Step 5), then activate. A `<label>` of `UNKNOWN` means the project's
+   status read failed — re-check via Step 3 rather than assuming INACTIVE.
 
 > Worked example (enhancement `CNEX0007`, verified live 2026-05-29):
 > `C|SAPLCJGR+CUE` → `/sap-se41 SAPLCJGR`;

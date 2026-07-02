@@ -507,7 +507,7 @@ source for every `PARAMETERS:` / `SELECT-OPTIONS:` line, build the
 Extract selection text definitions from the ABAP source or design document:
 - Each PARAMETERS/SELECT-OPTIONS field can have a descriptive text
 - Format: `PARAM_NAME=Selection Text` separated by `|`
-- Example: `P_BUKRS=莨夂､ｾ繧ｳ繝ｼ繝榎P_WERKS=繝励Λ繝ｳ繝・P_MATNR=蜩∫岼繧ｳ繝ｼ繝榎P_FILE=繝輔ぃ繧､繝ｫ`
+- Example: `P_BUKRS=Company Code|P_WERKS=Plant|P_MATNR=Material|P_FILE=Input file path`
 
 **Parameter name rules:**
 - Use the ABAP parameter name as declared (e.g., `P_BUKRS`, `S_MATNR`)
@@ -611,6 +611,10 @@ powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_
 | `REENTRY_DID_NOT_OPEN_EDITOR` | After Save, the re-entry to Change mode (for the Activate step) failed the same screen-state check. | Same as above. The TEXTPOOL was saved but is still inactive — open SE38 manually, navigate to Goto -> Text Elements, and press Activate (Ctrl+F3). |
 | `TABLE_BASE_UNKNOWN` | None of the candidate sub-screen paths (SAPLSETXP:1310 / 1320 / 1300) resolved. The SAP release uses a different sub-screen number for the selection-text table. | Run `/sap-gui-record` on SE38 -> Text Elements -> Selection Texts to capture the actual `ssubSCREEN_HEADER:SAPLSETXP:NNNN/tblSAPLSETXPSELPAR` path, then add it to the `selBaseCands` array in `sap_se38_text_elements.vbs`. |
 | `TR_REQUIRED_BUT_EMPTY` | SAP prompted for a Workbench request (`ctxtKO008-TRKORR`) but `%%TRANSPORT%%` was empty. | Resolve a modifiable TR via `/sap-transport-request` and re-run Step 5c. The text elements need their own TR entry (separate from the source code's entry). |
+| `SYMBOL_TAB_UNKNOWN` | Text symbols were supplied but none of the candidate Text Symbols tab ids resolved on this SAP build (pre-fix this was a WARN and the run still ended `APPLIED` with zero symbols written). | Run `/sap-gui-record` on SE38 Text Elements -> Text Symbols; add the tab id to `symTabCands` in `sap_se38_text_elements.vbs`. |
+| `SYMBOL_TABLE_BASE_UNKNOWN` | Text Symbols tab opened but none of the candidate table paths resolved (same pre-fix false-success as above). | Same recording flow; add the table path to `symBaseCands` in `sap_se38_text_elements.vbs`. |
+| `SAVE_SBAR_E` / `SAVE_SBAR_A` | Save ended with status-bar MessageType `E`/`A` -- the TEXTPOOL was NOT written (pre-fix there was no sbar gate anywhere in this VBS). | Read the `ERROR: Save failed - <sbar text>` line above the status; fix the cause (lock, auth, TR) and re-run Step 5c. |
+| `ACTIVATE_SBAR_E` / `ACTIVATE_SBAR_A` | Activation (Ctrl+F3) ended with status-bar `E`/`A` -- TEXTPOOL saved but NOT activated. | Open SE38 -> Goto -> Text Elements and activate manually, or re-run Step 5c after fixing the reported error. |
 | `NO_STATUS_EMITTED` | VBS crashed before reaching the final `TEXT_ELEMENTS:` emit. | Inspect full cscript output for `ERROR:` lines; the trace before the crash names the operation. Common causes: SAP GUI Security dialog blocked the script, session was killed, COM exception in attach lib. |
 
 ### Text Elements Activation (Handled by VBS Template)
@@ -682,8 +686,8 @@ If Not oW1 Is Nothing Then oW1.sendVKey 0
 If text element activation proves problematic, selection texts can be set via code:
 ```abap
 INITIALIZATION.
-  %_p_bukrs_%_app_%-text = '莨夂､ｾ繧ｳ繝ｼ繝・.
-  %_rb_up_%_app_%-text   = '繧｢繝・・繝ｭ繝ｼ繝・.
+  %_p_bukrs_%_app_%-text = 'Company Code'.
+  %_rb_up_%_app_%-text   = 'Upload'.
 ```
 These dynpro text variables (`%_<param>_%_app_%-text`) override selection texts at runtime.
 Frame titles use `FRAME TITLE gv_xxx` + `gv_xxx = '...'` in INITIALIZATION (auto-declared).
@@ -1015,6 +1019,9 @@ SUCCESS line.
 | `TEXT_ELEMENTS: FAILED:REENTRY_DID_NOT_OPEN_EDITOR` | Step 5c: text elements were saved but re-entry to Change for Activate failed; TEXTPOOL is saved-but-inactive. | Open SE38 manually -> Goto -> Text Elements -> Activate (Ctrl+F3). ErrorClass=`SE38_TEXTELM_REENTRY_FAIL` |
 | `TEXT_ELEMENTS: FAILED:TABLE_BASE_UNKNOWN` | Step 5c: sub-screen path SAPLSETXP:NNNN unknown on this SAP release. | Run `/sap-gui-record` to capture the correct path; add to `selBaseCands` in `sap_se38_text_elements.vbs`. ErrorClass=`SE38_TEXTELM_TBL_UNKNOWN` |
 | `TEXT_ELEMENTS: FAILED:TR_REQUIRED_BUT_EMPTY` | Step 5c: SAP prompted for TR but `%%TRANSPORT%%` was empty. | Resolve TR via `/sap-transport-request`; re-run Step 5c. ErrorClass=`SE38_TEXTELM_TR_MISSING` |
+| `TEXT_ELEMENTS: FAILED:SYMBOL_TAB_UNKNOWN` / `FAILED:SYMBOL_TABLE_BASE_UNKNOWN` | Step 5c: Text Symbols tab / table ids unknown on this SAP build; symbols NOT applied (VBS exits 1 -- no longer a WARN + `APPLIED`). | Run `/sap-gui-record`; add the id to `symTabCands` / `symBaseCands` in `sap_se38_text_elements.vbs`. ErrorClass=`SE38_TEXTELM_TBL_UNKNOWN` |
+| `TEXT_ELEMENTS: FAILED:SAVE_SBAR_<E\|A>` | Step 5c: Save ended with sbar `E`/`A` -- TEXTPOOL not written. | See the `ERROR: Save failed -` line; fix cause (lock/auth/TR) and re-run Step 5c. ErrorClass=`SE38_TEXTELM_SAVE_FAIL` |
+| `TEXT_ELEMENTS: FAILED:ACTIVATE_SBAR_<E\|A>` | Step 5c: activation ended with sbar `E`/`A` -- TEXTPOOL saved but inactive. | Activate manually via SE38 -> Goto -> Text Elements (Ctrl+F3) or re-run Step 5c. ErrorClass=`SE38_TEXTELM_ACTIVATE_FAIL` |
 | `TEXT_ELEMENTS: line absent` | Step 5c VBS crashed before final emit. | Inspect cscript output for the last `INFO:` line; that's where it died. ErrorClass=`SE38_TEXTELM_NO_STATUS` |
 
 Log the FAILED end record (pick `ErrorClass` from the matched row, e.g.
@@ -1231,7 +1238,7 @@ When filling VBS templates, always write with **`-Encoding Unicode`** (UTF-16 LE
 UTF-16 LE is what `cscript` supports natively and preserves non-ASCII characters
 (e.g. Japanese program titles). UTF-8 with BOM causes a cscript compile error.
 
-### ABAP Source File Encoding (譁・ｭ怜喧縺・Fix)
+### ABAP Source File Encoding (mojibake Fix)
 
 The VBS templates automatically handle ABAP source file encoding:
 - Claude's Write tool saves `.abap` files in **UTF-8**
@@ -1239,19 +1246,6 @@ The VBS templates automatically handle ABAP source file encoding:
   - **Unicode SAP** (codepage 4110/4103): Upload the UTF-8 file **directly** — no conversion needed
   - **Non-Unicode SAP**: Convert UTF-8 to the **Windows system ANSI codepage** (e.g. Shift-JIS on Japanese Windows) via `ADODB.Stream`, then upload the converted `.upload.txt` file
 - The temp `.upload.txt` file (non-Unicode path only) is automatically cleaned up after deployment
-
----
-
-## Upload Menu Path Note
-
-The source upload menu path (`menu[3]/menu[9]/menu[3]/menu[0]`) was recorded on
-SAP GUI 7.60 / S/4HANA 1909 (Japanese). Menu indices **may differ** by SAP release
-and logon language. If the upload step fails:
-
-1. Open SE38 in your SAP system
-2. Use SAP Logon > Help > Scripting Recorder and Playback
-3. Record the "Upload from local file" menu action
-4. Note the menu path from the recording and update the VBS template
 
 ---
 

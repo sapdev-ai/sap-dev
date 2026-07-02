@@ -33,7 +33,7 @@ Task: $ARGUMENTS
 | `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_error_hints.ps1` | CLI — this skill runs `-Action curate -Op list|promote|mute` |
 | `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_error_hints_lib.ps1` | Engine dot-sourced by the CLI |
 | `<SAP_DEV_CORE_SHARED_DIR>/tables/frequently_errors.tsv` | TIER-3 seed (read-only baseline) |
-| `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_log_helper.ps1` | Start/step/end logging wrapper. State file: `{WORK_TEMP}\sap_error_kb_run.json`. Best-effort. |
+| `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_log_helper.ps1` | Start/step/end logging wrapper. State file: `{RUN_TEMP}\sap_error_kb_run.json`. Best-effort. |
 
 ---
 
@@ -48,6 +48,12 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_
 
 Set `{WORK_TEMP}` = `{work_dir}\temp` and ensure it exists.
 
+Set `{RUN_TEMP}` = the per-run scratch dir (`Get-SapRunTemp` mints + creates `{work_dir}\temp\run_<id>`):
+```bash
+powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('RUN_TEMP=' + (Get-SapRunTemp))"
+```
+Per the CLAUDE.md "Two-bucket temp model" write this skill's `_run.json` log state under `{RUN_TEMP}`.
+
 The per-object files live under `{custom_url}\frequently_errors\`. The
 hand-authored override is `{custom_url}\frequently_errors.tsv`.
 
@@ -56,7 +62,7 @@ hand-authored override is `{custom_url}\frequently_errors.tsv`.
 ## Step 0.5 — Start Logging
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{WORK_TEMP}\sap_error_kb_run.json" -Skill sap-error-kb -ParamsJson "{\"args\":\"$ARGUMENTS\"}"
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{RUN_TEMP}\sap_error_kb_run.json" -Skill sap-error-kb -ParamsJson "{\"args\":\"$ARGUMENTS\"}"
 ```
 
 ---
@@ -118,7 +124,7 @@ real TABs and UTF-8 (no BOM).
 ## Final — Log End
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_error_kb_run.json" -Status SUCCESS -ExitCode 0
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_error_kb_run.json" -Status SUCCESS -ExitCode 0
 ```
 
 On error use `-Status FAILED -ExitCode 1 -ErrorClass ERROR_KB_FAILED`.

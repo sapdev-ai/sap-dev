@@ -62,7 +62,17 @@ Set oSession = AttachSapSession(SESSION_PATH)
 ' ---- CALIBRATION GATE (fail safe before anything else) ---------------------
 If IsPlaceholder(IMPORT_BTN) Or IsPlaceholder(OPTS_CONFIRM) Then
     Fail "not-calibrated", "Import control IDs are PLACEHOLDER. Run /sap-gui-record on STMS_IMPORT for this release and substitute IMPORT_BTN / OPTS_CONFIRM / OPTS_CLIENT_FLD in sap_stms_import.vbs before importing."
-    WScript.Quit 0
+    WScript.Quit 1
+End If
+
+' ---- OPTION-SUPPORT GATE (before acquiring the lock) -----------------------
+' The import-options checkboxes (import-now / leave-in-queue) are release-specific
+' and have NO recorded control IDs in this VBS. So if the caller REQUESTED a
+' non-default option we cannot honor, FAIL LOUD rather than silently importing
+' with the queue default -- the option was advertised, so a no-op would mislead.
+If IsFlagSet(IMMEDIATE) Or IsFlagSet(LEAVE_IN_QUEUE) Then
+    Fail "STMS_OPTION_UNSUPPORTED", "IMMEDIATE / LEAVE_IN_QUEUE were requested but the import-options checkboxes are not calibrated in this VBS (no recorded control IDs). Record them via /sap-gui-record on the STMS_IMPORT options dialog and add the checkbox control IDs, or re-run without these options."
+    WScript.Quit 1
 End If
 
 ' ---- lock the session around the write -------------------------------------
@@ -84,7 +94,7 @@ Dim grid : Set grid = FindGridShell()
 If grid Is Nothing Then
     Fail "queue-not-found", "STMS import-queue grid not found for this release; run /sap-gui-record."
     ReleaseSession oSession, bLocked
-    WScript.Quit 0
+    WScript.Quit 1
 End If
 
 ' ---- ROW-IDENTITY GATE: find + verify the TR row ---------------------------
@@ -107,7 +117,7 @@ Next
 If rowIdx < 0 Then
     Fail "not-in-queue", "TR " & TR & " is not in the import queue of " & TARGET_SID & " (release it and forward it to the queue first)."
     ReleaseSession oSession, bLocked
-    WScript.Quit 0
+    WScript.Quit 1
 End If
 
 ' Positively re-verify the selected row IS the requested TR before any write.
@@ -121,7 +131,7 @@ On Error GoTo 0
 If UCase(sVerify) <> UCase(TR) Then
     Fail "verify-failed", "Could not positively verify the selected row is " & TR & " (read '" & sVerify & "'). Aborting WITHOUT importing."
     ReleaseSession oSession, bLocked
-    WScript.Quit 0
+    WScript.Quit 1
 End If
 
 ' ---- press Import Request (calibrated control) -----------------------------
@@ -130,11 +140,14 @@ On Error Resume Next
 oSession.findById(IMPORT_BTN).press
 WScript.Sleep 1000
 
-' import-options dialog (wnd[1]): set client, run-now flag, leave-in-queue, then confirm
+' import-options dialog (wnd[1]): set client, then confirm. The IMMEDIATE /
+' LEAVE_IN_QUEUE checkboxes are release-specific and NOT calibrated here -- the
+' OPTION-SUPPORT GATE above already aborted if either was requested, so reaching
+' here means the queue default is acceptable. To support them, record the checkbox
+' control IDs via /sap-gui-record and set them here BEFORE removing that gate.
 If Len(TARGET_CLIENT) > 0 And Not IsPlaceholder(OPTS_CLIENT_FLD) Then
     oSession.findById(OPTS_CLIENT_FLD).text = TARGET_CLIENT
 End If
-' (immediate / leave-in-queue checkboxes are release-specific; record + add here)
 oSession.findById(OPTS_CONFIRM).press
 WScript.Sleep 1500
 DismissModals
@@ -155,6 +168,7 @@ End If
 
 WriteJson result, sbarType, sbarText
 WScript.Echo "IMPORT: tr=" & TR & " target=" & TARGET_SID & "/" & TARGET_CLIENT & " result=" & result & " sbar=" & sbarType & " file=" & OUTPUT_FILE
+If result = "IMPORT_ERROR" Then WScript.Quit 1
 WScript.Quit 0
 
 ' =============================================================================
@@ -162,6 +176,13 @@ WScript.Quit 0
 ' =============================================================================
 Function IsPlaceholder(s)
     IsPlaceholder = (Len(s) >= 11 And UCase(Left(s, 11)) = "PLACEHOLDER")
+End Function
+
+' A flag token counts as "set" (requesting a non-default option) when it is a
+' truthy value. Empty, "0", "false", or the unsubstituted %%...%% token = not set.
+Function IsFlagSet(s)
+    Dim v : v = UCase(Trim(s & ""))
+    IsFlagSet = (v = "1" Or v = "X" Or v = "TRUE" Or v = "YES")
 End Function
 
 Sub Fail(reasonCode, msg)

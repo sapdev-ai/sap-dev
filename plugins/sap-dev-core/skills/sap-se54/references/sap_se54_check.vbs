@@ -61,8 +61,18 @@ If bPopup Then
     WScript.Sleep 500
     WScript.Echo "NOT_EXIST"
 Else
-    ' No popup -> went to Generation Environment -> dialog EXISTS
-    If InStr(oSession.findById("wnd[0]").Text, "Generation Environment") > 0 Then
+    ' No popup -> went to Generation Environment -> dialog EXISTS.
+    ' Confirm the screen by a control that exists ONLY there (the auth-group
+    ' field ctxtTDDAT-CCLASS) -- locale-independent, no title text.
+    On Error Resume Next
+    Dim oGenEnvProbe
+    Set oGenEnvProbe = Nothing
+    Set oGenEnvProbe = oSession.findById("wnd[0]/usr/ctxtTDDAT-CCLASS")
+    Dim bOnGenEnv
+    bOnGenEnv = (Err.Number = 0) And Not (oGenEnvProbe Is Nothing)
+    Err.Clear
+    On Error GoTo 0
+    If bOnGenEnv Then
         WScript.Echo "INFO: Table " & UCase(TABLE_NAME) & " has an existing maintenance dialog."
         ' Navigate back to SE54 initial screen
         oSession.findById("wnd[0]/tbar[0]/okcd").Text = "/nSE54"

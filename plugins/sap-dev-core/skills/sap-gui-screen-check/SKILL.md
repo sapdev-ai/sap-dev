@@ -80,7 +80,7 @@ Per the CLAUDE.md "Two-bucket temp model" write this skill's generated scratch (
 ## Step 0.5 — Start Logging
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{WORK_TEMP}\sap_gui_screen_check_run.json" -Skill sap-gui-screen-check -ParamsJson "{}"
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{RUN_TEMP}\sap_gui_screen_check_run.json" -Skill sap-gui-screen-check -ParamsJson "{}"
 ```
 
 ---
@@ -184,7 +184,7 @@ Honor `--quiet` by printing only DRIFT / COULD_NOT_CHECK rows plus the verdict.
 ## Final — Log End
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_gui_screen_check_run.json" -Status SUCCESS -ExitCode 0
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_gui_screen_check_run.json" -Status SUCCESS -ExitCode 0
 ```
 
 (For a DRIFT verdict set `-Status FAILED -ExitCode 1 -ErrorClass SCREEN_DRIFT`.)

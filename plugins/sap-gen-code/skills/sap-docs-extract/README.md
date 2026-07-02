@@ -1,6 +1,6 @@
 # SAP Docs Extract Skill
 
-Reads a SAP design document (Excel `.xlsx`, Word `.doc`/`.docx`, or PDF) —
+Reads a SAP design document (Excel `.xlsx`, Word `.docx`, or PDF) —
 **or** an existing work folder — and extracts structured information into
 separate text files by information type: program summary, domains, data
 elements, tables, error messages, text elements, and process logic.
@@ -16,7 +16,7 @@ Three input modes:
 
 | If you pass… | extract does… |
 |---|---|
-| A `.xlsx` / `.doc` / `.docx` / `.pdf` file | Creates a fresh work folder, dumps the document to `{doc_name}_raw.txt`, then proceeds with structuring |
+| A `.xlsx` / `.docx` / `.pdf` file | Creates a fresh work folder, dumps the document to `{doc_name}_raw.txt`, then proceeds with structuring (legacy binary `.doc` is NOT supported — save as `.docx` first) |
 | An existing work folder | Locates the single `*_raw.txt` inside it, then structures |
 | A `_raw.txt` file directly | Treats the parent directory as the work folder, then structures |
 
@@ -68,7 +68,8 @@ Conversational forms:
 
 - Python with `openpyxl` (for `.xlsx`)
 - Python with `python-docx` (for `.docx`)
-- For `.doc` and `.pdf`: Claude reads the file directly via the Read tool
+- For `.pdf`: Claude reads the file directly via the Read tool (legacy binary
+  `.doc` has no extraction path — convert to `.docx` first)
 
 ## Suggested next steps
 

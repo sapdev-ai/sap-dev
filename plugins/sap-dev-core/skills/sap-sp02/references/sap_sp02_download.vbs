@@ -108,10 +108,10 @@ If rowIdx < 0 Then
         sCellId = "wnd[0]/usr/lbl[" & spoolCol & "," & r & "]"
         On Error Resume Next
         sCell = oSess.findById(sCellId).Text
-        Dim eNum : eNum = Err.Number
+        Dim eNo : eNo = Err.Number
         Err.Clear
         On Error GoTo 0
-        If eNum <> 0 Then
+        If eNo <> 0 Then
             ' No more rows at this column.
             Exit Do
         End If

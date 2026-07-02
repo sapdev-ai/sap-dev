@@ -50,6 +50,9 @@ if (-not $right) { Fail "RIGHT '$Against' not connected (RFC creds / DPAPI / rea
 $lp = $null; try { $lp = Get-SapCurrentConnectionProfile } catch {}
 
 # --- read one row from a DDIC catalog table via guarded RFC_READ_TABLE ------
+# Returns @{ status='OK'; row=@{...} } | @{ status='ABSENT' } | @{ status='FAILED'; reason=... }.
+# CRITICAL: a thrown RFC call (FAILED) must NOT be conflated with 0 rows (ABSENT)
+# -- otherwise a couldn't-read on both sides collapses to a false "IDENTICAL".
 function Read-RowVia($dest, $table, $where, $fields) {
     try {
         $rt = New-RfcReadTable -Destination $dest -Table $table
@@ -58,7 +61,7 @@ function Read-RowVia($dest, $table, $where, $fields) {
         foreach ($f in $fields) { Add-RfcField $rt $f }
         $null = $rt.Invoke($dest)
         $d = $rt.GetTable("DATA")
-        if ([int]$d.RowCount -le 0) { return $null }
+        if ([int]$d.RowCount -le 0) { return @{ status = 'ABSENT' } }
         $d.CurrentIndex = 0
         $parts = ([string]$d.GetString("WA")).Split('|')
         $out = @{}
@@ -66,12 +69,14 @@ function Read-RowVia($dest, $table, $where, $fields) {
             $v = if ($i -lt $parts.Length) { $parts[$i].Trim() } else { '' }
             $out[$fields[$i]] = $v
         }
-        return $out
-    } catch { return $null }
+        return @{ status = 'OK'; row = $out }
+    } catch { return @{ status = 'FAILED'; reason = "$($_.Exception.Message)" } }
 }
 
 # --- fetch a normalized field list on one destination ----------------------
-# Returns @( [pscustomobject]{ name; datatype; len; dec; pos } ) or $null if absent.
+# Returns @{ status='OK'; fields=@([pscustomobject]{name;datatype;len;dec;pos}) }
+#       | @{ status='ABSENT' }                (object genuinely does not exist)
+#       | @{ status='FAILED'; reason=<text> } (RFC/read error -- state UNKNOWN).
 # Scalar DDIC objects (DE/domain/table type) are modeled as a single "field"
 # keyed by the object name so the diff classifies datatype/length changes.
 # LANGU is fixed to 'E' -- it only affects field TEXT, which we never read; the
@@ -85,7 +90,8 @@ function Get-DdicFields($dest, $name, $type) {
                 [void]$fn.SetValue("LANGU",   "E")
                 $null = $fn.Invoke($dest)
                 $tab = $fn.GetTable("DFIES_TAB")
-                if ([int]$tab.RowCount -le 0) { return $null }
+                # 0 rows from DDIF_FIELDINFO_GET = the table/structure does not exist.
+                if ([int]$tab.RowCount -le 0) { return @{ status = 'ABSENT' } }
                 $fields = @()
                 for ($r = 0; $r -lt [int]$tab.RowCount; $r++) {
                     $tab.CurrentIndex = $r
@@ -101,30 +107,36 @@ function Get-DdicFields($dest, $name, $type) {
                         pos      = $pos
                     }
                 }
-                return ,$fields
-            } catch { return $null }
+                return @{ status = 'OK'; fields = ,$fields }
+            } catch { return @{ status = 'FAILED'; reason = "$($_.Exception.Message)" } }
         }
         'dataelement' {
-            $row = Read-RowVia $dest 'DD04L' "ROLLNAME = '$name' AND AS4LOCAL = 'A'" @('DATATYPE','LENG','DECIMALS')
-            if (-not $row) { return $null }
-            return ,@([pscustomobject]@{ name = $name; datatype = ([string]$row['DATATYPE']).ToUpper(); len = $row['LENG']; dec = $row['DECIMALS']; pos = '1' })
+            $res = Read-RowVia $dest 'DD04L' "ROLLNAME = '$name' AND AS4LOCAL = 'A'" @('DATATYPE','LENG','DECIMALS')
+            if ($res.status -ne 'OK') { return $res }
+            $row = $res.row
+            return @{ status = 'OK'; fields = ,@([pscustomobject]@{ name = $name; datatype = ([string]$row['DATATYPE']).ToUpper(); len = $row['LENG']; dec = $row['DECIMALS']; pos = '1' }) }
         }
         'domain' {
-            $row = Read-RowVia $dest 'DD01L' "DOMNAME = '$name' AND AS4LOCAL = 'A'" @('DATATYPE','LENG','DECIMALS')
-            if (-not $row) { return $null }
-            return ,@([pscustomobject]@{ name = $name; datatype = ([string]$row['DATATYPE']).ToUpper(); len = $row['LENG']; dec = $row['DECIMALS']; pos = '1' })
+            $res = Read-RowVia $dest 'DD01L' "DOMNAME = '$name' AND AS4LOCAL = 'A'" @('DATATYPE','LENG','DECIMALS')
+            if ($res.status -ne 'OK') { return $res }
+            $row = $res.row
+            return @{ status = 'OK'; fields = ,@([pscustomobject]@{ name = $name; datatype = ([string]$row['DATATYPE']).ToUpper(); len = $row['LENG']; dec = $row['DECIMALS']; pos = '1' }) }
         }
         'tabletype' {
-            $row = Read-RowVia $dest 'DD40L' "TYPENAME = '$name' AND AS4LOCAL = 'A'" @('ROWTYPE','ROWKIND')
-            if (-not $row) { return $null }
-            return ,@([pscustomobject]@{ name = $name; datatype = ([string]$row['ROWTYPE']).ToUpper(); len = $row['ROWKIND']; dec = ''; pos = '1' })
+            $res = Read-RowVia $dest 'DD40L' "TYPENAME = '$name' AND AS4LOCAL = 'A'" @('ROWTYPE','ROWKIND')
+            if ($res.status -ne 'OK') { return $res }
+            $row = $res.row
+            return @{ status = 'OK'; fields = ,@([pscustomobject]@{ name = $name; datatype = ([string]$row['ROWTYPE']).ToUpper(); len = $row['ROWKIND']; dec = ''; pos = '1' }) }
         }
     }
-    return $null
+    return @{ status = 'FAILED'; reason = "unhandled type '$type'" }
 }
 
-$lf = Get-DdicFields $left  $Object $Type
-$rf = Get-DdicFields $right $Object $Type
+$lres = Get-DdicFields $left  $Object $Type
+$rres = Get-DdicFields $right $Object $Type
+# $lf/$rf hold the field arrays ONLY when the side read successfully AND is present.
+$lf = if ($lres.status -eq 'OK') { $lres.fields } else { $null }
+$rf = if ($rres.status -eq 'OK') { $rres.fields } else { $null }
 
 # --- structured diff (offline) ---------------------------------------------
 function Diff-Fields($l, $r) {
@@ -154,13 +166,47 @@ function Diff-Fields($l, $r) {
 }
 
 $d = Diff-Fields $lf $rf
-$identical = (-not $d.added) -and (-not $d.removed) -and (-not $d.type_changed) -and (-not $d.length_changed) -and (-not $d.reordered)
+
+# --- fold read-status into the verdict -------------------------------------
+# Honesty contract: a READ FAILURE (couldn't fetch) must never render as
+# IDENTICAL. Require BOTH sides read OK AND present before an IDENTICAL/DIFFERS
+# verdict; anything else is COMPARE_UNAVAILABLE with the reason.
+$leftPresent  = ($lres.status -eq 'OK')
+$rightPresent = ($rres.status -eq 'OK')
+$leftFailed   = ($lres.status -eq 'FAILED')
+$rightFailed  = ($rres.status -eq 'FAILED')
+
+$verdict = ''
+$reason  = ''
+if ($leftFailed -or $rightFailed) {
+    $verdict = 'COMPARE_UNAVAILABLE'
+    $parts = @()
+    if ($leftFailed)  { $parts += "LEFT read failed ($($lres.reason))" }
+    if ($rightFailed) { $parts += "RIGHT read failed ($($rres.reason))" }
+    $reason = ($parts -join '; ')
+}
+elseif (-not $leftPresent -and -not $rightPresent) {
+    # Both genuinely absent -> not "identical", the object exists on neither side.
+    $verdict = 'COMPARE_UNAVAILABLE'
+    $reason  = "object '$Object' not found on either system"
+}
+elseif ($leftPresent -xor $rightPresent) {
+    $verdict = 'DIFFERS'   # exists on exactly one side
+    $reason  = if ($leftPresent) { 'exists only on LEFT' } else { 'exists only on RIGHT' }
+}
+else {
+    $structIdentical = (-not $d.added) -and (-not $d.removed) -and (-not $d.type_changed) -and (-not $d.length_changed) -and (-not $d.reordered)
+    if ($structIdentical) { $verdict = 'IDENTICAL' } else { $verdict = 'DIFFERS' }
+}
+$identical = ($verdict -eq 'IDENTICAL')
 
 $leftSid = ''; if ($lp) { $leftSid = "$($lp.system_name)" }
 $out = [ordered]@{
     object = $Object; type = $Type
-    left   = [ordered]@{ sid = $leftSid; exists = ($null -ne $lf) }
-    right  = [ordered]@{ sid = "$($t.system_name)"; release = "$($t.server_release_marker)"; exists = ($null -ne $rf) }
+    left   = [ordered]@{ sid = $leftSid; exists = $leftPresent; read_status = $lres.status }
+    right  = [ordered]@{ sid = "$($t.system_name)"; release = "$($t.server_release_marker)"; exists = $rightPresent; read_status = $rres.status }
+    verdict        = $verdict
+    reason         = $reason
     identical      = $identical
     added          = @($d.added)
     removed        = @($d.removed)
@@ -174,5 +220,10 @@ if ($lf) { $lf | ForEach-Object { "{0}`t{1}`t{2}`t{3}" -f $_.name,$_.datatype,$_
 if ($rf) { $rf | ForEach-Object { "{0}`t{1}`t{2}`t{3}" -f $_.name,$_.datatype,$_.len,$_.dec } | Set-Content -LiteralPath (Join-Path $OutDir 'right.def') -Encoding UTF8 }
 
 try { Disconnect-SapRfc } catch {}
-if ($identical) { Write-Output "RESULT: IDENTICAL" } else { Write-Output "RESULT: DIFFERS" }
+switch ($verdict) {
+    'IDENTICAL'           { Write-Output "RESULT: IDENTICAL" }
+    'DIFFERS'             { Write-Output "RESULT: DIFFERS" }
+    default               { Write-Output "RESULT: COMPARE_UNAVAILABLE - $reason" }
+}
 Write-Output ("DIFF_WRITTEN: " + (Join-Path $OutDir 'diff.json'))
+if ($verdict -eq 'COMPARE_UNAVAILABLE') { exit 1 }

@@ -78,6 +78,17 @@ Set `{WORK_TEMP}` = `{work_dir}\temp` and ensure it exists:
 cmd /c if not exist "{WORK_TEMP}" mkdir "{WORK_TEMP}"
 ```
 
+Set `{RUN_TEMP}` = the per-run scratch dir (`Get-SapRunTemp` mints + creates
+`{work_dir}\temp\run_<id>`):
+
+```bash
+powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('RUN_TEMP=' + (Get-SapRunTemp))"
+```
+
+Per the CLAUDE.md "Two-bucket temp model" write this skill's per-run scratch
+(the log state file below) under `{RUN_TEMP}`, never at a fixed name under the
+`{WORK_TEMP}` root.
+
 `{custom_url}` (from the same command) is needed only by `init` to resolve a
 customer-overridden migration brief.
 
@@ -85,8 +96,10 @@ customer-overridden migration brief.
 
 ## Step 0.5 — Start Logging
 
+State file: `{RUN_TEMP}\sap_cc_campaign_run.json`. Best-effort.
+
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{WORK_TEMP}\sap_cc_campaign_run.json" -Skill sap-cc-campaign -ParamsJson "{}"
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{RUN_TEMP}\sap_cc_campaign_run.json" -Skill sap-cc-campaign -ParamsJson "{}"
 ```
 
 (Pass the parsed args into `-ParamsJson` when convenient, e.g.
@@ -208,7 +221,8 @@ STATE: <STATE> | COUNT: <n>
 TIER: <R1|R2|R3|R4|-> | COUNT: <n>
 METRIC: decommission_savings_pct | VALUE: <n>
 METRIC: atc_clean_pct | VALUE: <n>          (-1 = n/a: nothing remediated yet)
-METRIC: auto_fix_rate_pct | VALUE: <n>      (-1 = n/a: no fixlog yet)
+METRIC: auto_fix_rate_pct | VALUE: <n>      (-1 = n/a: no R1 apply attempts yet)
+INFO: auto_fix_rate attempts=<n> auto=<a> excluded=<k> (...)   (denominator audit)
 METRIC: unmatched_findings_pct | VALUE: <n> (-1 = n/a: nothing triaged yet)
 STATUS: PHASE=<phase> TOTAL=<n> REMEDIATE=<n> DECOMMISSION=<n> REVIEW=<n>
 ```
@@ -236,8 +250,14 @@ Same aggregation as `status`, but **also** folds in three more ledgers and
 - **unresolved findings** = rows with `pattern=UNMATCHED` (the human-triage
   backlog) → an `unmatched_findings_pct` metric + the top UNMATCHED
   `message_id`s (the feed for `/sap-cc-learn`);
-- **auto-fix rate** from `remediation\fixlog.tsv` = share of attempted objects
-  the R1 mechanical rules actually rewrote (`auto_changes>0`);
+- **auto-fix rate** from `remediation\fixlog.tsv` = share of **R1 auto-apply
+  attempt rows** the R1 mechanical rules actually rewrote (`auto_changes>0`).
+  The denominator counts only rows for ledger-tier-R1 objects with a real apply
+  attempt — assist (`AI_CONTEXT_*`) rows, `SOURCE_MISSING` rows, and non-R1
+  objects carry `auto_changes=0` by design and are excluded so they cannot
+  dilute the management-facing number; the excluded-row count is printed on an
+  `INFO: auto_fix_rate attempts=<n> auto=<a> excluded=<k>` line (and shown in
+  the dashboard) so the denominator stays auditable;
 - **business-owner sign-offs** = `campaign.json.human_gates` cross-referenced
   with the optional `campaign.json.signoffs[]` (PENDING when not recorded).
 
@@ -329,8 +349,8 @@ Recommendation logic (the helper encodes this; documented here as the contract):
 | `human_gates.scope_signoff` and scope not yet approved | **PAUSE** — present scope summary; wait for operator approval |
 | `REMEDIATE` objects not yet `ANALYZED` | `/sap-cc-analyze --campaign <id>` |
 | `ANALYZED` not yet `TRIAGED` | `/sap-cc-triage --campaign <id>` |
-| `TRIAGED` R1 objects not yet `REMEDIATED` | `/sap-cc-remediate --campaign <id> --tier R1 --dry-run` → **GATE: dry-run review** → `--apply` |
-| `REMEDIATED` not `VERIFIED` | (re-run ATC inside remediate; if persistent, flag for manual review) |
+| `TRIAGED` R1 objects not yet `REMEDIATED` | `/sap-cc-remediate apply --campaign <id>` (R1 dry-run) → **GATE: dry-run review** → deploy the approved diffs via the workbench skills, then `/sap-cc-remediate record` |
+| `REMEDIATED` not `VERIFIED` | re-run `/sap-atc <type> <name> --variant=S4HANA_READINESS` per object, then `/sap-cc-remediate record` with the outcomes (a `FAILED` recheck returns the object to TRIAGED; persistent failures → manual review) |
 | `VERIFIED` not `TRANSPORTED` | bundle + release the transport (productionization pipeline) |
 | All objects `TRANSPORTED` or `DECOMMISSIONED` | `DONE` — campaign complete |
 
@@ -441,8 +461,9 @@ CLI: `-Action <init|status|report|next|signoff> -CampaignDir <abs-path>
 Emits parseable lines (one fact per line, `KEY: value | KEY: value`) — `STATE:`,
 `TIER:`, `DECISION:`, `METRIC:` (names `decommission_savings_pct`,
 `atc_clean_pct`, `auto_fix_rate_pct`, `unmatched_findings_pct`; `-1` = n/a),
-`PATTERN:`, `UNRESOLVED:`, `SIGNOFF:`, `NEXT:`, `INIT:`/`EXISTED:`/`REPORT:` —
-followed by a single `STATUS:` summary line. Exit codes `0` ok / `1` gaps (e.g.
+`INFO:` (`auto_fix_rate attempts=<n> auto=<a> excluded=<k> …` — the audit line
+for the auto-fix denominator), `PATTERN:`, `UNRESOLVED:`, `SIGNOFF:`, `NEXT:`,
+`INIT:`/`EXISTED:`/`REPORT:` — followed by a single `STATUS:` summary line. Exit codes `0` ok / `1` gaps (e.g.
 empty ledger) / `2` error (bad/missing workspace, missing `--gate`). It performs
 no SAP I/O. Keep the line grammar stable — the subcommands and `/sap-log-analyze`
 parse it.
@@ -490,7 +511,7 @@ parse it.
 ## Final — Log End
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_cc_campaign_run.json" -Status SUCCESS -ExitCode 0
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_cc_campaign_run.json" -Status SUCCESS -ExitCode 0
 ```
 
 For exit `1` use `-Status FAILED -ExitCode 1 -ErrorClass CC_CAMPAIGN_GAP`; for

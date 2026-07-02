@@ -24,8 +24,9 @@ Task: $ARGUMENTS
 | File | Purpose |
 |---|---|
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/skill_operating_rules.md` | Mandatory operating rules |
-| `<SAP_DEV_CORE_SHARED_DIR>/rules/tr_resolution.md` | TR resolution flow — this skill delegates to `/sap-transport-request` instead of asking for the TR itself |
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/tr_resolution.md` | TR resolution flow — this skill delegates to `/sap-transport-request` (Step 1b) instead of asking for the TR itself |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/language_independence_rules.md` | GUI-scripting language independence — identify by component ID + DDIC field name, status-bar checks via `MessageType` codes (S/W/E/I/A), VKey instead of menu-text, no branching on `.Text`/`.Tooltip`/window titles |
+| `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_delete_popups.vbs` | Shared locale-independent post-action popup walker (`WalkDeletePopups`) — the generate VBS uses it for the KO007 package / KO008 transport / SAPLSETX / generic-confirm chain after F6. Path derived from `%%ATTACH_LIB_VBS%%` (same dir); no extra token. Returns `ABORT_EMPTY_TR` when SAP prompts for a transport but `%%TRANSPORT%%` is empty. |
 
 ---
 
@@ -82,6 +83,37 @@ powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_
 | Function group | FG where generated code is stored — **required** | `ZHKT05` |
 | Maintenance type | `1` = one step, `2` = two step (default: `1`) | `1` |
 | Overview screen | Screen number for the overview screen (default: `0010`) | `0010` |
+| Single/detail screen | Detail screen number — **required when maintenance type = `2`** | `0011` |
+| Package | Target package for the generated FUGR/TOBJ (empty = Local Object `$TMP`) | `ZHKA005` |
+
+For two-step maintenance (`2`) the VBS **requires** the detail screen number and
+exits `ERROR` without it — the generation is not attempted with an empty detail
+screen.
+
+---
+
+## Step 1b — Resolve a Transport Request (only when PACKAGE is transportable)
+
+SE54 generates real repository objects (a function group + the `TOBJ`
+maintenance object). If **PACKAGE** is a transportable (`Z*`/`Y*`) package, SAP
+prompts for a Workbench transport during generation. **Delegate TR resolution
+to `/sap-transport-request`** — never ask the user for a TR here, and never let
+the objects fall into `$TMP` when a package was requested:
+
+```
+/sap-transport-request OBJECT_TYPE=FUGR OBJECT_DESCRIPTION=<TABLE_NAME>_maint
+```
+
+Capture the returned TRKORR as `RESOLVED_TR` and pass it into the generate
+wrapper as `%%TRANSPORT%%` (Step 4). This honours
+`way_to_get_transport_request` (DEFAULT / ASK / CREATE_NEW). If
+`/sap-transport-request` reports `ERROR`, stop and surface it.
+
+If **PACKAGE** is empty (Local Object / `$TMP`), skip this step and leave
+`%%TRANSPORT%%` empty — the VBS registers the generated objects as `$TMP`.
+The VBS runtime fails closed: if SAP prompts for a transport but `%%TRANSPORT%%`
+is empty, it emits `ABORT_EMPTY_TR` and exits 1 (it does **not** silently press
+Local Object).
 
 ---
 
@@ -144,7 +176,12 @@ $content = $content -replace '%%AUTH_GROUP%%','THE_AUTH_GROUP'
 $content = $content -replace '%%FUNC_GROUP%%','THE_FUNC_GROUP'
 $content = $content -replace '%%MAINT_TYPE%%','THE_MAINT_TYPE'
 $content = $content -replace '%%OVERVIEW_SCREEN%%','THE_OVERVIEW_SCREEN'
-# Phase 3.5 session-attach plumbing.
+$content = $content -replace '%%DETAIL_SCREEN%%','THE_DETAIL_SCREEN'   # required only when MAINT_TYPE=2
+$content = $content -replace '%%PACKAGE%%','THE_PACKAGE'              # empty = Local Object ($TMP)
+$content = $content -replace '%%TRANSPORT%%','THE_TRANSPORT'          # RESOLVED_TR from Step 1b; empty for $TMP
+# Phase 3.5 session-attach plumbing. The generate VBS also derives the shared
+# post-action popup walker (sap_delete_popups.vbs) from %%ATTACH_LIB_VBS%%
+# (same dir), so no extra token is needed for it.
 $sessionPath = ''
 $content = $content -replace '%%SESSION_PATH%%', $sessionPath
 $content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
@@ -153,7 +190,9 @@ $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 [System.IO.File]::WriteAllText('{RUN_TEMP}\sap_se54_generate_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
-Replace all `THE_*` placeholders and `<SKILL_DIR>`.
+Replace all `THE_*` placeholders and `<SKILL_DIR>`. `THE_TRANSPORT` is
+`RESOLVED_TR` from Step 1b (empty string for a `$TMP` / Local Object generation);
+`THE_DETAIL_SCREEN` is required only when `THE_MAINT_TYPE` is `2`.
 
 Run:
 ```bash
@@ -177,18 +216,27 @@ Proceed to Step 5 to evaluate the result.
 - Show the full script output as a code block.
 - Mention: "You can now maintain table data via SM30 or SE16."
 
+**On abort** (output contains `ABORT_EMPTY_TR`):
+- SAP prompted for a transport during generation but no TR was supplied. Resolve
+  a modifiable TR via `/sap-transport-request` (Step 1b) and re-run, or pass an
+  empty `PACKAGE` to keep the generated objects local (`$TMP`). The VBS did
+  **not** silently register the objects in `$TMP`.
+
 **On failure** (output contains `ERROR:`):
 - Show the full output and diagnose using this table:
 
 | Error message | Cause | Fix |
 |---|---|---|
 | `Not on Generation Environment screen` | SE54 navigation failed | Check table name is valid |
-| `Unexpected popup` | Unhandled SAP dialog | Use Scripting Recorder to identify popup |
-| `Enter an authorization group` | Auth group field left empty | Provide auth group (use `&NC&` for no check) |
-| `Generation failed` | SAP rejected the generation | Check status bar message for details |
-| `Object Directory Entry` stuck | Transport assignment issue | Check package/transport settings |
+| `MAINT_TYPE=2 ... requires a Single/detail screen number` | Two-step maintenance requested without a detail screen | Provide the Single/detail screen number (Step 1) |
+| `Unexpected popup at wnd[1]` | Unhandled SAP dialog (not a Yes/No confirm) | Use Scripting Recorder to identify popup |
+| `Generation failed [E]` / `[A]` | SAP rejected the generation | Check status bar message for details |
 | `Function group XXX does not exist` | FG not created yet | Create function group first (SE37 or SE80) |
 | `Table/View XXX does not exist` | Invalid table name | Check table exists in SE11 |
+
+All popup and screen-identity decisions in both VBS files are made by DDIC
+control id + `sbar.MessageType`; window titles are never used for control flow
+(they were English-only and broke under ZH/JA logons).
 
 ---
 

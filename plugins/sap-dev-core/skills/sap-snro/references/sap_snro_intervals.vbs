@@ -150,7 +150,12 @@ Err.Clear
 On Error GoTo 0
 
 ' ------ 5. Insert each interval -----------------------------------------
-Dim i
+' Per-row apply tracking: SUCCESS requires EVERY row to be applied. A row
+' whose popup stays open after confirm (overlap, invalid range, ...) is
+' recorded and reported at the end with exit 1.
+Dim i, sRowMsg, sFailedRows, iFailCnt
+sFailedRows = ""
+iFailCnt = 0
 For i = 0 To iCnt - 1
     WScript.Echo "INFO: Inserting interval " & arrNR(i) & " " & arrFrom(i) & "-" & arrTo(i) & _
                  " ext=[" & arrExt(i) & "]"
@@ -179,10 +184,12 @@ For i = 0 To iCnt - 1
     End If
     If Err.Number <> 0 Then
         Err.Clear
-        ' Fallback: insert directly into the interval table on the main screen
-        ' (some SNUM releases inline-edit instead of a popup). Skip -- recommend
-        ' running /sap-gui-object-details to discover ids.
-        WScript.Echo "WARNING: Insert popup field ids not found -- release may differ. Try /sap-gui-object-details."
+        ' Pre-fix (2026-07-02): this row was skipped with a WARNING and the
+        ' tail still echoed "SUCCESS: Intervals saved" -- a false success with
+        ' NRIV untouched. The popup ids are release-specific; when absent,
+        ' every row fails identically, so abort loudly instead of skipping.
+        WScript.Echo "ERROR: Insert popup field ids not found -- release layout differs. Re-record per SKILL.md (use /sap-gui-object-details / /sap-gui-record)."
+        WScript.Quit 1
     End If
     On Error GoTo 0
 
@@ -202,6 +209,23 @@ For i = 0 To iCnt - 1
         oSession.findById("wnd[1]").sendVKey VKEY_ENTER
         WScript.Sleep 600
     End If
+    On Error GoTo 0
+
+    ' Row verdict: if the interval popup is STILL open after the confirm
+    ' Enter(s), SAP rejected the row (overlap, invalid range, ...). Record
+    ' the failure and cancel the popup so the remaining rows can proceed.
+    On Error Resume Next
+    If InStr(oSession.ActiveWindow.Id, "wnd[1]") > 0 Then
+        sRowMsg = ""
+        sRowMsg = oSession.findById("wnd[1]/sbar").Text
+        If sRowMsg = "" Then sRowMsg = oSession.findById("wnd[0]/sbar").Text
+        WScript.Echo "ERROR: Interval row " & arrNR(i) & " (" & arrFrom(i) & "-" & arrTo(i) & ") was not accepted: " & sRowMsg
+        sFailedRows = sFailedRows & arrNR(i) & " "
+        iFailCnt = iFailCnt + 1
+        oSession.findById("wnd[1]").sendVKey 12   ' F12 -- cancel the stuck popup
+        WScript.Sleep 600
+    End If
+    Err.Clear
     On Error GoTo 0
 Next
 
@@ -235,6 +259,13 @@ WScript.Echo "INFO: Status [" & sStatusType & "]: " & sStatus
 ' document numbers (Audit P5).
 If LCase(sStatusType) = "e" Or LCase(sStatusType) = "a" Then
     WScript.Echo "ERROR: Save failed - " & sStatus
+    WScript.Quit 1
+End If
+
+' All-rows-applied gate: a partial apply must never end SUCCESS (pre-fix a
+' skipped row produced only a WARNING while the tail echoed SUCCESS).
+If iFailCnt > 0 Then
+    WScript.Echo "ERROR: " & iFailCnt & " of " & iCnt & " interval row(s) were NOT applied: " & Trim(sFailedRows)
     WScript.Quit 1
 End If
 

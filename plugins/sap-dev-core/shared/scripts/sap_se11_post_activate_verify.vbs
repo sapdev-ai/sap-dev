@@ -18,9 +18,11 @@
 '   ACTIVE   -> continue (Sub returns silently)
 '   INACTIVE -> echo ERROR + WScript.Quit 1 (object stayed in inactive workspace)
 '   MISSING  -> echo ERROR + WScript.Quit 1 (silent half-deploy; TADIR may persist)
-'   ERROR    -> echo WARNING + continue (verify unavailable - RFC creds missing,
-'               endpoint unreachable, or NCo not installed; SAP GUI status bar
-'               still applies as primary signal)
+'   ERROR    -> echo "WARNING: POST_ACTIVATE_VERIFY_UNAVAILABLE - <reason>"
+'               and continue (verify unavailable - RFC creds missing, endpoint
+'               unreachable, or NCo not installed; SAP GUI status bar still
+'               applies as primary signal). The distinctive marker line lets
+'               the calling skill report SUCCESS_UNVERIFIED instead of SUCCESS.
 '   SKIP     -> verify helper path not configured (token unsubstituted); the
 '               caller''s VBS isn''t in a context where the verify is wired
 '               (e.g. first-pass tests). Continue silently.
@@ -119,7 +121,14 @@ Sub PostActivateVerifyOrFail(sPs1Path, sObjType, sObjName)
         WScript.Quit 1
     Else
         ' Treat as soft warning - verify could not run for an operational reason
-        ' (no RFC creds, NCo missing, endpoint unreachable). Do not block.
-        WScript.Echo "WARNING: Post-activate verify could not run as a hard gate; relying on GUI status bar."
+        ' (no RFC creds, NCo missing, endpoint unreachable). Do not block, but
+        ' emit the distinctive marker line so the calling skill downgrades its
+        ' report to SUCCESS_UNVERIFIED (never plain SUCCESS). Some helpers
+        ' (se37) already emit the marker themselves - do not double-prefix.
+        If InStr(sResult, "POST_ACTIVATE_VERIFY_UNAVAILABLE") > 0 Then
+            WScript.Echo sResult
+        Else
+            WScript.Echo "WARNING: POST_ACTIVATE_VERIFY_UNAVAILABLE - " & sResult
+        End If
     End If
 End Sub

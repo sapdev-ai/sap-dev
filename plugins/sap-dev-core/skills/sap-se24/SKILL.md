@@ -244,8 +244,9 @@ cscript //NoLogo {RUN_TEMP}\sap_se24_check_run.vbs
 ```
 
 **Parse the last line of output:**
-- `EXIST` → class exists → proceed to Step 5a (Update).
-- `NOT_EXIST` → class does not exist → proceed to Step 5b (Create), then Step 5a (Update) for source upload.
+- `EXIST` → class exists (form-based **or** source-code-based editor opened) → proceed to Step 5a (Update).
+- `NOT_EXIST` → class does not exist (SE24 stayed on the initial screen) → proceed to Step 5b (Create), then Step 5a (Update) for source upload.
+- `UNKNOWN` → could not determine the class state (neither editor nor the initial screen resolved — e.g. an unexpected popup or a drifted screen). Do **not** assume create-vs-update; show the full output and stop.
 - `ERROR:` → show full output and stop.
 
 ---
@@ -888,12 +889,17 @@ create/update reporting applies.
   non-syntax reason (a referenced object inactive, a lock, a missing dependency)
   whose status the editor no longer shows by the time the final check reads the
   status bar. So confirm the **active** version exists over RFC before declaring
-  success — read `SEOCLASSDF` filtered to the active version (NCo 3.1 is 32-bit
-  only; `Connect-SapRfc` falls back to the pinned `/sap-login` profile, so a
-  logged-in session needs only the table read):
+  success. **A `SEOCLASSDF VERSION='1'` read alone is NOT enough on the UPDATE
+  path**: a failed update leaves the OLD active row in place, so the query
+  false-passes while the new version sits inactive. The check therefore ALSO
+  reads `DWINACTIV` for the class name — any row means an inactive version is
+  still pending → FAIL (same DWINACTIV gate as `/sap-activate-object` /
+  `/sap-se38`). (NCo 3.1 is 32-bit only; `Connect-SapRfc` falls back to the
+  pinned `/sap-login` profile, so a logged-in session needs only the table
+  reads):
 
   ```bash
-  C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_rfc_lib.ps1'; $d = Connect-SapRfc; if (-not $d) { Write-Output 'VERIFY: RFC_UNAVAILABLE'; exit 0 }; $f = $d.Repository.CreateFunction('RFC_READ_TABLE'); $f.SetValue('QUERY_TABLE','SEOCLASSDF'); $f.SetValue('DELIMITER','|'); $fields=$f.GetTable('FIELDS'); foreach ($fn in @('CLSNAME','VERSION')) { $fields.Append(); $fields.SetValue('FIELDNAME',$fn) }; $o=$f.GetTable('OPTIONS'); $o.Append(); $o.SetValue('TEXT',\"CLSNAME = 'THE_CLASS_NAME' AND VERSION = '1'\"); $f.Invoke($d); $rows=$f.GetTable('DATA'); if ($rows.RowCount -ge 1) { Write-Output 'VERIFY: ACTIVE' } else { Write-Output 'VERIFY: INACTIVE_OR_MISSING' }"
+  C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_rfc_lib.ps1'; $d = Connect-SapRfc; if (-not $d) { Write-Output 'VERIFY: RFC_UNAVAILABLE'; exit 0 }; $f = $d.Repository.CreateFunction('RFC_READ_TABLE'); $f.SetValue('QUERY_TABLE','SEOCLASSDF'); $f.SetValue('DELIMITER','|'); $fields=$f.GetTable('FIELDS'); foreach ($fn in @('CLSNAME','VERSION')) { $fields.Append(); $fields.SetValue('FIELDNAME',$fn) }; $o=$f.GetTable('OPTIONS'); $o.Append(); $o.SetValue('TEXT',\"CLSNAME = 'THE_CLASS_NAME' AND VERSION = '1'\"); $f.Invoke($d); $rows=$f.GetTable('DATA'); $f2 = $d.Repository.CreateFunction('RFC_READ_TABLE'); $f2.SetValue('QUERY_TABLE','DWINACTIV'); $f2.SetValue('DELIMITER','|'); $fl2=$f2.GetTable('FIELDS'); $fl2.Append(); $fl2.SetValue('FIELDNAME','OBJ_NAME'); $o2=$f2.GetTable('OPTIONS'); $o2.Append(); $o2.SetValue('TEXT',\"OBJ_NAME = 'THE_CLASS_NAME'\"); $f2.Invoke($d); $inact=$f2.GetTable('DATA').RowCount; if ($inact -gt 0) { Write-Output 'VERIFY: INACTIVE_PENDING' } elseif ($rows.RowCount -ge 1) { Write-Output 'VERIFY: ACTIVE' } else { Write-Output 'VERIFY: INACTIVE_OR_MISSING' }"
   ```
 
   Replace `THE_CLASS_NAME` with the UPPERCASE class name. (For exception classes,
@@ -902,9 +908,10 @@ create/update reporting applies.
 
   | Output | Meaning |
   |---|---|
-  | `VERIFY: ACTIVE` | An active (`VERSION = 1`) `SEOCLASSDF` row exists — the class is genuinely active. Report success. |
+  | `VERIFY: ACTIVE` | An active (`VERSION = 1`) `SEOCLASSDF` row exists **and** no `DWINACTIV` row is pending for the class — genuinely active. Report success. |
+  | `VERIFY: INACTIVE_PENDING` | A `DWINACTIV` row exists for the class — an inactive version is still pending, so the update did NOT activate (the `VERSION = '1'` row here is the OLD active version). Treat the run as **FAILED**; re-activate via `/sap-activate-object CLASS <name>` and surface the real activation errors. |
   | `VERIFY: INACTIVE_OR_MISSING` | No active version — the class did NOT activate despite the GUI `SUCCESS:` echo. Treat the run as **FAILED**; re-activate via `/sap-activate-object CLASS <name>` and surface the real activation errors. |
-  | `VERIFY: RFC_UNAVAILABLE` | No RFC profile (GUI-only environment). Tell the user the active version could not be RFC-confirmed rather than implying it was. |
+  | `VERIFY: RFC_UNAVAILABLE` | No RFC profile (GUI-only environment). Report the deploy as **SUCCESS_UNVERIFIED** — tell the user the active version could not be RFC-confirmed rather than implying it was — and suggest `/sap-dev-status`. |
 
 - Tell the user the class was deployed and activated.
 - Show the full script output as a code block.

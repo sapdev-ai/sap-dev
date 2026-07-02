@@ -19,10 +19,16 @@ SAP Sales Order maintenance skill using SAP GUI Scripting (VA01/VA02/VA03).
 
 | File | Transaction | Tokens |
 |---|---|---|
-| `sap_va01_login.vbs` | — | `%%SAP_LOGON_DESCRIPTION%%`, `%%SAP_CLIENT%%`, `%%SAP_USER%%`, `%%SAP_PASSWORD%%`, `%%SAP_LANGUAGE%%` |
 | `sap_va01_check.vbs` | VA03 | `%%ORDER_NUMBER%%` |
-| `sap_va01_create.vbs` | VA01 | `%%ORDER_TYPE%%`, `%%SALES_ORG%%`, `%%DIST_CHANNEL%%`, `%%DIVISION%%`, `%%DEFINITION_FILE%%` |
-| `sap_va01_update.vbs` | VA02 | `%%ORDER_NUMBER%%`, `%%DEFINITION_FILE%%` |
+| `sap_va01_create.vbs` | VA01 | `%%ORDER_TYPE%%`, `%%SALES_ORG%%`, `%%DIST_CHANNEL%%`, `%%DIVISION%%`, `%%DEFINITION_FILE%%`, `%%ALLOW_INCOMPLETE%%` |
+| `sap_va01_update.vbs` | VA02 | `%%ORDER_NUMBER%%`, `%%DEFINITION_FILE%%`, `%%ALLOW_INCOMPLETE%%` |
+
+On a successful save the create/update scripts echo a machine-readable
+`ORDER: <number>` line before the final `SUCCESS:` line. By default an order
+that SAP reports as incomplete at save time is NOT saved (the scripts back out
+and fail with `ERROR: INCOMPLETE_DOCUMENT`); substitute `%%ALLOW_INCOMPLETE%%`
+with `X` (skill flag `--allow-incomplete`) to save anyway — the scripts then
+also echo `WARNING: INCOMPLETE_DOCUMENT_SAVED`.
 
 ## Definition File Format
 

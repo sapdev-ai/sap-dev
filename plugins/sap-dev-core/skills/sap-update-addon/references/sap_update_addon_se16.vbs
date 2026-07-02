@@ -7,7 +7,8 @@
 ' Tokens:
 '   %%TABLE_NAME%%     Table name (Y/Z prefix)
 '   %%DATA_FILE%%      Absolute path to TAB-delimited data file
-'   %%OPERATION%%      INSERT / UPDATE / DELETE
+'   %%OPERATION%%      INSERT / UPDATE (DELETE is a stub on all releases and
+'                      is refused upfront -- see the operation gate below)
 ' =============================================================================
 Option Explicit
 
@@ -71,10 +72,28 @@ Dim aHeader
 aHeader = Split(aLines(1), vbTab)
 WScript.Echo "INFO: Header fields: " & Join(aHeader, ", ")
 
+' --- Operation gate ----------------------------------------------------------
+' DELETE via SE16 is a stub on ALL tested releases (the SE16 result is a
+' non-grid classic SAPMSSY0/120 list with no Delete button on both ER1 and
+' S4D -- see SKILL.md Step 4b). Refuse upfront before any row is touched;
+' also refuse unknown operations so the run can never fall through to a
+' do-nothing "SUCCESS".
+Dim sOp
+sOp = UCase(Trim(OPERATION))
+If sOp = "DELETE" Then
+    WScript.Echo "ERROR: SE16_DELETE_UNSUPPORTED -- DELETE via SE16 is a stub (no Delete on the classic list screen)."
+    WScript.Echo "       Use SM30 (requires a maintenance view) or delete the rows manually."
+    WScript.Quit 1
+ElseIf sOp <> "INSERT" And sOp <> "UPDATE" Then
+    WScript.Echo "ERROR: Unsupported operation '" & OPERATION & "' -- expected INSERT or UPDATE."
+    WScript.Quit 1
+End If
+
 ' --- 3. Navigate to SE16 ---
-Dim i, j, aVals, lv_success, lv_error
+Dim i, j, aVals, lv_success, lv_error, sFailedRows
 lv_success = 0
 lv_error = 0
+sFailedRows = ""
 
 For i = 2 To iLineCount
     aVals = Split(aLines(i), vbTab)
@@ -161,6 +180,8 @@ For i = 2 To iLineCount
         ' the correct ID patterns and replace the two findById calls below.
         ' Tracker: language_independence_rules.md migration-backlog Finding #24.
         Dim iFoundFields : iFoundFields = 0
+        Dim iMissingFields : iMissingFields = 0
+        Dim sMissingList : sMissingList = ""
         For j = 0 To UBound(aHeader)
             Dim sFldName, sFldVal
             sFldName = UCase(Trim(aHeader(j)))
@@ -187,6 +208,9 @@ For i = 2 To iLineCount
                         iFoundFields = iFoundFields + 1
                     Else
                         Err.Clear
+                        iMissingFields = iMissingFields + 1
+                        If sMissingList <> "" Then sMissingList = sMissingList & ", "
+                        sMissingList = sMissingList & sFldName
                         WScript.Echo "WARNING: Could not find field " & sFldName & " on SE16 entry form."
                     End If
                 End If
@@ -209,41 +233,61 @@ For i = 2 To iLineCount
             WScript.Quit 2
         End If
 
-        ' Save the entry (Ctrl+S)
-        oSession.findById("wnd[0]").sendVKey 11
-        WScript.Sleep 500
-
-        ' Check status bar
-        On Error Resume Next
-        Dim sMsgType, sMsgText
-        sMsgType = oSession.findById("wnd[0]/sbar").MessageType
-        sMsgText = oSession.findById("wnd[0]/sbar").Text
-        Err.Clear
-        On Error GoTo 0
-
-        If sMsgType = "E" Or sMsgType = "A" Then
+        If iMissingFields > 0 Then
+            ' Partial-match row: some field IDs did not resolve on this entry
+            ' form. Saving would commit a row with silently-empty fields --
+            ' do NOT save; count the row as FAILED and back out of the entry
+            ' form (F12 + discard confirm) so the next row starts clean.
             lv_error = lv_error + 1
-            WScript.Echo "ERROR: Row " & (i - 1) & ": " & sMsgText
+            If sFailedRows <> "" Then sFailedRows = sFailedRows & ", "
+            sFailedRows = sFailedRows & (i - 1)
+            WScript.Echo "ERROR: Row " & (i - 1) & ": NOT saved -- " & iMissingFields & " field(s) not found on the entry form (" & sMissingList & ")."
+            On Error Resume Next
+            oSession.findById("wnd[0]").sendVKey 12   ' F12 = Cancel entry form
+            WScript.Sleep 300
+            Dim oDiscard
+            Set oDiscard = Nothing
+            Set oDiscard = oSession.findById("wnd[1]/usr/btnSPOP-OPTION1")
+            If Err.Number = 0 And Not (oDiscard Is Nothing) Then oDiscard.press
+            Err.Clear
+            On Error GoTo 0
         Else
-            lv_success = lv_success + 1
-            WScript.Echo "INFO: Row " & (i - 1) & ": OK (" & sMsgText & ")"
-        End If
+            ' Save the entry (Ctrl+S)
+            oSession.findById("wnd[0]").sendVKey 11
+            WScript.Sleep 500
 
-    ElseIf UCase(OPERATION) = "DELETE" Then
-        ' Execute display with selection criteria to find the record
-        oSession.findById("wnd[0]").sendVKey 8  ' F8 = Execute
-        WScript.Sleep 500
-        ' TODO: select matching row and delete
-        WScript.Echo "WARNING: DELETE via SE16 requires manual row selection."
-        lv_error = lv_error + 1
+            ' Check status bar
+            On Error Resume Next
+            Dim sMsgType, sMsgText
+            sMsgType = oSession.findById("wnd[0]/sbar").MessageType
+            sMsgText = oSession.findById("wnd[0]/sbar").Text
+            Err.Clear
+            On Error GoTo 0
+
+            If sMsgType = "E" Or sMsgType = "A" Then
+                lv_error = lv_error + 1
+                If sFailedRows <> "" Then sFailedRows = sFailedRows & ", "
+                sFailedRows = sFailedRows & (i - 1)
+                WScript.Echo "ERROR: Row " & (i - 1) & ": " & sMsgText
+            Else
+                lv_success = lv_success + 1
+                WScript.Echo "INFO: Row " & (i - 1) & ": OK (" & sMsgText & ")"
+            End If
+        End If
     End If
 Next
 
+Dim iTotalRows
+iTotalRows = iLineCount - 1
 WScript.Echo "========================================="
 WScript.Echo "SE16 maintenance completed for " & TABLE_NAME
 WScript.Echo ChrW(&H6210) & ChrW(&H529F) & ": " & lv_success & "  " & ChrW(&H30A8) & ChrW(&H30E9) & ChrW(&H30FC) & ": " & lv_error  ' (success / error labels) -- ChrW() keeps the labels intact regardless of the .vbs file encoding
 WScript.Echo "========================================="
-WScript.Echo "SUCCESS: SE16 maintenance completed."
+If lv_error > 0 Then
+    WScript.Echo "ERROR: " & lv_error & " of " & iTotalRows & " rows failed (rows: " & sFailedRows & ")"
+    WScript.Quit 1
+End If
+WScript.Echo "SUCCESS: SE16 maintenance completed. " & lv_success & " of " & iTotalRows & " rows saved."
 
 ' -----------------------------------------------------------------------------
 ' EntryFieldPresent -- True if the SE16 Create-Entries form currently exposes

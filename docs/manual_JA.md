@@ -1034,6 +1034,7 @@ p50/p95 の所要時間、上位エラークラス）。
 | `sap-doctor` | 失敗ごとに FIX を出す読み取り専用の環境プリフライト |
 | `sap-transport-request` / `sap-se01` | TR 解決ポリシー / TR の作成・リリース・削除 |
 | `sap-se38` / `sap-se37` / `sap-se24` / `sap-se11` / `sap-se91` | プログラム / FM / クラス / DDIC / メッセージクラスのデプロイ |
+| `sap-se21` / `sap-function-group` | 開発パッケージ / 関数グループの作成・チェック・削除 |
 | `sap-se41` / `sap-se51` / `sap-se54` | PF ステータス / 画面 / テーブルメンテナンスダイアログ |
 | `sap-se16n` | 任意のテーブルをクエリ → タブ区切りダウンロード |
 | `sap-se19` / `sap-cmod` | BAdI 実装 / 拡張プロジェクト |
@@ -1043,6 +1044,7 @@ p50/p95 の所要時間、上位エラークラス）。
 | `sap-transport-readiness` / `sap-impact-analysis` / `sap-enhancement-advisor` / `sap-evidence-pack` | デリバリーアシュアランス |
 | `sap-stms` | リリース済み TR をランドスケープを通してインポート（PROD はゲート） |
 | `sap-diagnose` + `sap-st22`/`sap-sm13`/`sap-sm12`/`sap-slg1`/`sap-sm37` | インシデントトリアージ + リーダー |
+| `sap-sp02` | スプール出力リクエストの表示 / エクスポート |
 | `sap-fix-incident` / `sap-check-fix` | テストファースト修正ループ / check-and-fix ルーター |
 | `sap-trace` | 記録されたパフォーマンストレースを分析 |
 | `sap-explain-object` / `sap-compare` / `sap-document-object` | 理解 / クロスシステム差分 / オブジェクトからの仕様 |

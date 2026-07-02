@@ -7,7 +7,9 @@
 ' The recording (C:\Temp\Record_SE24_03_ActiveteCL.vbs) only shows entering
 ' the class name + Enter; the actual activate keystroke is implied. We follow
 ' the same shape as SE37/SE38: enter name, send Ctrl+F3 to activate, handle
-' the inactive-objects worklist popup (Select All + Continue), read sbar.
+' the inactive-objects worklist popup (Continue ONLY -- the triggering object
+' is pre-selected; Select All is never pressed because it would co-activate
+' other developers' unrelated inactive objects on a shared DEV), read sbar.
 '
 ' Output: STATUS_TYPE / STATUS_TEXT / DONE | ERROR
 ' =============================================================================
@@ -113,19 +115,25 @@ Sub HandleWorklistPopup
             Set oWnd = oSess.findById(sId)
             If Err.Number = 0 And Not (oWnd Is Nothing) Then
                 Err.Clear
+                ' Inactive-objects worklist popup. Discriminator: it carries
+                ' a Select All button at tbar[0]/btn[9]. DETECT via btn[9]
+                ' but deliberately do NOT press it -- the triggering object
+                ' (and its dependent includes) is already pre-selected, so
+                ' Continue (btn[0]) activates exactly it. Select All would
+                ' co-activate every UNRELATED inactive object on a shared DEV
+                ' (EC2/DEV102: 500+). Never fall back to Select All if
+                ' Continue doesn't clear it -- the post-activate DWINACTIV
+                ' verify reports a still-inactive object as a real failure.
                 Set oBtn = Nothing
                 Set oBtn = oSess.findById(sId & "/tbar[0]/btn[9]")
                 If Err.Number = 0 And Not (oBtn Is Nothing) Then
-                    oBtn.press
-                    WScript.Sleep 500
-                    WScript.Echo "INFO: " & sId & " - Select All pressed."
                     Err.Clear
                     Set oBtn = Nothing
                     Set oBtn = oSess.findById(sId & "/tbar[0]/btn[0]")
                     If Err.Number = 0 And Not (oBtn Is Nothing) Then
                         oBtn.press
                         WScript.Sleep 1200
-                        WScript.Echo "INFO: " & sId & " - Continue pressed."
+                        WScript.Echo "INFO: " & sId & " - inactive-objects worklist; Continue pressed (pre-selected object only, no Select All)."
                     End If
                     bAnyDismissed = True
                 Else

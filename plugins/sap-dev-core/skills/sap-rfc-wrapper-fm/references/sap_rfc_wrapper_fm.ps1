@@ -4,14 +4,14 @@
 # Reads parameters from a tab-delimited file, splits long PVALUE payloads
 # into 1333-char chunks (CT_PARAMS row per chunk), invokes the wrapper,
 # then reassembles output chunks per E/C/T parameter and writes one XML
-# per output parameter to %%WORK_TEMP%%\out_<PNAME>.xml
+# per output parameter to %%RUN_TEMP%%\out_<PNAME>.xml
 #
 # Params file (one line per parameter):
 #   <name><TAB>I/E/C/T<TAB><DDIC type><TAB><inline asXML or blank>
 #
 # Tokens: %%SAP_SERVER%% %%SAP_SYSNR%% %%SAP_CLIENT%% %%SAP_USER%%
 #         %%SAP_PASSWORD%% %%SAP_LANGUAGE%% %%TARGET_FM%%
-#         %%PARAMS_FILE%% %%WORK_TEMP%%
+#         %%PARAMS_FILE%% %%RUN_TEMP%%
 # =============================================================================
 
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
@@ -21,7 +21,7 @@ $CHUNK_LEN = 1333
 
 $TARGET_FM     = "%%TARGET_FM%%"
 $PARAMS_FILE   = "%%PARAMS_FILE%%"
-$WORK_TEMP     = "%%WORK_TEMP%%"
+$RUN_TEMP      = "%%RUN_TEMP%%"
 
 if (-not (Test-Path $PARAMS_FILE)) { Write-Host "ERROR: Params file not found: $PARAMS_FILE"; exit 1 }
 
@@ -107,7 +107,7 @@ for ($i = 0; $i -lt $tblOut.RowCount; $i++) {
     $pvalue = $tblOut.GetString("PVALUE")
     if ($ptype -in @("E","C","T")) {
         if ($lastPName -ne "" -and $pname -ne $lastPName) {
-            $outPath = Join-Path $WORK_TEMP "out_$lastPName.xml"
+            $outPath = Join-Path $RUN_TEMP "out_$lastPName.xml"
             [System.IO.File]::WriteAllText($outPath, $accum, [System.Text.UnicodeEncoding]::new($false, $true))
             Write-Host "OUTPUT_FILE: $lastPName -> $outPath"
             $outCount++
@@ -118,7 +118,7 @@ for ($i = 0; $i -lt $tblOut.RowCount; $i++) {
     }
 }
 if ($lastPName -ne "") {
-    $outPath = Join-Path $WORK_TEMP "out_$lastPName.xml"
+    $outPath = Join-Path $RUN_TEMP "out_$lastPName.xml"
     [System.IO.File]::WriteAllText($outPath, $accum, [System.Text.UnicodeEncoding]::new($false, $true))
     Write-Host "OUTPUT_FILE: $lastPName -> $outPath"
     $outCount++

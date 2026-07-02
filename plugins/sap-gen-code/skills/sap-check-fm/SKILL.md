@@ -75,6 +75,11 @@ powershell -Command "if (Test-Path 'THE_FILE_PATH') { 'EXISTS' } else { 'NOT FOU
 
 If the file does not exist, tell the user and stop.
 
+Set **RESULT_FILE** = same directory as the ABAP file, with `.check_fm.tsv`
+extension (e.g. `ztest.abap` → `ztest.abap.check_fm.tsv`). This per-input
+path is what `/sap-fix-fm` reads by default, keeps parallel sessions from
+clobbering each other, and cannot collide with sap-check-abap's `.check.tsv`.
+
 ---
 
 ## Step 1.5 — Validate FM and FG Names
@@ -97,9 +102,10 @@ For each candidate, call:
 powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_check_object_name.ps1" -ObjectType <TYPE> -ObjectName <NAME> -CustomUrl "{custom_url}"
 ```
 
-Exit code `1` → append a finding to `{WORK_TEMP}\checkfm_result.txt` with code
-`OBJECT_NAMING` and the validator's stdout line. Exit `0` is silent. Exit `2`
-(no rule for that type / rules file missing) is logged once and skipped.
+Exit code `1` → append a finding to **RESULT_FILE** (`<abap-file>.check_fm.tsv`,
+set in Step 1) with code `OBJECT_NAMING` and the validator's stdout line. Exit
+`0` is silent. Exit `2` (no rule for that type / rules file missing) is logged
+once and skipped.
 
 ---
 
@@ -138,7 +144,7 @@ they configure sap-dev-core settings.json for future use.
 
 ## Step 2.5 — Detect pre-populated signature caches (optional, fail-soft)
 
-`/sap-gen-abap` (Step 1.5e) and `/sap-docs-check-process` (Step 3.5) both
+`/sap-gen-abap` (Step 1.5e) and `/sap-docs-check-process` (Step 4.5) both
 populate `_struct_signatures.txt` in the work folder alongside the ABAP
 source. When this file is present, the operator already has live DDIF
 field lists for every BAPI structure type the FM signatures reference —
@@ -246,7 +252,7 @@ $content = $content -replace '%%SAP_USER%%',           'THE_USER'
 $content = $content -replace '%%SAP_PASSWORD%%',       'THE_PASSWORD'
 $content = $content -replace '%%SAP_LANGUAGE%%',       'THE_LANGUAGE'
 $content = $content -replace '%%ABAP_FILE%%',          'THE_ABAP_FILE'
-$content = $content -replace '%%RESULT_FILE%%',        '{WORK_TEMP}\checkfm_result.txt'
+$content = $content -replace '%%RESULT_FILE%%',        'THE_RESULT_FILE'
 $content = $content -replace '%%FM_HELPER_PS1%%',      '{RUN_TEMP}\sap_checkfm_fm_helper.ps1'
 $content = $content -replace '%%FM_NAMES_FILE%%',      '{RUN_TEMP}\sap_checkfm_fm_names.txt'
 $content = $content -replace '%%FM_RESULT_FILE%%',     '{RUN_TEMP}\sap_checkfm_fm_result.tsv'
@@ -270,7 +276,7 @@ Run via standard cscript (the helpers internally invoke 32-bit PowerShell):
 cscript.exe //NoLogo {RUN_TEMP}\sap_checkfm_run.vbs
 ```
 
-Show the full script output as it runs. Then read and display `{WORK_TEMP}\checkfm_result.txt`.
+Show the full script output as it runs. Then read and display **RESULT_FILE** (`<abap-file>.check_fm.tsv`).
 
 Delete the filled scripts (they contain plaintext credentials):
 ```bash
@@ -283,7 +289,7 @@ cmd /c del {RUN_TEMP}\sap_checkfm_ddic_helper.ps1
 
 ## Step 4 — Interpret and Report Results
 
-Read `{WORK_TEMP}\checkfm_result.txt`. The result file has a status line followed by one tab-delimited entry per finding.
+Read **RESULT_FILE** (`<abap-file>.check_fm.tsv`). The result file has a status line followed by one tab-delimited entry per finding.
 
 ### Summary table — one row per CALL FUNCTION found:
 
@@ -331,9 +337,9 @@ Read `{WORK_TEMP}\checkfm_result.txt`. The result file has a status line followe
 cmd /c del {RUN_TEMP}\sap_checkfm_run.ps1
 ```
 
-Keep `{WORK_TEMP}\checkfm_result.txt` so the user can review it. To remove:
+Keep **RESULT_FILE** (`<abap-file>.check_fm.tsv`) so the user can review it or pass it to `/sap-fix-fm`. To remove:
 ```bash
-cmd /c del {WORK_TEMP}\checkfm_result.txt
+cmd /c del "THE_RESULT_FILE"
 ```
 
 ---

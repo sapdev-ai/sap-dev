@@ -328,10 +328,9 @@ On Error GoTo 0
 '         and continue -- this is the normal local-run path, not an error.
 '   5b.1  Unhandled: any OTHER modal still standing (e.g. a Local-only SCI
 '         Object Set that cannot bind to a Run Series). If we don't abort, the
-'         subsequent grid lookup runs against a frozen / wrong screen, the
-'         column match silently falls through to the last-row heuristic, and
-'         EXECUTE_SERIE selects the wrong row (or fails silently). Dump the
-'         popup details and abort with a clear diagnostic.
+'         subsequent grid lookup runs against a frozen / wrong screen and the
+'         column match dies with RUN_SERIES_NOT_FOUND (or fails silently).
+'         Dump the popup details and abort with a clear diagnostic.
 On Error Resume Next
 Dim sPopupId, sPopupTitle, sPopupSbar
 sPopupId    = ""
@@ -427,10 +426,10 @@ On Error GoTo 0
 ' raises -2147024809 on the tested kernel, but that generic E_FAIL behaviour is
 ' not guaranteed across releases/locales -- a build that returns "" instead
 ' would never error out, so the real id must lead). The remaining ids are kept
-' as best-effort fallbacks for other releases. The multi-candidate approach
-' keeps the row match from silently falling through to the last-row heuristic
-' (which can pick a stale series when SAP did not append the new one at the
-' bottom).
+' as best-effort fallbacks for other releases. When no candidate matches, the
+' script fails LOUD with RUN_SERIES_NOT_FOUND instead of executing a heuristic
+' row (the pre-2026-07-02 last-row fallback could fire EXECUTE_SERIE on
+' another team's series).
 Dim seriesCols : seriesCols = Array("NAME", "APP_CONFIG_NAME", "RUN_SERIES_NAME", "RUN_SERIES", "SERIE_NAME")
 Dim r, sRowName, foundRow, sMatchedCol
 foundRow = -1
@@ -464,18 +463,19 @@ Next
 If foundRow >= 0 Then
     WScript.Echo "INFO: Matched run series '" & UCase(RUN_SERIES_NAME) & "' on row " & foundRow & " via column " & sMatchedCol & "."
 Else
-    ' Fallback: last-row heuristic (the recording's literal row 4 generalised).
-    ' Only safe when SAP appends new series at the bottom of the grid, which
-    ' is not guaranteed across releases. Emit a clear warning so an operator
-    ' watching the log can spot a wrong-row execution.
+    ' Fail LOUD -- never execute a heuristic row. The pre-2026-07-02 fallback
+    ' selected the LAST grid row when no column id matched, which fired
+    ' EXECUTE_SERIE on an arbitrary (someone else's) run series on this
+    ' system-wide grid.
     If totalRows > 0 Then
-        foundRow = totalRows - 1
-        WScript.Echo "WARN: Could not match by any known column id (" & Join(seriesCols, ", ") & "); falling back to last row " & foundRow & "."
+        WScript.Echo "ERROR: RUN_SERIES_NOT_FOUND - series " & UCase(RUN_SERIES_NAME) & " not matched by any known column id (" & Join(seriesCols, ", ") & ") across " & totalRows & " grid rows."
+        WScript.Echo "       Refusing to execute a fallback row (that could EXECUTE_SERIE another team's series)."
+        WScript.Echo "       Re-record the node-12 grid via /sap-gui-record and prepend the real name-column id to seriesCols in sap_atc_create_run_series.vbs."
     Else
-        WScript.Echo "ERROR: Run Series grid is empty or unreadable - cannot select for EXECUTE_SERIE."
-        ReleaseSession oSess, wasLocked
-        WScript.Quit 1
+        WScript.Echo "ERROR: RUN_SERIES_NOT_FOUND - Run Series grid is empty or unreadable; cannot select for EXECUTE_SERIE."
     End If
+    ReleaseSession oSess, wasLocked
+    WScript.Quit 1
 End If
 
 WScript.Echo "INFO: Selecting row " & foundRow & " and pressing EXECUTE_SERIE..."

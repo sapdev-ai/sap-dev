@@ -65,10 +65,10 @@ Per the CLAUDE.md "Two-bucket temp model" write this skill's generated scratch (
 
 ## Step 0.5 — Start Logging
 
-Start a structured log run. State file: `{WORK_TEMP}\sap_rfc_wrapper_fm_run.json`. Best-effort.
+Start a structured log run. State file: `{RUN_TEMP}\sap_rfc_wrapper_fm_run.json`. Best-effort.
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{WORK_TEMP}\sap_rfc_wrapper_fm_run.json" -Skill sap-rfc-wrapper-fm -ParamsJson "{\"function_module\":\"<FM>\"}"
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{RUN_TEMP}\sap_rfc_wrapper_fm_run.json" -Skill sap-rfc-wrapper-fm -ParamsJson "{\"function_module\":\"<FM>\"}"
 ```
 
 ---
@@ -186,7 +186,7 @@ For each parameter, build the asXML string. All XML must be **on a single line**
 
 ### Write params file
 
-Write `{WORK_TEMP}\{FM_NAME}_params.txt` as UTF-16 LE using PowerShell:
+Write `{RUN_TEMP}\{FM_NAME}_params.txt` as UTF-16 LE using PowerShell:
 
 ```powershell
 $lines = @()
@@ -195,7 +195,7 @@ $lines += "PARAM1`tI`tPROGNAME`t<?xml ...SCALAR_XML_HERE...>"
 $lines += "SOURCE_LINES`tT`tABAPTXT255_TAB`t<?xml ...TABLE_XML_HERE...>"
 $lines += "RESULT`tE`tBAPIRETURN`t"
 $content = $lines -join "`r`n"
-[System.IO.File]::WriteAllText('{WORK_TEMP}\{FM_NAME}_params.txt', $content, [System.Text.UnicodeEncoding]::new($false, $true))
+[System.IO.File]::WriteAllText('{RUN_TEMP}\{FM_NAME}_params.txt', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 Write-Host 'Done'
 ```
 
@@ -218,8 +218,8 @@ $ps = $ps -replace '%%SAP_PASSWORD%%', ''
 $ps = $ps -replace '%%SAP_LANGUAGE%%', ''
 $ps = $ps -replace '%%RFC_LIB_PS1%%',  '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_rfc_lib.ps1'
 $ps = $ps -replace '%%TARGET_FM%%',    'THE_FM_NAME'
-$ps = $ps -replace '%%PARAMS_FILE%%',  '{WORK_TEMP}\{FM_NAME}_params.txt'
-$ps = $ps -replace '%%WORK_TEMP%%',    '{WORK_TEMP}'
+$ps = $ps -replace '%%PARAMS_FILE%%',  '{RUN_TEMP}\{FM_NAME}_params.txt'
+$ps = $ps -replace '%%RUN_TEMP%%',     '{RUN_TEMP}'
 [System.IO.File]::WriteAllText('{RUN_TEMP}\sap_rfc_wrapper_fm_run.ps1', $ps, [System.Text.Encoding]::UTF8)
 Write-Host 'Done'
 ```
@@ -250,7 +250,7 @@ C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypas
 
 For each output file reported in Step 5, read the XML and present the results to the user.
 
-Read `{WORK_TEMP}\out_<PNAME>.xml` for each reported output parameter.
+Read `{RUN_TEMP}\out_<PNAME>.xml` for each reported output parameter.
 
 Parse the asXML to extract values:
 - Scalar: value inside `<DATA>...</DATA>`
@@ -273,10 +273,10 @@ For table parameters with many rows, show the first 20 rows and note the total c
 ## Step 7 — Clean Up
 
 ```bash
-cmd /c del {RUN_TEMP}\sap_rfc_read_fm_params_run.ps1 & del {RUN_TEMP}\sap_rfc_wrapper_fm_run.ps1 & del {WORK_TEMP}\{FM_NAME}_params.txt
+cmd /c del {RUN_TEMP}\sap_rfc_read_fm_params_run.ps1 & del {RUN_TEMP}\sap_rfc_wrapper_fm_run.ps1 & del {RUN_TEMP}\{FM_NAME}_params.txt
 ```
 
-Also delete `{WORK_TEMP}\out_*.xml` if the user confirms they no longer need the output files.
+Also delete `{RUN_TEMP}\out_*.xml` if the user confirms they no longer need the output files.
 
 ---
 
@@ -287,13 +287,13 @@ Log the run-end record. Best-effort.
 On success:
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_rfc_wrapper_fm_run.json" -Status SUCCESS -ExitCode 0
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_rfc_wrapper_fm_run.json" -Status SUCCESS -ExitCode 0
 ```
 
 On failure:
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_rfc_wrapper_fm_run.json" -Status FAILED -ExitCode 1 -ErrorClass <CLASS> -ErrorMsg "<short>"
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_rfc_wrapper_fm_run.json" -Status FAILED -ExitCode 1 -ErrorClass <CLASS> -ErrorMsg "<short>"
 ```
 
 Suggested `<CLASS>`: `RFC_WRAPPER_FAILED`, `RFC_LOGON_FAILED`.

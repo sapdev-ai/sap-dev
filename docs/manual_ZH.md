@@ -982,6 +982,7 @@ top 错误类别）。
 | `sap-doctor` | 只读环境预检，每个失败配一条 FIX |
 | `sap-transport-request` / `sap-se01` | TR 解析策略 / TR 的创建-释放-删除 |
 | `sap-se38` / `sap-se37` / `sap-se24` / `sap-se11` / `sap-se91` | 部署 程序 / FM / 类 / DDIC / 消息类 |
+| `sap-se21` / `sap-function-group` | 创建 / 检查 / 删除开发包 / 函数组 |
 | `sap-se41` / `sap-se51` / `sap-se54` | PF 状态 / 屏幕 / 表维护对话 |
 | `sap-se16n` | 查询任意表 → 制表符分隔下载 |
 | `sap-se19` / `sap-cmod` | BAdI 实现 / 增强项目 |
@@ -991,6 +992,7 @@ top 错误类别）。
 | `sap-transport-readiness` / `sap-impact-analysis` / `sap-enhancement-advisor` / `sap-evidence-pack` | 交付保障 |
 | `sap-stms` | 把一个已释放的 TR 沿系统格局导入（生产受门禁） |
 | `sap-diagnose` + `sap-st22`/`sap-sm13`/`sap-sm12`/`sap-slg1`/`sap-sm37` | 事故分诊 + 读取器 |
+| `sap-sp02` | 显示 / 导出假脱机输出请求 |
 | `sap-fix-incident` / `sap-check-fix` | 测试优先的修复闭环 / 检查并修复的路由器 |
 | `sap-trace` | 分析一段已记录的性能追踪 |
 | `sap-explain-object` / `sap-compare` / `sap-document-object` | 理解 / 跨系统差异 / 从对象生成规格 |

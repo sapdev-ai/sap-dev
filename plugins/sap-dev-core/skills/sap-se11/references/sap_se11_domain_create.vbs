@@ -439,7 +439,7 @@ End If
 ' ------ 6. Activate (Ctrl+F3) ----------------------------------------------
 ' Guarded activate: on 7.31/ECC6 the post-Check editor state intermittently
 ' reports "the virtual key is not enabled" for a bare sendVKey 27, silently
-' leaving the domain inactive (DD01L AS4LOCAL='L' — the 2026-06-22 EC2 bug;
+' leaving the domain inactive (DD01L AS4LOCAL='L' -- the 2026-06-22 EC2 bug;
 ' DE/structure used the same code and happened to succeed, so it is screen-
 ' state/timing dependent). Prefer the toolbar Activate button (tbar[1]/btn[27],
 ' the same control tabletype/se37 use) and fall back to the raw VKey; retry

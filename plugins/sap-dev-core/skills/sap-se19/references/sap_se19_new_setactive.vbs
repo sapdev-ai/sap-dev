@@ -67,9 +67,15 @@ WScript.Sleep 400
 ' Save
 oSession.findById("wnd[0]").sendVKey VKEY_SAVE
 WScript.Sleep 2000
-' optional TR popup
+' TR popup (transported implementation). Empty TR must ABORT loud rather than
+' blind-accept the popup (which silently falls back to Local Object / errors).
 If CtrlExists("wnd[1]/usr/ctxtKO008-TRKORR") Then
-    If TRKORR <> "" Then oSession.findById("wnd[1]/usr/ctxtKO008-TRKORR").Text = TRKORR
+    If TRKORR = "" Then
+        WScript.Echo "ERROR: ABORT_EMPTY_TR -- SAP prompted for a transport request but TRKORR is empty."
+        WScript.Echo "       Resolve a TR via /sap-transport-request and re-run this operation."
+        WScript.Quit 1
+    End If
+    oSession.findById("wnd[1]/usr/ctxtKO008-TRKORR").Text = TRKORR
     oSession.findById("wnd[1]/tbar[0]/btn[0]").Press
     WScript.Sleep 1500
 End If

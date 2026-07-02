@@ -349,7 +349,7 @@ WScript.Sleep 1500
 ' 7.31/ECC6 raises a SAPLSPO1 "Check table type?" confirm popup on save
 ' (btnSPOP-OPTION1/2/CAN) BEFORE the Object Directory / package dialog. It is
 ' modal over wnd[0], so the package fill below would otherwise target the
-' wrong window and the save silently fails (DD40L 0 rows — the 2026-06-22 EC2
+' wrong window and the save silently fails (DD40L 0 rows -- the 2026-06-22 EC2
 ' bug). Sweep up to 3 leading confirm popups by control id (locale-independent:
 ' btnSPOP-OPTION1 = the affirmative button) until the package/TR dialog
 ' (ctxtKO007-L_DEVCLASS) surfaces or the popups clear.

@@ -53,6 +53,7 @@ The settings note below still applies to the OTHER keys.
 
 Derive:
 - `{WORK_TEMP}`       = `{work_dir}\temp`
+- `{RUN_TEMP}`        = the per-run scratch dir (`Get-SapRunTemp` mints + creates `{work_dir}\temp\run_<id>`) — used for ad-hoc probe/cleanup scratch (e.g. the `scaffold_cleanup.json` verb file) so concurrent scaffolds never collide on a fixed name
 - `{TS}`              = current timestamp `yyyyMMdd-HHmmss`
 - Parse new skill name + scenarios from `$ARGUMENTS` (see Step 1).
 - `{SCAFFOLD_FOLDER}` = `{work_dir}\skill_scaffolds\<new-skill-name>_<TS>`
@@ -60,6 +61,7 @@ Derive:
 ```powershell
 New-Item -Path '{WORK_TEMP}'       -ItemType Directory -Force | Out-Null
 New-Item -Path '{SCAFFOLD_FOLDER}' -ItemType Directory -Force | Out-Null
+$RUN_TEMP = (& { . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Get-SapRunTemp })
 ```
 
 Use `New-Item -Force` rather than `cmd /c … mkdir` — Windows' built-in
@@ -924,8 +926,8 @@ Best-effort return SAP GUI to Easy Access (in case Step 2 left the session
 mid-flow on the last probe's end state):
 
 ```bash
-echo {"verb":"SET_OKCD","value":"/n","note":"scaffolder cleanup"} > "{WORK_TEMP}\scaffold_cleanup.json"
-C:/Windows/SysWOW64/cscript.exe //NoLogo "<SAP_DEV_CORE_SHARED_DIR>\..\skills\sap-gui-probe\references\sap_gui_probe_action.vbs" "{WORK_TEMP}\scaffold_cleanup.json"
+echo {"verb":"SET_OKCD","value":"/n","note":"scaffolder cleanup"} > "{RUN_TEMP}\scaffold_cleanup.json"
+C:/Windows/SysWOW64/cscript.exe //NoLogo "<SAP_DEV_CORE_SHARED_DIR>\..\skills\sap-gui-probe\references\sap_gui_probe_action.vbs" "{RUN_TEMP}\scaffold_cleanup.json"
 ```
 
 Tell the user how to install the generated skill into a plugin:

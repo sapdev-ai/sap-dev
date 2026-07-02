@@ -463,7 +463,7 @@ End If
 ' SAFETY: Before sending Ctrl+A / Del / Ctrl+V we MUST guarantee the SAP GUI
 ' window is in the foreground. If another application has stolen focus
 ' (mouse click, alt-tab, notification toast, etc.) SendKeys will paste the
-' ABAP source into THAT application instead — silently overwriting whatever
+' ABAP source into THAT application instead -- silently overwriting whatever
 ' the user was editing. To prevent this we:
 '   1. Restore the main window if iconified (a minimised window can never
 '      receive keystrokes via SendKeys).
@@ -497,7 +497,7 @@ On Error GoTo 0
 ' Force SAP GUI to OS-level foreground via the dedicated sidecar. WshShell's
 ' AppActivate (used to live here in a 20-retry loop) is unreliable on
 ' Windows 7+ because SetForegroundWindow is suppressed for processes that
-' don't already own the foreground — it returns success while Windows just
+' don't already own the foreground -- it returns success while Windows just
 ' flashes the taskbar button, and SAP stays behind. The sidecar uses the
 ' AttachThreadInput trick to bypass that suppression.
 '
@@ -539,11 +539,11 @@ WScript.Sleep 300
 '     REPORT ZXXX.
 '
 ' On the FIRST deploy of a program (sap-dev-init Step 8 / sap-se38 create
-' flow), `SendKeys "^a"` was observed to NOT select-all reliably — AbapEditor.1
+' flow), `SendKeys "^a"` was observed to NOT select-all reliably -- AbapEditor.1
 ' sometimes rebinds Ctrl+A to a function-code action (continue / scroll /
 ' nothing) depending on cursor position and editor sub-mode. When that
 ' happens `{DEL}` removes only one character and `^v` pastes the new source
-' INSERTED above the leftover template — producing this syntactically
+' INSERTED above the leftover template -- producing this syntactically
 ' invalid file:
 '
 '     " ...new source ends at line 652 with `).`
@@ -555,11 +555,11 @@ WScript.Sleep 300
 ' SAP rejects: "The statement '*&---*' is invalid. Check the spelling."
 '
 ' Three-layer fix (any one of which removes the leftover template):
-'   1. SAP-side `sendVKey 26` (SAP's own Ctrl+A binding) — bypasses Windows
+'   1. SAP-side `sendVKey 26` (SAP's own Ctrl+A binding) -- bypasses Windows
 '      focus / keystroke-routing entirely. Works even when the editor isn't
 '      the OS-foreground window.
 '   2. Windows `^{HOME}` (cursor to top) then `^+{END}` (Ctrl+Shift+End:
-'      select from cursor to end-of-document) — standard Windows edit-control
+'      select from cursor to end-of-document) -- standard Windows edit-control
 '      idiom, more portable than `^a` against rebinding.
 '   3. `^a` as the final fallback for older SAP GUI builds where layers 1+2
 '      may not yet have wired the document-end correctly.
@@ -567,14 +567,14 @@ WScript.Sleep 300
 '
 ' Bug surfaced 2026-05-11 evening on first-time deploy of
 ' ZCMRUPDATE_ADDON_TABLE via /sap-dev-init Step 8 (screenshot showed
-' lines 653-658 still carrying the SAP default `*& Report …` header).
+' lines 653-658 still carrying the SAP default `*& Report ...` header).
 ' Wait sizing: the original timings (80/150/300/1500 ms) were tuned for the
 ' SE38 create case where the editor holds only the 4-line auto-template.
 ' On a retry, or on a path where the editor was pre-loaded with a large
 ' file (any case where AbapEditor.1 already contains hundreds of lines),
 ' the {DEL} operation on a large selection takes much longer than 300 ms.
 ' If ^v fires before the editor finishes deleting, the new source
-' interleaves with the leftover content — producing a syntactically
+' interleaves with the leftover content -- producing a syntactically
 ' invalid file (e.g. lines 653-656 still carrying the leftover SAP
 ' template). Bug re-surfaced 2026-05-11 PM during ZMMRMAT032R01 redeploy
 ' iteration #2 (450-line source). The post-{DEL} wait is the load-bearing
@@ -619,12 +619,12 @@ If InStr(oSession.ActiveWindow.Id, "wnd[1]") > 0 Then
     If Err.Number = 0 And Not (oSaveTR Is Nothing) Then
         If SAP_TRANSPORT <> "" Then
             oSaveTR.Text = SAP_TRANSPORT
-            WScript.Echo "INFO: Save TR popup — entering " & SAP_TRANSPORT & "."
+            WScript.Echo "INFO: Save TR popup -- entering " & SAP_TRANSPORT & "."
         End If
         oSession.findById("wnd[1]").sendVKey VKEY_ENTER
     Else
         Err.Clear
-        WScript.Echo "INFO: Save popup (no TR field) — pressing Enter."
+        WScript.Echo "INFO: Save popup (no TR field) -- pressing Enter."
         oSession.ActiveWindow.sendVKey VKEY_ENTER
     End If
     WScript.Sleep 1000
@@ -659,9 +659,9 @@ bHasErrors = False
 lErrCount  = 0
 
 ' --- Resolve logon language so the shared IsErrorMsgType classifier can
-' match SAP's localized "Error" label in MSGTYPE (e.g. ZH "错误", JA
-' "エラー"). Icon-ID prefix is the locale-independent fallback inside
-' the helper — see shared/scripts/sap_syntax_check_lib.vbs.
+' match SAP's localized "Error" label in MSGTYPE (e.g. ZH "cuowu", JA
+' "eraa"). Icon-ID prefix is the locale-independent fallback inside
+' the helper -- see shared/scripts/sap_syntax_check_lib.vbs.
 Dim sLogonLang
 On Error Resume Next
 sLogonLang = UCase(CStr(oSession.Info.Language))
@@ -692,11 +692,11 @@ If Not (oChkGrid Is Nothing) Then
         ' when zero so the format is stable across runs.
         WScript.Echo "SYNTAX_ERRORS: " & lErrCount
     Else
-        WScript.Echo "INFO: Syntax check passed — no findings."
+        WScript.Echo "INFO: Syntax check passed -- no findings."
         WScript.Echo "SYNTAX_ERRORS: 0"
     End If
 Else
-    ' Grid not found — fall back to status bar check
+    ' Grid not found -- fall back to status bar check
     Err.Clear
     Dim sSyntaxMsg, sSyntaxType
     sSyntaxMsg  = oSession.findById("wnd[0]/sbar").Text
@@ -707,18 +707,18 @@ Else
     ElseIf sSyntaxMsg = "" Then
         ' Defensive abort. An EMPTY editor produces neither a findings
         ' grid (no statements to check, no errors to render) nor a
-        ' status-bar message — exactly this state. Previously this
-        ' branch was a "Result unknown — continuing" pass-through that
+        ' status-bar message -- exactly this state. Previously this
+        ' branch was a "Result unknown -- continuing" pass-through that
         ' let an empty paste reach Activate and produce a silent
         ' false-success ("Program created and activated" against
         ' zero-line source). The downstream ATC gate then ran against
-        ' the empty active version and reported P1=P2=P3=0 — a false
+        ' the empty active version and reported P1=P2=P3=0 -- a false
         ' clean pass that masked the underlying paste failure.
         ' Fail-safe instead: refuse to activate when neither signal is
         ' available; the operator re-runs and the second attempt
         ' usually paints a non-empty editor (or fails loudly).
         WScript.Echo "ERROR: Syntax check produced neither a findings grid nor a status-bar message."
-        WScript.Echo "       This is the documented signature of an EMPTY editor — paste likely failed silently."
+        WScript.Echo "       This is the documented signature of an EMPTY editor -- paste likely failed silently."
         WScript.Echo "       Refusing to activate to prevent a false-success. Recovery:"
         WScript.Echo "         (a) If the program is new: re-run /sap-se38 update <name> <file>."
         WScript.Echo "         (b) If you intended an empty stub: add at least one comment line to the source file."
@@ -780,7 +780,7 @@ On Error GoTo 0
 ' Handle SAPLSPO1 activation worklist screen (appears when multiple inactive objects exist)
 On Error Resume Next
 If oSession.Info.Program = "SAPLSPO1" Then
-    WScript.Echo "INFO: Activation worklist (SAPLSPO1) detected — pressing Continue (btn[0])..."
+    WScript.Echo "INFO: Activation worklist (SAPLSPO1) detected -- pressing Continue (btn[0])..."
     oSession.findById("wnd[0]/tbar[0]/btn[0]").press
     WScript.Sleep 5000
     If InStr(oSession.ActiveWindow.Id, "wnd[1]") > 0 Then
@@ -822,7 +822,7 @@ If Not (oStatFld Is Nothing) Then WScript.Echo "INFO: SE38 editor status after a
 Err.Clear
 On Error GoTo 0
 If bPostErr Then
-    WScript.Echo "ERROR: Program " & UCase(PROGRAM_NAME) & " did NOT activate — errors remain after Activate (see above). Activation FAILED."
+    WScript.Echo "ERROR: Program " & UCase(PROGRAM_NAME) & " did NOT activate -- errors remain after Activate (see above). Activation FAILED."
     WScript.Quit 1
 End If
 
@@ -841,13 +841,13 @@ End If
 PostActivateVerifyOrFail POST_ACTIVATE_VERIFY_PS1, "PROGRAM", PROGRAM_NAME
 
 ' ------ 10. Verify activation from SE38 initial screen ---------------------
-' INCLUDE programs (type "I") are NOT executable — running them via SA38/F8
+' INCLUDE programs (type "I") are NOT executable -- running them via SA38/F8
 ' raises an error and lands on screen 101, which the run-test below would
 ' misread as an activation failure. So for includes we skip the F8 run-test
 ' entirely and rely on the RFC PROGDIR verify above (PostActivateVerifyOrFail)
 ' plus the activation step. Never try to execute an include.
 If UCase(PROGRAM_TYPE) = "I" Then
-    WScript.Echo "INFO: " & UCase(PROGRAM_NAME) & " is an Include (type I) — not executable; skipping the F8 run-test (activation confirmed by the RFC PROGDIR verify / activation step)."
+    WScript.Echo "INFO: " & UCase(PROGRAM_NAME) & " is an Include (type I) -- not executable; skipping the F8 run-test (activation confirmed by the RFC PROGDIR verify / activation step)."
     On Error Resume Next
     oSession.findById("wnd[0]/tbar[0]/okcd").Text = "/nSE38"
     oSession.findById("wnd[0]").sendVKey VKEY_ENTER
@@ -888,15 +888,15 @@ If InStr(LCase(sVerifyMsg), "inactive") > 0 Or InStr(LCase(sVerifyMsg), "nicht a
     WScript.Quit 1
 End If
 
-' Activation verification — the final SUCCESS line at the bottom MUST be
+' Activation verification -- the final SUCCESS line at the bottom MUST be
 ' gated on this flag, NOT on absence of paste errors.
 '
 ' History:
-'   2026-05-11 (a) — false-success bug: program had SYNTAX errors → screen
-'   stayed at 101 → script printed "WARNING: Unexpected screen 101" then
+'   2026-05-11 (a) -- false-success bug: program had SYNTAX errors -> screen
+'   stayed at 101 -> script printed "WARNING: Unexpected screen 101" then
 '   "SUCCESS" anyway. Fix at the time: fail-closed on any unrecognised
 '   screen.
-'   2026-05-11 (b) — false-failure bug surfaced by the MaterialUpload_JA
+'   2026-05-11 (b) -- false-failure bug surfaced by the MaterialUpload_JA
 '   build: program was ACTIVE (PROGDIR.STATE='A' + ATC clean) but F8 from
 '   SA38 returned to SE38 initial (screen 101) instead of the selection
 '   screen, and the fail-closed rule reported "activation_uncertain"
@@ -904,7 +904,7 @@ End If
 '
 ' Resolution: accept screen 101 ONLY when the status bar carries no error
 ' MessageType (E/A). The inactive-text substring check at the block above
-' (lines ~660) still catches genuinely-inactive cases — SAP emits
+' (lines ~660) still catches genuinely-inactive cases -- SAP emits
 ' "Program X is inactive" with MessageType=E for those, so they fail
 ' through both gates.
 Dim bActivationVerified : bActivationVerified = False
@@ -916,9 +916,9 @@ ElseIf sVerifyScreen = "101" And sVerifyType <> "E" And sVerifyType <> "A" Then
     ' F8 ran a no-op program (instant return), the selection screen was
     ' suppressed, or an unexpected popup ate the F8 keystroke. A clean
     ' sbar type (S/I/W/empty) plus a passed syntax check earlier means
-    ' the program activated cleanly — accept as success.
+    ' the program activated cleanly -- accept as success.
     bActivationVerified = True
-    WScript.Echo "INFO: Program is active (SE38 initial screen 101, sbar type='" & sVerifyType & "' — no error)."
+    WScript.Echo "INFO: Program is active (SE38 initial screen 101, sbar type='" & sVerifyType & "' -- no error)."
 Else
     WScript.Echo "ERROR: Unexpected verification screen " & sVerifyScreen & " (program=" & sVerifyProgram & ", sbar type='" & sVerifyType & "'). Program activation could NOT be verified."
 End If
@@ -947,7 +947,7 @@ sFinalType = oSession.findById("wnd[0]/sbar").MessageType
 On Error GoTo 0
 
 If Not bActivationVerified Then
-    WScript.Echo "ERROR: activation_uncertain — Program " & UCase(PROGRAM_NAME) & " was created and the paste pipeline did not error, but post-activate verification did not reach an active SE38 screen (1000/120/200). The program may still be INACTIVE on the SAP side."
+    WScript.Echo "ERROR: activation_uncertain -- Program " & UCase(PROGRAM_NAME) & " was created and the paste pipeline did not error, but post-activate verification did not reach an active SE38 screen (1000/120/200). The program may still be INACTIVE on the SAP side."
     WScript.Echo "       Recovery: open SE38 for " & UCase(PROGRAM_NAME) & " manually, inspect the activation log, fix any reported issues, then run /sap-activate-object PROGRAM " & UCase(PROGRAM_NAME) & "."
     WScript.Quit 1
 End If

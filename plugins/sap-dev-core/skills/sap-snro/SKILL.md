@@ -184,6 +184,13 @@ cscript //NoLogo {RUN_TEMP}\sap_snro_check_run.vbs
 - `NOT_EXIST` → NRO does not exist → proceed to Step 5b (Create).
 - `ERROR:` → show full output and stop.
 
+The check verdict is fully locale-independent (control-id screen identity +
+`sbar.MessageType`, never title/status text). SNRO signals a genuine not-found
+via a "create object?" confirm popup → `NOT_EXIST`; an sbar `E`/`A` on the
+initial screen with **no** popup is an authorization / lock / other failure and
+is reported as `ERROR` (not a false `NOT_EXIST`). The update flow likewise
+confirms Change mode by control id, not by an English "change" title.
+
 ---
 
 ## Step 5b — Create New Number Range Object
@@ -362,6 +369,8 @@ Proceed to Step 6.
 | `Percentage out of range` | Warning % not in 0.0–99.9 | Use a valid percentage |
 | `Interval overlaps existing` | FROMNUMBER/TONUMBER conflicts with existing range | Pick non-overlapping ranges |
 | `Number length exceeds domain` | Interval number > domain length | Shorten numbers or widen domain |
+| `ERROR: Insert popup field ids not found -- release layout differs` | SAPMSNUM insert-interval popup ids differ on this release (pre-fix this was a per-row WARNING skip that still ended `SUCCESS: Intervals saved`) | Re-record the popup ids per "Troubleshooting Component IDs" below (`/sap-gui-object-details` / `/sap-gui-record`) and update the ids in `sap_snro_intervals.vbs` |
+| `ERROR: <n> of <m> interval row(s) were NOT applied: <NR list>` | A row's popup stayed open after confirm (overlap, invalid range, ...) -- partial apply; the VBS exits 1 instead of SUCCESS | Fix the listed rows and re-run; verify applied rows via the NRIV read above |
 | `Package/transport dialog` | Needs transport assignment | Provide package + transport, or accept `$TMP` |
 | `No SAP GUI session found` | Not logged in | Run `/sap-login` first |
 

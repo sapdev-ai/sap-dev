@@ -463,12 +463,20 @@ If nSymbolCount > 0 Then
 
             WScript.Echo "INFO: Wrote " & nSymWritten & " of " & nSymbolCount & " text symbols."
         Else
-            WScript.Echo "WARN: Could not locate Text Symbols table on any candidate path. Symbols not applied."
-            WScript.Echo "      Recovery: open SE38 manually, Goto > Text Elements > Text Symbols and add entries."
+            ' Pre-fix (2026-07-02): this path only WARNed and the run still
+            ' ended "TEXT_ELEMENTS: APPLIED" + SUCCESS with zero symbols written.
+            WScript.Echo "ERROR: Could not locate Text Symbols table on any candidate path. Symbols not applied."
+            WScript.Echo "       Re-record via /sap-gui-record on SE38 Text Elements -> Text Symbols, then add the table path to symBaseCands above."
+            WScript.Echo "TEXT_ELEMENTS: FAILED:SYMBOL_TABLE_BASE_UNKNOWN"
+            WScript.Quit 1
         End If
     Else
-        WScript.Echo "WARN: Could not navigate to Text Symbols tab on this SAP build. Symbols not applied."
-        WScript.Echo "      Re-record via /sap-gui-record on SE38 Text Elements -> Text Symbols, then add the tab id to symTabCands above."
+        ' Pre-fix (2026-07-02): this path only WARNed and the run still
+        ' ended "TEXT_ELEMENTS: APPLIED" + SUCCESS with zero symbols written.
+        WScript.Echo "ERROR: Could not navigate to Text Symbols tab on this SAP build. Symbols not applied."
+        WScript.Echo "       Re-record via /sap-gui-record on SE38 Text Elements -> Text Symbols, then add the tab id to symTabCands above."
+        WScript.Echo "TEXT_ELEMENTS: FAILED:SYMBOL_TAB_UNKNOWN"
+        WScript.Quit 1
     End If
 End If
 
@@ -518,6 +526,20 @@ If Len(sSaveScreen) > 0 Then
         oSession.findById("wnd[1]").sendVKey VKEY_ENTER
         WScript.Sleep 1000
     End If
+End If
+
+' Save verdict gate (sbar MessageType, locale-independent): an E/A status
+' here means the TEXTPOOL was NOT written -- fail instead of continuing to
+' a blind "saved" claim (pre-fix there was no sbar gate anywhere).
+Dim sSaveMsg, sSaveType
+On Error Resume Next
+sSaveMsg  = oSession.findById("wnd[0]/sbar").Text
+sSaveType = oSession.findById("wnd[0]/sbar").MessageType
+On Error GoTo 0
+If sSaveType = "E" Or sSaveType = "A" Then
+    WScript.Echo "ERROR: Save failed - " & sSaveMsg
+    WScript.Echo "TEXT_ELEMENTS: FAILED:SAVE_SBAR_" & sSaveType
+    WScript.Quit 1
 End If
 
 WScript.Echo "INFO: Text elements saved."
@@ -613,6 +635,20 @@ If Len(sActWnd1b) > 0 Then
     WScript.Sleep 1000
     Err.Clear
     On Error GoTo 0
+End If
+
+' Activation verdict gate (sbar MessageType, locale-independent): E/A after
+' Ctrl+F3 means the TEXTPOOL was NOT activated -- fail instead of echoing
+' "activated" + APPLIED + SUCCESS (the pre-fix false-success).
+Dim sActMsg, sActType
+On Error Resume Next
+sActMsg  = oSession.findById("wnd[0]/sbar").Text
+sActType = oSession.findById("wnd[0]/sbar").MessageType
+On Error GoTo 0
+If sActType = "E" Or sActType = "A" Then
+    WScript.Echo "ERROR: Activation failed - " & sActMsg
+    WScript.Echo "TEXT_ELEMENTS: FAILED:ACTIVATE_SBAR_" & sActType
+    WScript.Quit 1
 End If
 
 WScript.Echo "INFO: Text elements activated."

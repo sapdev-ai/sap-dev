@@ -6,14 +6,19 @@ description: |
     (a) CREATE — default. Creates a new TR. Defaults to Workbench (W); only
         creates Customizing (C) when the user explicitly asks. Description is
         rendered per userConfig.rule_of_tr_description (ASK/PATTERN/FIXED/
-        RANDOM) and truncated to the 60-char SE01 limit. After creation the
-        VBS itself resolves the new TRKORR via SE16N on E070 (filter by
-        AS4USER + AS4DATE today, sort by AS4TIME desc, first row with
-        TRFUNCTION K or W) and echoes `INFO: TRKORR=<...>`.
+        RANDOM) and truncated to the 60-char SE01 limit. The VBS gates the
+        create on the statusbar MessageType (E/A → ERROR), then resolves the
+        new TRKORR from the success message itself (locale-independent
+        transport-number shape), falling back to a two-step SE16N lookup
+        (E07T by AS4TEXT, then E070 by AS4USER + TRSTATUS D — highest TRKORR
+        wins; no date filter). Echoes `RESULT_TR: <...>` (authoritative)
+        plus `INFO: TRKORR=<...>` (back-compat); unresolvable →
+        `ERROR: TR_RESOLUTION_FAILED`, never a guessed TR.
     (b) RELEASE — invoked as `/sap-se01 release <TR>`. Releases the TR (and
         any open tasks) via SE01 Transport Organizer (Display + F9 loop).
-        Asks the user for explicit confirmation before releasing — release
-        is irreversible.
+        Mandatory pre-checks first (E070 TRSTATUS must be D + E071 object
+        inventory), then asks the user for explicit confirmation showing the
+        object list — release is irreversible.
     (c) DELETE -- invoked as `/sap-se01 delete <TR>`. Deletes an UNRELEASED
         request and its tasks. Two-phase: empties any objects (Phase 1), then
         deletes the nodes bottom-up -- each TASK first, then the REQUEST (Display
@@ -192,17 +197,19 @@ SE01 short description field accepts at most 60 characters. After rendering:
    - Drop vowels from `{OBJECT_TYPE}`.
    - Hard-truncate the entire string to 60 chars.
 
-### Disambiguation for E070 lookup
+### Disambiguation for the fallback lookup
 
-The TRKORR lookup in Step 5 filters by AS4USER + AS4DATE (today) and sorts by
-AS4TIME desc, taking the first top-level (TRFUNCTION K/W) row. The
-description does not need to be unique for the lookup to work, but appending
-`_<RANDOM4>` is still recommended so that the description distinguishes
-parallel test runs in TR listings.
+The primary TRKORR resolution (Step 5) reads the number straight from the
+create-success statusbar and does not depend on the description at all. Only
+the SE16N **fallback** filters `E07T` by `AS4TEXT` = this exact description;
+a reused description (e.g. `FIXED` mode) is disambiguated there by picking
+the highest matching modifiable TRKORR, so uniqueness is not required — but
+appending `_<RANDOM4>` is still recommended so parallel test runs stay
+distinguishable in TR listings.
 
 The VBS will echo back `INFO: AS4TEXT=<...>` and `INFO: AS4USER=<...>` for
-diagnostics, plus `INFO: TRKORR=<...>` and `INFO: TRFUNCTION=<...>` once it
-has resolved the new request.
+diagnostics, plus `INFO: TRKORR=<...>` / `INFO: TRFUNCTION=<...>` and the
+authoritative `RESULT_TR: <...>` once it has resolved the new request.
 
 ---
 
@@ -242,42 +249,50 @@ and report.
 Capture from the VBS stdout:
 - `INFO: AS4TEXT=<...>` — the description as written
 - `INFO: AS4USER=<...>` — the SAP login user
-- `INFO: TRKORR=<...>`  — the resolved new transport request **(this is
-  the answer; no further lookup is needed)**
+- `RESULT_TR: <...>` — **the authoritative resolved new transport request
+  (this is the answer; no further lookup is needed)**
+- `INFO: TRKORR=<...>`  — same value, kept for back-compat parsers
 - `INFO: TRFUNCTION=<...>` — `K` (Workbench) or `W` (Customizing)
 
 ---
 
-## Step 5 — How the embedded TRKORR lookup works
+## Step 5 — How the embedded TRKORR resolution works
 
-The VBS, after creating the TR and echoing `AS4TEXT` / `AS4USER`, runs the
-following lookup itself (no `/sap-se16n` call required):
+The VBS gates and resolves in one run (no `/sap-se16n` call required):
 
-1. Open `/nse16n`, set table = `E070`, press Enter to load the field
-   selection table (`tblSAPLSE16NSELFIELDS_TC`).
-2. Scan the field-selection table for rows whose **column 6 (Technical
-   name)** equals `AS4USER` and `AS4DATE`. (Column 0 is the localised
-   description and is unreliable across logon languages; column 6 is the
-   technical field name and is locale-independent.)
-3. Write `LOW` value (`ctxtGS_SELFIELDS-LOW[2,r]`) for the matched rows:
-   - AS4USER row → `oSess.Info.User` (uppercased)
-   - AS4DATE row → workstation today as 8-digit `YYYYMMDD` (locale-independent —
-     SAP DATS fields accept it for any `USR01-DATFM`; a separator form like
-     `YYYY.MM.DD` only works when it matches the user's date personalization)
-4. Press F8 (`tbar[1]/btn[8]`) to execute. Dismiss any post-execute popup
-   with Enter.
-5. On the result grid (`wnd[0]/usr/cntlRESULT_LIST/shellcont/shell`):
-   - `selectColumn "AS4TIME"`
-   - `pressToolbarButton "&SORT_DSC"`
-6. Walk rows top-down; the first row whose `TRFUNCTION` is `K` or `W` is the
-   newly created top-level TR. Read `TRKORR` from that row.
+0. **Create gate.** After saving the description it reads
+   `wnd[0]/sbar.MessageType` (locale-independent). `E` / `A` → the create
+   FAILED → `ERROR: TR create failed - <sbar text>` + exit 1. It never
+   proceeds to resolution on a failed create (that would resolve some
+   pre-existing request as "the new one").
+1. **Primary — statusbar extraction.** The create-success message carries
+   the new number. The VBS tries the structured sbar properties
+   (`MessageParameter`, guarded with `On Error` — not exposed on every
+   release), then scans the sbar text for the transport-number shape
+   `3 alphanumerics + "K" + 6 digits` (e.g. `S4DK912345`) — the shape is
+   locale-independent even though the message text is translated. Found →
+   that IS the result; SE16N is skipped entirely.
+2. **Fallback — two-step SE16N** (only when the statusbar yielded nothing):
+   - Step A: table `E07T` (request short texts — the description lives in
+     `E07T` `(TRKORR, LANGU, AS4TEXT)`, NOT `E070`) filtered by `AS4TEXT` =
+     the exact description just written → candidate TRKORR set.
+   - Step B: table `E070` filtered by `AS4USER` = current user and
+     `TRSTATUS = D`; keep rows whose `TRKORR` is in the candidate set AND
+     whose `TRFUNCTION` is `K`/`W` (top-level requests — tasks share the
+     description but use `S`/`Q`/`T`/`X`). Multiple matches (reused
+     description, e.g. `FIXED` mode) → the **highest** TRKORR wins (numbers
+     are monotonic; the just-created request is the highest).
+   - There is **no date filter at all**, so a workstation/server date or
+     timezone mismatch can no longer produce a false "not found" (the old
+     AS4DATE=today bug) — and no "most recent TR of the user" heuristic, so
+     a concurrent create by the same user cannot be mis-resolved.
+3. **Neither path resolves** → `ERROR: TR_RESOLUTION_FAILED - request may
+   exist; verify in SE01.` + exit 1. The VBS NEVER returns a guessed TR.
 
-**Why this approach (vs. AS4TEXT filter or download-to-file):**
-- Locale-independent — works regardless of the user's logon language.
-- Server-side timezone offsets are irrelevant (the lookup uses the table's
-  own AS4DATE/AS4TIME, not workstation time-window comparisons).
-- Single VBS run — no separate `/sap-se16n` invocation, no temp file parse.
-- TRFUNCTION K/W naturally excludes task rows (which use `Q`/`S`/`X`).
+SE16N field-selection rows are located by the **Technical name column
+(index 6)** — the localised description column is unreliable across logon
+languages — and each `LOW` value is written while its row is in the
+viewport (scroll-safe).
 
 ---
 
@@ -285,13 +300,19 @@ following lookup itself (no `/sap-se16n` call required):
 
 Read the VBS stdout. Look for:
 
-- `ERROR:` — abort and report. Common causes: SE16N field table did not
-  load (check that E070 was set), grid empty (the create may have failed
-  silently — re-check the SE01 sbar line above), or layout changed (the
-  Technical-name column is no longer at index 6).
-- `INFO: TRKORR=<TRKORR>` — that's the new transport request.
-- `INFO: TRFUNCTION=<K|W>` — confirms it's a top-level Workbench (K) or
-  Customizing (W) request.
+- `ERROR: TR create failed - <sbar text>` — the create itself failed
+  (status-bar `E`/`A`). Nothing was resolved; report the SAP message.
+- `ERROR: TR_RESOLUTION_FAILED - request may exist; verify in SE01.` — the
+  create did not visibly fail but neither the statusbar nor the SE16N
+  fallback produced the number (e.g. the description contains characters
+  the SE16N inline filter rejects). Check SE01 / `E070` manually before
+  re-running — a blind re-run would create a SECOND request.
+- Any other `ERROR:` — navigation/layout failure (e.g. the SE16N
+  Technical-name column moved); abort and report.
+- `RESULT_TR: <TRKORR>` — **that's the new transport request
+  (authoritative)**.
+- `INFO: TRKORR=<TRKORR>` — same value (back-compat line).
+- `INFO: TRFUNCTION=<K|W>` — top-level Workbench (K) or Customizing (W).
 
 ---
 
@@ -336,14 +357,57 @@ the format (`<SID>K<digits>`, e.g. `ER1K900234`). If missing or malformed:
 
 > "Which transport request should I release? (e.g. `ER1K900234`)"
 
-## R2 — Confirm with the user (mandatory)
+## R2 — Mandatory pre-checks: E070 status + E071 object inventory
 
-Release is irreversible. Before invoking the VBS, ask:
+BOTH checks below are **mandatory** and run BEFORE the confirmation prompt
+(R3) — the operator must see what the release will do before being asked to
+approve it. Do not skip either check.
 
-> "About to release TR `<TR>` via SE01. This is irreversible — once released
-> the TR cannot be modified. Proceed? (yes / no)"
+1. **Status check (`E070`).** Query `E070` via `/sap-se16n` (filter
+   `TRKORR EQ <TR>`, select `TRKORR TRSTATUS TRFUNCTION AS4USER`):
+   - Row missing → stop: "TR `<TR>` does not exist on this system."
+   - `TRSTATUS` = `R` (Released) or `O` (release started) → report and stop:
+     > "TR `<TR>` is already `<STATUS>` — nothing to release."
+   - Only `TRSTATUS = D` (modifiable; `L` likewise) proceeds.
+   Also query `E070` with `STRKORR EQ <TR>` — the child tasks and their
+   statuses (the release processes open tasks first; the task numbers feed
+   the inventory below).
+2. **Object inventory (`E071`).** Read what the TR will transport — objects
+   of a Workbench request live in its TASKS, so include them: `/sap-se16n
+   TABLE=E071` filtering `TRKORR IN <TR>,<task1>,<task2>,...` (the request
+   plus every task from check 1), selecting
+   `TRKORR PGMID OBJECT OBJ_NAME OBJFUNC`. Equivalent (RFC): the shared
+   helper `<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_tr_object_entries.ps1
+   -Trkorr <TR>`, which walks the request + tasks in one call and reports a
+   `deletions=` count (`OBJFUNC = D` entries record object DELETIONS that
+   will transport onward).
+   An empty inventory is legal (releasing an empty TR) — state that
+   explicitly in R3 instead of showing a blank list.
 
-Only proceed on explicit `yes`. Anything else → abort.
+**Read-failure guard (both checks).** `/sap-se16n` now distinguishes a genuine
+empty result (`ROWS=0 (NO_DATA)`) from a failed query (`QUERY_FAILED`, exit 1 —
+authorization / lock / invalid table). If EITHER read returns `QUERY_FAILED`, the
+status/inventory is UNKNOWN — do **NOT** treat it as "TR does not exist" or "empty
+inventory" and do **NOT** proceed to R3. Surface the message and stop; a release
+must never run on an unread inventory.
+
+## R3 — Confirm with the user (mandatory — show WHAT will transport)
+
+Release is irreversible. Show the R2 findings — the status line plus the
+full object inventory — and ask; NEVER release without explicit
+confirmation:
+
+> "About to release TR `<TR>` (status `D`, `<K>` open task(s)) via SE01.
+> It will transport `<N>` object entr(ies) [of which `<d>` record
+> DELETIONS]:
+>
+> `<one line per E071 entry: TRKORR  PGMID  OBJECT  OBJ_NAME  [OBJFUNC]>`
+>
+> This is irreversible — once released the TR cannot be modified and these
+> objects transport onward. Proceed? (yes / no)"
+
+(For an empty TR say "It currently holds NO object entries" instead of the
+list.) Only proceed on explicit `yes`. Anything else → abort.
 
 If `<TR>` matches `sap_dev_transport_request` in settings.json, also warn:
 
@@ -353,14 +417,6 @@ If `<TR>` matches `sap_dev_transport_request` in settings.json, also warn:
 
 If the user confirms, plan to call `/update-config` to clear
 `sap_dev_transport_request` after a successful release.
-
-## R3 — Verify the TR is in modifiable status
-
-Optionally (recommended) query `E070` via `/sap-se16n` to ensure
-`TRSTATUS = 'D'`. If it is already `R` (Released) or `O` (Release started),
-report and stop:
-
-> "TR `<TR>` is already `<STATUS>` — nothing to release."
 
 ## R4 — Ensure SAP GUI login
 
@@ -415,7 +471,7 @@ authoritative** — it cannot read `E070`; R7's RFC check is the gate.
    S4D-style `tp` return-code-0012 — STMS not configured) — report it as a
    **failure**, NOT a success, and surface the `tp`/sbar message. Do not clear
    any default or claim the TR is released.
-2. Only when the request is `R`: if R2 noted the TR was the saved default, run
+2. Only when the request is `R`: if R3 noted the TR was the saved default, run
    `/update-config` to clear `sap_dev_transport_request` (set to empty).
 3. Report:
 
@@ -740,11 +796,18 @@ C:/Windows/SysWOW64/cscript.exe //NoLogo {RUN_TEMP}\sap_se01_remove_objects_run.
 The VBS echoes one `INFO: Request nodes found: <N>` line, then per node either
 `INFO:   node <TR/task>: 0 objects.` / `... none of the named objects present.`
 or `INFO:   node <task>: removing <N> matched object(s)...` followed by one
-`INFO:     - <PGMID> <OBJECT> <OBJ_NAME>` line per removed entry.
+`INFO:     - <PGMID> <OBJECT> <OBJ_NAME>` line per removed entry. The removed
+count is **grid-verified**: after Delete + Save the VBS re-reads the node's
+object count and reports `removed = before - after` — a delete that SAP
+silently ignored (released/locked TR) can no longer surface as SUCCESS.
 
 | Last line | Meaning |
 |---|---|
-| `SUCCESS: Removed <N> object entr(ies) from <TR>.` | `<N>` entries unassigned. Verify in X6. `<N>` = 0 with a "(none of the named objects were in the request)" tail means the lock was already clear — that is a clean success for the lock-clearing use case. |
+| `SUCCESS: Removed <N> object entr(ies) from <TR>.` | `<N>` entries unassigned (count verified by post-delete re-read). Verify in X6. `<N>` = 0 with a "(none of the named objects were in the request)" tail means the lock was already clear — that is a clean success for the lock-clearing use case. |
+| `ERROR: Change-mode switch failed on node <node> ...` | SE01 refused edit mode (sbar `E`/`A` — typically a released/locked request). Nothing was removed. X2's `E070-TRSTATUS` gate should have caught this — re-check the status. |
+| `ERROR: node <node> still holds <after> object(s) after delete+save (before=<n>, expected remaining=<m>).` | The Delete/Save did not take (released mid-flight, lock, unexpected popup). Both counts are echoed; treat as failure — establish the real state via the X6 RFC check before assuming anything was removed. |
+| `ERROR: Save failed on node <node> ...` | The unassignment was not committed (sbar `E`/`A` on Save). Treat as failure. |
+| `ERROR: Could not re-read the object count on node <node> ...` | The screen drifted after the delete — removal is UNVERIFIED. Run the X6 RFC check to establish the real state. |
 | `ERROR: Request display did not open ...` | The TR did not exist (already gone). For the lock-clearing use case treat as success once X6 confirms `E071` has no row. |
 | `ERROR: TRANSPORT is empty ...` | The `%%TRANSPORT%%` token was not substituted. Re-generate the VBS. |
 
@@ -801,7 +864,7 @@ On failure:
 powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_se01_run.json" -Status FAILED -ExitCode 1 -ErrorClass <CLASS> -ErrorMsg "<short>"
 ```
 
-Suggested `<CLASS>`: `TR_CREATE_FAILED`, `GUI_TIMEOUT`.
+Suggested `<CLASS>`: `TR_CREATE_FAILED`, `TR_RESOLUTION_FAILED`, `GUI_TIMEOUT`.
 
 ---
 
@@ -839,4 +902,7 @@ Suggested `<CLASS>`: `TR_CREATE_FAILED`, `GUI_TIMEOUT`.
 - The VBS does not handle the "Tasks owner" follow-up popup, which only appears
   on certain customising configurations. If the test target has it, extend the
   VBS to dismiss `wnd[1]` before backing out.
-- `NB` (not between) on AS4TIME is not used here; we use `BT`.
+- The SE16N **fallback**'s `AS4TEXT` filter uses the inline single-value cell,
+  which rejects some characters (e.g. `[`). The primary statusbar extraction is
+  unaffected; when both paths fail the VBS exits with `TR_RESOLUTION_FAILED`
+  instead of guessing.

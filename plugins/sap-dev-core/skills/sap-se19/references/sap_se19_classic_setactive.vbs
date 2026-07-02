@@ -13,6 +13,7 @@
 Option Explicit
 Const IMP_NAME     = "%%IMP_NAME%%"
 Const SET_ACTIVE   = "%%SET_ACTIVE%%"
+Const TRKORR       = "%%TRKORR%%"        ' TR for the activate popup (empty = none expected)
 Const SESSION_PATH = "%%SESSION_PATH%%"
 Const VKEY_ENTER = 0
 ExecuteGlobal CreateObject("Scripting.FileSystemObject").OpenTextFile("%%ATTACH_LIB_VBS%%", 1).ReadAll()
@@ -55,6 +56,21 @@ If Not CtrlExists(sBtn) Then
 End If
 oSession.findById(sBtn).Press
 WScript.Sleep 2500
+
+' Transport-request popup on activate of a transported implementation (SKILL Step 4
+' promises "the VBS handles it"). Dispatch by control id (locale-independent): an
+' empty TR must ABORT loud, never blind-accept (which would fall through to Local
+' Object / an error) as the generic worklist-Continue below would.
+If CtrlExists("wnd[1]/usr/ctxtKO008-TRKORR") Then
+    If TRKORR = "" Then
+        WScript.Echo "ERROR: ABORT_EMPTY_TR -- SAP prompted for a transport request but TRKORR is empty."
+        WScript.Echo "       Resolve a TR via /sap-transport-request and re-run this operation."
+        WScript.Quit 1
+    End If
+    oSession.findById("wnd[1]/usr/ctxtKO008-TRKORR").Text = TRKORR
+    oSession.findById("wnd[1]/tbar[0]/btn[0]").Press
+    WScript.Sleep 1500
+End If
 
 ' optional inactive-objects worklist on activate
 If CtrlExists("wnd[1]/tbar[0]/btn[0]") Then

@@ -23,6 +23,9 @@
 '
 ' Output (last lines, parseable by the SKILL.md wrapper):
 '   UNIT_TEST_RUN: EXECUTED methods=N passed=P failed=F errors=0 skipped=0 coverage=<pct|NA>
+'   COVERAGE_REASON: <screen unreachable (...) | value cell not found (...)>
+'                    (precedes the EXECUTED line when coverage was requested
+'                     but came back NA -- makes the NA diagnosable)
 '   UNIT_TEST_RUN: SKIPPED:NO_TESTS
 '   UNIT_TEST_RUN: NEEDS_RECORDING program=<P> screen=<S>
 '   ALERT: <n> failed/errored test method(s) -- see the ABAP Unit result display
@@ -164,14 +167,28 @@ Function ReadCoverage(oSess, covMenuPath)
     oSess.findById(covMenuPath).select
     On Error GoTo 0
     WScript.Sleep 9000
-    If InStr(oSess.Info.Program, "SAUCV") = 0 Then Exit Function
+    Dim covProg : covProg = ""
+    On Error Resume Next
+    covProg = oSess.Info.Program
+    On Error GoTo 0
+    If InStr(covProg, "SAUCV") = 0 Then
+        ' Diagnosable NA: the coverage menu never reached the AUCV display.
+        WScript.Echo "COVERAGE_REASON: screen unreachable (coverage menu did not open the AUCV display; Program=" & covProg & ")"
+        Exit Function
+    End If
     On Error Resume Next
     oSess.findById("wnd[0]/usr/tabsTAB_COMBI/tabpFSCOV", False).select
     On Error GoTo 0
     WScript.Sleep 4000
     gCovStr = ""
     FindCovPct oSess.findById("wnd[0]/usr", False)
-    If gCovStr <> "" Then ReadCoverage = gCovStr
+    If gCovStr <> "" Then
+        ReadCoverage = gCovStr
+    Else
+        ' Diagnosable NA: AUCV opened but no PERCENTAGE tree/value (e.g. a
+        ' self-testing class with no test relation has no coverage tree).
+        WScript.Echo "COVERAGE_REASON: value cell not found (no PERCENTAGE tree under tabpFSCOV)"
+    End If
 End Function
 
 ' Recursively find the coverage tree (GuiShell subtype=Tree with a PERCENTAGE

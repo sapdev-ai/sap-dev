@@ -181,10 +181,15 @@ will fail. Tell the user:
 
 If the only linked TRs are `R` (Released), proceed.
 
-The VBS templates also detect this condition at runtime: if SAP shows a
-wnd[2] `Error` popup (`txtMESSTXT1` containing `locked`) after pressing
-Enter on the package field, the script reports
-`ERROR: SAP popup [Error] <message>` and exits 1.
+The VBS templates also detect this condition at runtime, **locale-independently**:
+if SAP shows a message-only popup (probed by DDIC control id `txtMESSTXT1`, with
+no TR-description field `txtKO013-AS4TEXT` and no Yes/No option
+`btnSPOP-OPTION1`) after pressing Enter on the package field, the script treats
+it as a refusal/lock error, reports `ERROR: SAP refused the package change:
+<message>` (message text echoed for diagnostics only) and exits 1. The popup is
+**never** classified by window title — an earlier title-based check
+(`LCase(title)="error"`) silently dismissed the lock popup under ZH/JA logons
+and let the run report `DONE` without the move.
 
 ### `TMP_TO_TRANSPORT`
 
@@ -271,7 +276,17 @@ C:/Windows/SysWOW64/cscript.exe //NoLogo {RUN_TEMP}\sap_change_package_<TXN>_run
 Each VBS emits a stable contract:
 - `INFO: ...` progress lines
 - `STATUS_TYPE: <S|W|E|A|I>` and `STATUS_TEXT: <text>` (final status bar)
+- `VERIFY_HINT: confirm TADIR-DEVCLASS=<pkg> ...` — the GUI move is
+  **sbar-confirmed only**; this line reminds the caller that the authoritative
+  confirmation is the TADIR re-query in Step 7.
 - Final line: `DONE` (success) or `ERROR: ...` (failure)
+
+The SUCCESS gate inside each VBS requires **both** `STATUS_TYPE` not `E`/`A`
+**and** no modal popup left on screen — a lingering popup (or a lock/refusal
+message popup) exits 1. All popup classification is by DDIC control id +
+`sbar.MessageType`; window titles are never used for control flow (they are
+echoed for diagnostics only). Because `DONE` is sbar-confirmed only, Step 7's
+TADIR re-query is the load-bearing verification — do not skip it.
 
 ---
 

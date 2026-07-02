@@ -16,7 +16,10 @@
 '             delete the repository objects themselves -- they become orphaned,
 '             package intact). In the /sap-dev-clean --reset flow Steps 3a-3e
 '             have already deleted the objects, so Phase 1 normally finds an
-'             empty list and is a no-op safety net. Each removed entry is echoed.
+'             empty list and is a no-op safety net. The removed count is VERIFIED
+'             by re-reading the object count after Save (removed = before - after);
+'             a change-mode/Save failure or a count that does not drop (e.g. a
+'             released/locked request) aborts with ERROR -- never a phantom count.
 '   Phase 2 -- DELETE THE EMPTY NODES, bottom-up. Delete each TASK node first,
 '             then the request itself: focus the node by its TR number, press
 '             Delete (tbar[1]/btn[13] = Shift+F1), and let the shared
@@ -113,11 +116,17 @@ For iNode = 0 To UBound(aNodes)
         WScript.Quit 1
     End If
     nRemoved = ClearNodeObjects(oSess, sTR, sNode)
+    If nRemoved < 0 Then
+        ' ClearNodeObjects echoed the ERROR (change-mode refused / save failed /
+        ' count unreadable / objects remain). Abort -- do not proceed to Phase 2
+        ' delete on a request we could not verify as emptied (e.g. released TR).
+        WScript.Quit 1
+    End If
     If nRemoved > 0 Then nTotalRemoved = nTotalRemoved + nRemoved
 Next
 If nTotalRemoved > 0 Then
     WScript.Echo "INFO: Phase 1 removed " & nTotalRemoved & " object entr(ies) from " & sTR & _
-                 " (objects unassigned, not deleted)."
+                 " (verified by count re-read; objects unassigned, not deleted)."
 Else
     WScript.Echo "INFO: Phase 1: request already empty -- nothing to unassign."
 End If
@@ -254,7 +263,13 @@ Function FocusNode(oS, sNode)
 End Function
 
 ' Clear every object entry from ONE node (task or request). Assumes the request
-' is freshly displayed. Returns the count removed (0 if empty / not an editor).
+' is freshly displayed. Returns the VERIFIED count removed (before - after re-read
+' of the object count; 0 if empty / not an editor), or -1 on a hard failure
+' (change-mode refused, save rejected, count unreadable, or objects remain) --
+' the ERROR line is echoed here and the caller must Quit 1. The pre-delete count
+' is NEVER reported as removed on its own (that was the false-count bug -- SAP
+' silently ignores a Delete/Save on a released/locked request; verified fix
+' mirrors sap_se01_remove_objects.vbs).
 Function ClearNodeObjects(oS, sReq, sNode)
     ClearNodeObjects = 0
 
@@ -273,11 +288,24 @@ Function ClearNodeObjects(oS, sReq, sNode)
     End If
 
     ' Switch to change mode so btnDB_DELETE is active (request opened in display).
+    ' A released / locked request refuses the switch with a statusbar E/A message
+    ' (MessageType is locale-independent) -- fail loud instead of pressing Delete
+    ' in display mode and reporting a phantom removal.
+    Dim sTogType, sTogText
+    sTogType = "" : sTogText = ""
     On Error Resume Next
     oS.findById(CHANGE_BUTTON).press
     WScript.Sleep 800
+    sTogType = oS.findById("wnd[0]/sbar").MessageType
+    sTogText = oS.findById("wnd[0]/sbar").Text
     Err.Clear
     On Error GoTo 0
+    If sTogType = "E" Or sTogType = "A" Then
+        WScript.Echo "ERROR: Change-mode switch failed on node " & sNode & _
+                     " (request released/locked?) - " & sTogText
+        ClearNodeObjects = -1
+        Exit Function
+    End If
 
     ' Open the Objects tab so the table control materializes.
     On Error Resume Next
@@ -287,7 +315,7 @@ Function ClearNodeObjects(oS, sReq, sNode)
     On Error GoTo 0
 
     ' Object count (txtDV_OBJECT_COUNT). Empty / "0" -> nothing to do.
-    Dim sCnt : sCnt = ""
+    Dim sCnt, nCnt : sCnt = ""
     On Error Resume Next
     sCnt = Trim(oS.findById(OBJ_BASE & "txtDV_OBJECT_COUNT").Text)
     Err.Clear
@@ -296,6 +324,8 @@ Function ClearNodeObjects(oS, sReq, sNode)
         WScript.Echo "INFO:   node " & sNode & ": 0 objects."
         Exit Function
     End If
+    nCnt = 0
+    If IsNumeric(sCnt) Then nCnt = CLng(sCnt)
     WScript.Echo "INFO:   node " & sNode & ": " & sCnt & " object(s) -- unassigning..."
     EchoVisibleObjects oS    ' record what is being orphaned (best-effort)
 
@@ -348,7 +378,49 @@ Function ClearNodeObjects(oS, sReq, sNode)
     Err.Clear
     On Error GoTo 0
 
-    If IsNumeric(sCnt) Then ClearNodeObjects = CLng(sCnt)
+    ' Gate on the save outcome (MessageType, locale-independent). An E/A here
+    ' means the unassignment was NOT committed.
+    Dim sSaveType, sSaveText
+    sSaveType = "" : sSaveText = ""
+    On Error Resume Next
+    sSaveType = oS.findById("wnd[0]/sbar").MessageType
+    sSaveText = oS.findById("wnd[0]/sbar").Text
+    Err.Clear
+    On Error GoTo 0
+    If sSaveType = "E" Or sSaveType = "A" Then
+        WScript.Echo "ERROR: Save failed on node " & sNode & " while emptying (" & _
+                     nCnt & " object(s)) - " & sSaveText
+        ClearNodeObjects = -1
+        Exit Function
+    End If
+
+    ' VERIFY: re-read the remaining object count. A Delete/Save on a released or
+    ' locked request (or behind a mis-dismissed popup) is silently ignored by SAP,
+    ' so the pre-delete count must never be reported as removed on its own.
+    Dim sCntAfter, nAfter, bCntErr
+    sCntAfter = "" : bCntErr = False
+    On Error Resume Next
+    sCntAfter = Trim(oS.findById(OBJ_BASE & "txtDV_OBJECT_COUNT").Text)
+    If Err.Number <> 0 Then bCntErr = True
+    Err.Clear
+    On Error GoTo 0
+    If bCntErr Then
+        WScript.Echo "ERROR: Could not re-read the object count on node " & sNode & _
+                     " after delete (before=" & nCnt & "). Removal NOT verified."
+        ClearNodeObjects = -1
+        Exit Function
+    End If
+    nAfter = 0
+    If sCntAfter <> "" And IsNumeric(sCntAfter) Then nAfter = CLng(sCntAfter)
+    If nAfter > 0 Then
+        WScript.Echo "ERROR: node " & sNode & " still holds " & nAfter & " object(s) after " & _
+                     "delete+save (before=" & nCnt & "). Request may be released/locked -- " & _
+                     "removal NOT verified."
+        ClearNodeObjects = -1
+        Exit Function
+    End If
+
+    ClearNodeObjects = nCnt - nAfter
 End Function
 
 ' Echo the object names visible in the table (best-effort record of what is being

@@ -47,10 +47,16 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_
 ```
 Set `{WORK_TEMP}` / `{RUN_DIR}` as in `/sap-sm37`.
 
+Set `{RUN_TEMP}` = the per-run scratch dir (`Get-SapRunTemp` mints + creates `{work_dir}\temp\run_<id>`):
+```bash
+powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('RUN_TEMP=' + (Get-SapRunTemp))"
+```
+Per the CLAUDE.md "Two-bucket temp model" write this skill's `_run.json` log state under `{RUN_TEMP}` (the reader scratch already lives in the per-run `{RUN_DIR}`); keep `{WORK_TEMP}` (base) only for `Get-SapCurrentSessionPath -WorkTemp`.
+
 ## Step 0.5 — Start Logging
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{WORK_TEMP}\sap_st22_run.json" -Skill sap-st22 -ParamsJson "{}"
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{RUN_TEMP}\sap_st22_run.json" -Skill sap-st22 -ParamsJson "{}"
 ```
 
 ## Step 1 — Resolve the Anchor + Build the Params File
@@ -125,7 +131,7 @@ found — run /sap-gui-record on ST22"). In `--deep` mode, each event may carry 
 ## Final — Log End
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_st22_run.json" -Status SUCCESS -ExitCode 0
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_st22_run.json" -Status SUCCESS -ExitCode 0
 ```
 
 ## Known Issues / Failure Modes

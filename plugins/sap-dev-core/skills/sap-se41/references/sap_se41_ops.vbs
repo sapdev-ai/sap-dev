@@ -370,11 +370,13 @@ Case "CREATE"
     sFinalMsg  = oSession.findById("wnd[0]/sbar").Text
     sFinalType = oSession.findById("wnd[0]/sbar").MessageType
     On Error GoTo 0
-    If sFinalType = "E" Then
-        WScript.Echo "WARNING: Activation may have errors - " & sFinalMsg
-    Else
-        WScript.Echo "INFO: SAP status: " & sFinalMsg
+    ' Same E/A gate as the ACTIVATE op: sbar E/A means the status was NOT
+    ' activated -- fail loudly instead of WARNING + unconditional SUCCESS.
+    If sFinalType = "E" Or sFinalType = "A" Then
+        WScript.Echo "ERROR: Activation failed - " & sFinalMsg
+        WScript.Quit 1
     End If
+    WScript.Echo "INFO: SAP status: " & sFinalMsg
     WScript.Echo "SUCCESS: Status " & UCase(STATUS_NAME) & " of " & UCase(PROGRAM_NAME) & " created and activated in SAP."
     WScript.Quit 0
 
@@ -400,11 +402,13 @@ Case "UPDATE"
     sFinalMsg  = oSession.findById("wnd[0]/sbar").Text
     sFinalType = oSession.findById("wnd[0]/sbar").MessageType
     On Error GoTo 0
-    If sFinalType = "E" Then
-        WScript.Echo "WARNING: Activation may have errors - " & sFinalMsg
-    Else
-        WScript.Echo "INFO: SAP status: " & sFinalMsg
+    ' Same E/A gate as the ACTIVATE op: sbar E/A means the status was NOT
+    ' activated -- fail loudly instead of WARNING + unconditional SUCCESS.
+    If sFinalType = "E" Or sFinalType = "A" Then
+        WScript.Echo "ERROR: Activation failed - " & sFinalMsg
+        WScript.Quit 1
     End If
+    WScript.Echo "INFO: SAP status: " & sFinalMsg
     WScript.Echo "SUCCESS: Status " & UCase(STATUS_NAME) & " of " & UCase(PROGRAM_NAME) & " updated and activated in SAP."
     WScript.Quit 0
 
@@ -441,7 +445,7 @@ Case "ACTIVATE"
     sFinalMsg  = oSession.findById("wnd[0]/sbar").Text
     sFinalType = oSession.findById("wnd[0]/sbar").MessageType
     On Error GoTo 0
-    If sFinalType = "E" Then
+    If sFinalType = "E" Or sFinalType = "A" Then
         WScript.Echo "ERROR: Activation failed - " & sFinalMsg
         WScript.Quit 1
     End If

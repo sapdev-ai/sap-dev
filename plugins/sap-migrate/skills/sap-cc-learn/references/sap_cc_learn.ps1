@@ -38,7 +38,7 @@
 
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory)][ValidateSet('propose','apply')][string]$Action,
+    [ValidateSet('propose','apply')][string]$Action = 'propose',
     [Parameter(Mandatory)][string]$CampaignDir,
     [string]$KnowledgeDir = '',
     [string]$AssignFile = '',

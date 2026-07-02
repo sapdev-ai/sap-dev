@@ -59,6 +59,17 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_
 Set `{WORK_TEMP}` = `{work_dir}\temp` (create if needed) and
 `{CAMPAIGN_DIR}` = `{work_dir}\migrations\{campaign-id}`.
 
+Set `{RUN_TEMP}` = the per-run scratch dir (`Get-SapRunTemp` mints + creates
+`{work_dir}\temp\run_<id>`):
+
+```bash
+powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('RUN_TEMP=' + (Get-SapRunTemp))"
+```
+
+Per the CLAUDE.md "Two-bucket temp model" write this skill's per-run scratch
+(the log state file below) under `{RUN_TEMP}`, never at a fixed name under the
+`{WORK_TEMP}` root.
+
 **Knowledge pack resolution:** default is the plugin pack at
 `<SKILL_DIR>\..\..\shared\knowledge`. If `{custom_url}\knowledge\catalog.tsv`
 exists, pass that folder via `--knowledge` to use the customer's extended pack.
@@ -67,8 +78,10 @@ exists, pass that folder via `--knowledge` to use the customer's extended pack.
 
 ## Step 0.5 — Start Logging
 
+State file: `{RUN_TEMP}\sap_cc_triage_run.json`. Best-effort.
+
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{WORK_TEMP}\sap_cc_triage_run.json" -Skill sap-cc-triage -ParamsJson "{}"
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{RUN_TEMP}\sap_cc_triage_run.json" -Skill sap-cc-triage -ParamsJson "{}"
 ```
 
 ---
@@ -144,8 +157,9 @@ powershell -ExecutionPolicy Bypass -File "<SKILL_DIR>\..\sap-cc-campaign\referen
 
 ## Limitations / Known gaps (draft)
 
-- **Seed pack coverage.** The shipped pack has 5 patterns (3 ACTIVE, 2 DRAFT).
-  Findings outside those patterns come back UNMATCHED (→ REVIEW) — expected
+- **Seed pack coverage.** The shipped pack has 12 patterns (3 ACTIVE, 9 DRAFT
+  — see `shared/knowledge/catalog.tsv` / `manifest.json`). Findings outside
+  those patterns come back UNMATCHED (→ REVIEW) — expected
   early; the pack grows via its flywheel (real `detect_message_ids` + new
   recipes). A high unmatched ratio is a signal to extend the pack, not a bug.
 - **Regex matches message text, not source.** The `detect_code_regex` fallback
@@ -165,7 +179,7 @@ powershell -ExecutionPolicy Bypass -File "<SKILL_DIR>\..\sap-cc-campaign\referen
 ## Final — Log End
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_cc_triage_run.json" -Status SUCCESS -ExitCode 0
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_cc_triage_run.json" -Status SUCCESS -ExitCode 0
 ```
 
 For exit `1` use `-Status SKIPPED -ExitCode 1 -ErrorClass CC_TRIAGE_NO_FINDINGS`;

@@ -11,7 +11,7 @@ Display) using SAP GUI Scripting.
 
 ## What It Does
 
-1. **Login** — Opens a SAP GUI connection and logs in (auto or manual)
+1. **Login** — Use the `/sap-login` skill first; this skill attaches to the active session
 2. **Check** — Uses BP Open Partner to determine if a BP already exists
 3. **Create** — Creates a new Business Partner (Organization) with specified role and fields
 4. **Update** — Changes fields on an existing Business Partner
@@ -20,10 +20,14 @@ Display) using SAP GUI Scripting.
 
 | File | Action | Tokens |
 |---|---|---|
-| `sap_bp_login.vbs` | Login | `%%SAP_LOGON_DESCRIPTION%%`, `%%SAP_CLIENT%%`, `%%SAP_USER%%`, `%%SAP_PASSWORD%%`, `%%SAP_LANGUAGE%%` |
 | `sap_bp_check.vbs` | Check existence | `%%BP_NUMBER%%` |
 | `sap_bp_create.vbs` | Create Organization | `%%BP_NUMBER%%`, `%%BP_ROLE%%`, `%%BP_GROUPING%%`, `%%DEFINITION_FILE%%` |
 | `sap_bp_update.vbs` | Update partner | `%%BP_NUMBER%%`, `%%DEFINITION_FILE%%` |
+
+On a successful save the create/update scripts echo a machine-readable
+`BP: <number>` line before the final `SUCCESS:` line (on create with internal
+numbering the number is extracted from the status bar's structured message
+parameters, digit-run fallback).
 
 ## Field Definition File Format
 

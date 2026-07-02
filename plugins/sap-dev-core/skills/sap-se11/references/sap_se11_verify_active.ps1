@@ -37,7 +37,10 @@ $catalog = switch ($type) {
     "VIEW"         { @{ Tab="DD25L"; Key="VIEWNAME"  } }
     "SEARCHHELP"   { @{ Tab="DD30L"; Key="SHLPNAME"  } }
     "LOCKOBJECT"   { @{ Tab="DD25L"; Key="VIEWNAME"  } }
-    "TYPEGROUP"    { @{ Tab="DD40L"; Key="TYPENAME"  } }
+    # Type groups have NO DD*L catalog table (DD40L is TABLE TYPES -- mapping
+    # TYPEGROUP there verified every successful create as MISSING). Verified
+    # via TADIR (R3TR TYPE <name>) + DWINACTIV emptiness in the branch below.
+    "TYPEGROUP"    { @{ Tadir="TYPE" } }
     default        { $null }
 }
 if (-not $catalog) {
@@ -55,6 +58,34 @@ $g_dest = Connect-SapRfc -Server   "%%SAP_SERVER%%"   `
 if (-not $g_dest) { exit 1 }
 
 try {
+    if ($catalog.Tadir) {
+        # Existence = object-directory row: TADIR PGMID='R3TR' OBJECT='TYPE'.
+        $fn = $g_dest.Repository.CreateFunction("RFC_READ_TABLE")
+        $fn.SetValue("QUERY_TABLE", "TADIR")
+        $fn.SetValue("DELIMITER", "|")
+        Add-RfcOption $fn ("PGMID = 'R3TR' AND OBJECT = '{0}' AND OBJ_NAME = '{1}'" -f $catalog.Tadir, $name)
+        Add-RfcField  $fn "OBJ_NAME"
+        $fn.Invoke($g_dest)
+        if ($fn.GetTable("DATA").RowCount -lt 1) {
+            Write-Host "MISSING"
+            exit 3
+        }
+        # Activation state = DWINACTIV emptiness for the object name (any row
+        # -> an inactive version is still pending -> activation incomplete).
+        $fn = $g_dest.Repository.CreateFunction("RFC_READ_TABLE")
+        $fn.SetValue("QUERY_TABLE", "DWINACTIV")
+        $fn.SetValue("DELIMITER", "|")
+        Add-RfcOption $fn ("OBJ_NAME = '{0}'" -f $name)
+        Add-RfcField  $fn "OBJ_NAME"
+        $fn.Invoke($g_dest)
+        if ($fn.GetTable("DATA").RowCount -gt 0) {
+            Write-Host "INACTIVE"
+            exit 2
+        }
+        Write-Host "ACTIVE"
+        exit 0
+    }
+
     $fn = $g_dest.Repository.CreateFunction("RFC_READ_TABLE")
     $fn.SetValue("QUERY_TABLE", $catalog.Tab)
     $fn.SetValue("DELIMITER", "|")

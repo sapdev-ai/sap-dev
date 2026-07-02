@@ -34,6 +34,18 @@
 #         -Action unprotect -Value "dpapi:AQAAANCMnd8B..."
 #     # stdout: MyP@ssw0rd
 #
+# STDIN INPUT (-FromStdin) -- keeps the plaintext OFF the command line:
+#
+#     "MyP@ssw0rd" | powershell -ExecutionPolicy Bypass -File "...\sap_dpapi.ps1" `
+#         -Action protect -FromStdin
+#     # stdout: dpapi:AQAAANCMnd8B...
+#
+#     Passing the secret on -Value makes it visible in the process list,
+#     PSReadLine history, and session transcription. -FromStdin reads the
+#     value from standard input instead (trailing CR/LF trimmed), so the
+#     plaintext never appears as an argument. Works for both actions; it
+#     takes precedence over -Value when both are supplied.
+#
 # UNPROTECT BEHAVIOUR ON PLAINTEXT INPUT:
 #
 #     If the input has no "dpapi:" prefix, Unprotect-SapSecret returns
@@ -50,7 +62,8 @@
 [CmdletBinding()]
 param(
     [string]$Action,
-    [string]$Value
+    [string]$Value,
+    [switch]$FromStdin
 )
 
 $ErrorActionPreference = 'Stop'
@@ -134,6 +147,14 @@ function Unprotect-SapSecret {
 # When invoked via `powershell -File sap_dpapi.ps1 -Action <protect|unprotect>
 # -Value <text>`, drive the matching function and emit one line on stdout.
 if ($PSBoundParameters.ContainsKey('Action')) {
+    # -FromStdin reads the secret from standard input so it never appears on the
+    # command line (process list / PSReadLine / transcription). It overrides
+    # -Value when both are given. Trim only the trailing newline the pipe adds -
+    # a real password could legitimately contain interior/leading spaces.
+    if ($FromStdin) {
+        $Value = [Console]::In.ReadToEnd()
+        $Value = $Value -replace '(\r?\n)+$', ''
+    }
     switch ($Action.ToLowerInvariant()) {
         "protect" {
             try {

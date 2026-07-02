@@ -180,7 +180,9 @@ SP14	MARC-DZEIT	5
 
 ### Write the definition file
 
-1. Write the field definitions to: `{WORK_TEMP}\<MATERIAL>_fields.txt`
+1. Write the field definitions to: `{RUN_TEMP}\<MATERIAL>_fields.txt`
+   - The per-run directory keeps concurrent sessions from clobbering each other's files.
+   - Write the file as UTF-8 (the VBS reads it via ADODB.Stream `Charset="utf-8"`, so JA/ZH values survive intact).
    - Use the tab-separated format above.
    - Include only the views and fields the user wants to set.
    - If the user references an existing material, use MM03 to look up its field values.
@@ -223,13 +225,16 @@ powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_mm01_check_run.ps1"
 ### Execute
 
 ```bash
-cscript //NoLogo {RUN_TEMP}\sap_mm01_check_run.vbs
+C:\Windows\SysWOW64\cscript.exe //NoLogo {RUN_TEMP}\sap_mm01_check_run.vbs
 ```
 
 **Parse the last line of output:**
 - `EXIST` → material exists → proceed to Step 5a (Update via MM02).
 - `NOT_EXIST` → material does not exist → proceed to Step 5b (Create via MM01).
-- `ERROR:` → show full output and stop.
+- `ERROR:` → show full output and stop. The check reports `NOT_EXIST` only for the
+  known MM03 not-found message (M3 305, matched via the locale-independent
+  MessageId/MessageNumber); any other error state (authorization, lock, unexpected
+  screen/popup) is `ERROR` — never create against an undetermined material.
 
 ---
 
@@ -244,6 +249,7 @@ Write `{RUN_TEMP}\sap_mm01_update_run.ps1`:
 $content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_mm01_update.vbs', [System.Text.Encoding]::UTF8)
 $content = $content -replace '%%MATERIAL%%','THE_MATERIAL'
 $content = $content -replace '%%DEFINITION_FILE%%','THE_DEFINITION_FILE'
+$content = $content -replace '%%SESSION_LOCK_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_session_lock.vbs'
 # Phase 3.5 session-attach plumbing.
 $sessionPath = ''
 $content = $content -replace '%%SESSION_PATH%%', $sessionPath
@@ -263,7 +269,7 @@ powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_mm01_update_run.ps1"
 ### Execute
 
 ```bash
-cscript //NoLogo {RUN_TEMP}\sap_mm01_update_run.vbs
+C:\Windows\SysWOW64\cscript.exe //NoLogo {RUN_TEMP}\sap_mm01_update_run.vbs
 ```
 
 Proceed to Step 6 to evaluate the result.
@@ -307,7 +313,7 @@ powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_mm01_create_run.ps1"
 ### Execute
 
 ```bash
-cscript //NoLogo {RUN_TEMP}\sap_mm01_create_run.vbs
+C:\Windows\SysWOW64\cscript.exe //NoLogo {RUN_TEMP}\sap_mm01_create_run.vbs
 ```
 
 Proceed to Step 6 to evaluate the result.
@@ -318,6 +324,8 @@ Proceed to Step 6 to evaluate the result.
 
 **On success** (output contains `SUCCESS:`):
 - Tell the user the material was created/updated.
+- Parse the machine-readable `MATERIAL: <number>` line (echoed right before
+  `SUCCESS:`) for the saved material number.
 - Show the full script output as a code block.
 
 **On failure** (output contains `ERROR:`):
@@ -330,17 +338,20 @@ Proceed to Step 6 to evaluate the result.
 | `Failed to reach data screen` | View/org level issue | Check org-level values (plant, sales org) |
 | `Field not found` | Field name mismatch | Verify ABAP field name for the target view |
 | `Material creation failed` | SAP validation error | Check status bar message, fix field values |
+| `Could not confirm the save` | Save ended without an S status (warning left standing, empty status) | Read the echoed status text, fix the data, re-run; verify via Step 4 whether the material was saved |
+| `Unexpected popup` | Unknown modal appeared — the script refuses to blind-dismiss real business-record dialogs | Resolve the popup manually in SAP GUI, then re-run |
+| `Could not determine existence` | Check hit an sbar E that is not the known not-found message (auth/lock) | Read the echoed MessageId/MessageNumber and resolve the underlying error |
 | `No SAP GUI session found` | Not logged in | Run login step first |
 | `Definition file not found` | Wrong path | Verify file path and re-run Step 2 |
-| `Package/transport dialog` | Needs transport assignment | Handled automatically ($TMP) |
 
 ---
 
 ## Step 7 — Clean Up
 
-Delete all temporary files (including the field definition file):
+Delete the temporary files this run created — only the exact definition file
+written in Step 2, never a wildcard over a shared directory:
 ```bash
-cmd /c del {RUN_TEMP}\sap_mm01_check_run.vbs & del {RUN_TEMP}\sap_mm01_check_run.ps1 & del {RUN_TEMP}\sap_mm01_create_run.vbs & del {RUN_TEMP}\sap_mm01_create_run.ps1 & del {RUN_TEMP}\sap_mm01_update_run.vbs & del {RUN_TEMP}\sap_mm01_update_run.ps1 & del {WORK_TEMP}\*_fields.txt
+cmd /c del {RUN_TEMP}\sap_mm01_check_run.vbs & del {RUN_TEMP}\sap_mm01_check_run.ps1 & del {RUN_TEMP}\sap_mm01_create_run.vbs & del {RUN_TEMP}\sap_mm01_create_run.ps1 & del {RUN_TEMP}\sap_mm01_update_run.vbs & del {RUN_TEMP}\sap_mm01_update_run.ps1 & del {RUN_TEMP}\<MATERIAL>_fields.txt
 ```
 
 ---

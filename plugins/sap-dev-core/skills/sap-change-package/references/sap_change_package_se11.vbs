@@ -211,58 +211,91 @@ Sub ChangePackageFlow
     Err.Clear
     On Error GoTo 0
 
+    ' SUCCESS gate: sbar not E/A AND no popup left on screen.
     If sStatusType = "E" Or sStatusType = "A" Then
         WScript.Echo "ERROR: Change package reported [" & sStatusType & "] " & sStatusText
         WScript.Quit 1
     End If
+    Dim sActId
+    sActId = ""
+    On Error Resume Next
+    sActId = oSess.ActiveWindow.Id
+    On Error GoTo 0
+    If InStr(sActId, "wnd[1]") > 0 Or InStr(sActId, "wnd[2]") > 0 Then
+        WScript.Echo "ERROR: A modal popup is still open after the change (" & sActId & ") -- move not confirmed."
+        WScript.Quit 1
+    End If
 
+    WScript.Echo "VERIFY_HINT: confirm TADIR-DEVCLASS=" & sPkg & " for " & sName & " via /sap-dev-status (or Step 7 TADIR re-query)."
     WScript.Echo "DONE"
     WScript.Quit 0
 End Sub
 
+' Classification is by DDIC control id ONLY (locale-independent) -- NEVER by
+' window title. Title-based branching ("error"/"information") was English-only
+' and silently dismissed the E071-lock refusal popup under ZH/JA logons,
+' letting the run report DONE without the move (language_independence_rules.md).
+' Priority:
+'   1. Create-Request/Task confirm   -> txtKO013-AS4TEXT present (fill + Continue)
+'   2. Message-only popup (lock / refusal / auth error) -> txtMESSTXT1 present,
+'      no TR-desc field, no Yes/No option -> genuine ERROR + Quit 1
+'   3. Yes/No confirm                 -> btnSPOP-OPTION1 (affirm)
+'   4. Generic confirm               -> Continue (tbar[0]/btn[0])
 Sub HandlePopupChain
-    Dim iLoop, oDescFld, sTitle, oM1, oM2, sM1, sM2
+    Dim iLoop, oDescFld, oM1, oM2, sM1, sM2, oYesNo
     For iLoop = 1 To 3
         On Error Resume Next
         If InStr(oSess.ActiveWindow.Id, "wnd[2]") > 0 Then
-            sTitle = oSess.ActiveWindow.Text
-            ' --- Detect Error popup (e.g., "Object directory entry ... locked for request/task ...")
-            If LCase(sTitle) = "error" Or LCase(sTitle) = "information" Then
+            ' (1) Create-Request/Task description prompt.
+            Set oDescFld = Nothing
+            Set oDescFld = oSess.findById("wnd[2]/usr/txtKO013-AS4TEXT")
+            If Err.Number = 0 And Not (oDescFld Is Nothing) Then
+                Dim sDesc
+                sDesc = TR_DESCRIPTION
+                If sDesc = "" Then sDesc = OBJECT_NAME & "_pkg_" & NEW_PACKAGE
+                If Len(sDesc) > 60 Then sDesc = Left(sDesc, 60)
+                oDescFld.Text = sDesc
+                WScript.Echo "INFO: Filled new-TR description: " & sDesc
+                Err.Clear
+                oSess.findById("wnd[2]/tbar[0]/btn[0]").press
+                WScript.Sleep 1500
+                Err.Clear
+                On Error GoTo 0
+            Else
+                Err.Clear
+                ' Probe message-text label + Yes/No option to classify.
                 Set oM1 = Nothing : Set oM1 = oSess.findById("wnd[2]/usr/txtMESSTXT1")
                 Err.Clear
-                Set oM2 = Nothing : Set oM2 = oSess.findById("wnd[2]/usr/txtMESSTXT2")
+                Set oYesNo = Nothing : Set oYesNo = oSess.findById("wnd[2]/usr/btnSPOP-OPTION1")
                 Err.Clear
-                sM1 = "" : If Not (oM1 Is Nothing) Then sM1 = oM1.Text
-                sM2 = "" : If Not (oM2 Is Nothing) Then sM2 = oM2.Text
-                If InStr(LCase(sM1 & " " & sM2), "locked") > 0 Or LCase(sTitle) = "error" Then
-                    WScript.Echo "ERROR: SAP popup [" & sTitle & "] " & Trim(sM1 & " " & sM2)
-                    ' Close popup with Cancel (btn[1]) if present, else btn[0]
+                If (Not (oM1 Is Nothing)) And (oYesNo Is Nothing) Then
+                    ' (2) Message-only popup interrupting the change = refusal/error.
+                    Set oM2 = Nothing : Set oM2 = oSess.findById("wnd[2]/usr/txtMESSTXT2")
+                    Err.Clear
+                    sM1 = "" : If Not (oM1 Is Nothing) Then sM1 = oM1.Text
+                    sM2 = "" : If Not (oM2 Is Nothing) Then sM2 = oM2.Text
+                    WScript.Echo "ERROR: SAP refused the package change: " & Trim(sM1 & " " & sM2)
                     On Error Resume Next
-                    oSess.findById("wnd[2]/tbar[0]/btn[1]").press
+                    oSess.findById("wnd[2]/tbar[0]/btn[1]").press   ' Cancel if present
                     If Err.Number <> 0 Then : Err.Clear : oSess.findById("wnd[2]/tbar[0]/btn[0]").press : End If
                     Err.Clear
                     On Error GoTo 0
                     WScript.Quit 1
+                ElseIf Not (oYesNo Is Nothing) Then
+                    ' (3) Yes/No confirm -> affirm (Yes).
+                    oYesNo.press
+                    WScript.Echo "INFO: Confirmed wnd[2] Yes/No popup (btnSPOP-OPTION1)."
+                    WScript.Sleep 1500
+                    Err.Clear
+                    On Error GoTo 0
+                Else
+                    ' (4) Generic confirm -> Continue.
+                    oSess.findById("wnd[2]/tbar[0]/btn[0]").press
+                    WScript.Sleep 1500
+                    Err.Clear
+                    On Error GoTo 0
                 End If
             End If
-            Err.Clear
-            ' --- Normal "Create Request"/"Create Task" confirmation popup
-            Set oDescFld = Nothing
-            Set oDescFld = oSess.findById("wnd[2]/usr/txtKO013-AS4TEXT")
-            If Err.Number = 0 Then
-                If Not (oDescFld Is Nothing) Then
-                    Dim sDesc
-                    sDesc = TR_DESCRIPTION
-                    If sDesc = "" Then sDesc = OBJECT_NAME & "_pkg_" & NEW_PACKAGE
-                    If Len(sDesc) > 60 Then sDesc = Left(sDesc, 60)
-                    oDescFld.Text = sDesc
-                    WScript.Echo "INFO: Filled new-TR description: " & sDesc
-                End If
-            End If
-            Err.Clear
-            oSess.findById("wnd[2]/tbar[0]/btn[0]").press
-            WScript.Sleep 1500
-            Err.Clear
         Else
             Err.Clear
             On Error GoTo 0

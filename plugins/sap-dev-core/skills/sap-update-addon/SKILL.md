@@ -1,7 +1,9 @@
 ---
 name: sap-update-addon
 description: |
-  Insert, update, or delete records in SAP add-on tables (Y/Z prefix).
+  Insert or update records in SAP add-on tables (Y/Z prefix); DELETE is not
+  automated on any method path (refused before touching data — drive SM30
+  manually for row deletion).
   Automatically detects the best method:
     1. SM30 — if a maintenance view exists
     2. SE16 — if DD02L-MAINFLAG = 'X' (direct table maintenance allowed)
@@ -84,7 +86,12 @@ Extract from `$ARGUMENTS`:
   - Header: field names (uppercase), excluding MANDT
   - Data rows: values separated by TAB
 - **Operation** — optional. `INSERT` (default), `UPDATE`, or `DELETE`.
-  For ZCMRUPDATE_ADDON_TABLE method, INSERT and UPDATE both result in MODIFY (upsert).
+  For the ZCMRUPDATE_ADDON_TABLE (PROG) method, INSERT and UPDATE both result in MODIFY (upsert).
+  **DELETE is refused by all three method scripts** — SM30 flow: not implemented
+  (`ERROR: SM30_DELETE_UNSUPPORTED`); SE16: stub on all releases
+  (`ERROR: SE16_DELETE_UNSUPPORTED`); PROG: the utility has no DELETE mode
+  (`ERROR: PROG method supports upsert (MODIFY) only`). Each exits 1 before
+  touching any data. For deletes, drive SM30 manually or ask for a dedicated flow.
 - **SAP Logon description** — optional. Used for credential lookup.
 
 If the user provides inline data instead of a file, write it to `{RUN_TEMP}\<TABLE_NAME>_data.txt`
@@ -138,10 +145,23 @@ $content = $content.Replace('%%TABLE_NAME%%',   'THE_TABLE_NAME')
 Write-Host 'Done'
 ```
 
-Execute via 32-bit PowerShell:
+Execute via 32-bit PowerShell. The outer command resolves the AI session's
+pinned SAP session (canonical `Get-SapCurrentSessionPath` wrapper line) and
+bridges it into the child via `$env:SAPDEV_SESSION_PATH`, so detection runs
+against the pinned session instead of grabbing the first session of the first
+connection. The detect script resolves its target in attach-lib order:
+explicit `-SessionPath` → `$env:SAPDEV_SESSION_PATH` → sole-connection +
+sole-session default → refuse loud (exit 1, listing the attached connections
+and telling the user to `/sap-login` pin).
+
 ```bash
-C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_update_addon_detect_run.ps1"
+powershell -NoProfile -ExecutionPolicy Bypass -Command '. "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1"; $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp "{WORK_TEMP}"; & "C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe" -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_update_addon_detect_run.ps1"'
 ```
+
+(The `-Command` string is single-quoted for the shell so `$env:` survives
+git-bash verbatim.) If the user supplied an explicit `--session
+/app/con[N]/ses[M]`, append `-SessionPath "/app/con[N]/ses[M]"` to the inner
+`powershell.exe` invocation instead.
 
 Parse the output lines:
 - `RESULT_SM30:True` / `RESULT_SM30:False`
@@ -176,6 +196,12 @@ $content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_update_addo
 $content = $content.Replace('%%TABLE_NAME%%', 'THE_TABLE_NAME')
 $content = $content.Replace('%%DATA_FILE%%',  'THE_DATA_FILE')
 $content = $content.Replace('%%OPERATION%%',  'THE_OPERATION')
+# Transport for the SM30 transport popup (probed by control id
+# ctxtKO008-TRKORR). Resolve it via /sap-transport-request FIRST whenever the
+# maintenance view can be transportable / recording-enabled. '' is allowed,
+# but if SAP then prompts for a TR the VBS aborts with ABORT_EMPTY_TR -- it
+# never blind-Enters the transport popup.
+$content = $content.Replace('%%TRANSPORT%%',  'THE_TRANSPORT_OR_EMPTY')
 # Phase 3.5 session-attach plumbing.
 $sessionPath = ''
 $content = $content.Replace('%%SESSION_PATH%%',   $sessionPath)
@@ -186,16 +212,30 @@ $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 Write-Host 'Done'
 ```
 
-Execute:
+Execute (SAP GUI Scripting COM requires 32-bit cscript):
 ```bash
-powershell -Command "& cscript //NoLogo '{RUN_TEMP}\sap_update_addon_sm30_run.vbs'"
+C:/Windows/SysWOW64/cscript.exe //NoLogo "{RUN_TEMP}\sap_update_addon_sm30_run.vbs"
 ```
 
 **SM30 Notes:**
-- SM30 may show a transport request dialog — the VBS handles it
-- Field IDs use pattern `ctxt<TABLE>-<FIELD>` or `txt<TABLE>-<FIELD>`
-- New Entries button is typically `tbar[1]/btn[14]`
-- Save via Ctrl+S (sendVKey 11)
+- **Single-record layouts only, exactly ONE data row per run.** The flow fills
+  flat `ctxt<TABLE>-<FIELD>` / `txt<TABLE>-<FIELD>` fields and saves once; a
+  multi-row data file is refused upfront (rows 2..N would overwrite the same
+  fields before the Save). Table-control (list) maintenance dialogs are refused
+  with `ERROR: SM30_LAYOUT_UNSUPPORTED (table control) - use the SE16 or PROG method`
+  before anything is saved.
+- **Transport popup is dispatched by control id** (`ctxtKO008-TRKORR` probe,
+  same discriminator as `shared/scripts/sap_delete_popups.vbs`) — never
+  blind-Enter'd. Present + `%%TRANSPORT%%` filled → fill + Enter; present +
+  empty transport → the run echoes `ABORT_EMPTY_TR` and exits 1 (resolve a TR
+  via `/sap-transport-request`, re-run). Non-TR info popups (e.g. the
+  cross-client caution) are dismissed with Enter; a popup chain that survives
+  5 dismissals fails loud.
+- **DELETE is refused upfront** (`ERROR: SM30_DELETE_UNSUPPORTED`, exit 1).
+- New Entries button is typically `tbar[1]/btn[14]`; Save via Ctrl+S (sendVKey 11).
+- **Verdict gates:** status bar `MessageType` E/A after Enter or after Save →
+  `ERROR: ...` + exit 1. `SUCCESS: SM30 maintenance completed for <TABLE>`
+  prints only after every gate passes.
 
 ### Step 4b — SE16 Method
 
@@ -217,9 +257,9 @@ $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 Write-Host 'Done'
 ```
 
-Execute:
+Execute (SAP GUI Scripting COM requires 32-bit cscript):
 ```bash
-powershell -Command "& cscript //NoLogo '{RUN_TEMP}\sap_update_addon_se16_run.vbs'"
+C:/Windows/SysWOW64/cscript.exe //NoLogo "{RUN_TEMP}\sap_update_addon_se16_run.vbs"
 ```
 
 **SE16 Notes (INSERT / UPDATE):**
@@ -228,7 +268,8 @@ powershell -Command "& cscript //NoLogo '{RUN_TEMP}\sap_update_addon_se16_run.vb
 - Insert-form fields (`/1BCDWB/DB<table>`/101): `txt<TABLE>-<FIELD>` (or `ctxt`); MANDT is read-only and skipped. Each record is saved with Ctrl+S → status "Database record successfully created".
 - The data file is read as **UTF-8** (ADODB.Stream), aligned with the PROG path and the Step 1 contract — older revisions read UTF-16 and silently failed on UTF-8 files.
 - **Live-verified end-to-end INSERT on BOTH ER1 (ECC 6.0) and S4D (S/4HANA 1909), 2026-06-17** — a row was created in a Z table on each via the `btn[5]` path.
-- **DELETE via SE16 is a stub on all releases** (the SE16 result is a non-grid classic `SAPMSSY0`/120 list with no Delete button on both ER1 and S4D). For deletes use SM30 (needs a maintenance view) or delete manually. INSERT/UPDATE is the supported SE16 path.
+- **DELETE via SE16 is refused upfront** (`ERROR: SE16_DELETE_UNSUPPORTED`, exit 1, before any row is touched) — the SE16 result is a non-grid classic `SAPMSSY0`/120 list with no Delete button on both ER1 and S4D. For deletes use SM30 (needs a maintenance view) or delete manually. INSERT/UPDATE is the supported SE16 path.
+- **Per-row verdict:** a row whose save returns status-bar `MessageType` E/A counts as FAILED. A row where only SOME field IDs matched is **not saved** (saving it would commit silently-empty fields) — the VBS backs out with F12 (+ discard confirm) and counts it FAILED. Any failed row makes the final verdict `ERROR: <n> of <m> rows failed (rows: <list>)` + exit 1; only an all-rows-clean run ends `SUCCESS: SE16 maintenance completed. <n> of <m> rows saved.`
 
 ### Step 4c — ZCMRUPDATE_ADDON_TABLE Method
 
@@ -256,6 +297,10 @@ $content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_update_addo
 $content = $content.Replace('%%TABLE_NAME%%', 'THE_TABLE_NAME')
 $content = $content.Replace('%%DATA_FILE%%',  'THE_DATA_FILE')
 $content = $content.Replace('%%TEMP_DIR%%',   '{RUN_TEMP}')
+# ZCMRUPDATE_ADDON_TABLE's only write path is MODIFY (upsert). The VBS
+# refuses OPERATION=DELETE upfront with
+# "ERROR: PROG method supports upsert (MODIFY) only" (exit 1).
+$content = $content.Replace('%%OPERATION%%',  'THE_OPERATION')
 # Phase 3.5 session-attach plumbing.
 $sessionPath = ''
 $content = $content.Replace('%%SESSION_PATH%%',   $sessionPath)
@@ -292,11 +337,28 @@ if (-not $watcher.HasExited) { Stop-Process -Id $watcher.Id -Force -ErrorAction 
 Get-Content "{RUN_TEMP}\sap_update_addon_sidecar.out" -Tail 1   # DISMISSED:WIN32 / TIMEOUT
 ```
 
-If output file was saved, read `{RUN_TEMP}\sap_update_addon_output.txt` for
-results. NOTE: the program's WRITE list is Japanese; the save-list "unconverted"
-export can render the labels as `#` under a non-matching logon codepage (the
-`成功: N  エラー: M` counts still parse by number). The authoritative result is
-the target table content — confirm via `/sap-se16n` (or RFC where available).
+**The VBS gates its own verdict** (SUCCESS only when every gate passes):
+
+- Status bar `MessageType` E/A after F8, or still on selection screen 1000
+  (= the program never ran) → `ERROR: ...` + exit 1.
+- It saves the list output to `{RUN_TEMP}\sap_update_addon_output.txt` and
+  parses the program's result-count block **locale-independently**: the line
+  directly above the final all-`=` separator holds exactly two integers
+  (success, error). The program's WRITE labels are Japanese and can render as
+  `#` under a non-matching logon codepage — the digits and the `====` lines
+  always survive, so the parse never depends on words. Echoes
+  `RESULT_COUNTS: success=<n> error=<m>`.
+- Parsed `error > 0`, `success = 0`, or a saved list WITHOUT the count block
+  (= the program aborted early, e.g. column-count mismatch — first list lines
+  are echoed as `LIST: ...`) → `ERROR: ...` + exit 1.
+- If the list file could not be saved at all, the run ends
+  `SUCCESS_UNVERIFIED: ...` (exit 0): the sbar gate passed but the counts are
+  unread — treat as unconfirmed and verify via `/sap-se16n`.
+- `SUCCESS: ZCMRUPDATE_ADDON_TABLE upserted <n> row(s) into <TABLE>.` prints
+  only when the parsed error count is 0.
+
+The saved list holds the per-row messages. The authoritative result is the
+target table content — confirm via `/sap-se16n` (or RFC where available).
 
 ---
 
@@ -306,6 +368,18 @@ Show the user:
 1. Which method was selected and why
 2. The operation result (success/error counts)
 3. Any errors encountered
+
+Terminal script outcomes to relay verbatim:
+
+| Line | Meaning | Exit |
+|---|---|---|
+| `SUCCESS: ...` | All gates passed (SM30 sbar gate / SE16 all rows saved / PROG parsed error count = 0) | 0 |
+| `SUCCESS_UNVERIFIED: ...` (PROG only) | sbar gate passed but the result-count list could not be saved/read — verify via `/sap-se16n` before trusting | 0 |
+| `ABORT_EMPTY_TR` (SM30) | Transport popup appeared with no TR resolved — nothing saved | 1 |
+| `ERROR: SM30_LAYOUT_UNSUPPORTED (table control) - use the SE16 or PROG method` | Maintenance dialog is a table-control layout — nothing saved | 1 |
+| `ERROR: <n> of <m> rows failed (rows: ...)` (SE16) | Per-row failures (sbar E/A, or partial field match — those rows were not saved) | 1 |
+| `ERROR: SM30_DELETE_UNSUPPORTED` / `ERROR: SE16_DELETE_UNSUPPORTED` / `ERROR: PROG method supports upsert (MODIFY) only` | DELETE requested — refused before touching data | 1 |
+| any other `ERROR: ...` | Gate failure (sbar E/A, program never ran, count block missing, ...) | 1 |
 
 ---
 
@@ -342,7 +416,13 @@ Suggested `<CLASS>`: `UPDATE_ADDON_FAILED`, `RFC_LOGON_FAILED`.
 | Error | Cause | Fix |
 |---|---|---|
 | `RESULT_METHOD:NONE` | No method available | Deploy ZCMRUPDATE_ADDON_TABLE first |
-| `SM30 transport dialog` | Table in transportable package | Enter transport or Cancel |
+| `ERROR: N SAP connections attached; cannot pick one safely` (detect) | Multiple SAP connections and no pinned session | Run `/sap-login` to pin, or pass `-SessionPath` |
+| `ABORT_EMPTY_TR` (SM30) | Save raised the transport popup (`ctxtKO008-TRKORR`) but no TR was resolved | Resolve a TR via `/sap-transport-request`, substitute it into `%%TRANSPORT%%`, re-run |
+| `ERROR: SM30_LAYOUT_UNSUPPORTED (table control)` | The generated maintenance dialog is a table-control (list) layout, not single-record | Use the SE16 or PROG method |
+| `ERROR: SM30 single-record flow supports exactly 1 data row per run` | Multi-row data file on the SM30 path | One run per row, or use the SE16 / PROG method |
+| `ERROR: <n> of <m> rows failed` (SE16) | Row saves rejected (sbar E/A) or entry-form fields missing (partial rows are never saved) | Check the listed row numbers; fix the data or re-record the entry-form field IDs |
+| `ERROR: *_DELETE_UNSUPPORTED` / `PROG method supports upsert (MODIFY) only` | DELETE requested — no script path implements it | Delete manually (or via SM30 maintenance dialog by hand) |
+| `SUCCESS_UNVERIFIED` (PROG) | sbar gate passed but the saved list with the result counts could not be read | Verify the table content via `/sap-se16n` before trusting the run |
 | `SE16 Create Entries not found` | MAINFLAG not set or editing blocked | Fall back to PROG method |
 | `ZCMRUPDATE_ADDON_TABLE field mismatch` | Data file header doesn't match table | Check field names match table definition |
 | `ERROR: Could not open the SE16 Create-Entries form` | Neither `btn[5]` (Create — verified ECC6 + S/4) nor `btn[18]` (legacy) nor the Edit menu reached the entry form on this release | Re-record the Create-Entries button for this release and add its ID to `sap_update_addon_se16.vbs`; or use the PROG / SM30 method |

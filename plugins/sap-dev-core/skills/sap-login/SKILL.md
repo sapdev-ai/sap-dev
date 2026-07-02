@@ -287,9 +287,11 @@ Then continue to **Step 6** (capture) and **Step 6.5** (finalize) as normal.
 
 ## Step 1 — Check Existing Session
 
-Run the static check script directly — no token replacement or generation needed:
+Run the static check script directly — no token replacement or generation needed.
+Use **32-bit cscript** (bare `cscript` is the 64-bit host, which cannot bind the
+SAP GUI Scripting COM objects):
 ```bash
-cscript //NoLogo "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_check_gui_login_status.vbs"
+C:\Windows\SysWOW64\cscript.exe //NoLogo "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_check_gui_login_status.vbs"
 ```
 Replace `<SAP_DEV_CORE_SHARED_DIR>` with the absolute path to sap-dev-core's `shared/` directory.
 Resolve it by going 3 levels up from `<SKILL_DIR>` (skill → skills/ → plugin dir → plugins root),
@@ -386,10 +388,11 @@ if blank, `sap_login_select.ps1 -Action finalize` auto-derives it as
 
 Encrypt the password BEFORE handing it to Step 3 if the user wants it
 saved — pre-encrypt then pass `dpapi:...` to finalize. Otherwise Step 6.5
-can re-encrypt:
+can re-encrypt. **Pipe the plaintext via STDIN (`-FromStdin`)** so it never
+lands on the command line (process list / PSReadLine / transcription):
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_dpapi.ps1" -Action protect -Value "<plaintext>"
+"<plaintext>" | powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_dpapi.ps1" -Action protect -FromStdin
 # stdout: dpapi:AQAAAN...
 ```
 
@@ -473,8 +476,12 @@ powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_login_run.ps1"
 
 ### Execute
 
+Run via **32-bit cscript** — bare `cscript` resolves to the 64-bit host, which
+cannot bind the SAP GUI Scripting COM objects (matches the repo's 32-bit VBS
+rule + the broker COM helper requirement):
+
 ```bash
-cscript //NoLogo {RUN_TEMP}\sap_login_run.vbs
+C:\Windows\SysWOW64\cscript.exe //NoLogo {RUN_TEMP}\sap_login_run.vbs
 ```
 
 **The VBScript handles four scenarios** (first match wins):
@@ -499,6 +506,13 @@ cscript //NoLogo {RUN_TEMP}\sap_login_run.vbs
 | `Could not open load-balanced connection` | Message server unreachable / wrong logon group / wrong SID | Check msrv hostname, logon group exists in RZ12, SID matches /sapmnt/<SID> |
 | `Login failed` | Wrong credentials | Check client, username, and password in profile |
 | `Login timed out` | No manual login within 5 min | Re-run and log in promptly |
+
+> **Cleanup is mandatory even on failure.** The generated
+> `{RUN_TEMP}\sap_login_run.vbs` (and, if Step 4 ran, `sap_rfc_test_run.ps1`)
+> carry the **plaintext password**. Before you end the skill on ANY failure
+> path here, run the **Step 5 — Clean Up** deletion block so the plaintext
+> scratch is removed immediately — do not leave it for the 24h stale-temp GC.
+> Then continue diagnosing. (On the success path Step 5 runs as usual.)
 
 ---
 
@@ -564,8 +578,15 @@ C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypas
 
 ## Step 5 — Clean Up
 
+**Always run this after the login attempt — on the SUCCESS path AND on every
+failure path from Step 3/Step 4.** The generated `sap_login_run.vbs` and
+`sap_rfc_test_run.ps1` hold the plaintext password, so they must be removed
+before the skill ends regardless of outcome (never left for the 24h stale-temp
+GC). It is safe to run when a file was never created (the deletes are
+best-effort):
+
 ```bash
-cmd /c del {RUN_TEMP}\sap_login_run.vbs & del {RUN_TEMP}\sap_login_run.ps1 & del {RUN_TEMP}\sap_rfc_test_run.ps1
+cmd /c del {RUN_TEMP}\sap_login_run.vbs 2>nul & del {RUN_TEMP}\sap_login_run.ps1 2>nul & del {RUN_TEMP}\sap_rfc_test_run.ps1 2>nul
 ```
 
 ---
@@ -590,8 +611,10 @@ cmd /c del {RUN_TEMP}\sap_login_run.vbs & del {RUN_TEMP}\sap_login_run.ps1 & del
 If the operator says yes, encrypt and persist:
 
 ```bash
-# 1. Encrypt the plaintext via the shared DPAPI helper.
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_dpapi.ps1" -Action protect -Value "<plaintext>"
+# 1. Encrypt the plaintext via the shared DPAPI helper. Pipe it via STDIN
+#    (-FromStdin) so the plaintext never appears on the command line
+#    (process list / PSReadLine / transcription).
+"<plaintext>" | powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_dpapi.ps1" -Action protect -FromStdin
 #    → stdout: dpapi:AQAAAN...
 ```
 
@@ -852,9 +875,13 @@ storage layer.
 SAP GUI 7.70 and older is exclusively 32-bit. SAP NCo 3.1 is registered in the
 32-bit GAC (`C:\Windows\Microsoft.NET\assembly\GAC_32`) when installed for .NET 4.0 32-bit.
 
-- **Check script** (`sap_check_gui_login_status.vbs`): runs with standard `cscript`.
-- **SAP GUI login VBS** (`sap_login.vbs`): runs with standard `cscript` (SAP GUI
-  Scripting works with both 32-bit and 64-bit).
+- **Check script** (`sap_check_gui_login_status.vbs`): **must** run via 32-bit
+  cscript `C:\Windows\SysWOW64\cscript.exe //NoLogo` — bare `cscript` resolves to
+  the 64-bit host, which cannot bind the SAP GUI Scripting COM objects.
+- **SAP GUI login VBS** (`sap_login.vbs`): same — **must** use 32-bit
+  `C:\Windows\SysWOW64\cscript.exe //NoLogo` (the repo-wide "SAP GUI VBS must be
+  32-bit" rule + the broker COM helper requirement). Do NOT rely on 64-bit
+  `cscript`.
 - **RFC connection PS1** (`sap_rfc_connect.ps1`): **must** use 32-bit PowerShell:
   `C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe`.
 

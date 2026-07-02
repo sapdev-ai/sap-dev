@@ -118,7 +118,33 @@ Scan the process text for issues in these categories:
 
 ---
 
-## Step 3.5 — Validate SAP table.field refs against live SAP (RFC, optional)
+## Step 4 — Write Base Result File
+
+Write the Step 2 and Step 3 findings to `{work_folder}/check_result_process.txt` in TAB-separated format:
+
+```
+No	Category	Location	Description	Severity	Status
+1	Unclear	PROCESSING FLOW 3.2	Processing step "データ更新" has no concrete logic	Warning	Open
+2	Inconsistency	FIELD DEFINITIONS / VALIDATION RULES	Field "品目コード" is mandatory but validation rule 3 treats it as optional	Error	Open
+3	Missing	FILE MAPPING	Field "旧品目コード" referenced in validation rule 6 but not in field list	Error	Open
+```
+
+Columns:
+- **No**: Sequential number
+- **Category**: `Unclear`, `Missing`, `Inconsistency`
+- **Location**: Section and line/rule number where the issue is found
+- **Description**: Clear explanation of the problem
+- **Severity**: `Error` (blocks code generation) or `Warning` (can proceed with assumptions)
+- **Status**: Always `Open` (user updates to `Fixed` or `Ignored` after review)
+
+Write this file BEFORE running Step 4.5 — the RFC validator there APPENDS to
+it and numbers its findings after the existing rows. (Pre-2026-07 the RFC
+step ran before this one, so writing the base results here overwrote its
+appended findings.)
+
+---
+
+## Step 4.5 — Validate SAP table.field refs against live SAP (RFC, optional — appends to the Step 4 file)
 
 **Why:** the spec often references SAP tables and fields directly — in
 `_file_mapping_in.txt` (SAP_TABLE.SAP_FIELD columns), in validation rules
@@ -131,7 +157,7 @@ or as a wrong-data bug at runtime. This step catches them offline.
 is present AND no spec section references SAP standard tables, OR if
 SAP RFC connection is not configured.
 
-### 3.5a — Collect (TABLE, FIELD) pairs to validate
+### 4.5a — Collect (TABLE, FIELD) pairs to validate
 
 Walk the work folder for:
 
@@ -148,13 +174,14 @@ Filter:
   being created in this same run; no live SAP cache hit expected).
 - Drop duplicates.
 
-Write to `{WORK_TEMP}\spec_refs_request.txt` (one row per pair, tab-separated).
-Skip the rest of 3.5 if the request file is empty.
+Write to `{RUN_TEMP}\spec_refs_request.txt` (one row per pair, tab-separated
+— per-run scratch, see the Step 0 two-bucket rule).
+Skip the rest of 4.5 if the request file is empty.
 
-### 3.5b — Populate the struct signature cache
+### 4.5b — Populate the struct signature cache
 
 Build a deduplicated list of unique `<TABLE>` names from the request file.
-Write them to `{WORK_TEMP}\struct_request.txt` (one per line).
+Write them to `{RUN_TEMP}\struct_request.txt` (one per line).
 
 Invoke `sap_rfc_lookup_struct.ps1` (the same lookup `/sap-gen-abap` Step
 1.5e uses). Token-replace per the FM-lookup pattern (see
@@ -166,18 +193,18 @@ If RFC fails / is unconfigured, the cache file is written empty/partial
 with `UNAVAILABLE` marker rows. The validator below downgrades affected
 checks to `Warning` automatically — the step is fail-soft.
 
-### 3.5c — Run the spec-refs validator
+### 4.5c — Run the spec-refs validator
 
 Template at `<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_check_spec_refs.ps1`.
 
 Count existing rows in `{work_folder}/check_result_process.txt` (header
-not included) to compute `STARTING_NO` so the new findings continue the
-sequence. Pass that, the request file, the cache file, and the result
-file path:
+not included — the base file written in Step 4) to compute `STARTING_NO`
+so the new findings continue the sequence. Pass that, the request file,
+the cache file, and the result file path:
 
 ```powershell
 $content = Get-Content '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_check_spec_refs.ps1' -Raw
-$content = $content.Replace('%%REQUEST_FILE%%',    '{WORK_TEMP}\spec_refs_request.txt')
+$content = $content.Replace('%%REQUEST_FILE%%',    '{RUN_TEMP}\spec_refs_request.txt')
 $content = $content.Replace('%%STRUCT_SIG_FILE%%', '{work_folder}\_struct_signatures.txt')
 $content = $content.Replace('%%RESULT_FILE%%',     '{work_folder}\check_result_process.txt')
 $content = $content.Replace('%%STARTING_NO%%',     'THE_NEXT_NO')
@@ -190,7 +217,7 @@ powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_check_spec_refs_run.ps1
 ```
 
 The validator appends rows in the same `No\tCategory\tLocation\tDescription\tSeverity\tStatus`
-format the rest of this skill uses. New error/warning classes added by 3.5:
+format the rest of this skill uses. New error/warning classes added by 4.5:
 
 | Reason text | Severity |
 |---|---|
@@ -201,30 +228,9 @@ format the rest of this skill uses. New error/warning classes added by 3.5:
 Clean up:
 ```bash
 cmd /c del {RUN_TEMP}\sap_check_spec_refs_run.ps1
-cmd /c del {WORK_TEMP}\spec_refs_request.txt
-cmd /c del {WORK_TEMP}\struct_request.txt
+cmd /c del {RUN_TEMP}\spec_refs_request.txt
+cmd /c del {RUN_TEMP}\struct_request.txt
 ```
-
----
-
-## Step 4 — Write Result File
-
-Write results to `{work_folder}/check_result_process.txt` in TAB-separated format:
-
-```
-No	Category	Location	Description	Severity	Status
-1	Unclear	PROCESSING FLOW 3.2	Processing step "データ更新" has no concrete logic	Warning	Open
-2	Inconsistency	FIELD DEFINITIONS / VALIDATION RULES	Field "品目コード" is mandatory but validation rule 3 treats it as optional	Error	Open
-3	Missing	FILE MAPPING	Field "旧品目コード" referenced in validation rule 6 but not in field list	Error	Open
-```
-
-Columns:
-- **No**: Sequential number
-- **Category**: `Unclear`, `Missing`, `Inconsistency`
-- **Location**: Section and line/rule number where the issue is found
-- **Description**: Clear explanation of the problem
-- **Severity**: `Error` (blocks code generation) or `Warning` (can proceed with assumptions)
-- **Status**: Always `Open` (user updates to `Fixed` or `Ignored` after review)
 
 ---
 

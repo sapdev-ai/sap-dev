@@ -17,7 +17,9 @@ description: |
     record — after the operator deploys the approved <obj>.after.abap (via
              /sap-se38|37|24 -> /sap-activate-object -> /sap-atc re-check) and
              passes an outcomes file, advance state TRIAGED -> REMEDIATED
-             (deployed) / -> VERIFIED (ATC clean) and stamp the fixlog.
+             (deployed) / TRIAGED|REMEDIATED -> VERIFIED (ATC clean; a deployed
+             object reaches VERIFIED on a later recheck record) / REMEDIATED ->
+             TRIAGED on a FAILED recheck, and stamp the fixlog.
   R1 is deterministic (apply). R2/R3 (data-model / HANA) are AI-reasoned: assist
   prepares the context, the AI rewrites per the recipe, and a human reviews
   before deploy — never auto-applied. Objects with tier '?' (unclassified) and
@@ -45,7 +47,7 @@ Task: $ARGUMENTS
 |---|---|---|
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/skill_operating_rules.md` | *(rule)* | Mandatory operating rules. This is an explicit remediation skill; it deploys (to the sandbox) only after operator approval at the dry-run gate. |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/settings_lookup.md` | *(rule)* | Settings / `work_dir` resolution. |
-| `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_settings_lib.ps1` + `sap_connection_lib.ps1` | *(dot-source)* | `Get-SapWorkDir`. |
+| `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_settings_lib.ps1` + `sap_connection_lib.ps1` | *(dot-source)* | `Get-SapWorkDir`; `Resolve-SapProfileHint` + `Get-SapCurrentConnectionProfile` for the Step 3.0 sandbox assertion. |
 | `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_log_helper.ps1` | *(invoke)* | Start/step/end JSONL logging. |
 | `<SKILL_DIR>/references/sap_cc_remediate.ps1` | *(invoke)* | Offline engine: `apply` (rule-pack dry-run) + `record` (state/fixlog advance). |
 | `<SKILL_DIR>/references/migration_rules_r1.tsv` | *(read)* | Deterministic R1 transforms. `mode` AUTO (rewrite) / FLAG (report only). Customer override via `--rules {custom_url}\knowledge\migration_rules_r1.tsv`. |
@@ -70,12 +72,25 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_
 
 Set `{WORK_TEMP}` and `{CAMPAIGN_DIR}` = `{work_dir}\migrations\{campaign-id}`.
 
+Set `{RUN_TEMP}` = the per-run scratch dir (`Get-SapRunTemp` mints + creates
+`{work_dir}\temp\run_<id>`):
+
+```bash
+powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('RUN_TEMP=' + (Get-SapRunTemp))"
+```
+
+Per the CLAUDE.md "Two-bucket temp model" write this skill's per-run scratch
+(the log state file below, any outcomes TSV you generate) under `{RUN_TEMP}`,
+never at a fixed name under the `{WORK_TEMP}` root.
+
 ---
 
 ## Step 0.5 — Start Logging
 
+State file: `{RUN_TEMP}\sap_cc_remediate_run.json`. Best-effort.
+
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{WORK_TEMP}\sap_cc_remediate_run.json" -Skill sap-cc-remediate -ParamsJson "{}"
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{RUN_TEMP}\sap_cc_remediate_run.json" -Skill sap-cc-remediate -ParamsJson "{}"
 ```
 
 ---
@@ -153,6 +168,24 @@ Then, per object (you, the AI, do this):
 
 ## Step 3 — Deploy approved fixes (delegated, on the sandbox)
 
+**Step 3.0 — Sandbox assertion (mandatory, mechanical; run BEFORE the first
+deploy).** "Sandbox-only" must not rest on prose. Resolve the CURRENT pinned
+connection and compare its SID/client to the campaign's
+`systems.sandbox_profile`; any mismatch → **ABORT — do not deploy**:
+
+```bash
+powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; \$c = Get-Content -LiteralPath '{CAMPAIGN_DIR}\campaign.json' -Raw | ConvertFrom-Json; \$sbx = [string]\$c.systems.sandbox_profile; if (-not \$sbx) { Write-Output 'SANDBOX_GUARD: ABORT no sandbox_profile in campaign.json'; exit 1 }; \$m = @(Resolve-SapProfileHint -Hint \$sbx); if (\$m.Count -ne 1) { Write-Output ('SANDBOX_GUARD: ABORT sandbox_profile ' + \$sbx + ' resolves to ' + \$m.Count + ' saved profiles (run /sap-login --list)'); exit 1 }; \$cur = Get-SapCurrentConnectionProfile -StrictMode; if (-not \$cur) { Write-Output 'SANDBOX_GUARD: ABORT no pinned connection (run /sap-login)'; exit 1 }; \$pin = ('' + \$cur.system_name + '/' + \$cur.client); \$want = ('' + \$m[0].system_name + '/' + \$m[0].client); if (\$pin -ne \$want) { Write-Output ('SANDBOX_GUARD: MISMATCH pinned=' + \$pin + ' sandbox=' + \$want); exit 1 }; Write-Output ('SANDBOX_GUARD: OK pinned=' + \$pin + ' matches sandbox_profile ' + \$sbx)"
+```
+
+| Guard line | Action |
+|---|---|
+| `SANDBOX_GUARD: OK …` | Proceed with the deploys below. |
+| `SANDBOX_GUARD: MISMATCH pinned=<SID/CLI> sandbox=<SID/CLI>` | **ABORT.** The pinned connection is NOT the campaign sandbox. `/sap-login --switch <sandbox_profile>`, re-run this guard, and only deploy after it prints OK. |
+| `SANDBOX_GUARD: ABORT …` | **ABORT.** Fix the stated cause first (blank `sandbox_profile` in `campaign.json`, ambiguous/unsaved profile, no pinned connection). Never fall back to "deploy to whatever is connected". |
+
+Re-run the guard after ANY `/sap-login --switch` during this step (a mid-batch
+switch to another system must never leak deploys off the sandbox).
+
 For each approved `<obj>.after.abap`:
 1. Deploy via `/sap-se38` / `/sap-se37` / `/sap-se24` (to the **sandbox**).
 2. Activate via `/sap-activate-object`; use `/sap-fix-abap` if a syntax issue
@@ -172,8 +205,13 @@ Build an outcomes TSV — `obj_name`, `obj_type`, `outcome`
 powershell -ExecutionPolicy Bypass -File "<SKILL_DIR>\references\sap_cc_remediate.ps1" -Action record -CampaignDir "{CAMPAIGN_DIR}" -ResultsFile "<outcomes.tsv>"
 ```
 
-Advances state TRIAGED → REMEDIATED (DEPLOYED) / → VERIFIED (VERIFIED) and stamps
-`remediation\fixlog.tsv`. Output: `RECORD: verified=<n> remediated=<n> failed=<n>`.
+Ledger transitions (forward-only; anything else is blocked):
+TRIAGED → REMEDIATED (`DEPLOYED`); TRIAGED → VERIFIED (`VERIFIED`, deploy +
+recheck recorded in one pass); **REMEDIATED → VERIFIED** (`VERIFIED`, recheck
+recorded after an earlier `DEPLOYED` record — so a deployed object still
+reaches VERIFIED); REMEDIATED → TRIAGED (`FAILED` recheck — the object goes
+back into the remediation loop). The fixlog is stamped for every row. Output:
+`RECORD: verified=<n> remediated=<n> failed=<n>`.
 Then `/sap-cc-campaign report` / `next` (→ transport bundle for VERIFIED objects).
 
 ---
@@ -207,7 +245,7 @@ Then `/sap-cc-campaign report` / `next` (→ transport bundle for VERIFIED objec
 ## Final — Log End
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_cc_remediate_run.json" -Status SUCCESS -ExitCode 0
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_cc_remediate_run.json" -Status SUCCESS -ExitCode 0
 ```
 
 For exit `1` use `-Status SKIPPED -ExitCode 1 -ErrorClass CC_REMEDIATE_EMPTY`;

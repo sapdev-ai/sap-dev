@@ -432,25 +432,6 @@ Report the four checks side-by-side in the user-facing summary so the
 operator can decide whether to leave the TADIR orphan or schedule SE03
 cleanup.
 
-### SE38 SAPL\<FUGR\> fallback
-
-If WB_DELETE itself fails (e.g. SE80 navigator tree won't render on a
-locked-down system), fall through to the legacy SE38 path:
-
-```
-/sap-se38 delete program SAPL<FUGR_ID>
-  TRANSPORT=<resolved-TR or empty>
-```
-
-The SE38 delete VBS has a generic popup walker that handles the two
-stacked confirmation popups SAP shows for FG deletion (`wnd[1]`
-listing dependents, `wnd[2]` final confirm — both via
-`tbar[0]/btn[0]`) AND the SAPLSETX original-language popup (the
-2026-05-12 patch). It is the second-best path because the SE80
-context-menu route is more deterministic about cascade semantics.
-
----
-
 ## Step 4 — Interpret Results
 
 | Last line of stdout | Meaning |
@@ -464,6 +445,7 @@ context-menu route is more deterministic about cascade semantics.
 
 | Error | Cause | Fix |
 |---|---|---|
+| `ERROR: Activation failed: <sbar text>` (Step 3b/3c) | Activate (Ctrl+F3) ended with status-bar `E`/`A` -- the FG exists/was saved but is NOT active. Step 3b pre-fix echoed the sbar without checking it and always ended `DONE FUGR=`; both GUI flows now exit 1 on E/A. | Fix the reported cause (missing package, pool syntax error, lock), then re-run Step 3c (activate-only) and verify via Step 3d `STATE=A` |
 | `NCo 3.1 not found in GAC_32` | NCo not installed for .NET 4.0 32-bit | Install NCo 3.1 (32-bit) per SAP Note, or fall through to GUI path |
 | `RFC logon failed` | Bad credentials / unreachable server | Check sap-dev-core settings.json |
 | `RFC_READ_TABLE call failed` | TLIBG / TFDIR / TADIR / PROGDIR access denied | Check RFC authorization |

@@ -104,10 +104,10 @@ If `$ARGUMENTS` is missing the type or name, ask:
 | `REPORT` / `PROGRAM` | SE38 | `REPS` (source include) | `PROG` |
 | `TEXT_ELEMENTS` | SE38 (Goto > Text elements) | `TEXT` | `PROG` |
 | `FUGR` (function group main pgm) | SE38 | `REPS` | `FUGR` |
-| `FM` (function module) | SE37 | `FUNC` | `FUGR` (registered under group) |
+| `FM` (function module) | SE37 | `FUNC` | `FUGR` (OBJ_NAME = the GROUP, not the FM — see Step 2) |
 | `CLASS` | SE24 | `CLAS` | `CLAS` |
 | `INTERFACE` | SE24 | `INTF` | `INTF` |
-| `METHOD` | SE24 (open class) | `METH` | `CLAS` |
+| `METHOD` | SE24 (open class) | `METH` | `CLAS` (OBJ_NAME = the CLASS, not the method — see Step 2) |
 | `TABLE` | SE11 (radRSRD1-TBMA) | `TABL` | `TABL` |
 | `VIEW` | SE11 (radRSRD1-VIMA) | `VIEW` | `VIEW` |
 | `DTEL` (data element) | SE11 (radRSRD1-DDTYPE) | `DTEL` | `DTEL` |
@@ -138,12 +138,27 @@ OBJECT	EQ	<TADIR_OBJECT_FROM_TABLE_ABOVE>
 OBJ_NAME	EQ	<OBJECT_NAME>
 ```
 
+**Exception — `FM` and `METHOD` are NOT keyed by their own name in TADIR.**
+TADIR stores only the enclosing object (`FUGR <group>` / `CLAS <class>`), so
+an `OBJ_NAME EQ <FM name>` query always returns zero rows and would falsely
+report "does not exist". Resolve these two the way
+`shared/scripts/sap_object_resolver.ps1` does:
+
+- **FM** — existence gate on `TFDIR`: `FUNCNAME EQ <FM name>` (no row → the
+  FM really does not exist — report and stop). The enclosing group comes from
+  `TFDIR-PNAME` (`SAPL<FG>` → strip the `SAPL` prefix) or from
+  `ENLFDIR-AREA`; then read `DEVCLASS` from the TADIR row
+  `OBJECT EQ 'FUGR' / OBJ_NAME EQ <FG>`.
+- **METHOD** — existence + locality via the enclosing class's TADIR row:
+  `OBJECT EQ 'CLAS' / OBJ_NAME EQ <class name>` (the method name never
+  appears in TADIR).
+
 Read `DEVCLASS`:
 - Starts with `$` (e.g. `$TMP`) → **local object** (no TR association).
 - Otherwise → **transportable object**.
 
-Store as `LOCALITY = LOCAL | TRANSPORT`. If TADIR has no row, the object does
-not exist — report and stop.
+Store as `LOCALITY = LOCAL | TRANSPORT`. If TADIR has no row (for FM: no
+TFDIR row), the object does not exist — report and stop.
 
 This step is optional but recommended; LOCALITY is used to anticipate the
 "inactive objects worklist" popup behaviour described in Step 3.
@@ -174,8 +189,11 @@ inactive objects **of the same locality** as the object being activated:
 Use this list to inform the user: "There are N other inactive objects under
 your user; the activation popup will let you pick which to activate."
 
-The VBS templates handle the popup automatically (Select All + Continue,
-matching the recordings).
+The VBS templates handle the popup automatically with **Continue only** — the
+popup arrives pre-filtered and the triggering object (plus its dependent
+includes) pre-selected, so Continue activates exactly it. Select All is never
+pressed: on a shared DEV it would co-activate other developers' unrelated
+inactive objects (e.g. EC2/DEV102 carries 500+).
 
 ---
 
@@ -347,7 +365,7 @@ Suggested `<CLASS>`: `ACTIVATE_FAILED`, `GUI_TIMEOUT`.
 | OK code | `wnd[0]/tbar[0]/okcd` |
 | Program name field | `wnd[0]/usr/ctxtRS38M-PROGRAMM` |
 | Activate (initial screen) | `sendVKey 21` (Shift+F9) on `wnd[0]` |
-| Inactive worklist popup | `wnd[1]` — Select All `tbar[0]/btn[9]`, Continue `tbar[0]/btn[0]` |
+| Inactive worklist popup | `wnd[1]` — Continue `tbar[0]/btn[0]` (pressed); Select All `tbar[0]/btn[9]` is only the discriminator, never pressed |
 
 ### SE37 activate
 | Element | ID |
@@ -362,7 +380,7 @@ Suggested `<CLASS>`: `ACTIVATE_FAILED`, `GUI_TIMEOUT`.
 | Class name field | `wnd[0]/usr/ctxtSEOCLASS-CLSNAME` |
 | Display (Enter) | `sendVKey 0` |
 | Activate | `sendVKey 27` (Ctrl+F3) on `wnd[0]` |
-| Inactive worklist popup | `wnd[1]` — Select All `tbar[0]/btn[9]`, Continue `tbar[0]/btn[0]` |
+| Inactive worklist popup | `wnd[1]` — Continue `tbar[0]/btn[0]` (pressed); Select All `tbar[0]/btn[9]` is only the discriminator, never pressed |
 
 ### SE11 activate
 | Element | ID |
@@ -371,7 +389,7 @@ Suggested `<CLASS>`: `ACTIVATE_FAILED`, `GUI_TIMEOUT`.
 | Name field | `ctxtRSRD1-<key>_VAL` (matching radio key) |
 | Display (Enter) | `sendVKey 0` |
 | Activate | `sendVKey 27` (Ctrl+F3) on `wnd[0]` |
-| Inactive worklist popup | `wnd[1]` — Select All `tbar[0]/btn[9]`, Continue `tbar[0]/btn[0]` |
+| Inactive worklist popup | `wnd[1]` — Continue `tbar[0]/btn[0]` (pressed); Select All `tbar[0]/btn[9]` is only the discriminator, never pressed |
 
 ---
 
@@ -401,44 +419,25 @@ Suggested `<CLASS>`: `ACTIVATE_FAILED`, `GUI_TIMEOUT`.
 
 ---
 
-## Known issue — Select-All worklist activates unrelated leftover objects
+## Resolved issue — Select-All worklist co-activated unrelated objects
 
-The current popup-handling presses Select All (`tbar[0]/btn[9]`) then Continue
-(`tbar[0]/btn[0]`). When the worklist contains transportable inactive objects
-that DID NOT come from the current activate call (leftover from prior failed
-runs in the same user's namespace), Select-All activates them too. If any of
-those leftover objects has a non-recoverable activation error, the worklist
-re-appears in a loop and the activate never completes.
+Earlier template versions pressed Select All (`tbar[0]/btn[9]`) then Continue
+(`tbar[0]/btn[0]`). When the worklist contained inactive objects that DID NOT
+come from the current activate call (other developers' work, leftovers from
+prior failed runs), Select-All co-activated them too — a scope-exceeding write
+on a shared DEV (EC2/DEV102 carries 500+ unrelated inactive objects).
 
-**Mitigation today**: before invoking this skill, query `DWINACTIV` filtered by
-the logged-in user and delete or fix any leftover transportable inactive
-objects unrelated to the current target. The `/sap-dev-clean` skill handles
-the sap-dev-init artefacts; other leftovers must be cleaned manually.
+**Fixed (2026-07-02)**: all four templates press **Continue only**. The popup
+arrives with the triggering object (and its dependent includes) pre-selected,
+so Continue activates exactly it; `btn[9]` is used only as the worklist
+discriminator and is never pressed. If Continue does not clear the popup, the
+run fails loud — the post-activate DWINACTIV check (Step 6c) reports the
+still-inactive object — rather than falling back to Select All.
 
-**Proper fix (not yet implemented — needs a recording session per SAP release)**:
-selectively uncheck rows in the worklist grid whose `OBJ_NAME` differs from
-the current `OBJECT_NAME`, then press Continue. The pseudocode:
-
-```vbs
-' Find the worklist grid (S/4HANA 1909 commonly uses cntlGRID1 or similar)
-Dim oGrid : Set oGrid = oSession.findById("wnd[1]/usr/cntlGRID1/shellcont/shell")
-Dim r, sName
-For r = 0 To oGrid.RowCount - 1
-    sName = oGrid.GetCellValue(r, "OBJ_NAME")
-    If UCase(sName) <> UCase(TARGET_OBJECT_NAME) Then
-        oGrid.ModifyCheckbox r, "DEACTI", False    ' or whatever the select column is named
-    End If
-Next
-oSession.findById("wnd[1]/tbar[0]/btn[0]").press   ' Continue
-```
-
-The grid path (`cntlGRID1`...) and select-column ID (`DEACTI`?) need to be
-captured on the target SAP release via `/sap-gui-record`. The grid behaviour
-differs between S/4HANA 1909, 2020, and 2023; the recording must be re-done
-per system if needed.
-
-Until then, the Select-All path remains the documented default — it works
-cleanly on systems where the user's worklist contains only the current target.
+**Leftover hygiene**: unrelated inactive objects simply stay inactive (they
+are never co-activated). To clean them up, query `DWINACTIV` filtered by the
+logged-in user and fix or delete the leftovers; `/sap-dev-clean` handles the
+sap-dev-init artefacts.
 
 ## Other limitations
 - TEXT_ELEMENTS activation requires opening the program in SE38, going to

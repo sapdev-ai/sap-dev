@@ -209,5 +209,13 @@ If InStr(oSess.ActiveWindow.Id, "wnd[1]") > 0 Then
 End If
 On Error GoTo 0
 
+' Activation gate (same as sap_function_group_gui_activate.vbs): sbar E/A
+' means the FG was NOT activated. Pre-fix the activate sbar was echoed but
+' never checked, so the script always ended "DONE FUGR=" + exit 0.
+If aType = "E" Or aType = "A" Then
+    WScript.Echo "ERROR: Activation failed: " & aText
+    WScript.Quit 1
+End If
+
 WScript.Echo "DONE FUGR=" & UCase(FUGR_ID)
 WScript.Quit 0

@@ -57,6 +57,7 @@ Const SC_SELECTION = "SELECTION"
 
 ' --- Data kind constants ---
 Const SC_MEMBER    = "MEMBER"
+Const SC_FIELDSYM  = "FIELD_SYMBOL"
 
 ' --- Data kind constants ---
 Const DK_VARIABLE    = "VARIABLE"
@@ -1410,6 +1411,12 @@ Sub ProcessSourceLine(rawLine, lineNum)
             effectiveScope = SC_MEMBER   ' instance attrs use mv_/ms_/mt_
         End If
     End If
+    ' FIELD-SYMBOLS declarations get their own scope so the FIELD_SYMBOL
+    ' rows of the naming rules TSV apply (<lv_ / <ls_ / <lt_). Before this
+    ' override they were registered under the surrounding LOCAL/GLOBAL
+    ' scope and checked against lv_/ls_/lt_, flagging every field symbol
+    ' (even rule-conformant <ls_row>). Bug surfaced 2026-07-02.
+    If declKW = "FIELD-SYMBOLS" Then effectiveScope = SC_FIELDSYM
 
     ' Check for chain declaration (keyword followed by colon)
     ' Colon may be attached to keyword (DATA:) or separate (DATA :)
@@ -1821,6 +1828,31 @@ For ni = 1 To g_dCount
             If memberAlt <> "" And Left(lcMName, Len(memberAlt)) = memberAlt Then
                 expPrefix = ""  ' skip -- alt convention is acceptable for MEMBER
             End If
+        End If
+    End If
+
+    ' FIELD_SYMBOL scope alt-match: kind inference for field symbols is
+    ' weak (`TYPE any` and `LIKE LINE OF lt_x` both parse as VARIABLE), so
+    ' a correctly named <ls_row> can be looked up against the VARIABLE rule
+    ' (<lv_). Accept a name whose prefix matches ANY FIELD_SYMBOL-scope
+    ' rule in the TSV, plus the generic <fs_ convention that
+    ' /sap-gen-abap's own pre-7.40 fallback emits (FIELD-SYMBOLS
+    ' <fs_customer> LIKE LINE OF lt_customers).
+    If expPrefix <> "" And nScope = SC_FIELDSYM Then
+        Dim lcFsN : lcFsN = LCase(nName)
+        If Left(lcFsN, Len(expPrefix)) <> expPrefix Then
+            Dim fsAltOk : fsAltOk = False
+            Dim fsRi
+            For fsRi = 1 To g_nrCount
+                If g_nrScope(fsRi) = SC_FIELDSYM And g_nrPrefix(fsRi) <> "" Then
+                    If Left(lcFsN, Len(g_nrPrefix(fsRi))) = g_nrPrefix(fsRi) Then
+                        fsAltOk = True
+                        Exit For
+                    End If
+                End If
+            Next
+            If Left(lcFsN, 4) = "<fs_" Then fsAltOk = True
+            If fsAltOk Then expPrefix = ""  ' skip -- prefix valid for another FIELD_SYMBOL kind
         End If
     End If
 
@@ -2406,7 +2438,14 @@ Function Gc_FaeDriver(buf)
     Gc_FaeDriver = d
 End Function
 
-' Is there an "IS NOT INITIAL" guard on <drv> within 15 lines before lineNum?
+' Is there an emptiness guard on <drv> within 15 lines before lineNum?
+' Two equally-correct guard styles are accepted:
+'   (a) wrap style:         IF <drv> IS NOT INITIAL ... SELECT ... FAE
+'       (also CHECK <drv> IS NOT INITIAL.)
+'   (b) early-return style: IF <drv> IS INITIAL. RETURN|EXIT. ENDIF.
+' Style (b) additionally requires a RETURN or EXIT statement between the
+' guard line and the FAE line -- an `IF ... IS INITIAL` alone (e.g. only
+' logging inside) does not protect the SELECT.
 Function Gc_GuardedBefore(drv, lineNum)
     Gc_GuardedBefore = False
     Dim lo : lo = lineNum - 15
@@ -2416,6 +2455,24 @@ Function Gc_GuardedBefore(drv, lineNum)
         Dim gu : gu = UCase(StripInlineComment(g_srcLines(gi)))
         If InStr(gu, "IS NOT INITIAL") > 0 And InStr(gu, drv) > 0 Then
             Gc_GuardedBefore = True : Exit Function
+        End If
+        ' Early-return style. "IS INITIAL" never substring-matches
+        ' "IS NOT INITIAL" (the NOT sits between), so no overlap with
+        ' the branch above.
+        If InStr(gu, "IS INITIAL") > 0 And InStr(gu, drv) > 0 Then
+            ' Scan from the guard line (inclusive -- covers the one-liner
+            ' `IF x IS INITIAL. RETURN. ENDIF.`) up to the FAE line for a
+            ' RETURN / EXIT token.
+            Dim gj, gjToks, gk, gw
+            For gj = gi To lineNum - 1
+                gjToks = SplitTokens(UCase(StripInlineComment(g_srcLines(gj))))
+                For gk = 0 To UBound(gjToks)
+                    gw = StripTrailing(gjToks(gk))
+                    If gw = "RETURN" Or gw = "EXIT" Then
+                        Gc_GuardedBefore = True : Exit Function
+                    End If
+                Next
+            Next
         End If
     Next
 End Function

@@ -279,7 +279,7 @@ Tokens to replace:
 
 | Token | Source |
 |---|---|
-| `%%SAP_SERVER%%` / `%%SAP_SYSNR%%` / `%%SAP_CLIENT%%` / `%%SAP_USER%%` / `%%SAP_PASSWORD%%` / `%%SAP_LANGUAGE%%` | sap-dev-core `settings.json` |
+| `%%SAP_SERVER%%` / `%%SAP_SYSNR%%` / `%%SAP_CLIENT%%` / `%%SAP_USER%%` / `%%SAP_PASSWORD%%` / `%%SAP_LANGUAGE%%` | the per-connection store — the AI-session's pinned profile in `{work_dir}\runtime\connections.json` (saved by `/sap-login`). Leave empty/unsubstituted to let the helper's `Connect-SapRfc` auto-resolve from that pinned profile (passwords stay DPAPI-encrypted at rest) |
 | `%%REQUEST_FILE%%` | `{RUN_TEMP}\fm_request.txt` (from 1.5a) |
 | `%%RESULT_FILE%%` | `{work_folder}\_fm_signatures.txt` |
 | `%%CACHE_DIR%%` | `{FM_CACHE_DIR}` from 1.5b |
@@ -334,7 +334,7 @@ Tokens to replace:
 
 | Token | Source |
 |---|---|
-| `%%SAP_SERVER%%` / `%%SAP_SYSNR%%` / `%%SAP_CLIENT%%` / `%%SAP_USER%%` / `%%SAP_PASSWORD%%` / `%%SAP_LANGUAGE%%` | sap-dev-core `settings.json` |
+| `%%SAP_SERVER%%` / `%%SAP_SYSNR%%` / `%%SAP_CLIENT%%` / `%%SAP_USER%%` / `%%SAP_PASSWORD%%` / `%%SAP_LANGUAGE%%` | the per-connection store — the AI-session's pinned profile in `{work_dir}\runtime\connections.json` (saved by `/sap-login`). Leave empty/unsubstituted to let the helper's `Connect-SapRfc` auto-resolve from that pinned profile (passwords stay DPAPI-encrypted at rest) |
 | `%%REQUEST_FILE%%` | `{RUN_TEMP}\authz_request.txt` |
 | `%%RESULT_FILE%%` | `{work_folder}\_authz_signatures.txt` |
 | `%%CACHE_DIR%%` | `userConfig.authz_cache_dir` if set, else `{work_dir}\cache\authz_signatures` |
@@ -491,7 +491,7 @@ Tokens to replace:
 
 | Token | Source |
 |---|---|
-| `%%SAP_SERVER%%` / `%%SAP_SYSNR%%` / `%%SAP_CLIENT%%` / `%%SAP_USER%%` / `%%SAP_PASSWORD%%` / `%%SAP_LANGUAGE%%` | sap-dev-core `settings.json` |
+| `%%SAP_SERVER%%` / `%%SAP_SYSNR%%` / `%%SAP_CLIENT%%` / `%%SAP_USER%%` / `%%SAP_PASSWORD%%` / `%%SAP_LANGUAGE%%` | the per-connection store — the AI-session's pinned profile in `{work_dir}\runtime\connections.json` (saved by `/sap-login`). Leave empty/unsubstituted to let the helper's `Connect-SapRfc` auto-resolve from that pinned profile (passwords stay DPAPI-encrypted at rest) |
 | `%%REQUEST_FILE%%` | `{RUN_TEMP}\struct_request.txt` |
 | `%%RESULT_FILE%%` | `{work_folder}\_struct_signatures.txt` |
 | `%%CACHE_DIR%%` | `userConfig.struct_cache_dir` if set, else `{work_dir}\cache\struct_signatures` |

@@ -55,12 +55,25 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_
 
 Set `{WORK_TEMP}` and `{CAMPAIGN_DIR}` = `{work_dir}\migrations\{campaign-id}`.
 
+Set `{RUN_TEMP}` = the per-run scratch dir (`Get-SapRunTemp` mints + creates
+`{work_dir}\temp\run_<id>`):
+
+```bash
+powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('RUN_TEMP=' + (Get-SapRunTemp))"
+```
+
+Per the CLAUDE.md "Two-bucket temp model" write this skill's per-run scratch
+(the log state file below, any assign-file you draft) under `{RUN_TEMP}`, never
+at a fixed name under the `{WORK_TEMP}` root.
+
 ---
 
 ## Step 0.5 — Start Logging
 
+State file: `{RUN_TEMP}\sap_cc_learn_run.json`. Best-effort.
+
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{WORK_TEMP}\sap_cc_learn_run.json" -Skill sap-cc-learn -ParamsJson "{}"
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{RUN_TEMP}\sap_cc_learn_run.json" -Skill sap-cc-learn -ParamsJson "{}"
 ```
 
 ---
@@ -140,7 +153,7 @@ findings by message id and reports fewer UNMATCHED.
 ## Final — Log End
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_cc_learn_run.json" -Status SUCCESS -ExitCode 0
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_cc_learn_run.json" -Status SUCCESS -ExitCode 0
 ```
 
 For exit `1` use `-Status SKIPPED -ExitCode 1 -ErrorClass CC_LEARN_NO_FINDINGS`;

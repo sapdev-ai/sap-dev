@@ -16,7 +16,13 @@
 '
 ' Tokens replaced at run time:
 '   %%MATERIAL%%         Material number          e.g. "ZHKMAT013"
-'   %%DEFINITION_FILE%%  Path to field definitions e.g. "{WORK_TEMP}\mm02_fields.txt"
+'   %%DEFINITION_FILE%%  Path to field definitions e.g. "{RUN_TEMP}\mm02_fields.txt"
+'
+' Locale-independent contract (language_independence_rules.md): popups and
+' screens are identified by control ids (SAPLMGMM view table, RMMG1 org
+' fields, TABSPR1 tabstrip), results by sbar MessageType; titles / status
+' texts are echoed for diagnostics only. On success a machine-readable
+' "MATERIAL: <number>" line is echoed before the final SUCCESS line.
 '
 ' Component IDs recorded from SAP GUI 7.60 on S/4HANA 1909.
 ' =============================================================================
@@ -30,8 +36,12 @@ Const VKEY_ENTER    = 0
 Const VKEY_F11_SAVE = 11
 Const SESSION_PATH  = "%%SESSION_PATH%%"   ' empty / unsubstituted = use default
 
+' Include shared helpers (attach first; session-lock's pre-unlock sweep
+' reads from oSession).
 ExecuteGlobal CreateObject("Scripting.FileSystemObject") _
     .OpenTextFile("%%ATTACH_LIB_VBS%%", 1).ReadAll()
+ExecuteGlobal CreateObject("Scripting.FileSystemObject") _
+    .OpenTextFile("%%SESSION_LOCK_VBS%%", 1).ReadAll()
 
 ' ------ Helper: Find input field by name within a container (recursive) -----
 Function FindField(oContainer, sFieldName)
@@ -90,12 +100,36 @@ Sub SetFieldValue(oField, sValue)
     End Select
 End Sub
 
+' ------ Helper: is wnd[1] the Organizational Levels popup? -------------------
+' Locale-independent discriminator: the popup is recognized by the org-level
+' fields it carries (the definition file's own ORG fields first, then the
+' standard RMMG1 org-level fields) -- never by the translated window title.
+Function IsOrgLevelsPopup(oPopupUsr)
+    Dim k, arrStd, s
+    IsOrgLevelsPopup = False
+    For k = 0 To iCount - 1
+        If arrSections(k) = "ORG" Then
+            If Not (FindField(oPopupUsr, arrFields(k)) Is Nothing) Then
+                IsOrgLevelsPopup = True
+                Exit Function
+            End If
+        End If
+    Next
+    arrStd = Array("RMMG1-WERKS", "RMMG1-LGORT", "RMMG1-VKORG", "RMMG1-VTWEG", "RMMG1-BWTAR", "RMMG1-LGNUM")
+    For Each s In arrStd
+        If Not (FindField(oPopupUsr, s) Is Nothing) Then
+            IsOrgLevelsPopup = True
+            Exit Function
+        End If
+    Next
+End Function
+
 ' ------ 1. Attach to existing SAP GUI session (via shared attach helper) ----
 Dim oSession
 Set oSession = AttachSapSession(SESSION_PATH)
 
 ' ------ 2. Read definition file ---------------------------------------------
-Dim oFSO, oFile, sLine
+Dim oFSO, sLine
 Set oFSO = CreateObject("Scripting.FileSystemObject")
 
 If Not oFSO.FileExists(DEFINITION_FILE) Then
@@ -103,17 +137,35 @@ If Not oFSO.FileExists(DEFINITION_FILE) Then
     WScript.Quit 1
 End If
 
+' Parse into arrays: section, field name, value
+' NOTE: read via ADODB.Stream with explicit Charset="utf-8". FSO.OpenTextFile
+' decodes bytes with the system code page (cp932 on Japanese Windows, cp1252
+' on Western), which mangles UTF-8 multi-byte sequences -- JA/ZH values would
+' mojibake INTO the saved business record. ADODB.Stream decodes to the
+' Unicode that the SAP GUI controls expect.
 Dim arrSections(), arrFields(), arrValues()
 Dim iCount
 iCount = 0
 
-Set oFile = oFSO.OpenTextFile(DEFINITION_FILE, 1, False)
-Do While Not oFile.AtEndOfStream
-    sLine = oFile.ReadLine
-    If iCount = 0 And Len(sLine) > 0 Then
-        Do While Len(sLine) > 0 And Asc(Left(sLine, 1)) > 127
-            sLine = Mid(sLine, 2)
-        Loop
+Dim oStream, sAll, arrLines, iLine
+Set oStream = CreateObject("ADODB.Stream")
+oStream.Type = 2                    ' adTypeText
+oStream.Charset = "utf-8"
+oStream.Open
+oStream.LoadFromFile DEFINITION_FILE
+sAll = oStream.ReadText
+oStream.Close
+
+sAll = Replace(sAll, vbCrLf, vbLf)
+sAll = Replace(sAll, vbCr,   vbLf)
+arrLines = Split(sAll, vbLf)
+
+For iLine = 0 To UBound(arrLines)
+    sLine = arrLines(iLine)
+    ' Strip a residual BOM character on the first line (belt and braces --
+    ' ADODB.Stream normally consumes the UTF-8 BOM itself).
+    If iLine = 0 And Len(sLine) > 0 Then
+        If Left(sLine, 1) = ChrW(&HFEFF) Then sLine = Mid(sLine, 2)
     End If
 
     sLine = Trim(sLine)
@@ -145,10 +197,19 @@ Do While Not oFile.AtEndOfStream
             End If
         End If
     End If
-Loop
-oFile.Close
+Next
 
 WScript.Echo "INFO: Read " & iCount & " field definitions from file."
+
+' --- Lock the SAP session UI for the MM02 multi-view input + save critical section ---
+' Defence in depth (Rule 7): AppActivate guards external focus stealing;
+' LockSessionUI guards in-session input races. Released after the save.
+Dim wasLocked : wasLocked = TryLockSession(oSession)
+If wasLocked Then
+    WScript.Echo "INFO: Session UI locked for the MM02 multi-view input + save critical section."
+Else
+    WScript.Echo "INFO: LockSessionUI not available on this SAP GUI build; continuing without lock."
+End If
 
 ' ------ 3. Navigate to MM02 -------------------------------------------------
 WScript.Echo "INFO: Navigating to MM02..."
@@ -168,62 +229,99 @@ Dim sStatus
 sStatus = oSession.findById("wnd[0]/sbar").Text
 If oSession.findById("wnd[0]/sbar").MessageType = "E" Then
     WScript.Echo "ERROR: " & sStatus
+    ReleaseSession oSession, wasLocked
     WScript.Quit 1
 End If
 
 ' ------ 5. View selection popup - Select All --------------------------------
+' Locale-independent: the popup is identified by its SAPLMGMM view table
+' control id, never by the translated window title.
+Dim oViewTbl
+Set oViewTbl = Nothing
 On Error Resume Next
-Dim oPopup
-Set oPopup = oSession.findById("wnd[1]")
-If Err.Number = 0 And InStr(oPopup.Text, "View") > 0 Then
-    WScript.Echo "INFO: Selecting all views..."
-    oPopup.findById("tbar[0]/btn[20]").Press   ' Select All
-    WScript.Sleep 300
-    oPopup.findById("tbar[0]/btn[0]").Press    ' Enter/Continue
-    WScript.Sleep 500
-Else
-    Err.Clear
-End If
+Set oViewTbl = oSession.findById("wnd[1]/usr/tblSAPLMGMMTCTRL_AUSWAHL")
+Err.Clear
 On Error GoTo 0
+If Not (oViewTbl Is Nothing) Then
+    WScript.Echo "INFO: View-selection popup detected - selecting all views..."
+    oSession.findById("wnd[1]/tbar[0]/btn[20]").Press   ' Select All
+    WScript.Sleep 300
+    oSession.findById("wnd[1]/tbar[0]/btn[0]").Press    ' Enter/Continue
+    WScript.Sleep 500
+End If
 
 ' ------ 6. Organizational Levels popup --------------------------------------
+Dim oPopupUsr, bIsOrgPopup
+Set oPopupUsr = Nothing
 On Error Resume Next
-Set oPopup = oSession.findById("wnd[1]")
-If Err.Number = 0 And InStr(oPopup.Text, "Org") > 0 Then
+Set oPopupUsr = oSession.findById("wnd[1]/usr")
+Err.Clear
+On Error GoTo 0
+bIsOrgPopup = False
+If Not (oPopupUsr Is Nothing) Then bIsOrgPopup = IsOrgLevelsPopup(oPopupUsr)
+If bIsOrgPopup Then
     WScript.Echo "INFO: Setting organizational levels..."
-    Dim oPopupUsr
-    Set oPopupUsr = oPopup.findById("usr")
     Dim iOrg
     For iOrg = 0 To iCount - 1
         If arrSections(iOrg) = "ORG" Then
             Dim oOrgField
+            On Error Resume Next
             Set oOrgField = FindField(oPopupUsr, arrFields(iOrg))
             If Not (oOrgField Is Nothing) Then
                 SetFieldValue oOrgField, arrValues(iOrg)
-                WScript.Echo "INFO:   " & arrFields(iOrg) & " = " & arrValues(iOrg)
+                If Err.Number <> 0 Then
+                    WScript.Echo "WARNING: Error setting org field " & arrFields(iOrg) & ": " & Err.Description
+                Else
+                    WScript.Echo "INFO:   " & arrFields(iOrg) & " = " & arrValues(iOrg)
+                End If
             Else
                 WScript.Echo "WARNING: Org field not found: " & arrFields(iOrg)
             End If
+            Err.Clear
+            On Error GoTo 0
         End If
     Next
     WScript.Sleep 300
-    oPopup.findById("tbar[0]/btn[0]").Press   ' Enter/Continue
+    oSession.findById("wnd[1]/tbar[0]/btn[0]").Press   ' Enter/Continue
     WScript.Sleep 1000
-Else
-    Err.Clear
 End If
-On Error GoTo 0
 
-' Check if we reached the data screen
-Dim sTitle
-sTitle = oSession.findById("wnd[0]").Text
-If InStr(sTitle, "Change Material") = 0 Or InStr(sTitle, "Initial") > 0 Then
-    sStatus = oSession.findById("wnd[0]/sbar").Text
-    WScript.Echo "ERROR: Failed to reach data screen. Title: " & sTitle
-    WScript.Echo "ERROR: Status: " & sStatus
+' Any popup still up here is neither of the two known MM02 popups: fail loud
+' instead of guessing (this flow writes a REAL business record).
+Dim sActWnd, sActTitle
+sActWnd = ""
+On Error Resume Next
+sActWnd = oSession.ActiveWindow.Id
+Err.Clear
+On Error GoTo 0
+If InStr(sActWnd, "wnd[1]") > 0 Then
+    sActTitle = ""
+    On Error Resume Next
+    sActTitle = oSession.ActiveWindow.Text   ' diagnostic only
+    Err.Clear
+    On Error GoTo 0
+    WScript.Echo "ERROR: Unexpected popup before the data screen: " & sActWnd & " -- title (diagnostic): " & sActTitle
+    WScript.Echo "       Refusing to blind-dismiss. Status (diagnostic): " & oSession.findById("wnd[0]/sbar").Text
+    ReleaseSession oSession, wasLocked
     WScript.Quit 1
 End If
-WScript.Echo "INFO: Data screen reached: " & sTitle
+
+' Check if we reached the data screen -- locale-independent: probe the view
+' tabstrip (TABSPR1) the field loop below drives, not the translated title.
+Dim oTabStrip
+Set oTabStrip = Nothing
+On Error Resume Next
+Set oTabStrip = oSession.findById("wnd[0]/usr/tabsTABSPR1")
+Err.Clear
+On Error GoTo 0
+If oTabStrip Is Nothing Then
+    sStatus = oSession.findById("wnd[0]/sbar").Text
+    WScript.Echo "ERROR: Failed to reach data screen (view tabstrip TABSPR1 not found)."
+    WScript.Echo "ERROR: Status (diagnostic): " & sStatus
+    ReleaseSession oSession, wasLocked
+    WScript.Quit 1
+End If
+WScript.Echo "INFO: Material data screen reached."
 
 ' ------ 7. Fill tab fields --------------------------------------------------
 Dim arrTabs()
@@ -315,43 +413,50 @@ If sSaveType = "W" Then
     WScript.Sleep 2000
 End If
 
-' Handle transport / package popup
+' ------ 8b. Post-save popup guard --------------------------------------------
+' MM02 never raises a workbench transport popup -- material masters are not
+' workbench objects. Any modal at this point is unexpected: fail loud instead
+' of blind-dismissing (a guessed keypress on a REAL business record could
+' commit or discard the wrong thing). ReleaseSession sweeps the modal (F12)
+' so the operator gets a clean session back.
+Dim sPopId, sPopTitle
+sPopId = ""
 On Error Resume Next
-If InStr(oSession.ActiveWindow.Id, "wnd[1]") > 0 Then
-    WScript.Echo "INFO: Package/transport dialog detected."
-    oSession.findById("wnd[1]/tbar[0]/btn[7]").Press
-    If Err.Number <> 0 Then
-        Err.Clear
-        oSession.ActiveWindow.sendVKey VKEY_ENTER
-    End If
-    WScript.Sleep 2000
-End If
-
-If InStr(oSession.ActiveWindow.Id, "wnd[1]") > 0 Then
-    oSession.ActiveWindow.sendVKey VKEY_ENTER
-    WScript.Sleep 1000
-End If
+sPopId = oSession.ActiveWindow.Id
 Err.Clear
 On Error GoTo 0
+If InStr(sPopId, "wnd[1]") > 0 Then
+    sPopTitle = ""
+    On Error Resume Next
+    sPopTitle = oSession.ActiveWindow.Text   ' diagnostic only
+    Err.Clear
+    On Error GoTo 0
+    WScript.Echo "ERROR: Unexpected popup after save: " & sPopId & " -- title (diagnostic): " & sPopTitle
+    WScript.Echo "       Refusing to blind-dismiss. Resolve the popup manually, then re-run."
+    ReleaseSession oSession, wasLocked
+    WScript.Quit 1
+End If
+
+' --- Release the session UI lock; result check is read-only ---
+ReleaseSession oSession, wasLocked
+If wasLocked Then WScript.Echo "INFO: Session UI lock released."
 
 ' ------ 9. Check result -----------------------------------------------------
 sStatus = oSession.findById("wnd[0]/sbar").Text
 Dim sStatusType
 sStatusType = oSession.findById("wnd[0]/sbar").MessageType
 
-' After save, SAP may stay on a different screen; navigate back
-Dim sCurTitle
-sCurTitle = oSession.findById("wnd[0]").Text
-If InStr(sCurTitle, "Initial") = 0 Then
-    oSession.findById("wnd[0]/tbar[0]/okcd").Text = "/n"
-    oSession.findById("wnd[0]").sendVKey VKEY_ENTER
-    WScript.Sleep 500
-    On Error Resume Next
-    oSession.findById("wnd[1]/usr/btnSPOP-OPTION1").Press
-    Err.Clear
-    On Error GoTo 0
-    WScript.Sleep 500
-End If
+' After save, SAP may stay on a different screen; navigate back to a clean
+' state unconditionally (locale-independent; the data-loss confirm, if any,
+' is dismissed by its SPOP control id).
+oSession.findById("wnd[0]/tbar[0]/okcd").Text = "/n"
+oSession.findById("wnd[0]").sendVKey VKEY_ENTER
+WScript.Sleep 500
+On Error Resume Next
+oSession.findById("wnd[1]/usr/btnSPOP-OPTION1").Press
+Err.Clear
+On Error GoTo 0
+WScript.Sleep 500
 
 WScript.Echo "INFO: Status (" & sStatusType & "): " & sStatus
 
@@ -360,5 +465,13 @@ If sStatusType = "E" Or sStatusType = "A" Then
     WScript.Quit 1
 End If
 
+' Fail loud on anything but a positive success message: an empty or
+' unrecognized status after Save must never be reported as SUCCESS.
+If sStatusType <> "S" Then
+    WScript.Echo "ERROR: Could not confirm the save -- status bar type is '" & sStatusType & "' (expected S). Message: " & sStatus
+    WScript.Quit 1
+End If
+
+WScript.Echo "MATERIAL: " & MATERIAL
 WScript.Echo "SUCCESS: Material " & MATERIAL & " updated in SAP."
 WScript.Quit 0

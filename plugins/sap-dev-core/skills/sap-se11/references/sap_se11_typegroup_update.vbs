@@ -298,7 +298,10 @@ WScript.Echo "INFO: Saved."
 ' ------ 6. Activate (Ctrl+F3) -----------------------------------------------
 WScript.Echo "INFO: Activating..."
 On Error Resume Next
-oSession.findById("wnd[0]/tbar[1]/btn[27]").press
+' BUGFIX (sap-dev-init 2026-05-11): tbar[1]/btn[27].press silently no-ops on
+' some S/4HANA 1909 sessions when editor focus is on the field grid. Ctrl+F3
+' (sendVKey 27) is always honoured.
+oSession.findById("wnd[0]").sendVKey 27
 WScript.Sleep 3000
 If InStr(oSession.ActiveWindow.Id, "wnd[1]") > 0 Then
     oSession.ActiveWindow.sendVKey VKEY_ENTER
@@ -313,8 +316,16 @@ sFinalMsg  = oSession.findById("wnd[0]/sbar").Text
 sFinalType = oSession.findById("wnd[0]/sbar").MessageType
 On Error GoTo 0
 
-If sFinalType = "E" Then
-    WScript.Echo "WARNING: Activation may have errors - " & sFinalMsg
+' Activation gate (same contract as sap_se11_table_update.vbs): sbar E/A
+' means the object was NOT activated -- fail loudly instead of degrading to
+' a WARNING followed by an unconditional SUCCESS (the pre-fix false-success).
+' MessageType "W" stays a warning and proceeds.
+If sFinalType = "E" Or sFinalType = "A" Then
+    WScript.Echo "ERROR: Activation failed - " & sFinalMsg
+    WScript.Echo "FAILED: Type group " & UCase(OBJECT_NAME) & " was NOT activated."
+    WScript.Quit 1
+ElseIf sFinalType = "W" Then
+    WScript.Echo "WARNING: " & sFinalMsg
 Else
     WScript.Echo "INFO: SAP status: " & sFinalMsg
 End If

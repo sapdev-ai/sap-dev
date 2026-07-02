@@ -80,10 +80,16 @@ Set `{WORK_TEMP}` = `{work_dir}\temp`, `{RUN}` = `{WORK_TEMP}\fix_incident\<run>
 cmd /c if not exist "{WORK_TEMP}\fix_incident" mkdir "{WORK_TEMP}\fix_incident"
 ```
 
+Set `{RUN_TEMP}` = the per-run scratch dir (`Get-SapRunTemp` mints + creates `{work_dir}\temp\run_<id>`):
+```bash
+powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('RUN_TEMP=' + (Get-SapRunTemp))"
+```
+Per the CLAUDE.md "Two-bucket temp model" write this skill's `_run.json` log state under `{RUN_TEMP}` (the working files already live in the per-run `{RUN}`).
+
 ## Step 0.5 — Start Logging (best-effort)
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{WORK_TEMP}\sap_fix_incident_run.json" -Skill sap-fix-incident -ParamsJson "{}"
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{RUN_TEMP}\sap_fix_incident_run.json" -Skill sap-fix-incident -ParamsJson "{}"
 ```
 
 ---
@@ -110,8 +116,8 @@ stop and route** (do not attempt a code fix):
 |---|---|
 | `config-missing` | name the IMG / config table; verify read-only via `/sap-se16n` |
 | `data-defect` | point at the offending record (read-only `/sap-se16n`) |
-| `lock-contention` | `/sap-sm12 --release` (its own gated mode) |
-| `stuck-update` | `/sap-sm13 --reprocess` (its own gated mode) |
+| `lock-contention` | **manual** — open **SM12** (`/nSM12`), find the row, confirm with the lock owner, then **Lock Entry → Delete** by hand. `/sap-sm12` is read-only (no automated release). |
+| `stuck-update` | **manual** — open **SM13** (`/nSM13`), find the failed record, confirm with the update owner, then **Repeat Update / Delete** by hand. `/sap-sm13` is read-only (no automated reprocess). |
 
 Echo `TARGET: hypothesis=<rank> category=custom-code-defect confidence=<H|M|L>`.
 
@@ -227,7 +233,7 @@ STATUS: MANUAL_REVIEW rounds_exhausted diff=<path>
 ## Final — Log End
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_fix_incident_run.json" -Status SUCCESS -ExitCode 0
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_fix_incident_run.json" -Status SUCCESS -ExitCode 0
 ```
 
 | Outcome | Status / ExitCode / ErrorClass |

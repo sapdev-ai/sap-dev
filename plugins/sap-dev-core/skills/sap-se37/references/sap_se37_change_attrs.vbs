@@ -351,15 +351,18 @@ If sChanges <> "" Then
     oSession.findById("wnd[0]/tbar[1]/btn[27]").press   ' Ctrl+F3 Activate
     WScript.Sleep 3000
     Err.Clear
-    ' Dismiss inactive-objects worklist if it appears
+    ' Dismiss inactive-objects worklist if it appears. Continue (btn[0]) ONLY:
+    ' the popup is pre-filtered and the triggering FM (plus its function-group
+    ' includes) is pre-selected, so Continue activates exactly them. Do NOT
+    ' send sendVKey 26 (Ctrl+A = Select All): on a shared DEV the worklist
+    ' also lists other developers' unrelated inactive objects (EC2/DEV102:
+    ' 500+) and Select All would co-activate every one. Matches the proven
+    ' Continue-only model in sap_se37_update.vbs; never re-add Select All.
     Dim iActPop
     For iActPop = 1 To 5
         If InStr(oSession.ActiveWindow.Id, "wnd[1]") = 0 Then Exit For
         WScript.Echo "INFO:   Activate popup wnd[1]: " & oSession.ActiveWindow.Text
-        ' Worklist popup needs Ctrl+A (Select All) before Continue
         Err.Clear
-        oSession.findById("wnd[1]").sendVKey 26
-        WScript.Sleep 400
         oSession.findById("wnd[1]/tbar[0]/btn[0]").press
         If Err.Number <> 0 Then
             Err.Clear

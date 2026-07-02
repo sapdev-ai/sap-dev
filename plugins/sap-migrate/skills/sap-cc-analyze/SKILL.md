@@ -63,12 +63,25 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_
 Set `{WORK_TEMP}` = `{work_dir}\temp` (create if needed) and
 `{CAMPAIGN_DIR}` = `{work_dir}\migrations\{campaign-id}`.
 
+Set `{RUN_TEMP}` = the per-run scratch dir (`Get-SapRunTemp` mints + creates
+`{work_dir}\temp\run_<id>`):
+
+```bash
+powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('RUN_TEMP=' + (Get-SapRunTemp))"
+```
+
+Per the CLAUDE.md "Two-bucket temp model" write this skill's per-run scratch
+(the log state file below) under `{RUN_TEMP}`, never at a fixed name under the
+`{WORK_TEMP}` root.
+
 ---
 
 ## Step 0.5 — Start Logging
 
+State file: `{RUN_TEMP}\sap_cc_analyze_run.json`. Best-effort.
+
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{WORK_TEMP}\sap_cc_analyze_run.json" -Skill sap-cc-analyze -ParamsJson "{}"
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{RUN_TEMP}\sap_cc_analyze_run.json" -Skill sap-cc-analyze -ParamsJson "{}"
 ```
 
 ---
@@ -120,6 +133,19 @@ LINE/MSG_TEXT). Collect every drill export under one folder, e.g.
   export into `atc_raw\` for `ingest`.
 - Use the per-finding **drill** export, NOT the run **summary** TXT -- the
   summary has no per-object column, so `ingest` skips it.
+- **Record clean objects as checked.** A PASS with zero findings leaves no row
+  in the drill TSV, and `ingest` advances an object to ANALYZED **only on
+  evidence**. After each worklist object whose `/sap-atc` run **completed**
+  with zero findings, append it to a checked-objects export (real TAB bytes via
+  PowerShell — never the Write-tool literal `\t`):
+
+  ```bash
+  powershell -NoProfile -Command "\$p = '{CAMPAIGN_DIR}\findings\atc_raw\checked_objects.tsv'; if (-not (Test-Path -LiteralPath \$p)) { Set-Content -LiteralPath \$p -Value ('obj_name' + [char]9 + 'obj_type') -Encoding UTF8 }; Add-Content -LiteralPath \$p -Value ('<OBJ_NAME>' + [char]9 + '<OBJ_TYPE>') -Encoding UTF8"
+  ```
+
+  `ingest` counts such rows (all finding columns blank) as coverage evidence
+  only — they are never appended to `findings_raw.tsv`. Do NOT add objects
+  whose ATC run failed, aborted, or never ran.
 
 - The connected system must offer the **`S4HANA_READINESS`** variant with the
   **Simplification Database** loaded. If your source ECC lacks it, run against a
@@ -173,12 +199,20 @@ from the campaign ledger so triage's per-object rollup matches. Output:
 FINDINGS: total=<n> new=<n> objects_with_findings=<n> file=<path>
 PRIORITY: <p> | COUNT: <n>
 ANALYZED: <n>
+INFO: <n> of <m> worklist objects not covered by this ingest
 STATUS: OK | EMPTY | ERROR
 ```
 
-Objects marked ANALYZED = those in the worklist (i.e. actually run) plus any that
-produced findings — so a clean object (zero findings) still advances. Re-ingest
-is safe (findings dedupe on object|check|line|message-id).
+Objects marked ANALYZED = **only those this ingest has evidence for**: an
+object with at least one finding row, or one listed in a checked-objects export
+(rows whose finding columns are all blank count as coverage evidence and are
+never written to `findings_raw.tsv`). The prepared worklist alone is NOT
+evidence a run happened — worklist objects with no evidence keep their prior
+state (SCOPED) and are counted on the `INFO:` line, so a partially-run ATC loop
+can never record unrun objects as analyzed-clean. When `INFO:` reports
+uncovered objects, run `/sap-atc` for them (or append their completed clean
+runs to `checked_objects.tsv` — Step 2), then re-ingest. Re-ingest is safe
+(findings dedupe on object|check|line|message-id).
 
 | Exit | Meaning |
 |---|---|
@@ -226,7 +260,7 @@ After ingest, recommend triage: `/sap-cc-campaign next` (→ `/sap-cc-triage`).
 ## Final — Log End
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_cc_analyze_run.json" -Status SUCCESS -ExitCode 0
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_cc_analyze_run.json" -Status SUCCESS -ExitCode 0
 ```
 
 For exit `1` use `-Status SKIPPED -ExitCode 1 -ErrorClass CC_ANALYZE_EMPTY`;

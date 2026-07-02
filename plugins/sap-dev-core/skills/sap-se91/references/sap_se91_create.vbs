@@ -56,21 +56,49 @@ oSession.findById("wnd[0]/usr/btnANLTASTE").press   ' Create
 WScript.Sleep 2000
 
 ' Verify we are in the editor (Attributes tab)
-' First check for language mismatch popup (can appear even on Create if system master language differs)
+' First check for language mismatch popup (can appear even on Create if system
+' master language differs). Fingerprint the popup by ctxtRSETX-MASTERLANG
+' (SAPLSETX) before pressing btnPUSH1, so we never misfire on some other popup
+' that happens to have a btnPUSH1 (mirrors sap_se91_update.vbs).
 On Error Resume Next
-Dim oLangPopup
-Set oLangPopup = oSession.findById("wnd[1]/usr/btnPUSH1")
-If Err.Number = 0 And Not (oLangPopup Is Nothing) Then
-    WScript.Echo "INFO: Language mismatch popup detected - maintaining in original language..."
-    oLangPopup.press
-    WScript.Sleep 2000
+If InStr(oSession.ActiveWindow.Id, "wnd[1]") > 0 Then
+    Dim oMasterLangFld
+    Set oMasterLangFld = Nothing
+    Err.Clear
+    Set oMasterLangFld = oSession.findById("wnd[1]/usr/ctxtRSETX-MASTERLANG")
+    If Err.Number = 0 Then
+        If Not (oMasterLangFld Is Nothing) Then
+            Dim oLangPopup
+            Set oLangPopup = Nothing
+            Err.Clear
+            Set oLangPopup = oSession.findById("wnd[1]/usr/btnPUSH1")
+            If Err.Number = 0 Then
+                If Not (oLangPopup Is Nothing) Then
+                    WScript.Echo "INFO: Original-language popup detected (logon != MASTERLANG=" & _
+                                 oMasterLangFld.Text & ") -- pressing 'Maint. in orig. lang.'."
+                    oLangPopup.press
+                    WScript.Sleep 2000
+                End If
+            End If
+        End If
+    End If
 End If
 Err.Clear
 On Error GoTo 0
 
-Dim sTitle
-sTitle = oSession.findById("wnd[0]").Text
-If InStr(sTitle, "Initial") > 0 Then
+' Language-independent editor-open check (per language_independence_rules.md):
+' the SE91 initial screen exposes the name field ctxtRSDAG-ARBGB. If that ID
+' still resolves after Create, we did NOT enter the editor -- the class likely
+' already exists (or Create was refused). Title-text branching on "Initial" was
+' English-only and misfired under JA/ZH logons.
+Dim bStillOnInitial, oInitProbe
+On Error Resume Next
+Set oInitProbe = Nothing
+Set oInitProbe = oSession.findById("wnd[0]/usr/ctxtRSDAG-ARBGB")
+bStillOnInitial = (Err.Number = 0) And Not (oInitProbe Is Nothing)
+Err.Clear
+On Error GoTo 0
+If bStillOnInitial Then
     WScript.Echo "ERROR: Still on Initial Screen. Message class may already exist." & vbCrLf & _
                  "       Status: " & oSession.findById("wnd[0]/sbar").Text
     WScript.Quit 1
@@ -105,7 +133,7 @@ If InStr(oSession.ActiveWindow.Id, "wnd[1]") > 0 Then
             WScript.Sleep 1000
         End If
     ElseIf SAP_PACKAGE <> "" And SAP_TRANSPORT = "" Then
-        ' Case 3: Package only — create new transport
+        ' Case 3: Package only -- create new transport
         WScript.Echo "INFO: Assigning to package " & SAP_PACKAGE & " creating new transport..."
         oSession.findById("wnd[1]/usr/ctxtKO007-L_DEVCLASS").Text = SAP_PACKAGE
         oSession.findById("wnd[1]").sendVKey VKEY_ENTER
@@ -120,7 +148,7 @@ If InStr(oSession.ActiveWindow.Id, "wnd[1]") > 0 Then
             WScript.Sleep 1000
         End If
     Else
-        ' Case 2: No package or $TMP — local object
+        ' Case 2: No package or $TMP -- local object
         WScript.Echo "INFO: Package/transport dialog - Local Object ($TMP)..."
         oSession.findById("wnd[1]/tbar[0]/btn[7]").press
         WScript.Sleep 2000
@@ -198,7 +226,7 @@ End If
 ' NOTE: We use ADODB.Stream with explicit Charset="utf-8" to decode the file
 ' correctly. FSO.OpenTextFile(... , False) reads bytes as the system code page
 ' (cp932 on Japanese Windows, cp1252 on Western), which mangles UTF-8 multi-
-' byte sequences — Japanese text comes out as mojibake (文字化け) on the SAP
+' byte sequences -- Japanese text comes out as mojibake on the SAP
 ' side. ADODB.Stream handles UTF-8 BOM auto-detection and decodes to Unicode
 ' that matches what SetText into the SAP GUI control expects.
 Dim arrNums(), arrTexts()
@@ -304,7 +332,7 @@ If InStr(oSession.ActiveWindow.Id, "wnd[1]") > 0 Then
         oSession.findById("wnd[1]").sendVKey VKEY_ENTER
         WScript.Sleep 1000
     ElseIf SAP_PACKAGE <> "" And SAP_TRANSPORT = "" Then
-        ' Case 3: Package only — create new transport
+        ' Case 3: Package only -- create new transport
         WScript.Echo "INFO: Transport dialog on save - creating new transport..."
         oSession.findById("wnd[1]/tbar[0]/btn[8]").press
         WScript.Sleep 1000
@@ -314,7 +342,7 @@ If InStr(oSession.ActiveWindow.Id, "wnd[1]") > 0 Then
         oSession.findById("wnd[1]/tbar[0]/btn[0]").press
         WScript.Sleep 1000
     Else
-        ' Case 2: No package or $TMP — local object
+        ' Case 2: No package or $TMP -- local object
         oSession.findById("wnd[1]/tbar[0]/btn[7]").press
         WScript.Sleep 1000
     End If

@@ -416,8 +416,16 @@ sFinalMsg  = oSession.findById("wnd[0]/sbar").Text
 sFinalType = oSession.findById("wnd[0]/sbar").MessageType
 On Error GoTo 0
 
-If sFinalType = "E" Then
-    WScript.Echo "WARNING: Activation may have errors - " & sFinalMsg
+' Activation gate (same contract as sap_se11_table_update.vbs): sbar E/A
+' means the object was NOT activated -- fail loudly instead of degrading to
+' a WARNING followed by an unconditional SUCCESS (the pre-fix false-success).
+' MessageType "W" stays a warning and proceeds.
+If sFinalType = "E" Or sFinalType = "A" Then
+    WScript.Echo "ERROR: Activation failed - " & sFinalMsg
+    WScript.Echo "FAILED: Data element " & UCase(OBJECT_NAME) & " was NOT activated."
+    WScript.Quit 1
+ElseIf sFinalType = "W" Then
+    WScript.Echo "WARNING: " & sFinalMsg
 Else
     WScript.Echo "INFO: SAP status: " & sFinalMsg
 End If

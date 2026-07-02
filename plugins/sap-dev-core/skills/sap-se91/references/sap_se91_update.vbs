@@ -75,7 +75,7 @@ If InStr(oSession.ActiveWindow.Id, "wnd[1]") > 0 Then
             If Err.Number = 0 Then
                 If Not (oMaintBtn Is Nothing) Then
                     WScript.Echo "INFO: Original-language popup detected (logon != MASTERLANG=" & _
-                                 oMasterLangFld.Text & ") — pressing 'Maint. in orig. lang.'."
+                                 oMasterLangFld.Text & ") -- pressing 'Maint. in orig. lang.'."
                     oMaintBtn.press
                     WScript.Sleep 1500
                 End If
@@ -86,15 +86,24 @@ End If
 Err.Clear
 On Error GoTo 0
 
-' Verify we are in the editor
-Dim sTitle
-sTitle = oSession.findById("wnd[0]").Text
-If InStr(sTitle, "Initial") > 0 Then
+' Verify we are in the editor.
+' Language-independent check (per language_independence_rules.md): the SE91
+' initial screen exposes the name field ctxtRSDAG-ARBGB. If that ID still
+' resolves after Change, we did NOT enter the editor -- class not found / could
+' not open. Title-text branching on "Initial" was English-only.
+Dim bStillOnInitial, oInitProbe
+On Error Resume Next
+Set oInitProbe = Nothing
+Set oInitProbe = oSession.findById("wnd[0]/usr/ctxtRSDAG-ARBGB")
+bStillOnInitial = (Err.Number = 0) And Not (oInitProbe Is Nothing)
+Err.Clear
+On Error GoTo 0
+If bStillOnInitial Then
     WScript.Echo "ERROR: Message class not found or could not open." & vbCrLf & _
                  "       Status: " & oSession.findById("wnd[0]/sbar").Text
     WScript.Quit 1
 End If
-WScript.Echo "INFO: Editor opened: " & sTitle
+WScript.Echo "INFO: Editor opened."
 
 ' Ensure we are on the Messages tab
 Dim sTblBase, oTable
@@ -132,7 +141,7 @@ End If
 ' Use ADODB.Stream with explicit Charset="utf-8" so Japanese / Chinese / any
 ' non-ASCII text in messages is decoded correctly. FSO.OpenTextFile(...,False)
 ' reads bytes as the system code page and mangles UTF-8 multi-byte sequences;
-' the resulting mojibake (文字化け) goes into SAP via SetText.
+' the resulting mojibake goes into SAP via SetText.
 ' See sap_se91_create.vbs for the full rationale.
 Dim arrNums(), arrTexts()
 Dim iMsgCount, sAll, arrLines, iL
@@ -186,7 +195,7 @@ End If
 ' ------ 5. Populate table: scroll page by page ------------------------------
 ' Use the direct findById path BUT re-acquire the table reference every
 ' iteration. The cell GuiTextField objects go stale after .Text assignment
-' because the SAP TableControl re-renders sub-controls — direct addressing
+' because the SAP TableControl re-renders sub-controls -- direct addressing
 ' of [1,3]+ then fails with "control not found" even though the row IS
 ' visible. Re-acquiring oTable forces SAP GUI to recompute the binding.
 Dim iCurrentPos, i, iMsgNum, iPageStart, iVisRow, sCellId
@@ -255,7 +264,7 @@ If InStr(oSession.ActiveWindow.Id, "wnd[1]") > 0 Then
         oSession.findById("wnd[1]").sendVKey VKEY_ENTER
         WScript.Sleep 1000
     ElseIf SAP_PACKAGE <> "" And SAP_TRANSPORT = "" Then
-        ' Case 3: Package only — create new transport
+        ' Case 3: Package only -- create new transport
         WScript.Echo "INFO: Transport dialog - package " & SAP_PACKAGE & " creating new transport..."
         oSession.findById("wnd[1]/usr/ctxtKO007-L_DEVCLASS").Text = SAP_PACKAGE
         oSession.findById("wnd[1]").sendVKey VKEY_ENTER
@@ -270,7 +279,7 @@ If InStr(oSession.ActiveWindow.Id, "wnd[1]") > 0 Then
             WScript.Sleep 1000
         End If
     Else
-        ' Case 2: No package or $TMP — local object
+        ' Case 2: No package or $TMP -- local object
         WScript.Echo "INFO: Transport dialog - Local Object..."
         oSession.findById("wnd[1]/tbar[0]/btn[7]").press
         WScript.Sleep 1000

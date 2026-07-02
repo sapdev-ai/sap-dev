@@ -86,6 +86,10 @@ $dest = Connect-SapRfc -Server $Server -Sysnr $Sysnr -Client $Client -User $User
 if (-not $dest) { Write-Output "ERROR: RFC connection failed"; exit 2 }
 
 # Read a table; returns an array of pipe-joined WA strings, or $null on RFC error.
+# CRITICAL: $null means "the read FAILED" (state unknown) -- it is NOT the same as
+# an empty array ("read OK, zero rows"). Every call site MUST branch on $null
+# separately and fail-closed; conflating the two turns a failed TRDIR read into
+# SE38_MODE=create and a failed MODACT read into COUNT=0 (both dangerous).
 function Read-Tbl($table, $where, $fields) {
     $fn = New-RfcReadTable -Destination $dest -Table $table
     if ($where)  { Add-RfcOption $fn $where }
@@ -145,7 +149,10 @@ try {
             if ($cust) {
                 Write-Output "CUSTOMER_INCLUDE: $cust"
                 $tr = Read-Tbl "TRDIR" "NAME = '$cust'" @("NAME")
-                $exists = ($tr -and $tr.Count -gt 0)
+                # Fail-closed: a NULL read is a FAILURE, not "include absent". Emitting
+                # SE38_MODE=create on a failed read risks re-creating an existing include.
+                if ($null -eq $tr) { Write-Output "ERROR: RFC_READ_TABLE failed on TRDIR (cannot determine include existence)"; exit 2 }
+                $exists = ($tr.Count -gt 0)
                 Write-Output ("INCLUDE_EXISTS: " + $(if ($exists) { 'YES' } else { 'NO' }))
                 Write-Output ("SE38_MODE: "      + $(if ($exists) { 'update' } else { 'create' }))
             } else {
@@ -240,10 +247,16 @@ try {
             $projs = $projs | Select-Object -Unique
             foreach ($p in $projs) {
                 $a = Read-Tbl "MODATTR" "NAME = '$p'" @("NAME","STATUS")
-                $st = ''
-                if ($a -and $a.Count -gt 0) { $st = ($a[0].Split('|')[1]).Trim() }
-                $lbl = if ($st -eq 'A') { 'ACTIVE' } else { 'INACTIVE' }
-                Write-Output "PROJECT: $p|$st|$lbl"
+                # Distinguish a failed status read (UNKNOWN) from a genuine inactive
+                # state -- never label a project INACTIVE just because the read failed.
+                if ($null -eq $a) {
+                    Write-Output "PROJECT: $p||UNKNOWN"
+                } else {
+                    $st = ''
+                    if ($a.Count -gt 0) { $st = ($a[0].Split('|')[1]).Trim() }
+                    $lbl = if ($st -eq 'A') { 'ACTIVE' } else { 'INACTIVE' }
+                    Write-Output "PROJECT: $p|$st|$lbl"
+                }
             }
             Write-Output ("COUNT: " + $projs.Count)
             Write-Output "DONE"
@@ -271,7 +284,8 @@ try {
                 # after a delete (orphan) -- a fresh create would silently
                 # re-attach to that stale package. Surface it.
                 $orph = Read-Tbl "TADIR" "PGMID = 'R3TR' AND OBJECT = 'CMOD' AND OBJ_NAME = '$Project'" @("DEVCLASS")
-                if ($orph -and $orph.Count -gt 0) { Write-Output ("TADIR_ORPHAN: " + ($orph[0].Split('|')[0]).Trim()) }
+                if ($null -eq $orph) { Write-Output "WARN: RFC_READ_TABLE failed on TADIR (orphan check inconclusive)" }
+                elseif ($orph.Count -gt 0) { Write-Output ("TADIR_ORPHAN: " + ($orph[0].Split('|')[0]).Trim()) }
                 Write-Output "DONE"; break
             }
             $st = ($attr[0].Split('|')[1]).Trim()
@@ -280,16 +294,21 @@ try {
             Write-Output ("STATUS_LABEL: " + $(if ($st -eq 'A') { 'ACTIVE' } else { 'INACTIVE' }))
 
             $tad = Read-Tbl "TADIR" "PGMID = 'R3TR' AND OBJECT = 'CMOD' AND OBJ_NAME = '$Project'" @("DEVCLASS")
-            if ($tad -and $tad.Count -gt 0) { Write-Output ("DEVCLASS: " + ($tad[0].Split('|')[0]).Trim()) }
+            if ($null -eq $tad) { Write-Output "WARN: RFC_READ_TABLE failed on TADIR (DEVCLASS unknown)" }
+            elseif ($tad.Count -gt 0) { Write-Output ("DEVCLASS: " + ($tad[0].Split('|')[0]).Trim()) }
 
             $txt = Read-Tbl "MODTEXT" "NAME = '$Project'" @("SPRSL","MODTEXT")
-            if ($txt -and $txt.Count -gt 0) {
+            if ($null -eq $txt) { Write-Output "WARN: RFC_READ_TABLE failed on MODTEXT (short text unknown)" }
+            elseif ($txt.Count -gt 0) {
                 foreach ($r in $txt) { $c = $r.Split('|'); Write-Output ("SHORTTEXT[" + $c[0].Trim() + "]: " + $c[1].Trim()) }
             }
 
             $act = Read-Tbl "MODACT" "NAME = '$Project'" @("NAME","MEMBER")
+            # Fail-closed: a NULL read is a FAILURE, not "zero assignments". A false
+            # COUNT: 0 here would mislead a pre-delete "is it empty?" decision.
+            if ($null -eq $act) { Write-Output "ERROR: RFC_READ_TABLE failed on MODACT (assignment count unknown)"; exit 2 }
             $enh = @()
-            if ($act) { foreach ($r in $act) { $m = ($r.Split('|')[1]).Trim(); if ($m) { $enh += $m } } }
+            foreach ($r in $act) { $m = ($r.Split('|')[1]).Trim(); if ($m) { $enh += $m } }
             foreach ($e in $enh) { Write-Output "ASSIGNMENT: $e" }
             Write-Output ("COUNT: " + $enh.Count)
             Write-Output "DONE"

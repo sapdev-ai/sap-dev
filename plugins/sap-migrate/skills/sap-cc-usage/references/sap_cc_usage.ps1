@@ -15,15 +15,23 @@
 #                        optional col3=last used; header optional)
 #   -MinExec <int>       used if exec_count > MinExec (default 0 = any hit is used)
 #   -Policy <none|conservative|aggressive>  default: campaign.json scope.decommission_policy, else conservative
+#   -ForceLowJoin        accept a usage file that matches < 10% of the inventory
+#                        (without it such a file is rejected -- USAGE_JOIN_LOW)
 #
 # Output grammar (parseable):
-#   USAGE: source=<src> policy=<p> min_exec=<n> matched=<n> file=<path-or-->
+#   USAGE_JOIN: matched=<j> inventory=<n> rate=<pct>%   (j = inventory objects the
+#               usage data matched -- join hits, NOT usage-file rows)
+#   USAGE: source=<src> policy=<p> min_exec=<n> matched=<j> file=<path-or-->
 #   USED: <n> | UNUSED: <n> | UNKNOWN: <n>
 #   DECISION: <REMEDIATE|DECOMMISSION|REVIEW> | COUNT: <n>
 #   METRIC: decommission_savings_pct | VALUE: <n>
 #   SCOPE: wrote <path>
 #   STATUS: OK | EMPTY | ERROR
-# Exit: 0 ok | 1 empty (no inventory) | 2 error (bad workspace / inputs)
+#           | ERROR USAGE_JOIN_ZERO (...)  usage file matched NO inventory object
+#           | ERROR USAGE_JOIN_LOW (...)   join rate < 10% without -ForceLowJoin
+#           (both join guards exit 2 WITHOUT writing usage.tsv / scope.tsv /
+#            state.tsv -- a wrong-system export must never flag the estate unused)
+# Exit: 0 ok | 1 empty (no inventory) | 2 error (bad workspace / inputs / join guard)
 
 [CmdletBinding()]
 param(
@@ -31,7 +39,8 @@ param(
     [string]$UsageSource = '',
     [string]$UsageFile = '',
     [int]$MinExec = 0,
-    [string]$Policy = ''
+    [string]$Policy = '',
+    [switch]$ForceLowJoin
 )
 
 $ErrorActionPreference = 'Stop'
@@ -135,12 +144,12 @@ try {
     $src = $UsageSource
     if ([string]::IsNullOrWhiteSpace($src)) { $src = if ($UsageFile) { 'FILE' } else { 'NONE' } }
     $src = $src.ToUpper()
-    $usageMap = @{}; $matched = 0; $haveUsage = $false
+    $usageMap = @{}; $haveUsage = $false
     if ($src -eq 'FILE') {
         if ([string]::IsNullOrWhiteSpace($UsageFile)) { Write-Output 'ERROR: -UsageSource FILE requires -UsageFile'; Write-Output 'STATUS: ERROR'; exit 2 }
         $u = Read-UsageFile $UsageFile
         if ($u.error) { Write-Output "ERROR: $($u.error)"; Write-Output 'STATUS: ERROR'; exit 2 }
-        $usageMap = $u.map; $matched = $u.matched; $haveUsage = $true
+        $usageMap = $u.map; $haveUsage = $true
     } elseif ($src -eq 'SCMON' -or $src -eq 'UPL') {
         # Direct read: sap_cc_scmon_read.ps1 (run by the SKILL via RFC against the
         # source system) writes a usage export; we ingest it here but KEEP the
@@ -150,13 +159,34 @@ try {
         if (-not [string]::IsNullOrWhiteSpace($UsageFile) -and (Test-Path -LiteralPath $UsageFile)) {
             $u = Read-UsageFile $UsageFile
             if ($u.error) { Write-Output "ERROR: $($u.error)"; Write-Output 'STATUS: ERROR'; exit 2 }
-            $usageMap = $u.map; $matched = $u.matched; $haveUsage = $true
+            $usageMap = $u.map; $haveUsage = $true
         } else {
             Write-Output "WARN: no $src usage export available (run sap_cc_scmon_read.ps1 first, or pass --usage-file). Proceeding with NO usage data (all objects -> REMEDIATE; nothing decommissioned)."
             $src = 'NONE'
         }
     }
     # NONE -> no usage data: used_flag stays UNKNOWN, everything REMEDIATE (safe).
+
+    # Join-rate guard: how many INVENTORY objects does the usage data actually
+    # cover? A usage export from the wrong system (or an unparseable format)
+    # matches ~none of the inventory and would otherwise flag the whole estate
+    # unused (aggressive policy -> estate-wide DECOMMISSION). Zero join hits is
+    # always fatal; a low rate (< 10%) needs an explicit -ForceLowJoin. Both
+    # guards fire BEFORE anything is written.
+    $joinHits = 0
+    if ($haveUsage) {
+        foreach ($o in $inv) { if ($usageMap.ContainsKey($o.obj_name.ToUpper())) { $joinHits++ } }
+    }
+    $joinRate = if ($inv.Count -gt 0) { 100.0 * $joinHits / $inv.Count } else { 0.0 }
+    Write-Output ("USAGE_JOIN: matched=$joinHits inventory=$($inv.Count) rate=" + [math]::Round($joinRate,1) + '%')
+    if ($haveUsage -and $joinHits -eq 0) {
+        Write-Output 'STATUS: ERROR USAGE_JOIN_ZERO (usage file matched no inventory object - wrong system/format?)'
+        exit 2
+    }
+    if ($haveUsage -and $joinRate -lt 10 -and -not $ForceLowJoin) {
+        Write-Output ('STATUS: ERROR USAGE_JOIN_LOW (usage matched only ' + [math]::Round($joinRate,1) + '% of inventory - wrong system/format? re-run with -ForceLowJoin to accept)')
+        exit 2
+    }
 
     $today = (Get-Date).ToString('yyyy-MM-dd')
 
@@ -238,7 +268,7 @@ try {
     $total = $inv.Count
     $save = if ($total -gt 0) { [int][math]::Round(100.0 * $cntDec / $total) } else { 0 }
     $fileEcho = if ($haveUsage) { $UsageFile } else { '-' }
-    Write-Output "USAGE: source=$src policy=$pol min_exec=$MinExec matched=$matched file=$fileEcho"
+    Write-Output "USAGE: source=$src policy=$pol min_exec=$MinExec matched=$joinHits file=$fileEcho"
     Write-Output "USED: $cntUsed | UNUSED: $cntUnused | UNKNOWN: $cntUnknown"
     Write-Output "DECISION: REMEDIATE | COUNT: $cntRem"
     Write-Output "DECISION: DECOMMISSION | COUNT: $cntDec"

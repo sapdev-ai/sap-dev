@@ -107,7 +107,8 @@ Sub HandleActivatePopup
     ' TOP of wnd[1] confirm); checking only ActiveWindow == wnd[1] misses the
     ' higher-numbered window. Iterate wnd[9]..wnd[1] top-down. FMs typically
     ' show only a single Continue popup, but the loop handles worklist-style
-    ' popups too (Select All + Continue) and chained info/error popups.
+    ' popups too (detected via btn[9], dismissed with Continue ONLY -- never
+    ' Select All) and chained info/error popups.
     Dim iSweep, i, sId, oWnd, oBtn, bAnyDismissed
     On Error Resume Next
     For iSweep = 1 To 3
@@ -118,19 +119,25 @@ Sub HandleActivatePopup
             Set oWnd = oSess.findById(sId)
             If Err.Number = 0 And Not (oWnd Is Nothing) Then
                 Err.Clear
+                ' Inactive-objects worklist popup. Discriminator: it carries
+                ' a Select All button at tbar[0]/btn[9]. DETECT via btn[9]
+                ' but deliberately do NOT press it -- the triggering object
+                ' (and its dependent includes) is already pre-selected, so
+                ' Continue (btn[0]) activates exactly it. Select All would
+                ' co-activate every UNRELATED inactive object on a shared DEV
+                ' (EC2/DEV102: 500+). Never fall back to Select All if
+                ' Continue doesn't clear it -- the post-activate DWINACTIV
+                ' verify reports a still-inactive object as a real failure.
                 Set oBtn = Nothing
                 Set oBtn = oSess.findById(sId & "/tbar[0]/btn[9]")
                 If Err.Number = 0 And Not (oBtn Is Nothing) Then
-                    oBtn.press
-                    WScript.Sleep 500
-                    WScript.Echo "INFO: " & sId & " - Select All pressed."
                     Err.Clear
                     Set oBtn = Nothing
                     Set oBtn = oSess.findById(sId & "/tbar[0]/btn[0]")
                     If Err.Number = 0 And Not (oBtn Is Nothing) Then
                         oBtn.press
                         WScript.Sleep 1200
-                        WScript.Echo "INFO: " & sId & " - Continue pressed."
+                        WScript.Echo "INFO: " & sId & " - inactive-objects worklist; Continue pressed (pre-selected object only, no Select All)."
                     End If
                     bAnyDismissed = True
                 Else

@@ -41,7 +41,7 @@ Task: $ARGUMENTS
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/skill_operating_rules.md` | **MANDATORY.** No write-SQL on standard tables; no unsolicited deploy; forbidden `RFC_READ_TABLE` tables; structured logging on every skill invocation. Overrides any conflicting guidance. |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/settings_lookup.md` | `work_dir` / settings merge contract. |
 | `<MIGRATE_SHARED_DIR>/knowledge/README.md` | The Simplification Knowledge Pack contract (how triage/remediate consume `catalog.tsv` + recipes; DRAFT excluded from auto-apply). |
-| `<MIGRATE_SHARED_DIR>/templates` *(via skills)* | The migration brief drives `/sap-cc-campaign init`. |
+| `<SAP_DEV_CORE_SHARED_DIR>/templates/migration_brief.md` *(via skills)* | The migration brief drives `/sap-cc-campaign init` (that skill resolves it: `--brief` → `{custom_url}\migration_brief.md` → this built-in template). |
 
 **Path resolution from this agent file** (`plugins/sap-migrate/agents/`):
 - `<SAP_DEV_CORE_SHARED_DIR>` = `../../sap-dev-core/shared/`

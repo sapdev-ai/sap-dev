@@ -236,8 +236,16 @@ sFinalMsg  = oSession.findById("wnd[0]/sbar").Text
 sFinalType = oSession.findById("wnd[0]/sbar").MessageType
 On Error GoTo 0
 
-If sFinalType = "E" Then
-    Log "WARNING: Activation may have errors - " & sFinalMsg
+' Activation gate: sbar E/A means the screen was NOT activated -- fail loudly
+' instead of degrading to a WARNING followed by an unconditional SUCCESS (the
+' pre-fix false-success). MessageType "W" stays a warning and proceeds.
+If sFinalType = "E" Or sFinalType = "A" Then
+    Log "ERROR: Activation failed - " & sFinalMsg
+    Log "FAILED: Screen " & UCase(PROGRAM_NAME) & " " & SCREEN_NUMBER & " was NOT activated."
+    oLogFile.Close
+    WScript.Quit 1
+ElseIf sFinalType = "W" Then
+    Log "WARNING: " & sFinalMsg
 Else
     Log "INFO: SAP status: " & sFinalMsg
 End If

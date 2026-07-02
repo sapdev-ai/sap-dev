@@ -72,12 +72,18 @@ Set `{WORK_TEMP}` = `{work_dir}\temp`, `{OUT}` = `{WORK_TEMP}\document\{OBJECT}`
 cmd /c if not exist "{OUT}" mkdir "{OUT}"
 ```
 
+Set `{RUN_TEMP}` = the per-run scratch dir (`Get-SapRunTemp` mints + creates `{work_dir}\temp\run_<id>`):
+```bash
+powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('RUN_TEMP=' + (Get-SapRunTemp))"
+```
+Per the CLAUDE.md "Two-bucket temp model" write this skill's `_run.json` log state under `{RUN_TEMP}`; `{OUT}` stays the durable output folder.
+
 ---
 
 ## Step 0.5 — Start Logging (best-effort)
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{WORK_TEMP}\sap_document_object_run.json" -Skill sap-document-object -ParamsJson "{\"target\":\"<OBJECT>\"}"
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{RUN_TEMP}\sap_document_object_run.json" -Skill sap-document-object -ParamsJson "{\"target\":\"<OBJECT>\"}"
 ```
 
 ---
@@ -203,7 +209,7 @@ a **draft for human review**, not authoritative.
 ## Final — Log End
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_document_object_run.json" -Status SUCCESS -ExitCode 0
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_document_object_run.json" -Status SUCCESS -ExitCode 0
 ```
 
 (Object not found → `-ExitCode 1 -ErrorClass OBJECT_NOT_FOUND`; RFC enrichment
