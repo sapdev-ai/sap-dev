@@ -286,8 +286,30 @@ The VBS gates and resolves in one run (no `/sap-se16n` call required):
      timezone mismatch can no longer produce a false "not found" (the old
      AS4DATE=today bug) — and no "most recent TR of the user" heuristic, so
      a concurrent create by the same user cannot be mis-resolved.
-3. **Neither path resolves** → `ERROR: TR_RESOLUTION_FAILED - request may
-   exist; verify in SE01.` + exit 1. The VBS NEVER returns a guessed TR.
+3. **Neither GUI path resolves** → the VBS echoes
+   `INFO: TR_RESOLUTION_DEFERRED - resolve via RFC by AS4TEXT+AS4USER
+   (sap_se01_resolve_trkorr.ps1).` and exits **0** (non-fatal). This is the
+   normal path on releases/locales where the create leaves `wnd[0]/sbar` empty
+   — confirmed **S/4HANA 1909 ZH** (2026-07-02 finding F-1): the sbar carries
+   no create-confirmation and the SE16N GUI grid read is unreliable. The VBS
+   still NEVER guesses; it defers to the wrapper's **RFC** resolver in Step 5b.
+
+**Step 5b — Authoritative RFC resolution (wrapper).** When the VBS did NOT
+print a `RESULT_TR:` line (it printed `TR_RESOLUTION_DEFERRED`), the wrapper
+resolves the number over **RFC** — locale-independent and reliable where the
+GUI is not — using the `INFO: AS4TEXT=<...>` and `INFO: AS4USER=<...>` values
+the VBS echoed. Run under **32-bit PowerShell** (NCo 3.1 in GAC_32):
+
+```bash
+C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File "<SKILL_DIR>\references\sap_se01_resolve_trkorr.ps1" -Description "<AS4TEXT>" -User "<AS4USER>"
+```
+
+It reads `E07T` by `AS4TEXT` → candidate TRKORRs, then `E070` by `AS4USER` +
+`TRSTATUS = D` + `TRFUNCTION` in `K`/`W` → **highest** matching TRKORR (newest;
+no date filter). Last line: `RESULT_TR: <TRKORR>` (authoritative) or
+`TR_RESOLUTION_FAILED: <reason>` (exit 1 = request genuinely not found /
+not modifiable — verify in SE01; NEVER blind-re-run, that creates a SECOND
+request). Creds fall back to the pinned profile via `Connect-SapRfc`.
 
 SE16N field-selection rows are located by the **Technical name column
 (index 6)** — the localised description column is unreliable across logon
@@ -302,15 +324,16 @@ Read the VBS stdout. Look for:
 
 - `ERROR: TR create failed - <sbar text>` — the create itself failed
   (status-bar `E`/`A`). Nothing was resolved; report the SAP message.
-- `ERROR: TR_RESOLUTION_FAILED - request may exist; verify in SE01.` — the
-  create did not visibly fail but neither the statusbar nor the SE16N
-  fallback produced the number (e.g. the description contains characters
-  the SE16N inline filter rejects). Check SE01 / `E070` manually before
-  re-running — a blind re-run would create a SECOND request.
-- Any other `ERROR:` — navigation/layout failure (e.g. the SE16N
-  Technical-name column moved); abort and report.
-- `RESULT_TR: <TRKORR>` — **that's the new transport request
-  (authoritative)**.
+- `INFO: TR_RESOLUTION_DEFERRED - resolve via RFC ...` — the create SUCCEEDED
+  but the GUI paths did not yield the number (normal on S/4HANA 1909 ZH). Run
+  the **Step 5b RFC resolver** with the echoed `AS4TEXT`/`AS4USER`; its
+  `RESULT_TR:` is authoritative.
+- `TR_RESOLUTION_FAILED: <reason>` (from the Step 5b resolver) — the request is
+  genuinely not found / not modifiable over RFC. Check SE01 / `E070` manually
+  before re-running — a blind re-run would create a SECOND request.
+- Any other `ERROR:` — navigation/layout failure; abort and report.
+- `RESULT_TR: <TRKORR>` — **the new transport request (authoritative)** —
+  emitted by the VBS (statusbar fast-path) OR by the Step 5b RFC resolver.
 - `INFO: TRKORR=<TRKORR>` — same value (back-compat line).
 - `INFO: TRFUNCTION=<K|W>` — top-level Workbench (K) or Customizing (W).
 

@@ -292,16 +292,27 @@ End If
 
 ' ------ 5. View selection popup - Select All --------------------------------
 ' Locale-independent: the popup is identified by its SAPLMGMM view table
-' control id, never by the translated window title.
+' control id, never by the translated window title. The id is RELEASE-specific:
+' tblSAPLMGMMTCTRL_AUSWAHL on S/4HANA (7.5x+), tblSAPLMGMMTC_VIEW on ECC6 /
+' AS ABAP 7.31 -- probe both so create works across releases.
 Dim oViewTbl
 Set oViewTbl = Nothing
 On Error Resume Next
 Set oViewTbl = oSession.findById("wnd[1]/usr/tblSAPLMGMMTCTRL_AUSWAHL")
+If oViewTbl Is Nothing Then Set oViewTbl = oSession.findById("wnd[1]/usr/tblSAPLMGMMTC_VIEW")
 Err.Clear
 On Error GoTo 0
 If Not (oViewTbl Is Nothing) Then
     WScript.Echo "INFO: View-selection popup detected - selecting all views..."
-    oSession.findById("wnd[1]/tbar[0]/btn[20]").Press   ' Select All
+    On Error Resume Next
+    oSession.findById("wnd[1]/tbar[0]/btn[20]").Press   ' Select All (toolbar; S/4HANA)
+    If Err.Number <> 0 Then
+        Err.Clear
+        ' ECC6 / 7.31 fallback: tick the "select all views" checkbox chkUSRM1-AAUSW.
+        oSession.findById("wnd[1]/usr/chkUSRM1-AAUSW").Selected = True
+    End If
+    Err.Clear
+    On Error GoTo 0
     WScript.Sleep 300
     oSession.findById("wnd[1]/tbar[0]/btn[0]").Press    ' Enter/Continue
     WScript.Sleep 500

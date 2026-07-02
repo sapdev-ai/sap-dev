@@ -583,10 +583,13 @@ failure path from Step 3/Step 4.** The generated `sap_login_run.vbs` and
 `sap_rfc_test_run.ps1` hold the plaintext password, so they must be removed
 before the skill ends regardless of outcome (never left for the 24h stale-temp
 GC). It is safe to run when a file was never created (the deletes are
-best-effort):
+best-effort). Use PowerShell `Remove-Item` (NOT `cmd /c del`) — it deletes
+plaintext-bearing scratch reliably regardless of the calling shell; the
+`cmd /c del` form with mixed `\`/`/` paths silently fails under git-bash and
+left the plaintext VBS on disk (2026-07-02 finding L-1):
 
 ```bash
-cmd /c del {RUN_TEMP}\sap_login_run.vbs 2>nul & del {RUN_TEMP}\sap_login_run.ps1 2>nul & del {RUN_TEMP}\sap_rfc_test_run.ps1 2>nul
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Remove-Item -Force -ErrorAction SilentlyContinue '{RUN_TEMP}\sap_login_run.vbs','{RUN_TEMP}\sap_login_run.ps1','{RUN_TEMP}\sap_rfc_test_run.ps1'"
 ```
 
 ---

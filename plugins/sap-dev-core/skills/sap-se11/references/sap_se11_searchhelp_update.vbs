@@ -376,11 +376,15 @@ WScript.Echo "INFO: Saved."
 
 ' ------ 7. Activate (Ctrl+F3) -----------------------------------------------
 WScript.Echo "INFO: Activating..."
+Dim bActivateSent : bActivateSent = True
 On Error Resume Next
 ' BUGFIX (sap-dev-init 2026-05-11): tbar[1]/btn[27].press silently no-ops on
 ' some S/4HANA 1909 sessions when editor focus is on the field grid. Ctrl+F3
-' (sendVKey 27) is always honoured.
+' (sendVKey 27) is honoured on most sessions -- but NOT always: on ECC6/7.31 it
+' can raise "virtual key is not enabled" when Activate is unavailable, which the
+' On Error here would otherwise SWALLOW so the flow would false-SUCCEED.
 oSession.findById("wnd[0]").sendVKey 27
+If Err.Number <> 0 Then bActivateSent = False : WScript.Echo "INFO: Activate key not accepted: " & Err.Description
 WScript.Sleep 3000
 If InStr(oSession.ActiveWindow.Id, "wnd[1]") > 0 Then
     oSession.ActiveWindow.sendVKey VKEY_ENTER
@@ -399,6 +403,11 @@ On Error GoTo 0
 ' means the object was NOT activated -- fail loudly instead of degrading to
 ' a WARNING followed by an unconditional SUCCESS (the pre-fix false-success).
 ' MessageType "W" stays a warning and proceeds.
+If Not bActivateSent Then
+    WScript.Echo "ERROR: Could not trigger activation (Activate unavailable) - " & sFinalMsg
+    WScript.Echo "FAILED: Search help " & UCase(OBJECT_NAME) & " was NOT activated."
+    WScript.Quit 1
+End If
 If sFinalType = "E" Or sFinalType = "A" Then
     WScript.Echo "ERROR: Activation failed - " & sFinalMsg
     WScript.Echo "FAILED: Search help " & UCase(OBJECT_NAME) & " was NOT activated."

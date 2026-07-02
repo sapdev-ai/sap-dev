@@ -317,19 +317,35 @@ WScript.Sleep 1500
 ' ----------------------------------------------------------------------------
 ' 7. Detect no-data vs result list
 ' ----------------------------------------------------------------------------
-Dim sStatus, sStatusType, hasResult
+Dim sStatus, sStatusType, sMsgId, sMsgNo, hasResult, oResult
 hasResult = False
+
+' Poll for the result ALV. On ECC6 the (possibly EMPTY) result grid can render
+' with a variable delay, and an empty result set is additionally signalled by an
+' [E] "no entries" message (WUSL 002) that sits ON TOP of a real (empty) grid --
+' so a single early check can miss the grid, and the E/A branch below would then
+' misread an empty result as a query FAILURE. Poll a few times before deciding.
+Dim nGridTry
+For nGridTry = 1 To 6
+    On Error Resume Next
+    Set oResult = Nothing
+    Set oResult = oSession.findById("wnd[0]/usr/cntlRESULT_LIST/shellcont/shell")
+    If Err.Number = 0 And Not (oResult Is Nothing) Then hasResult = True
+    Err.Clear
+    On Error GoTo 0
+    If hasResult Then Exit For
+    WScript.Sleep 400
+Next
 
 On Error Resume Next
 sStatus = oSession.findById("wnd[0]/sbar").Text
 If Err.Number <> 0 Then sStatus = "" : Err.Clear
 sStatusType = oSession.findById("wnd[0]/sbar").MessageType
 If Err.Number <> 0 Then sStatusType = "" : Err.Clear
-
-' Check for the result ALV
-Dim oResult : Set oResult = Nothing
-Set oResult = oSession.findById("wnd[0]/usr/cntlRESULT_LIST/shellcont/shell")
-If Err.Number = 0 And Not (oResult Is Nothing) Then hasResult = True
+sMsgId = oSession.findById("wnd[0]/sbar").MessageId
+If Err.Number <> 0 Then sMsgId = "" : Err.Clear
+sMsgNo = oSession.findById("wnd[0]/sbar").MessageNumber
+If Err.Number <> 0 Then sMsgNo = "" : Err.Clear
 Err.Clear
 On Error GoTo 0
 
@@ -340,20 +356,35 @@ If Not hasResult Then
     ' /sap-se01) must not read an auth failure as "row absent". Branch on the
     ' locale-independent sbar MessageType (E/A), never on the text.
     WScript.Echo "INFO: No result ALV. Status bar = [" & sStatusType & "] " & sStatus
-    Dim oOut
-    If sStatusType = "E" Or sStatusType = "A" Then
+    Dim oOut, isNoData
+    ' An EMPTY result set is NO_DATA even when SAP types it as [E]: SE16N's
+    ' "no entries" message is locale-independent by id+number (ECC6 = WUSL 002).
+    ' Only a genuine failure (missing/forbidden table, auth) is QUERY_FAILED.
+    isNoData = (UCase(Trim(sMsgId)) = "WUSL" And Trim(sMsgNo) = "002")
+    If (sStatusType = "E" Or sStatusType = "A") And Not isNoData Then
         ' Query failed -- marker + non-zero exit so the caller fails closed.
+        ' Write ONLY the ASCII MessageType code (never the localized sStatus text):
+        ' the FSO ASCII stream raises "Invalid procedure call" on a DBCS status
+        ' character with no system-codepage mapping (ZH/JA), which would abort
+        ' before the marker/exit. The file write is best-effort; the stdout echo
+        ' + exit code are the authoritative signal.
+        On Error Resume Next
         Set oOut = oFSO.CreateTextFile(OUTPUT_FILE, True, False)
-        oOut.WriteLine "QUERY_FAILED" & vbTab & sStatus
+        oOut.WriteLine "QUERY_FAILED" & vbTab & sStatusType
         oOut.Close
+        Err.Clear
+        On Error GoTo 0
         WScript.Echo "ERROR: SE16N query failed [" & sStatusType & "]: " & sStatus
         WScript.Echo "QUERY_FAILED"
         WScript.Quit 1
     End If
     ' Genuine empty result set (SAP "no values selected" is S/I/W or blank).
+    On Error Resume Next
     Set oOut = oFSO.CreateTextFile(OUTPUT_FILE, True, False)
-    oOut.WriteLine "NO_DATA" & vbTab & sStatus
+    oOut.WriteLine "NO_DATA" & vbTab & sStatusType
     oOut.Close
+    Err.Clear
+    On Error GoTo 0
     WScript.Echo "ROWS=0 (NO_DATA)"
     WScript.Quit 0
 End If

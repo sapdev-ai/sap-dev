@@ -109,8 +109,12 @@ sMsgNo      = Trim(oSession.findById("wnd[0]/sbar").MessageNumber)
 Err.Clear
 On Error GoTo 0
 
-' (a) View-selection popup -> the material exists.
-If ProbeId(oSession, "wnd[1]/usr/tblSAPLMGMMTCTRL_AUSWAHL") Then
+' (a) View-selection popup -> the material exists. The view-table control id is
+'     RELEASE-specific: tblSAPLMGMMTCTRL_AUSWAHL on S/4HANA (7.5x+),
+'     tblSAPLMGMMTC_VIEW on ECC6 / AS ABAP 7.31 -- probe both so the check
+'     works across releases (locale-independence alone is not enough).
+If ProbeId(oSession, "wnd[1]/usr/tblSAPLMGMMTCTRL_AUSWAHL") _
+   Or ProbeId(oSession, "wnd[1]/usr/tblSAPLMGMMTC_VIEW") Then
     WScript.Echo "INFO: Material " & MATERIAL & " exists (view-selection popup appeared)."
     On Error Resume Next
     oSession.findById("wnd[1]/tbar[0]/btn[12]").Press  ' Cancel

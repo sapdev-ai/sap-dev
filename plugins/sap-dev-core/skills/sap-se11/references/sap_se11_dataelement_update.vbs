@@ -391,7 +391,18 @@ End If
 
 ' ------ 7. Activate (Ctrl+F3) --------------------------------------------------
 WScript.Echo "INFO: Activating..."
+Dim bActivateSent : bActivateSent = True
+On Error Resume Next
 oSession.findById("wnd[0]").sendVKey 27
+If Err.Number <> 0 Then
+    ' e.g. "The virtual key is not enabled" -- Activate is unavailable in this
+    ' screen/state, so activation was never triggered. Do NOT crash here and do
+    ' NOT fall through to SUCCESS; this is reported as a hard failure below.
+    bActivateSent = False
+    WScript.Echo "INFO: Activate key not accepted: " & Err.Description
+End If
+Err.Clear
+On Error GoTo 0
 WScript.Sleep 2000
 
 ' Dismiss all activation popups
@@ -415,6 +426,14 @@ On Error Resume Next
 sFinalMsg  = oSession.findById("wnd[0]/sbar").Text
 sFinalType = oSession.findById("wnd[0]/sbar").MessageType
 On Error GoTo 0
+
+' If the Activate keystroke was never accepted (vkey disabled), activation did
+' not run -- report FAILED instead of a raw crash or a false SUCCESS.
+If Not bActivateSent Then
+    WScript.Echo "ERROR: Could not trigger activation (Activate unavailable) - " & sFinalMsg
+    WScript.Echo "FAILED: Data element " & UCase(OBJECT_NAME) & " was NOT activated."
+    WScript.Quit 1
+End If
 
 ' Activation gate (same contract as sap_se11_table_update.vbs): sbar E/A
 ' means the object was NOT activated -- fail loudly instead of degrading to

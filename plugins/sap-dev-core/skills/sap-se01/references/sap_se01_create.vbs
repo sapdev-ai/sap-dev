@@ -104,14 +104,24 @@ ReleaseSession oSess, wasLocked
 If wasLocked Then WScript.Echo "INFO: Session UI lock released."
 
 ' Read status bar (success releases echo "Request <NNNN> created" and carry
-' the new number in the message parameters).
-Dim sbarText, sbarType
+' the new number in the message parameters). POLL it -- on slower / remote
+' systems (e.g. a ZH S/4HANA 1909 over WAN) the create-confirmation message
+' renders a beat AFTER btn[0] returns, so a single read too soon comes back
+' empty and needlessly forces the fragile SE16N fallback (2026-07-02 live
+' finding F-1 on S4D). Stop as soon as the bar carries an E/A (hard failure)
+' or a resolvable TR-shape; MessageType stays the locale-independent gate.
+Dim sbarText, sbarType, nSbarPoll
 sbarText = "" : sbarType = ""
-On Error Resume Next
-sbarText = oSess.findById("wnd[0]/sbar").Text
-sbarType = oSess.findById("wnd[0]/sbar").MessageType
-Err.Clear
-On Error GoTo 0
+For nSbarPoll = 1 To 12   ' ~3.6s max
+    On Error Resume Next
+    sbarText = oSess.findById("wnd[0]/sbar").Text
+    sbarType = oSess.findById("wnd[0]/sbar").MessageType
+    Err.Clear
+    On Error GoTo 0
+    If sbarType = "E" Or sbarType = "A" Then Exit For
+    If FindTrkorrIn(sbarText) <> "" Then Exit For
+    WScript.Sleep 300
+Next
 WScript.Echo "INFO: sbar [" & sbarType & "] " & sbarText
 
 ' GATE on the create outcome -- MessageType is locale-independent. E/A means
@@ -233,10 +243,18 @@ Else
 End If
 
 If sTrkorr = "" Then
-    ' NEVER guess (e.g. "the user's most recent TR") -- a wrong TRKORR here
-    ' makes every caller persist/deploy into someone else's request.
-    WScript.Echo "ERROR: TR_RESOLUTION_FAILED - request may exist; verify in SE01."
-    WScript.Quit 1
+    ' The create SUCCEEDED (the E/A gate above did not fire) but neither the
+    ' statusbar nor the SE16N GUI fallback yielded the number on this release/
+    ' locale -- e.g. S/4HANA 1909 ZH leaves wnd[0]/sbar EMPTY after the create
+    ' (2026-07-02 finding F-1). DEFER to the wrapper's authoritative RFC
+    ' resolver (references\sap_se01_resolve_trkorr.ps1), which reads E07T by the
+    ' AS4TEXT + E070 by the AS4USER echoed above -- RFC_READ_TABLE is locale-
+    ' independent and reliable where the GUI paths are not. Exit 0 (non-fatal)
+    ' so the wrapper runs; NEVER guess "the user's most recent TR" here (a wrong
+    ' TRKORR makes callers deploy into someone else's request). The wrapper
+    ' hard-fails if RFC also cannot resolve.
+    WScript.Echo "INFO: TR_RESOLUTION_DEFERRED - resolve via RFC by AS4TEXT+AS4USER (sap_se01_resolve_trkorr.ps1)."
+    WScript.Quit 0
 End If
 
 WScript.Echo "INFO: TRKORR=" & sTrkorr
