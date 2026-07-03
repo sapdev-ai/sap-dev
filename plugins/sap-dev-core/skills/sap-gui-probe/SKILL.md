@@ -190,7 +190,7 @@ each other's state. The lock is advisory but it surfaces accidents loud
 and early rather than silently after destruction.
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_session_owner.ps1" -Action claim -SessionPath "{SESSION_PATH}" -OwnerSkill "sap-gui-probe" -OwnerRunId "%SAPDEV_RUN_ID%" -WorkTemp "{WORK_TEMP}"
+powershell -ExecutionPolicy Bypass -File "<SKILL_DIR>\references\sap_session_owner.ps1" -Action claim -SessionPath "{SESSION_PATH}" -OwnerSkill "sap-gui-probe" -OwnerRunId "%SAPDEV_RUN_ID%" -WorkTemp "{WORK_TEMP}"
 ```
 
 Read the last line of stdout:
@@ -203,7 +203,7 @@ Read the last line of stdout:
 Best-effort release on EVERY exit path (success, failure, abandon):
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_session_owner.ps1" -Action release -SessionPath "{SESSION_PATH}" -WorkTemp "{WORK_TEMP}"
+powershell -ExecutionPolicy Bypass -File "<SKILL_DIR>\references\sap_session_owner.ps1" -Action release -SessionPath "{SESSION_PATH}" -WorkTemp "{WORK_TEMP}"
 ```
 
 The lock has a 10-minute TTL — a crashed probe doesn't permanently
@@ -422,7 +422,7 @@ Invoke the shared aggregator (no inline PowerShell — easier to keep all
 probes consistent):
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_probe_end_of_run.ps1" `
+powershell -ExecutionPolicy Bypass -File "<SKILL_DIR>\references\sap_probe_end_of_run.ps1" `
     -RunFolder    "{RUN_FOLDER}" `
     -ScenarioType "<scenario_type-from-Step-1>" `
     -Aborted      $false

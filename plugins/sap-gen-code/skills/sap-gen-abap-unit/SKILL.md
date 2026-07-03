@@ -83,7 +83,7 @@ cmd /c if not exist "{OUT}" mkdir "{OUT}"
 ## Step 0.5 — Start Logging (best-effort)
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{WORK_TEMP}\sap_gen_abap_unit_run.json" -Skill sap-gen-abap-unit -ParamsJson "{\"target\":\"<OBJECT>\"}"
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{RUN_TEMP}\sap_gen_abap_unit_run.json" -Skill sap-gen-abap-unit -ParamsJson "{\"target\":\"<OBJECT>\"}"
 ```
 
 ---
@@ -229,7 +229,7 @@ were generated + pre-checked but not deployed, and give the one-line deploy comm
 ## Final — Log End
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_gen_abap_unit_run.json" -Status SUCCESS -ExitCode 0
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_gen_abap_unit_run.json" -Status SUCCESS -ExitCode 0
 ```
 
 | Outcome | Status / ExitCode / ErrorClass |

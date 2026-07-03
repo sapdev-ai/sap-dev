@@ -14,10 +14,15 @@
 //     (promoted from WARN on 2026-07-02 once the tree reached zero offenders)
 //   - SKILL.md passes {RUN_TEMP} to Get-SapCurrentSessionPath -WorkTemp
 //   - A committed screen baseline (.screens.json) is malformed
+//   - A file in sap-dev-core/shared/scripts is not mentioned in CLAUDE.md's
+//     "Current Shared Files" table (authors' discovery surface; added
+//     2026-07-03 after 23 undocumented scripts were found)
 // WARN-level ratchets (do not fail the build yet): Phase-4 broker hints,
 // build-KPI enrichment, Step-0 work_dir resolution, {WORK_TEMP}-root scratch
 // (.vbs/.ps1/.json/.xml/.log/.txt), bare-cscript / wscript invocations,
-// locale-literal GUI-text branching, missing screen baselines.
+// locale-literal GUI-text branching, missing screen baselines,
+// single/zero-consumer shared-script placement (CLAUDE.md placement rule,
+// reverse direction of the coverage ERROR above).
 
 import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
 import { join, dirname, resolve, basename } from 'node:path';
@@ -155,6 +160,12 @@ const TIER3_EXEMPT_VBS = new Set([
   // sentinel) like sap_gui_object_details.vbs, so it follows neither the attach
   // contract nor the baseline gate.
   'sap_screen_check_probe.vbs',
+  // pure ExecuteGlobal function library (no session attach, no engine bind;
+  // paths arrive via %%CONTENT_VERIFY_PS1%% token). Skill-private, so it lives
+  // in sap-se38/references/ per the CLAUDE.md placement rule instead of
+  // shared/scripts/ — exempted here exactly like the shared include libs are
+  // by location.
+  'sap_se38_content_verify.vbs',
 ]);
 
 const LEGACY_ATTACH_PATTERNS = [
@@ -871,6 +882,111 @@ for (const plugin of mp.plugins) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// CLAUDE.md shared-scripts inventory coverage + placement ratchet (the two
+// directions of the CLAUDE.md placement rule).
+//
+// Direction 1 -- HARD ERROR: every .ps1/.vbs shipped in
+// plugins/sap-dev-core/shared/scripts must be mentioned by filename in
+// CLAUDE.md's "Current Shared Files" table (the authors' discovery surface;
+// the 2026-07-03 review found 23 undocumented scripts, among them the
+// load-bearing post-activate / content-verify gates). Adding a new shared
+// script? Add its table row in the same commit.
+//
+// Direction 2 -- WARN ratchet: a shared script whose consumer count has
+// fallen to ONE same-plugin skill (or zero), with no wiring from a sibling
+// shared script / shared rules doc and no reasoned allowlist entry, belongs
+// in skills/<consumer>/references/ instead (placement rule clause 1;
+// precedent: the 2026-07-03 relocation of the se38 content-verify pair, the
+// three check-abap validators, and the gui-probe helpers -- plus the
+// deletion of the zero-consumer sap_check_transport.ps1 this check would
+// have flagged years earlier). Consumer = any plugins/*/skills/<skill> tree
+// or plugins/*/agents/*.md mentioning the filename; a single CROSS-plugin
+// consumer is fine (core is the distribution vehicle); wiring = a mention
+// from another shared script or shared/rules/*.md (platform primitives,
+// clause 2). WARN-level: flags drift, never fails the build.
+const SHARED_PLACEMENT_ALLOWLIST = new Map([
+  ['sap_login.vbs',                     'login/connection bootstrap family (placement rule clause 2)'],
+  ['sap_rfc_connect.ps1',               'login/connection bootstrap family (clause 2)'],
+  ['sap_rfc_system_info.ps1',           'release-marker producer; sap_select_vbs_variant.ps1 consumes the marker via connections.json (clause 2)'],
+  ['sap_gui_security_warmup.vbs',       'GUI-security trust family with sidecar + grant (clause 2)'],
+  ['sap_run_with_lock.ps1',             'machine-global paste mutex, foreground-guard sibling, designed for any future paste-based skill (clause 2)'],
+  ['sap_se37_post_activate_verify.ps1', 'post-activate verify family is one maintained safety contract; the se11 member is multi-consumer via gui-skill-scaffold (clause 2)'],
+  ['sap_se38_post_activate_verify.ps1', 'post-activate verify family is one maintained safety contract (clause 2)'],
+]);
+const sharedPlacementWarnings = [];
+{
+  const sharedScriptsDir = join(repoRoot, 'plugins', 'sap-dev-core', 'shared', 'scripts');
+  if (existsSync(sharedScriptsDir)) {
+    const claudeMdText = readFileSync(join(repoRoot, 'CLAUDE.md'), 'utf8');
+    const sharedFiles = readdirSync(sharedScriptsDir).filter((f) => /\.(ps1|vbs)$/i.test(f)).sort();
+
+    // Direction 1: table coverage.
+    for (const f of sharedFiles) {
+      if (!claudeMdText.includes(f)) {
+        errors.push(`sap-dev-core: shared/scripts/${f} is not mentioned in CLAUDE.md's "Current Shared Files" table -- add a row (file, used-by, purpose) so authors discover it instead of re-implementing it`);
+      }
+    }
+
+    // Direction 2: consumer-count placement ratchet.
+    const readTreeText = (dir) => {
+      let txt = '';
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const p = join(dir, entry.name);
+        if (entry.isDirectory()) txt += readTreeText(p);
+        else if (/\.(md|ps1|vbs)$/i.test(entry.name)) {
+          try { txt += readFileSync(p, 'utf8') + '\n'; } catch { /* unreadable file: skip */ }
+        }
+      }
+      return txt;
+    };
+    const consumerBlobs = new Map(); // '<plugin>:<skill>' or '<plugin>:agent:<name>' -> concatenated text
+    const pluginsDir = join(repoRoot, 'plugins');
+    for (const pluginName of readdirSync(pluginsDir)) {
+      const skillsDir = join(pluginsDir, pluginName, 'skills');
+      if (existsSync(skillsDir) && statSync(skillsDir).isDirectory()) {
+        for (const skillName of readdirSync(skillsDir)) {
+          const sd = join(skillsDir, skillName);
+          if (statSync(sd).isDirectory()) consumerBlobs.set(`${pluginName}:${skillName}`, readTreeText(sd));
+        }
+      }
+      const agentsDir = join(pluginsDir, pluginName, 'agents');
+      if (existsSync(agentsDir) && statSync(agentsDir).isDirectory()) {
+        for (const a of readdirSync(agentsDir)) {
+          if (!/\.md$/i.test(a)) continue;
+          try { consumerBlobs.set(`${pluginName}:agent:${basename(a, '.md')}`, readFileSync(join(agentsDir, a), 'utf8')); } catch { /* skip */ }
+        }
+      }
+    }
+    const sharedTexts = new Map();
+    for (const f of sharedFiles) {
+      try { sharedTexts.set(f, readFileSync(join(sharedScriptsDir, f), 'utf8')); } catch { sharedTexts.set(f, ''); }
+    }
+    let rulesText = '';
+    const rulesDir = join(repoRoot, 'plugins', 'sap-dev-core', 'shared', 'rules');
+    if (existsSync(rulesDir)) {
+      for (const r of readdirSync(rulesDir)) {
+        if (!/\.md$/i.test(r)) continue;
+        try { rulesText += readFileSync(join(rulesDir, r), 'utf8') + '\n'; } catch { /* skip */ }
+      }
+    }
+
+    for (const f of sharedFiles) {
+      const consumers = [...consumerBlobs.entries()].filter(([, txt]) => txt.includes(f)).map(([id]) => id);
+      if (consumers.length >= 2) continue;                                                // clause 1: multi-consumer
+      if (consumers.length === 1 && !consumers[0].startsWith('sap-dev-core:')) continue;  // clause 1: cross-plugin consumer
+      const wired = [...sharedTexts.entries()].some(([g, txt]) => g !== f && txt.includes(f)) || rulesText.includes(f);
+      if (wired) continue;                                                                // clause 2: platform-wired
+      if (SHARED_PLACEMENT_ALLOWLIST.has(f)) continue;                                    // reasoned exception
+      if (consumers.length === 0) {
+        sharedPlacementWarnings.push(`sap-dev-core: shared/scripts/${f} has NO consumer anywhere under plugins/ and no shared-side wiring -- dead shared script? Delete it (git history keeps it; the 2026-07-03 sweep deleted sap_check_transport.ps1 for exactly this) or wire/document its consumer`);
+      } else {
+        sharedPlacementWarnings.push(`sap-dev-core: shared/scripts/${f} has a single same-plugin consumer (${consumers[0]}) and no shared-side wiring -- per CLAUDE.md's placement rule move it to skills/${consumers[0].split(':')[1]}/references/ (git mv + retarget the SKILL.md paths), or add a reasoned SHARED_PLACEMENT_ALLOWLIST entry`);
+      }
+    }
+  }
+}
+
 if (errors.length === 0) {
   let summary = `OK: ${mp.plugins.length} plugins, ${totalSkills} skills, all manifests aligned at version ${mp.version}, Tier 3 attach contract clean`;
   if (phase4Warnings.length > 0) {
@@ -894,6 +1010,9 @@ if (errors.length === 0) {
   if (localeLiteralWarnings.length > 0) {
     summary += `, ${localeLiteralWarnings.length} locale-literal warning(s)`;
   }
+  if (sharedPlacementWarnings.length > 0) {
+    summary += `, ${sharedPlacementWarnings.length} shared-placement warning(s)`;
+  }
   summary += `, ${baselineCoverage}`;
   console.log(summary);
   for (const w of phase4Warnings) console.warn('  WARN: ' + w);
@@ -903,6 +1022,7 @@ if (errors.length === 0) {
   for (const w of refExistWarnings) console.warn('  WARN: ' + w);
   for (const w of cscriptWarnings) console.warn('  WARN: ' + w);
   for (const w of localeLiteralWarnings) console.warn('  WARN: ' + w);
+  for (const w of sharedPlacementWarnings) console.warn('  WARN: ' + w);
   for (const w of baselineWarnings) console.warn('  WARN: ' + w);
   process.exit(0);
 } else {
@@ -935,6 +1055,10 @@ if (errors.length === 0) {
   if (localeLiteralWarnings.length > 0) {
     console.error(`\nLocale-literal warnings (informational):`);
     for (const w of localeLiteralWarnings) console.error('  WARN: ' + w);
+  }
+  if (sharedPlacementWarnings.length > 0) {
+    console.error(`\nShared-placement warnings (informational):`);
+    for (const w of sharedPlacementWarnings) console.error('  WARN: ' + w);
   }
   console.error(`\n${baselineCoverage}`);
   if (baselineWarnings.length > 0) {

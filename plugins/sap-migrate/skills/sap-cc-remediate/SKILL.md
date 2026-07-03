@@ -205,6 +205,15 @@ Build an outcomes TSV — `obj_name`, `obj_type`, `outcome`
 powershell -ExecutionPolicy Bypass -File "<SKILL_DIR>\references\sap_cc_remediate.ps1" -Action record -CampaignDir "{CAMPAIGN_DIR}" -ResultsFile "<outcomes.tsv>"
 ```
 
+**Dry-run-review gate (enforced).** When the campaign's
+`human_gates.dryrun_review` is on (the default) and `campaign.json.signoffs[]`
+has no APPROVED `dryrun_review` entry, `record` refuses with
+`BLOCKED: gate=dryrun_review status=<st> action=record` and exit `3` — a
+skipped diff review cannot be marked as campaign progress. Present the
+`remediation\*.diff` files to the operator first, then record the approval via
+`/sap-cc-campaign signoff --campaign <id> --gate dryrun_review --owner <name>`
+and re-run `record`.
+
 Ledger transitions (forward-only; anything else is blocked):
 TRIAGED → REMEDIATED (`DEPLOYED`); TRIAGED → VERIFIED (`VERIFIED`, deploy +
 recheck recorded in one pass); **REMEDIATED → VERIFIED** (`VERIFIED`, recheck

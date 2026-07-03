@@ -1169,6 +1169,19 @@ After success, proceed to Step 7 (cleanup). Skip Step 6.
   `/sap-dev-status` to confirm the FM. A verify failure (`INACTIVE` / `MISSING`)
   exits as a hard `ERROR:` and never reaches this branch.
 - Tell the user the function module was deployed and activated.
+- **Invalidate the FM signature cache for this FM** (applies to create/update
+  success here AND to a Step 5f delete success). The Z*/Y* cache TTL is 1 day
+  (`fm_cache_ttl_z_days`), so without this a same-day `/sap-gen-abap` /
+  `/sap-check-fm` run silently generates against the PRE-deploy interface —
+  e.g. a freshly added EXPORTING parameter never gets populated. Deleting
+  across all system partitions is deliberate (over-invalidation costs one
+  re-fetch). `{fm_cache_dir}` resolves via `Get-SapSettingValue 'fm_cache_dir'`
+  (default `{work_dir}\cache\fm_signatures`); skip silently if the dir does
+  not exist:
+
+  ```bash
+  powershell -NoProfile -ExecutionPolicy Bypass -Command "Remove-Item -Force -ErrorAction SilentlyContinue '{fm_cache_dir}\*\<FM_NAME>.tsv'"
+  ```
 - Show the full script output as a code block.
 
 **On failure** (output contains `ERROR:`):

@@ -29,7 +29,7 @@ Task: $ARGUMENTS
 | `<SAP_DEV_CORE_SHARED_DIR>/tables/frequently_errors.tsv` | **TIER-3 seed of the frequently_errors loop** — curated FM / class-method / codegen traps + remedies. Read (merged with `{custom_url}` tiers) at Step 1.5f. |
 | `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_error_hints.ps1` | CLI for the frequently_errors loop. `-Action resolve` (Step 1.5f read path) merges the 3 tiers for the spec's FMs/methods/auth-objects and writes `{work_folder}\_error_hints.txt`. OFFLINE. |
 | `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_error_hints_lib.ps1` | Engine dot-sourced by `sap_error_hints.ps1` (3-tier merge, dedup, attribution, upsert). |
-| `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_log_helper.ps1` | Shared start/step/end wrapper around `sap_log_lib.ps1`. State file: `{WORK_TEMP}\sap_gen_abap_run.json`. Logging is best-effort. |
+| `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_log_helper.ps1` | Shared start/step/end wrapper around `sap_log_lib.ps1`. State file: `{RUN_TEMP}\sap_gen_abap_run.json`. Logging is best-effort. |
 
 ---
 
@@ -69,10 +69,10 @@ cmd /c if not exist "{WORK_TEMP}" mkdir "{WORK_TEMP}"
 
 Start a structured log run. Best-effort: silently no-ops if disabled or the
 lib can't load. `<SAP_DEV_CORE_SHARED_DIR>` resolves to
-`plugins/sap-dev-core/shared/`. State file: `{WORK_TEMP}\sap_gen_abap_run.json`.
+`plugins/sap-dev-core/shared/`. State file: `{RUN_TEMP}\sap_gen_abap_run.json`.
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{WORK_TEMP}\sap_gen_abap_run.json" -Skill sap-gen-abap -ParamsJson "{\"input\":\"<PROCESS_TXT_PATH>\"}"
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{RUN_TEMP}\sap_gen_abap_run.json" -Skill sap-gen-abap -ParamsJson "{\"input\":\"<PROCESS_TXT_PATH>\"}"
 ```
 
 ---
@@ -131,7 +131,7 @@ If no path is given, ask the user:
 
 | Flag | Meaning | Default |
 |---|---|---|
-| `--refresh-cache` | Bypass the FM signature cache for this run; force re-fetch every FM via RFC. Useful when you've recently modified a `Z*` FM and the 1-day TTL hasn't expired yet. | not set (use cache) |
+| `--refresh-cache` | Bypass the FM signature cache for this run; force re-fetch every FM via RFC. `/sap-se37` invalidates an FM's cache rows automatically after a successful deploy/delete **on this machine**, so the residual staleness risk is an FM changed elsewhere (another developer / another workstation) inside the 1-day Z* TTL — pass this flag when the spec references a Z-FM someone else just changed. | not set (use cache) |
 
 Set `{REFRESH_CACHE}` = `"true"` if `--refresh-cache` is present in `$ARGUMENTS`, else `"false"`. This value is passed to Step 1.5 as the `%%REFRESH_CACHE%%` token.
 
@@ -153,7 +153,23 @@ sibling files alongside `_process.txt`. Each one is OPTIONAL — the skill
 works without them — but when present they sharpen the generated code.
 
 For each file below, look in the SAME `{work_folder}` as `_process.txt`. If
-a file exists, read it with the Read tool. If absent, continue silently.
+a file exists, read it with the Read tool. Most may be absent silently — but
+two are **load-bearing for their program type**, and their absence degrades
+generation to prose-parsing of `_process.txt`, which is LOSSY (free text
+rarely lists every field attribute, default, or optional flag):
+
+- Report build with no `{doc_name}_selection_definition.txt`, or FM build
+  with no `{doc_name}_interface.txt` → do BOTH, never proceed silently:
+  1. Warn the user up front:
+     `WARN: {doc_name}_selection_definition.txt not found — the selection
+     screen will be reconstructed from process prose; the field list, types,
+     defaults and mandatory flags may be incomplete. If the spec workbook has
+     a Selection Definition sheet, re-run /sap-docs-extract.` (adapt the
+     filename/wording for `_interface.txt` on FM builds).
+  2. Repeat the warning as a `" TODO:` comment block at the top of the
+     generated source, so the degradation survives into code review.
+
+All other sibling files remain silently optional.
 
 | Sibling file | Purpose | Used by |
 |---|---|---|
@@ -1000,7 +1016,7 @@ if generation was blocked (missing `_process.txt`, unsupported program
 type, identifier too long after retry, etc.):
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_gen_abap_run.json" -Status SUCCESS -ExitCode 0 -MetricsJson '{"gate":"GEN","verdict":"PASS","test_file":"EMITTED","methods":0,"hints_injected":0}'
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_gen_abap_run.json" -Status SUCCESS -ExitCode 0 -MetricsJson '{"gate":"GEN","verdict":"PASS","test_file":"EMITTED","methods":0,"hints_injected":0}'
 ```
 
 **Build-KPI enrichment (best-effort).** Add `-MetricsJson` populated from this

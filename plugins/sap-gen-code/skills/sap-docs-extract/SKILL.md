@@ -83,10 +83,10 @@ helper silently no-ops.
 
 `<SAP_DEV_CORE_SHARED_DIR>` resolves to `plugins/sap-dev-core/shared/`.
 
-State file: `{WORK_TEMP}\sap_docs_extract_run.json`
+State file: `{RUN_TEMP}\sap_docs_extract_run.json`
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{WORK_TEMP}\sap_docs_extract_run.json" -Skill sap-docs-extract -ParamsJson "{\"input\":\"<USER_INPUT_PATH>\"}"
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{RUN_TEMP}\sap_docs_extract_run.json" -Skill sap-docs-extract -ParamsJson "{\"input\":\"<USER_INPUT_PATH>\"}"
 ```
 
 ---
@@ -478,5 +478,5 @@ extraction; use `FAILED` with an `ErrorClass` if any step blocked progress
 (e.g. `INPUT_NOT_FOUND`, `RAW_DUMP_FAILED`, `EXTRACT_FAILED`):
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_docs_extract_run.json" -Status SUCCESS -ExitCode 0
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_docs_extract_run.json" -Status SUCCESS -ExitCode 0
 ```

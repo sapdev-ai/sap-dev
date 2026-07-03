@@ -191,6 +191,15 @@ For every `FAIL` (and notable `WARN`), list the check's **FIX** string as a
 next-action bullet. If the verdict is `READY`, say so plainly. Honor `--quiet`
 by collapsing PASS rows and printing only WARN/FAIL/SKIP plus the verdict.
 
+**Authorizations note (manual check — always append after the table):** the
+doctor cannot yet probe SAP authorizations mechanically (needs the dev-init
+wrapper FM to reach `SUSR_USER_AUTH_FOR_OBJ_GET`; roadmap). Append one line:
+`AUTH: not probed — required-authorization table: docs/security.md §1; after
+any authorization failure run SU53 on this user, or capture STAUTHTRACE
+during a pilot to cut the final role.` This keeps the #1 security-team
+question answerable from the doctor output even before the mechanical probe
+exists.
+
 ---
 
 ## Step 5 — Clean Up

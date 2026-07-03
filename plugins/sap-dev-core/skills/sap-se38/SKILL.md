@@ -328,8 +328,8 @@ $content = $content -replace '%%POST_ACTIVATE_VERIFY_PS1%%','<SAP_DEV_CORE_SHARE
 # Post-activate CONTENT verify (2026-07-02): reads the active source back via RPY_PROGRAM_READ
 # and compares it to the deployed file. Closes the EC2 clipboard-paste false-success where a
 # silently-failed paste leaves the OLD source active and PROGDIR/F8 still pass.
-$content = $content -replace '%%CONTENT_VERIFY_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_se38_content_verify.vbs'
-$content = $content -replace '%%CONTENT_VERIFY_PS1%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_se38_content_verify.ps1'
+$content = $content -replace '%%CONTENT_VERIFY_VBS%%','<SKILL_DIR>\references\sap_se38_content_verify.vbs'
+$content = $content -replace '%%CONTENT_VERIFY_PS1%%','<SKILL_DIR>\references\sap_se38_content_verify.ps1'
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 [System.IO.File]::WriteAllText('{RUN_TEMP}\sap_se38_update_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
@@ -426,8 +426,8 @@ $content = $content -replace '%%POST_ACTIVATE_VERIFY_PS1%%','<SAP_DEV_CORE_SHARE
 # Post-activate CONTENT verify (2026-07-02): reads the active source back via RPY_PROGRAM_READ
 # and compares it to the deployed file. Closes the EC2 clipboard-paste false-success where a
 # silently-failed paste leaves the OLD source active and PROGDIR/F8 still pass.
-$content = $content -replace '%%CONTENT_VERIFY_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_se38_content_verify.vbs'
-$content = $content -replace '%%CONTENT_VERIFY_PS1%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_se38_content_verify.ps1'
+$content = $content -replace '%%CONTENT_VERIFY_VBS%%','<SKILL_DIR>\references\sap_se38_content_verify.vbs'
+$content = $content -replace '%%CONTENT_VERIFY_PS1%%','<SKILL_DIR>\references\sap_se38_content_verify.ps1'
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 [System.IO.File]::WriteAllText('{RUN_TEMP}\sap_se38_create_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))

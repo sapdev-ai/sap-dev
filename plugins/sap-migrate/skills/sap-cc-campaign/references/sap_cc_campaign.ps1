@@ -24,10 +24,13 @@
 #             (audit line for the auto-fix denominator: R1 apply-attempt rows
 #              only; assist / SOURCE_MISSING / non-R1 fixlog rows are excluded)
 #   SIGNOFF:  gate=<g> status=<APPROVED|PENDING|REJECTED> owner=<o> date=<d>   (report/signoff)
-#   NEXT:     skill=<name|MANUAL|DONE> reason=<text> [gate=<scope_signoff|dryrun_review>]
+#   NEXT:     skill=<name|MANUAL|DONE> reason=<text> [gate=<scope_signoff|dryrun_review> gate_status=<APPROVED|PENDING|REJECTED>]
+#   BLOCKED:  gate=scope_signoff status=<PENDING|REJECTED> skill=<held skill> reason=<text>   (next only; exit 3.
+#             dryrun_review is not blocked at `next` -- the dry-run must run to produce the
+#             reviewable diffs; its hard wall is sap_cc_remediate.ps1 -Action record.)
 #   INIT: <text> | EXISTED: <text> | REPORT: <text>
 #   STATUS:   PHASE=<phase> TOTAL=<n> REMEDIATE=<n> DECOMMISSION=<n> REVIEW=<n>
-# Exit: 0 ok | 1 gap (empty ledger) | 2 error (bad/missing workspace)
+# Exit: 0 ok | 1 gap (empty ledger) | 2 error (bad/missing workspace) | 3 blocked (human gate not APPROVED)
 
 [CmdletBinding()]
 param(
@@ -504,8 +507,30 @@ try {
         'next' {
             $gates = Get-Gates $CampaignDir
             $n = Recommend-Next $rows $gates $skipKeys
+            # Human-gate enforcement in code, not just the driving agent's
+            # prompt -- a prompt drift, or a user invoking phase skills
+            # directly off a stale `next`, still hits the wall:
+            #   scope_signoff -> BLOCKED here. The scope split already exists
+            #     before analyze, so `next` refuses to release the analyze
+            #     step until the sign-off is APPROVED in signoffs[].
+            #   dryrun_review -> tagged gate_status=<st> here only (blocking
+            #     the remediate recommendation would be circular: the dry-run
+            #     is what produces the diffs the operator must review); the
+            #     hard wall is sap_cc_remediate.ps1 -Action record.
+            # Get-Signoffs omits a row for an enabled-but-unrecorded gate when
+            # campaign.json has no human_gates key, so absent -> PENDING here.
+            $gstat = ''
+            if($n.gate){
+                $so = @(Get-Signoffs $CampaignDir) | Where-Object { $_.gate -eq $n.gate } | Select-Object -First 1
+                $gstat = if($so -and $so.status){ [string]$so.status } else { 'PENDING' }
+                if($n.gate -eq 'scope_signoff' -and $gstat -ne 'APPROVED'){
+                    Write-Output "BLOCKED: gate=$($n.gate) status=$gstat skill=$($n.skill) reason=$($n.reason)"
+                    Write-Output "INFO: record the business-owner decision first: /sap-cc-campaign signoff --campaign <id> --gate $($n.gate) --owner <name> (add --status REJECTED to hold)"
+                    exit 3
+                }
+            }
             $line = "NEXT: skill=$($n.skill) reason=$($n.reason)"
-            if($n.gate){ $line += " gate=$($n.gate)" }
+            if($n.gate){ $line += " gate=$($n.gate) gate_status=$gstat" }
             Write-Output $line
             exit 0
         }

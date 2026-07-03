@@ -120,7 +120,7 @@ powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_
 
 **If the user pasted flow logic directly:**
 
-1. Write the source to: `{WORK_TEMP}\<PROGRAM_NAME>_<SCREEN_NUMBER>.txt`
+1. Write the source to: `{RUN_TEMP}\<PROGRAM_NAME>_<SCREEN_NUMBER>.txt`
    - Use the Write tool with the exact flow logic as content.
 2. Confirm the file by reading back the first 5 lines.
 
@@ -222,7 +222,7 @@ powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_se51_update_run.ps1"
 
 ```powershell
 # Read flow logic into clipboard
-$flowLogic = Get-Content '{WORK_TEMP}\THE_PROGRAM_THE_SCREEN.txt' -Raw
+$flowLogic = Get-Content '{RUN_TEMP}\THE_PROGRAM_THE_SCREEN.txt' -Raw
 Set-Clipboard -Value $flowLogic
 
 # Run the VBS with wscript.exe (GUI mode required for AppActivate)
@@ -279,7 +279,7 @@ powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_se51_create_run.ps1"
 
 ```powershell
 # Read flow logic into clipboard
-$flowLogic = Get-Content '{WORK_TEMP}\THE_PROGRAM_THE_SCREEN.txt' -Raw
+$flowLogic = Get-Content '{RUN_TEMP}\THE_PROGRAM_THE_SCREEN.txt' -Raw
 Set-Clipboard -Value $flowLogic
 
 # Run the VBS with wscript.exe (GUI mode required for AppActivate)
@@ -335,10 +335,10 @@ cmd /c del {RUN_TEMP}\sap_se51_check_run.vbs & del {RUN_TEMP}\sap_se51_check_run
 
 For the **Add Layout Element** mode, also delete:
 ```bash
-cmd /c del {RUN_TEMP}\sap_se51_add_element_run.vbs & del {RUN_TEMP}\sap_se51_add_element_run.ps1 & del {RUN_TEMP}\sap_se51_add_element.log & del {WORK_TEMP}\se51_elements.txt & del {RUN_TEMP}\sap_se51_layout_rebuild_run.vbs & del {RUN_TEMP}\sap_se51_layout_rebuild_run.ps1 & del {RUN_TEMP}\sap_se51_layout_rebuild.log & del {WORK_TEMP}\se51_lines.txt
+cmd /c del {RUN_TEMP}\sap_se51_add_element_run.vbs & del {RUN_TEMP}\sap_se51_add_element_run.ps1 & del {RUN_TEMP}\sap_se51_add_element.log & del {RUN_TEMP}\se51_elements.txt & del {RUN_TEMP}\sap_se51_layout_rebuild_run.vbs & del {RUN_TEMP}\sap_se51_layout_rebuild_run.ps1 & del {RUN_TEMP}\sap_se51_layout_rebuild.log & del {RUN_TEMP}\se51_lines.txt
 ```
 
-Also delete `{WORK_TEMP}\<PROGRAM_NAME>_<SCREEN_NUMBER>.txt` if the user pasted code (not a user-supplied file).
+Also delete `{RUN_TEMP}\<PROGRAM_NAME>_<SCREEN_NUMBER>.txt` if the user pasted code (not a user-supplied file).
 
 ---
 
@@ -535,7 +535,7 @@ $c = $c -replace '%%PROGRAM_NAME%%','THE_PROGRAM'
 $c = $c -replace '%%SCREEN_NUMBER%%','THE_SCREEN'
 $c = $c -replace '%%TRANSPORT%%','THE_TR'
 $c = $c -replace '%%PACKAGE%%','THE_PACKAGE'
-$c = $c -replace '%%ELEMENT_FILE%%','{WORK_TEMP}\se51_elements.txt'
+$c = $c -replace '%%ELEMENT_FILE%%','{RUN_TEMP}\se51_elements.txt'
 $c = $c -replace '%%LOG_FILE%%','{RUN_TEMP}\sap_se51_add_element.log'
 # SESSION_PATH: leave '' for the single-session case (the attach lib resolves
 # via SAPDEV_SESSION_PATH below). If multiple sessions are open on the
@@ -683,7 +683,7 @@ and look up the program's package (`TADIR-DEVCLASS`). Use the results as
 
 Tab-delimited, UTF-8, `#` comments; one "label + input" pair per line. Lines are
 placed on consecutive dynpro rows starting at row 2 unless a 4th `ROW` column
-overrides. Write to `{WORK_TEMP}\se51_lines.txt`:
+overrides. Write to `{RUN_TEMP}\se51_lines.txt`:
 
 ```
 # LABEL	FIELDNAME	FIELDLEN	[ROW]
@@ -712,7 +712,7 @@ $c = $c -replace '%%PROGRAM_NAME%%','THE_PROGRAM'
 $c = $c -replace '%%SCREEN_NUMBER%%','THE_SCREEN'
 $c = $c -replace '%%TRANSPORT%%','THE_TR'
 $c = $c -replace '%%PACKAGE%%','THE_PACKAGE'
-$c = $c -replace '%%LINESPEC_FILE%%','{WORK_TEMP}\se51_lines.txt'
+$c = $c -replace '%%LINESPEC_FILE%%','{RUN_TEMP}\se51_lines.txt'
 $c = $c -replace '%%LOG_FILE%%','{RUN_TEMP}\sap_se51_layout_rebuild.log'
 # SESSION_PATH: leave '' for the single-session case (the attach lib resolves
 # via SAPDEV_SESSION_PATH below). If multiple sessions are open on the

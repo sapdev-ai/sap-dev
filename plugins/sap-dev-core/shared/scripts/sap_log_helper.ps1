@@ -202,7 +202,8 @@ switch ($Action) {
         }
         # Do NOT delete the state file when it also carries a probe end-of-run
         # summary. /sap-gui-probe Step 4b writes observed{}/scenario_type into
-        # the SAME sap_gui_probe_run.json via sap_probe_end_of_run.ps1, and the
+        # the SAME sap_gui_probe_run.json via its skill-local
+        # references/sap_probe_end_of_run.ps1, and the
         # scaffolder's merge step reads it. Deleting here wiped that summary, so
         # the merge defaulted every probe to scenario_type=success (the
         # failure-mode catalog came out empty). Keep the file when it has been

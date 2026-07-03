@@ -124,7 +124,7 @@ See `<SAP_DEV_CORE_SHARED_DIR>/rules/tr_resolution.md` for the full policy.
 
 If the user provided intervals inline (e.g. `01: 0000000001 – 0099999999`):
 
-1. Write the intervals to: `{WORK_TEMP}\<NRO_NAME>_intervals.txt`
+1. Write the intervals to: `{RUN_TEMP}\<NRO_NAME>_intervals.txt`
    - Tab-separated, one interval per line: `<NR>\t<FROMNUMBER>\t<TONUMBER>\t<EXT>`
    - `<NR>` is the 2-character interval key (`01`–`ZZ`).
    - `<FROMNUMBER>` / `<TONUMBER>` must fit within the NRO's domain length
@@ -132,8 +132,8 @@ If the user provided intervals inline (e.g. `01: 0000000001 – 0099999999`):
    - `<EXT>` = `X` for external numbering, blank for internal (default).
 2. Re-encode as Unicode (UTF-16 LE):
    ```powershell
-   $c = Get-Content '{WORK_TEMP}\<NRO_NAME>_intervals.txt' -Raw
-   [System.IO.File]::WriteAllText('{WORK_TEMP}\<NRO_NAME>_intervals.txt', $c, [System.Text.UnicodeEncoding]::new($false, $true))
+   $c = Get-Content '{RUN_TEMP}\<NRO_NAME>_intervals.txt' -Raw
+   [System.IO.File]::WriteAllText('{RUN_TEMP}\<NRO_NAME>_intervals.txt', $c, [System.Text.UnicodeEncoding]::new($false, $true))
    ```
 3. Confirm by reading the first few lines back.
 
@@ -420,7 +420,7 @@ Delete all temporary files:
 cmd /c del {RUN_TEMP}\sap_snro_check_run.vbs & del {RUN_TEMP}\sap_snro_check_run.ps1 & del {RUN_TEMP}\sap_snro_create_run.vbs & del {RUN_TEMP}\sap_snro_create_run.ps1 & del {RUN_TEMP}\sap_snro_update_run.vbs & del {RUN_TEMP}\sap_snro_update_run.ps1 & del {RUN_TEMP}\sap_snro_intervals_run.vbs & del {RUN_TEMP}\sap_snro_intervals_run.ps1
 ```
 
-Also delete `{WORK_TEMP}\<NRO_NAME>_intervals.txt` if it was written from inline input.
+Also delete `{RUN_TEMP}\<NRO_NAME>_intervals.txt` if it was written from inline input.
 
 ---
 

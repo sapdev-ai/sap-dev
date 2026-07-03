@@ -56,10 +56,10 @@ Per the CLAUDE.md "Two-bucket temp model" write this skill's generated scratch (
 
 ## Step 0.5 — Start Logging
 
-Start a structured log run. State file: `{WORK_TEMP}\sap_check_abap_run.json`. Best-effort.
+Start a structured log run. State file: `{RUN_TEMP}\sap_check_abap_run.json`. Best-effort.
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{WORK_TEMP}\sap_check_abap_run.json" -Skill sap-check-abap -ParamsJson "{\"abap_file\":\"<ABAP_FILE>\"}"
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{RUN_TEMP}\sap_check_abap_run.json" -Skill sap-check-abap -ParamsJson "{\"abap_file\":\"<ABAP_FILE>\"}"
 ```
 
 ---
@@ -142,9 +142,9 @@ Exit code `0` = OK (no row written). Exit code `2` = UNKNOWN_TYPE / RULES_NOT_FO
 | `sap-dev-core/shared/tables/abap_naming_rules.tsv` | `%%NAMING_RULES%%` | ABAP variable naming prefix conventions |
 | `sap-dev-core/shared/tables/sap_object_naming_rules.tsv` | *(read by helper)* | Top-level SAP object naming patterns (program / class / method / FORM). Custom override: `{custom_url}\sap_object_naming_rules.tsv` |
 | `sap-dev-core/shared/scripts/sap_check_object_name.ps1` | *(helper)* | Shared validator invoked in Step 1.5 |
-| `sap-dev-core/shared/scripts/sap_check_signatures.ps1` | *(helper)* | Step 3.5 signature validator — struct-field + AUTHORITY-CHECK shape vs the live-SAP caches |
-| `sap-dev-core/shared/scripts/sap_check_spec_coverage.ps1` | *(helper)* | Step 3.6 spec-coverage validator — confirms the generated manifests cover the spec's deps / messages / text elements / selection fields |
-| `sap-dev-core/shared/scripts/sap_check_conversion.ps1` | *(helper)* | Step 3.7 conversion validator — flags CURR/QUAN file columns mapped without their currency/unit reference, and `CURRENCY_AMOUNT_DISPLAY_TO_SAP` feeding a BAPI amount type (double-shift). Reads `*_file_mapping_*.txt` + `_struct_signatures.txt` (§28). |
+| `<SKILL_DIR>/references/sap_check_signatures.ps1` | *(helper, skill-local)* | Step 3.5 signature validator — struct-field + AUTHORITY-CHECK shape vs the live-SAP caches |
+| `<SKILL_DIR>/references/sap_check_spec_coverage.ps1` | *(helper, skill-local)* | Step 3.6 spec-coverage validator — confirms the generated manifests cover the spec's deps / messages / text elements / selection fields |
+| `<SKILL_DIR>/references/sap_check_conversion.ps1` | *(helper, skill-local)* | Step 3.7 conversion validator — flags CURR/QUAN file columns mapped without their currency/unit reference, and `CURRENCY_AMOUNT_DISPLAY_TO_SAP` feeding a BAPI amount type (double-shift). Reads `*_file_mapping_*.txt` + `_struct_signatures.txt` (§28). |
 | `sap-dev-core/shared/rules/abap_code_quality_rules.md` | *(rule)* | **Mandatory** ABAP code-quality rules. The VBS engine emits the offline-checkable rules in two phases. **Phase 5f** (per-line): `LITERAL_MESSAGE` + `MESSAGE_NUM_UNDECLARED` (§20), `TEXT_NNN_ASSIGN` + `TEXT_SYMBOL_UNDECLARED` (§21), `CLASS_DEF_AFTER_EVENT` (§10), `LOOP_WHERE_EXIT` (§19), `SPLIT_INTO_NUMERIC` (§25), `SELECT_STAR` (§12), `LINE_TOO_LONG`/`LINE_HARD_LIMIT`, plus `SQL_STRICT_COMMA` (§9). **Phase 5g** (scope-tracked): `MESSAGE_E_IN_METHOD` (§11), `SELECT_IN_LOOP` + `FOR_ALL_ENTRIES_NO_GUARD` (§12), `METHOD_TOO_LONG` (§18). These mirror the CI gate `scripts/lint-abap-contract.mjs` (same contract, two engines). The remaining heuristic rules — `MISSING_AT_HOST_VAR`/`STRING_CONCAT_SQL` (§13), `MISSING_AUTHZ_CHECK` (§14) — carry a higher false-positive risk and are reviewed by the orchestrator against this rule file rather than emitted by the engine. |
 | `sap-dev-core/shared/templates/customer_brief.md` | *(config)* | Project Profile — used to set the quality bar (e.g. method length limit, modern-ABAP required, ATC priority gating) |
 
@@ -278,17 +278,31 @@ STRUCT_SIG = <directory of ABAP_FILE>\_struct_signatures.txt
 AUTHZ_SIG  = <directory of ABAP_FILE>\_authz_signatures.txt
 ```
 
-If neither file exists, **skip this step entirely** — the upstream gen
-either didn't run RFC or wasn't invoked at all (e.g. operator wrote the
-ABAP by hand). The validator is purely additive — its absence doesn't
-break the existing checks.
+If neither file exists (the upstream gen didn't run RFC, or the ABAP is
+hand-written and gen never ran), the validator cannot run — **that is a
+coverage gap, not a clean pass**. Do all three, then continue:
+
+1. Tell the user explicitly: `INFO: struct/authz signature caches not found
+   — STRUCT_FIELD_MISSING and AUTHORITY-CHECK shape checks SKIPPED (reduced
+   coverage). They require /sap-gen-abap Step 1.5 (RFC) to have populated
+   _struct_signatures.txt / _authz_signatures.txt in this work folder.`
+2. Append one honesty row to `THE_RESULT_FILE` so the written report carries
+   the reduced-coverage marker (same 5-column schema as every other row):
+   `Code=SIGNATURE_CHECKS_SKIPPED`, `Severity=WARNING`, `Variable=-`,
+   `Detail=struct+authz signature caches absent; struct-field and
+   AUTHORITY-CHECK shape validation not performed`,
+   `Fix Advice=run /sap-gen-abap Step 1.5 (RFC) on this work folder, or
+   accept the reduced check scope for hand-written code`.
+3. Skip 3.5b/3.5c. The validator is purely additive — its absence doesn't
+   break the existing checks, but the verdict line must count this WARNING
+   like any other (a PASS with this row present is a *qualified* pass).
 
 ### 3.5b — Token-replace and run the validator
 
-Template at `<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_check_signatures.ps1`.
+Template at `<SKILL_DIR>\references\sap_check_signatures.ps1`.
 
 ```powershell
-$content = Get-Content '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_check_signatures.ps1' -Raw
+$content = Get-Content '<SKILL_DIR>\references\sap_check_signatures.ps1' -Raw
 $content = $content.Replace('%%ABAP_FILE%%',       'THE_ABAP_FILE')
 $content = $content.Replace('%%STRUCT_SIG_FILE%%', 'THE_STRUCT_SIG')   # may be '' if absent
 $content = $content.Replace('%%AUTHZ_SIG_FILE%%',  'THE_AUTHZ_SIG')    # may be '' if absent
@@ -353,10 +367,10 @@ It compares (all in the work folder next to the `.abap`):
 
 ### 3.6a — Token-replace and run
 
-Template at `<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_check_spec_coverage.ps1`.
+Template at `<SKILL_DIR>\references\sap_check_spec_coverage.ps1`.
 
 ```powershell
-$content = Get-Content '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_check_spec_coverage.ps1' -Raw
+$content = Get-Content '<SKILL_DIR>\references\sap_check_spec_coverage.ps1' -Raw
 $content = $content.Replace('%%ABAP_FILE%%',   'THE_ABAP_FILE')
 $content = $content.Replace('%%RESULT_FILE%%', 'THE_RESULT_FILE')   # SAME file Step 3 wrote
 Set-Content '{RUN_TEMP}\sap_checkabap_speccov.ps1' $content -Encoding UTF8
@@ -402,10 +416,10 @@ external representation at file boundaries (`GUI_UPLOAD` / `GUI_DOWNLOAD`,
 and only shows as wrong data at runtime — the class `abap_code_quality_rules.md`
 §28 governs. This step flags two such defects offline.
 
-Template at `<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_check_conversion.ps1`.
+Template at `<SKILL_DIR>\references\sap_check_conversion.ps1`.
 
 ```powershell
-$content = Get-Content '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_check_conversion.ps1' -Raw
+$content = Get-Content '<SKILL_DIR>\references\sap_check_conversion.ps1' -Raw
 $content = $content.Replace('%%ABAP_FILE%%',   'THE_ABAP_FILE')
 $content = $content.Replace('%%RESULT_FILE%%', 'THE_RESULT_FILE')   # SAME file Step 3 wrote
 Set-Content '{RUN_TEMP}\sap_checkabap_conv.ps1' $content -Encoding UTF8
@@ -534,7 +548,7 @@ Log the run-end record. Best-effort.
 On success:
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_check_abap_run.json" -Status SUCCESS -ExitCode 0 -MetricsJson '{"gate":"CHECK","verdict":"PASS","errors":0,"warnings":0}'
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_check_abap_run.json" -Status SUCCESS -ExitCode 0 -MetricsJson '{"gate":"CHECK","verdict":"PASS","errors":0,"warnings":0}'
 ```
 
 **Build-KPI enrichment (best-effort).** Add `-MetricsJson` populated from the
@@ -548,7 +562,7 @@ if you cannot read the counts.
 On failure:
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_check_abap_run.json" -Status FAILED -ExitCode 1 -ErrorClass <CLASS> -ErrorMsg "<short>"
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_check_abap_run.json" -Status FAILED -ExitCode 1 -ErrorClass <CLASS> -ErrorMsg "<short>"
 ```
 
 Suggested `<CLASS>`: `CHECK_ABAP_FAILED`, `RFC_LOGON_FAILED`.

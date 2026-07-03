@@ -82,13 +82,24 @@ applied). This call also sweeps stale `run_*` dirs from crashed prior runs
 powershell -NoProfile -ExecutionPolicy Bypass -Command "\$env:SAPDEV_AI_WORK_DIR='{work_dir}'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; [void](Remove-SapStaleRunTemp); Write-Output ('RUN_TEMP=' + (Get-SapRunTemp))"
 ```
 
-Login's OWN scratch — the generated `sap_login_run.vbs` / `sap_rfc_test_run.ps1`
-(which hold **decrypted plaintext** credentials) and the `_run.json` state — goes
-under `{RUN_TEMP}`, isolating concurrent logins and confining the plaintext to a
-single short-lived per-run dir. **Keep `{WORK_TEMP}` (base)** for the
-`-WorkTemp "{WORK_TEMP}"` calls to `sap_login_select.ps1` / the broker — those
-write the DURABLE pin + registry under `{work_dir}\runtime`, derived from the
-base path's parent.
+Login's OWN scratch — the generated `sap_login_run.ps1` / `sap_login_run.vbs` /
+`sap_rfc_test_run.ps1` (which hold **decrypted plaintext** credentials) and the
+`_run.json` state — goes under `{RUN_TEMP}`, isolating concurrent logins and
+confining the plaintext to a single short-lived per-run dir. **Keep
+`{WORK_TEMP}` (base)** for the `-WorkTemp "{WORK_TEMP}"` calls to
+`sap_login_select.ps1` / the broker — those write the DURABLE pin + registry
+under `{work_dir}\runtime`, derived from the base path's parent.
+
+**Stale plaintext sweep (crash residue).** The guarded runners in Steps 3/4
+delete the password-bearing scratch in-process, but a hard kill (tool timeout,
+host crash) can defeat any `finally`. So before generating new credentials
+scratch, sweep leftovers from PRIOR runs — only files older than 10 minutes,
+so a parallel session's in-flight login is never touched (bash-safe: the
+`-Command` payload is single-quoted so `$_` is not expanded by the shell):
+
+```bash
+powershell -NoProfile -ExecutionPolicy Bypass -Command 'Get-ChildItem -Path "{WORK_TEMP}\run_*" -Recurse -Include "sap_login_run.vbs","sap_login_run.ps1","sap_rfc_test_run.ps1" -ErrorAction SilentlyContinue | Where-Object { $_.LastWriteTime -lt (Get-Date).AddMinutes(-10) } | Remove-Item -Force -ErrorAction SilentlyContinue'
+```
 
 ---
 
@@ -426,10 +437,12 @@ decrypt failure (wrong Windows user / different machine / corrupted
 ciphertext) — in that case, prompt the operator to type the password
 fresh and offer to encrypt-and-save it after Step 3 succeeds.
 
-The plaintext password lives only in memory of the calling skill and
-in the generated `{RUN_TEMP}\sap_login_run.vbs` (which Step 5
-deletes). Do NOT echo the decrypted value to your reply or to any
-log.
+The plaintext password lives only in memory of the calling skill and,
+transiently, in the generated `{RUN_TEMP}\sap_login_run.ps1` /
+`sap_login_run.vbs` pair — both are deleted by the guarded runner's
+`finally` block in Step 3 itself (not by a later step a crashed run
+might never reach). Do NOT echo the decrypted value to your reply or
+to any log.
 
 ---
 
@@ -437,22 +450,33 @@ log.
 
 The VBScript template is at `sap-dev-core/shared/scripts/sap_login.vbs`.
 
-Write `{RUN_TEMP}\sap_login_run.ps1`:
+Write `{RUN_TEMP}\sap_login_run.ps1` — a **guarded runner**: it builds the
+VBS, runs it, and its `finally` deletes BOTH plaintext-bearing files (the
+generated VBS and the runner itself via `$PSCommandPath`) even when cscript
+errors out, the login times out, or the block is interrupted. Deleting the
+files in a LATER bash block is not crash-safe — a run abandoned between
+blocks left the plaintext on disk (2026-07-03 finding P4.1):
+
 ```powershell
-$content = [System.IO.File]::ReadAllText('<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_login.vbs', [System.Text.Encoding]::UTF8)
-$content = $content.Replace('%%SAP_LOGON_DESCRIPTION%%','THE_LOGON_DESC')
-$content = $content.Replace('%%SAP_APPLICATION_SERVER%%','THE_SERVER')
-$content = $content.Replace('%%SAP_SYSTEM_NUMBER%%','THE_SYSNR')
-$content = $content.Replace('%%SAP_MESSAGE_SERVER%%','THE_MSG_SERVER')
-$content = $content.Replace('%%SAP_LOGON_GROUP%%','THE_LOGON_GROUP')
-$content = $content.Replace('%%SAP_SYSTEM_ID%%','THE_SYSTEM_ID')
-$content = $content.Replace('%%SAP_SYSTEM_NAME%%','THE_SYSTEM_NAME')
-$content = $content.Replace('%%SAP_CLIENT%%','THE_CLIENT')
-$content = $content.Replace('%%SAP_USER%%','THE_USER')
-$content = $content.Replace('%%SAP_PASSWORD%%','THE_PASSWORD')
-$content = $content.Replace('%%SAP_LANGUAGE%%','THE_LANGUAGE')
-[System.IO.File]::WriteAllText('{RUN_TEMP}\sap_login_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
-Write-Host 'Done'
+try {
+  $content = [System.IO.File]::ReadAllText('<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_login.vbs', [System.Text.Encoding]::UTF8)
+  $content = $content.Replace('%%SAP_LOGON_DESCRIPTION%%','THE_LOGON_DESC')
+  $content = $content.Replace('%%SAP_APPLICATION_SERVER%%','THE_SERVER')
+  $content = $content.Replace('%%SAP_SYSTEM_NUMBER%%','THE_SYSNR')
+  $content = $content.Replace('%%SAP_MESSAGE_SERVER%%','THE_MSG_SERVER')
+  $content = $content.Replace('%%SAP_LOGON_GROUP%%','THE_LOGON_GROUP')
+  $content = $content.Replace('%%SAP_SYSTEM_ID%%','THE_SYSTEM_ID')
+  $content = $content.Replace('%%SAP_SYSTEM_NAME%%','THE_SYSTEM_NAME')
+  $content = $content.Replace('%%SAP_CLIENT%%','THE_CLIENT')
+  $content = $content.Replace('%%SAP_USER%%','THE_USER')
+  $content = $content.Replace('%%SAP_PASSWORD%%','THE_PASSWORD')
+  $content = $content.Replace('%%SAP_LANGUAGE%%','THE_LANGUAGE')
+  [System.IO.File]::WriteAllText('{RUN_TEMP}\sap_login_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
+  & 'C:\Windows\SysWOW64\cscript.exe' '//NoLogo' '{RUN_TEMP}\sap_login_run.vbs'
+  exit $LASTEXITCODE
+} finally {
+  Remove-Item -Force -ErrorAction SilentlyContinue '{RUN_TEMP}\sap_login_run.vbs', $PSCommandPath
+}
 ```
 Replace all `THE_*` placeholders with actual values from Step 2.
 `THE_PASSWORD` is the **decrypted plaintext** from Step 2a (NOT the
@@ -469,19 +493,18 @@ Token-fill rules (the VBS picks among three connection methods):
 
 If a field is unused in the chosen method, substitute the empty string `""`.
 
-Run:
-```bash
-powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_login_run.ps1"
-```
-
 ### Execute
 
-Run via **32-bit cscript** — bare `cscript` resolves to the 64-bit host, which
-cannot bind the SAP GUI Scripting COM objects (matches the repo's 32-bit VBS
-rule + the broker COM helper requirement):
+Run the guarded runner (this single call generates the VBS, drives the login,
+and cleans up — there is no separate cscript step). The runner invokes the
+**32-bit cscript** explicitly (`C:\Windows\SysWOW64\cscript.exe`) — bare
+`cscript` resolves to the 64-bit host, which cannot bind the SAP GUI Scripting
+COM objects (matches the repo's 32-bit VBS rule + the broker COM helper
+requirement). Give it a generous tool timeout (>= 6 min): the VBS waits up to
+5 minutes for a manual login.
 
 ```bash
-C:\Windows\SysWOW64\cscript.exe //NoLogo {RUN_TEMP}\sap_login_run.vbs
+powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_login_run.ps1"
 ```
 
 **The VBScript handles four scenarios** (first match wins):
@@ -507,12 +530,12 @@ C:\Windows\SysWOW64\cscript.exe //NoLogo {RUN_TEMP}\sap_login_run.vbs
 | `Login failed` | Wrong credentials | Check client, username, and password in profile |
 | `Login timed out` | No manual login within 5 min | Re-run and log in promptly |
 
-> **Cleanup is mandatory even on failure.** The generated
-> `{RUN_TEMP}\sap_login_run.vbs` (and, if Step 4 ran, `sap_rfc_test_run.ps1`)
-> carry the **plaintext password**. Before you end the skill on ANY failure
-> path here, run the **Step 5 — Clean Up** deletion block so the plaintext
-> scratch is removed immediately — do not leave it for the 24h stale-temp GC.
-> Then continue diagnosing. (On the success path Step 5 runs as usual.)
+> **Cleanup:** the guarded runner already deleted `sap_login_run.vbs` and
+> `sap_login_run.ps1` in its `finally` — success or failure. Still run the
+> **Step 5 — Clean Up** deletion block before ending the skill on ANY path:
+> it is the belt-and-braces sweep for `sap_rfc_test_run.ps1` (Step 4) and for
+> the rare hard-kill case where `finally` could not fire (process killed by a
+> tool timeout, host crash). Then continue diagnosing.
 
 ---
 
@@ -557,9 +580,12 @@ $dest = Connect-SapRfc `
 if ($dest) { Write-Host 'RFC_OK' } else { Write-Host 'ERROR: RFC connect failed' }
 ```
 
-Execute via **32-bit PowerShell** (SAP NCo 3.1 is registered in the 32-bit GAC):
+Execute via **32-bit PowerShell** (SAP NCo 3.1 is registered in the 32-bit
+GAC), guarded so the password-bearing script is deleted even when the RFC
+test crashes (no `$` inside the double-quoted `-Command` payload — bash would
+expand it):
 ```bash
-C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_rfc_test_run.ps1"
+C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -Command "try { & '{RUN_TEMP}\sap_rfc_test_run.ps1' } finally { Remove-Item -Force -ErrorAction SilentlyContinue '{RUN_TEMP}\sap_rfc_test_run.ps1' }"
 ```
 
 **On success** (output contains `RFC_OK`): tell user RFC connection verified.
@@ -579,11 +605,12 @@ C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypas
 ## Step 5 — Clean Up
 
 **Always run this after the login attempt — on the SUCCESS path AND on every
-failure path from Step 3/Step 4.** The generated `sap_login_run.vbs` and
-`sap_rfc_test_run.ps1` hold the plaintext password, so they must be removed
-before the skill ends regardless of outcome (never left for the 24h stale-temp
-GC). It is safe to run when a file was never created (the deletes are
-best-effort). Use PowerShell `Remove-Item` (NOT `cmd /c del`) — it deletes
+failure path from Step 3/Step 4.** The guarded runners normally delete the
+plaintext-bearing `sap_login_run.ps1`/`.vbs` and `sap_rfc_test_run.ps1` in
+their `finally`; this block is the belt-and-braces sweep for the hard-kill
+case (tool timeout, host crash) so nothing is ever left for the 24h stale-temp
+GC. It is safe to run when a file was never created or already deleted (the
+deletes are best-effort). Use PowerShell `Remove-Item` (NOT `cmd /c del`) — it deletes
 plaintext-bearing scratch reliably regardless of the calling shell; the
 `cmd /c del` form with mixed `\`/`/` paths silently fails under git-bash and
 left the plaintext VBS on disk (2026-07-02 finding L-1):
@@ -856,11 +883,14 @@ a copied `settings.json` is useless on another machine. See Step 2a
 still accepted for backward compatibility but trigger a warning that
 prompts the operator to re-save.
 
-**In flight** — `{RUN_TEMP}\sap_login_run.vbs` and
+**In flight** — `{RUN_TEMP}\sap_login_run.ps1` / `sap_login_run.vbs` and
 `{RUN_TEMP}\sap_rfc_test_run.ps1` contain the **decrypted plaintext**
-during execution because SAP GUI / NCo need it that way. Step 5
-deletes both files immediately after use. Never re-use these files
-across runs and never copy them out of `{RUN_TEMP}`.
+during execution because SAP GUI / NCo need it that way. Each guarded
+runner deletes its own files in a `finally` (crash-safe within the
+block); Step 5 is the belt-and-braces sweep, and Step 0's stale-plaintext
+sweep removes >10-minute-old residue a hard process kill may have left.
+Never re-use these files across runs and never copy them out of
+`{RUN_TEMP}`.
 
 **In logs** — `sap_log_lib.ps1` / `sap_log_lib.vbs` redact `sap_password`
 by key name (`log_redact_keys` setting). With DPAPI on top, the

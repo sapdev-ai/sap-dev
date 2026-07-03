@@ -2,6 +2,96 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+Fix wave for the 2026-07-03 post-fix review
+(`temp/testReport/plugin_skill_review_20260703.md`) — parallel-run safety,
+code-enforced migration gates, credential hygiene, and enterprise-adoption
+documentation.
+
+### Fixed
+
+- **Two-bucket temp model completed.** The last 15 skills writing fixed-name
+  state/scratch under `{WORK_TEMP}` moved to `{RUN_TEMP}` (all 10 substantive
+  sap-gen-code skills + sap-diagnose / se41 / se51 / snro / trace) — the
+  run-temp ratchet is now 0; concurrent sessions can no longer clobber each
+  other's `_run.json` / scratch files.
+- **Migration human gates enforced in code, not just by the agent prompt.**
+  `/sap-cc-campaign next` returns `BLOCKED` (exit 3) until `scope_signoff` is
+  recorded APPROVED; `/sap-cc-remediate record` refuses (`BLOCKED`, exit 3)
+  until `dryrun_review` is APPROVED — a skipped diff review can no longer be
+  marked as campaign progress. (`dryrun_review` is deliberately NOT blocked at
+  `next`: the dry-run produces the very diffs under review.) Offline-tested
+  end-to-end (init → BLOCKED → signoff → released; REJECTED stays blocked).
+- **Credential crash-window closed.** `/sap-login` now generates a guarded
+  runner whose `finally` deletes the password-bearing `.ps1`/`.vbs` even when
+  the login crashes or times out (previously deletion lived in a later bash
+  block a crashed run never reached); the Step 4 RFC test is wrapped the same
+  way, and login start sweeps >10-minute-old password-bearing scratch left by
+  hard kills.
+- **Z-FM signature-cache staleness.** `/sap-se37` invalidates the deployed /
+  deleted FM's signature-cache rows, so a same-day `/sap-gen-abap` /
+  `/sap-check-fm` run never generates against the pre-deploy interface
+  (`--refresh-cache` remains for FMs changed on other machines).
+- **Silent degradation made loud in the spec pipeline.** `/sap-gen-abap`
+  warns (user-facing + a TODO block in the generated source) when
+  `_selection_definition.txt` / `_interface.txt` are absent instead of
+  silently falling back to lossy prose parsing; `/sap-check-abap` appends a
+  `SIGNATURE_CHECKS_SKIPPED` WARNING row when the struct/authz caches are
+  absent, so reduced coverage is visible in the written report.
+- Deleted monorepo-root pollution (`nul`, `ROLLNAME` scratch); confirmed no
+  committed writer (ad-hoc session commands).
+
+### Added
+
+- `shared/rules/error_classes.md` — the published `error_class` taxonomy
+  (48 classes across ATC/AUNIT/CC/STMS/infra families) for log/alerting
+  consumers; referenced from CLAUDE.md and `sap_log_lib.ps1`.
+- `docs/security.md` — required SAP authorizations per capability,
+  credential-handling statement, `saprules.xml` grant rationale +
+  least-privilege narrowing, write-safety enforcement map, and a
+  security-review checklist; linked from README + installation guide;
+  `/sap-doctor` now appends an `AUTH: not probed` manual-check line pointing
+  at it.
+- CI: `check-consistency.mjs` now HARD-ERRORS when a file in
+  `sap-dev-core/shared/scripts` is not mentioned in CLAUDE.md's "Current
+  Shared Files" table (23 missing rows backfilled, incl. the post-activate /
+  content-verify gates).
+- A `shared/scripts/` vs `skills/<skill>/references/` **placement rule** is
+  codified in CLAUDE.md (shared = ≥2 consumers / cross-plugin, OR
+  platform-wired primitive, OR non-driving VBS include-lib; everything else
+  is skill-local). Applying it, 7 single-consumer scripts moved to their
+  owning skills with consumer paths retargeted:
+  `sap_se38_content_verify.ps1/.vbs` → sap-se38/references (+
+  `TIER3_EXEMPT_VBS` entry for the include-lib shim),
+  `sap_check_conversion/signatures/spec_coverage.ps1` →
+  sap-check-abap/references (they now ship with the plugin that uses them),
+  `sap_session_owner.ps1` + `sap_probe_end_of_run.ps1` →
+  sap-gui-probe/references. The post-activate verify family stays shared
+  (se11's member is also called by sap-gui-skill-scaffold; the three are one
+  maintained safety-gate contract).
+- The placement rule is CI-enforced in **both directions**:
+  `check-consistency.mjs` hard-errors on a shared script missing its
+  CLAUDE.md row, and now also emits a `shared-placement` WARN ratchet when a
+  shared script's consumers shrink to one same-plugin skill or zero (no
+  sibling-script/rules wiring, no reasoned `SHARED_PLACEMENT_ALLOWLIST`
+  entry). The new check immediately exposed `sap_check_transport.ps1` as
+  zero-consumer dead code (untouched since v0.1.0; its CLAUDE.md row falsely
+  claimed five deploy-skill consumers — TR validation moved into
+  `/sap-transport-request` long ago): **deleted**, row removed.
+- README: grouped index of all 78 skills, "Current Limitations (v0.6.9)"
+  section, Windows-only prominence, install-order and settings-precedence
+  notes; installation guide prerequisites hardened (server-side
+  `sapgui/user_scripting` with Basis wording, Python requirement,
+  `/sap-doctor` verification pointer).
+
+### Changed
+
+- sap-gen-code / sap-tcd descriptions (plugin.json + marketplace) now declare
+  the sap-dev-core dependency and install order (sap-migrate already did).
+- sap-se01 SKILL.md frontmatter description trimmed ~350 → ~130 words
+  (skill-list token cost).
+
 ## [0.6.9] — 2026-07-02
 
 Hardening release. A full-repo skill review (~130 verified findings, 29 high)

@@ -111,7 +111,11 @@ Repeat until the campaign reports DONE or you hit a gate / MANUAL boundary:
    ```
    /sap-cc-campaign next --campaign <id>
    ```
-   Parse the single line: `NEXT: skill=<S> reason=<R> [gate=<G>]`.
+   Parse the single line: `NEXT: skill=<S> reason=<R> [gate=<G> gate_status=<st>]`
+   — or `BLOCKED: gate=scope_signoff status=<st> skill=<S> reason=<R>`
+   (exit `3`) when the scope sign-off is not yet APPROVED. BLOCKED is not an
+   error: it is the gate. Handle it via step 3, record the sign-off, re-run
+   `next`.
 
 2. **Terminal / hand-off cases:**
    - `skill=DONE` → go to Step 2 (final report). Campaign complete.
@@ -122,15 +126,23 @@ Repeat until the campaign reports DONE or you hit a gate / MANUAL boundary:
      produce the recipe-faithful rewrite and human-review it before deploy — still
      never auto-applied. R4 / `?` / write-paths / DRAFT stay manual.
 
-3. **Gate handling (mandatory STOP):** if `gate=` is present, you must get
-   explicit operator approval BEFORE running `<S>`:
-   - `gate=scope_signoff` → present the scope split (run
-     `/sap-cc-campaign report`; show REMEDIATE / DECOMMISSION / REVIEW counts +
-     the decommission-savings %). Ask: "Approve this scope and proceed to
-     analysis? (yes / adjust / cancel)". Only on `yes` continue.
-   - `gate=dryrun_review` → run the remediation **dry-run first** (see the
+3. **Gate handling (mandatory STOP):** if `next` returned `BLOCKED` or a
+   `gate=` tag with `gate_status` ≠ APPROVED, you must get explicit operator
+   approval AND record it before proceeding:
+   - `gate=scope_signoff` (arrives as `BLOCKED`) → present the scope split
+     (run `/sap-cc-campaign report`; show REMEDIATE / DECOMMISSION / REVIEW
+     counts + the decommission-savings %). Ask: "Approve this scope and
+     proceed to analysis? (yes / adjust / cancel)". Only on `yes`: record it —
+     `/sap-cc-campaign signoff --campaign <id> --gate scope_signoff --owner
+     <operator>` — then re-run `next` (it now releases the analyze step).
+   - `gate=dryrun_review` (arrives as `gate_status=PENDING` on the remediate
+     recommendation) → run the remediation **dry-run first** (see the
      `/sap-cc-remediate` row), present the diffs, and ask for approval before
-     any deploy.
+     any deploy. On approval, record it — `/sap-cc-campaign signoff
+     --campaign <id> --gate dryrun_review --owner <operator>` — BEFORE
+     `/sap-cc-remediate record`: the record action refuses (`BLOCKED`,
+     exit `3`) while this sign-off is missing, so a skipped review cannot be
+     marked as campaign progress.
 
 4. **Dispatch** `<S>` per the table below, then append to the transcript and
    loop back to step 1.

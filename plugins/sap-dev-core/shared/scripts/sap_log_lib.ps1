@@ -17,6 +17,11 @@
 # Records are appended one JSON object per line to:
 #   {log_dir}\{log_file_pattern}     (defaults: {work_dir}\logs\sap-dev-{YYYYMMDD}.log)
 #
+# -ErrorClass vocabulary: pick from shared/rules/error_classes.md (the single
+# source of truth for the machine-readable failure enum consumed by
+# /sap-log-analyze and customer dashboards); a new class is added there in
+# the same commit that starts emitting it.
+#
 # Settings consumed from sap-dev-core/settings.json (userConfig):
 #   log_enabled, log_level, log_dir, log_file_pattern, log_retention_days
 #

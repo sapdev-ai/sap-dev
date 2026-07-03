@@ -1,6 +1,6 @@
 # SAP Dev Marketplace
 
-Welcome to the **sap-dev** marketplace - a curated collection of production-tested SAP skills for Claude Code CLI.
+Welcome to the **sap-dev** marketplace - a curated collection of production-tested SAP skills for Claude Code CLI. **Windows-only**: the skills drive SAP GUI for Windows via GUI Scripting — there is no macOS/Linux path, so check the prerequisites below before installing anything.
 
 > 📖 **New here?** For a complete, step-by-step walkthrough from a clean Windows
 > laptop all the way to generating and deploying ABAP — written for an SIer ABAP
@@ -11,10 +11,27 @@ Welcome to the **sap-dev** marketplace - a curated collection of production-test
 ## Quick Start
 
 ### Prerequisites
-- **SAP GUI for Windows**: Required for all GUI Scripting skills.
-- **SAP GUI Scripting**: Must be enabled on both client and server sides.
-- **Python 3.10+**: Required for the `sap-gen-code` plugin.
-- **Windows OS**: Required for DPAPI-encrypted credential storage.
+- **Windows 10/11**: hard requirement — GUI Scripting COM and DPAPI-encrypted
+  credential storage are Windows-only.
+- **SAP GUI for Windows 7.70+**: required for all GUI Scripting skills.
+- **SAP GUI Scripting enabled on BOTH sides**:
+  - client: SAP Logon > Options > Accessibility & Scripting > Scripting;
+  - server: profile parameter `sapgui/user_scripting = TRUE` (RZ11 for the
+    current session, RZ10 to persist) — **this usually needs your Basis team**;
+    plan for it before the pilot, it is the #1 first-run blocker.
+- **SAP authorizations** for the logon user (S_DEVELOP, S_TRANSPRT, ...):
+  see [docs/security.md](../security.md) for the per-capability table your
+  security team will ask about.
+- **Python 3.10+**: required for the `sap-gen-code` plugin
+  (`/sap-docs-extract` parses Excel/Word/PDF specs); the core plugin works
+  without it.
+- **(Optional) SAP NCo 3.1** (32-bit, .NET 4.0, in the GAC): enables the RFC
+  fast-paths and verification gates; downloaded from SAP with your own S-User
+  (not redistributed here).
+
+After Step 3 below, run **`/sap-doctor`** — it preflights every prerequisite
+above (GUI scripting client+server, NCo/GAC, RFC connectivity, dev
+environment) and prints an actionable FIX per failing check.
 
 ### Installation
 
@@ -35,6 +52,10 @@ Welcome to the **sap-dev** marketplace - a curated collection of production-test
 
 > Claude Code does not currently accept several plugins in a single `/plugin install`,
 > so run the lines individually.
+
+> **Order matters**: install `sap-dev-core` FIRST. The other three plugins
+> resolve its `shared/` scripts at runtime and fail with a path error when it
+> is absent.
 
 **Step 3: Login and bootstrap**
 

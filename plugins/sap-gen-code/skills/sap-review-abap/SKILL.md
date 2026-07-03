@@ -107,7 +107,7 @@ Write this run's generated scratch (`review_dl.vbs`) under `{RUN_TEMP}`; keep `{
 ## Step 0.5 — Start Logging (best-effort)
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{WORK_TEMP}\sap_review_abap_run.json" -Skill sap-review-abap -ParamsJson "{\"target\":\"<OBJECT>\"}"
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{RUN_TEMP}\sap_review_abap_run.json" -Skill sap-review-abap -ParamsJson "{\"target\":\"<OBJECT>\"}"
 ```
 
 ---
@@ -391,7 +391,7 @@ cmd /c del "{RUN_TEMP}\review_dl.vbs" 2>nul
 ## Final — Log End
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_review_abap_run.json" -Status SUCCESS -ExitCode 0
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_review_abap_run.json" -Status SUCCESS -ExitCode 0
 ```
 
 | Outcome | Status / ExitCode / ErrorClass |

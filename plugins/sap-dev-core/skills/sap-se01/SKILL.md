@@ -2,40 +2,21 @@
 name: sap-se01
 description: |
   Manages SAP transport requests via transaction SE01 using SAP GUI Scripting.
-  Two modes:
-    (a) CREATE — default. Creates a new TR. Defaults to Workbench (W); only
-        creates Customizing (C) when the user explicitly asks. Description is
-        rendered per userConfig.rule_of_tr_description (ASK/PATTERN/FIXED/
-        RANDOM) and truncated to the 60-char SE01 limit. The VBS gates the
-        create on the statusbar MessageType (E/A → ERROR), then resolves the
-        new TRKORR from the success message itself (locale-independent
-        transport-number shape), falling back to a two-step SE16N lookup
-        (E07T by AS4TEXT, then E070 by AS4USER + TRSTATUS D — highest TRKORR
-        wins; no date filter). Echoes `RESULT_TR: <...>` (authoritative)
-        plus `INFO: TRKORR=<...>` (back-compat); unresolvable →
-        `ERROR: TR_RESOLUTION_FAILED`, never a guessed TR.
-    (b) RELEASE — invoked as `/sap-se01 release <TR>`. Releases the TR (and
-        any open tasks) via SE01 Transport Organizer (Display + F9 loop).
-        Mandatory pre-checks first (E070 TRSTATUS must be D + E071 object
-        inventory), then asks the user for explicit confirmation showing the
-        object list — release is irreversible.
-    (c) DELETE -- invoked as `/sap-se01 delete <TR>`. Deletes an UNRELEASED
-        request and its tasks. Two-phase: empties any objects (Phase 1), then
-        deletes the nodes bottom-up -- each TASK first, then the REQUEST (Display
-        + Delete tbar[1]/btn[13] + btnBUTTON_1 confirm per node, not relying on a
-        cascade), so an empty TR/Task is removed cleanly. Verifies removal via
-        E070 (request + child tasks). Asks for explicit confirmation; refuses a
-        released TR or one holding non-dev objects. Used by /sap-dev-clean
-        --reset to drop the dev TR.
-    (d) REMOVE-OBJECTS -- invoked as `/sap-se01 remove-objects <TR>
-        [OBJECTS=a,b,...]`. Unassigns object entries (E071) from an UNRELEASED
-        request but KEEPS the request itself. With OBJECTS= it removes only the
-        named objects (safe on a TR that holds other work); without it, removes
-        ALL objects (Select-All). Clears the name-lock a lingering E071 entry
-        holds, so a deleted object can be re-created -- the fix for "object is in
-        request ..." / "enter object only in original request" on re-create.
-        Verifies via E071. Used by /sap-dev-clean (teardown) and /sap-dev-init
-        (defensive pre-create). Distinct from DELETE, which drops the whole TR.
+  Four modes:
+    CREATE (default) — new Workbench TR (Customizing only when explicitly
+    asked); description rendered per userConfig.rule_of_tr_description
+    (60-char limit); the new TRKORR is resolved locale-independently
+    (statusbar shape, then SE16N E07T/E070 fallback) and echoed as
+    `RESULT_TR: <...>` — unresolvable is a hard ERROR, never a guessed TR.
+    RELEASE (`release <TR>`) — pre-checks E070 status + E071 object
+    inventory, shows the object list, asks explicit confirmation
+    (irreversible), releases request + open tasks.
+    DELETE (`delete <TR>`) — empties then deletes an UNRELEASED request
+    bottom-up (each task, then the request), confirms with the user first,
+    verifies removal via E070; refuses released / non-dev TRs.
+    REMOVE-OBJECTS (`remove-objects <TR> [OBJECTS=a,b]`) — unassigns E071
+    entries but KEEPS the request; clears the name-lock so deleted objects
+    can be re-created. Full mode details are in the body sections.
   Prerequisites: Active SAP GUI session (use /sap-login first).
 argument-hint: "[create [W|C] [\"<desc>\"]] | [release <TR>] | [delete <TR>] | [remove-objects <TR> [OBJECTS=a,b]]"
 ---

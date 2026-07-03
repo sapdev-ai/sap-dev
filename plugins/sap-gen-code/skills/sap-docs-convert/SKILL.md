@@ -85,10 +85,10 @@ Also set `{WORK_TEMP}` = `{work_dir}\temp` (used below for the log state file).
 
 Start a structured log run. Best-effort: silently no-ops if disabled or the
 lib can't load. `<SAP_DEV_CORE_SHARED_DIR>` resolves to
-`plugins/sap-dev-core/shared/`. State file: `{WORK_TEMP}\sap_docs_convert_run.json`.
+`plugins/sap-dev-core/shared/`. State file: `{RUN_TEMP}\sap_docs_convert_run.json`.
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{WORK_TEMP}\sap_docs_convert_run.json" -Skill sap-docs-convert -ParamsJson "{\"work_folder\":\"<WORK_FOLDER>\",\"rules_file\":\"<RULES_PATH>\"}"
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{RUN_TEMP}\sap_docs_convert_run.json" -Skill sap-docs-convert -ParamsJson "{\"work_folder\":\"<WORK_FOLDER>\",\"rules_file\":\"<RULES_PATH>\"}"
 ```
 
 ---
@@ -245,7 +245,7 @@ file; use `EXISTED` when no rule matched (no-op convert); use `FAILED` with
 `ErrorClass=CONVERT_FAILED` if a rule could not be applied:
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_docs_convert_run.json" -Status SUCCESS -ExitCode 0
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_docs_convert_run.json" -Status SUCCESS -ExitCode 0
 ```
 
 ---

@@ -147,7 +147,7 @@ Write `{RUN_TEMP}\sap_trace_run.ps1`:
 
 ```powershell
 $tpl = '<SKILL_DIR>\references\sap_trace_st05.vbs'   # or ..._sat.vbs
-$out = '{WORK_TEMP}\trace_st05_RUNTS.txt'             # RUNTS = a timestamp string
+$out = '{RUN_TEMP}\trace_st05_RUNTS.txt'             # RUNTS = a timestamp string
 $content = [System.IO.File]::ReadAllText($tpl, [System.Text.Encoding]::UTF8)
 $content = $content -replace '%%OUTPUT_FILE%%', $out
 $content = $content -replace '%%FILTER_USER%%', 'THE_USER'
@@ -183,7 +183,7 @@ the OS-level watcher around the blocking export. Substitute `THE_SID` /
 
 ```powershell
 $shared = '<SAP_DEV_CORE_SHARED_DIR>\scripts'
-$out    = '{WORK_TEMP}\trace_st05_RUNTS.txt'
+$out    = '{RUN_TEMP}\trace_st05_RUNTS.txt'
 & "$shared\sap_gui_security_precheck.ps1" -Path $out -Access w -System 'THE_SID' -Client 'THE_CLIENT' -Transaction 'ST05' | Out-Host
 $allowed = ($LASTEXITCODE -eq 0)
 $watcher = $null

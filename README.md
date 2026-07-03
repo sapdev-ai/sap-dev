@@ -1,6 +1,8 @@
 # SAP Dev Skills
 
-SAP development automation skills for AI coding assistants.
+SAP development automation skills for AI coding assistants. **Windows-only**
+— the skills drive SAP GUI for Windows via GUI Scripting (plus optional RFC
+via SAP NCo); there is no macOS/Linux path.
 
 > These skills follow Claude Code plugin patterns and are optimized for the
 > Claude Code CLI. While the underlying skill content can be adapted for other
@@ -17,6 +19,66 @@ Project home: <https://sapdev.ai>
 | **sap-gen-code** | 12 | Spec → ABAP pipeline. Customise spec-template layout per customer, extract from Excel / Word / PDF, normalise via customer rules, validate DDIC and process, generate ABAP per Customer Brief profile (with FM-signature pre-fetch + per-system cache), validate naming / types / SQL / FM args via live RFC, auto-fix detected issues. |
 | **sap-migrate** | 7 + agent | S/4HANA custom-code migration engine. Run a brownfield conversion as a tracked campaign (`sap-cc-campaign`): inventory custom (Z/Y) objects, overlay runtime usage to flag unused code for decommission, run the S/4HANA-readiness ATC, triage findings into remediation tiers, and auto-remediate mechanical (R1) changes on a sandbox. Ships the **`cc-migration-engineer` agent**. Companion to sap-dev-core (install that first). |
 | **sap-tcd** | 3 | Business process automation: Business Partner (BP), Material Master (MM01 / MM02 / MM03), Sales Order (VA01 / VA02 / VA03). |
+
+## Skill Index
+
+All 78 skills, grouped by task (all names are `/`-invocable in Claude Code;
+skills outside sap-dev-core are tagged with their plugin):
+
+- **Session & environment** — `sap-login`, `sap-doctor`, `sap-dev-init`,
+  `sap-dev-status`, `sap-dev-clean`, `sap-gui-diagnose`, `sap-gui-screen-check`
+- **ABAP Workbench deploy & lifecycle** — `sap-se38` (programs), `sap-se37`
+  (function modules), `sap-se24` (classes), `sap-se11` (DDIC), `sap-se91`
+  (message classes), `sap-function-group`, `sap-se21` (packages), `sap-se41`
+  (GUI statuses), `sap-se51` (screens), `sap-se54` (table maintenance),
+  `sap-snro` (number ranges), `sap-cmod`, `sap-se19` (BAdIs),
+  `sap-activate-object`, `sap-change-package`, `sap-check-fix`
+- **Transport** — `sap-transport-request`, `sap-se01`, `sap-stms`,
+  `sap-transport-readiness`
+- **Quality gates** — `sap-atc`, `sap-run-abap-unit`; plus `sap-check-abap`,
+  `sap-check-fm`, `sap-review-abap`, `sap-gen-abap-unit` (sap-gen-code)
+- **Data & object insight** — `sap-se16n`, `sap-update-addon`,
+  `sap-where-used-list`, `sap-compare`, `sap-explain-object`,
+  `sap-document-object`, `sap-sp02` (spool)
+- **Incident diagnosis & ops** — `sap-diagnose`, `sap-st22`, `sap-sm12`,
+  `sap-sm13`, `sap-sm37`, `sap-slg1`, `sap-trace`, `sap-log-analyze`,
+  `sap-fix-incident`
+- **Delivery assurance** — `sap-impact-analysis`, `sap-evidence-pack`,
+  `sap-enhancement-advisor` (+ `sap-transport-readiness` above)
+- **RFC & batch input** — `sap-rfc-wrapper-fm`, `sap-rfc-wrapper-class`,
+  `sap-call-bdc`
+- **Skill authoring & error KB** — `sap-gui-record`, `sap-gui-probe`,
+  `sap-gui-object-details`, `sap-gui-skill-scaffold`, `sap-error-kb`
+- **Spec → ABAP pipeline (sap-gen-code)** — `sap-docs-layout`,
+  `sap-docs-extract`, `sap-docs-convert`, `sap-docs-check-ddic`,
+  `sap-docs-check-process`, `sap-gen-abap`, `sap-check-abap`, `sap-check-fm`,
+  `sap-fix-abap`, `sap-fix-fm`, `sap-gen-abap-unit`, `sap-review-abap`
+- **S/4HANA migration (sap-migrate)** — `sap-cc-campaign`, `sap-cc-inventory`,
+  `sap-cc-usage`, `sap-cc-analyze`, `sap-cc-triage`, `sap-cc-remediate`,
+  `sap-cc-learn`
+- **Test data (sap-tcd)** — `sap-bp`, `sap-mm01`, `sap-va01`
+
+## Current Limitations (v0.6.9)
+
+Honest list of shipped-but-bounded functionality — these fail **loud**, not
+silent:
+
+- `/sap-doctor --fix` reports FIX recommendations only; it does not apply them.
+- `/sap-run-abap-unit` is GUI-backed (Phase 1); the headless RFC backend is
+  Phase 2. On a release whose result screen isn't recorded yet it emits
+  `NEEDS_RECORDING` with instructions instead of guessing.
+- `/sap-stms` import ships with two uncalibrated checkbox IDs
+  (immediate / leave-in-queue) — it refuses (`STMS_NOT_CALIBRATED`) until one
+  `/sap-gui-record` pass on your release wires them.
+- Golden-screen baseline coverage is 8/121 driving scripts — drift detection
+  protects only those until the live capture pass lands.
+- sap-tcd control IDs were recorded on S/4HANA 1909; `sap-bp` / `sap-va01`
+  popups need a re-record for ECC6 (`sap-mm01` already probes both layouts).
+- sap-migrate's knowledge pack ships 3 ACTIVE + 9 DRAFT patterns (~20–30% of
+  typical ECC6 findings auto-classify today); DRAFT patterns are advisory-only
+  by design, and the pack grows via `/sap-cc-learn` from real campaign runs.
+- Central/remote ATC (`--object-provider`) is implemented fail-loud but the
+  provider field ID is unverified against a live hub.
 
 ## Repository Structure
 
@@ -52,9 +114,14 @@ Add the marketplace to Claude Code:
 # Add the marketplace
 /plugin marketplace add https://github.com/sapdev-ai/sap-dev
 
-# Install the core plugin (others are optional)
+# Install the core plugin FIRST (the other three require it)
 /plugin install sap-dev-core@sap-dev
 ```
+
+**Install order matters:** `sap-gen-code`, `sap-migrate`, and `sap-tcd` are
+companions that resolve `sap-dev-core`'s `shared/` scripts at runtime —
+installed alone, their skills fail with a path-resolution error. Always
+install `sap-dev-core` first (or alongside).
 
 After install, run once per SAP system:
 
@@ -67,6 +134,13 @@ Manage multiple saved profiles with `/sap-login --list`, `--switch <id>`,
 `--set-default <id>`, `--delete <id>`. Each Claude Code conversation pins
 to one profile; subagents inherit the pin.
 
+**Changing settings later:** runtime values resolve
+`SAPDEV_AI_WORK_DIR` env var → `settings.local.json` (repo checkouts only) →
+`{work_dir}\runtime\userconfig.json` → the plugin's `settings.json`. Hand-edits
+to the shipped `settings.json` are **silently shadowed** by `userconfig.json` —
+change values through the skills or edit `userconfig.json`; see
+[docs/settings-local-faq.md](docs/settings-local-faq.md).
+
 See [docs/getting-started/installation.md](docs/getting-started/installation.md) for details,
 or the end-to-end **[Developer's Manual](docs/manual.md)** —
 a complete walkthrough from install to generating and deploying ABAP, with screenshots.
@@ -74,9 +148,18 @@ a complete walkthrough from install to generating and deploying ABAP, with scree
 ## Prerequisites
 
 - Windows 10 / 11 (SAP GUI Scripting is Windows-only)
-- SAP GUI for Windows 7.70+ with scripting enabled
+- SAP GUI for Windows 7.70+ with scripting enabled — **client-side** (SAP Logon
+  option) AND **server-side** (`sapgui/user_scripting = TRUE` via RZ11; ask
+  your Basis team — this is the #1 first-run blocker)
 - Claude Code CLI
+- Python 3.x on `PATH` — **required by sap-gen-code's `/sap-docs-extract`**
+  (Excel/Word/PDF spec parsing); the core plugin works without it
 - (Optional) [SAP NCo 3.1](https://support.sap.com/en/product/connectors/msnet.html) for RFC features — see note below
+- Verify the machine with **`/sap-doctor`** after install — it preflights GUI
+  scripting, NCo/GAC, RFC connectivity, and the dev environment with an
+  actionable FIX per failing check
+- Required SAP authorizations for the logon user: see
+  [docs/security.md](docs/security.md)
 
 ## Building New Skills
 

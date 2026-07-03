@@ -73,7 +73,7 @@ Set `{WORK_TEMP}` = `{work_dir}\temp`. Ensure it exists.
 ## Step 0.5 — Start Logging
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{WORK_TEMP}\sap_docs_layout_run.json" -Skill sap-docs-layout -ParamsJson "{\"args\":\"<RAW_ARGUMENTS>\"}"
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{RUN_TEMP}\sap_docs_layout_run.json" -Skill sap-docs-layout -ParamsJson "{\"args\":\"<RAW_ARGUMENTS>\"}"
 ```
 
 ---
@@ -357,7 +357,7 @@ progress (`META_NOT_FOUND`, `META_ALREADY_EXISTS`, `SECTION_UNKNOWN`,
 `SHEET_NOT_FOUND`, `INVALID_ARGUMENT`, `XLSX_WRITE_FAILED`).
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_docs_layout_run.json" -Status SUCCESS -ExitCode 0
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_docs_layout_run.json" -Status SUCCESS -ExitCode 0
 ```
 
 ---

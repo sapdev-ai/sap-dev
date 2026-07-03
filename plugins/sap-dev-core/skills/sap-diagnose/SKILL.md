@@ -79,7 +79,7 @@ cmd /c if not exist "{WORK_TEMP}\diagnose" mkdir "{WORK_TEMP}\diagnose"
 ## Step 0.5 — Start Logging
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{WORK_TEMP}\sap_diagnose_run.json" -Skill sap-diagnose -ParamsJson "{}"
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{RUN_TEMP}\sap_diagnose_run.json" -Skill sap-diagnose -ParamsJson "{}"
 ```
 
 ## Step 1 — Parse the Anchor
@@ -233,7 +233,7 @@ chained a fix (Step 8.5), retain the deliverable regardless** — it is the
 ## Final — Log End
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{WORK_TEMP}\sap_diagnose_run.json" -Status SUCCESS -ExitCode 0
+powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_diagnose_run.json" -Status SUCCESS -ExitCode 0
 ```
 
 `NO_EVIDENCE` → `-Status SKIPPED -ExitCode 1 -ErrorClass DIAGNOSE_NO_EVIDENCE`.

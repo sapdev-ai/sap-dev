@@ -34,8 +34,9 @@
 #   APPLY: objects=<n> changed=<n> flagged=<n> norule=<n> missing=<n>
 #   OBJ: <name> | STATUS: <s> | AUTO: <n> | FLAG: <n>
 #   RECORD: verified=<n> remediated=<n> failed=<n>
-#   STATUS: OK | EMPTY | ERROR
-# Exit: 0 ok | 1 empty (nothing to do) | 2 error
+#   BLOCKED: gate=dryrun_review status=<PENDING|REJECTED> action=record   (record only; exit 3)
+#   STATUS: OK | EMPTY | ERROR | BLOCKED
+# Exit: 0 ok | 1 empty (nothing to do) | 2 error | 3 blocked (dry-run review sign-off not APPROVED)
 
 [CmdletBinding()]
 param(
@@ -310,6 +311,29 @@ try {
     }
 
     # ---- record ----
+    # Hard human-gate (dryrun_review): `record` is what marks campaign progress
+    # (TRIAGED -> REMEDIATED/VERIFIED), so it is the enforceable point of the
+    # dry-run-review gate -- the diffs are produced by -Action apply, so by the
+    # time outcomes exist the review either happened (record it via
+    # /sap-cc-campaign signoff) or was skipped (this wall). Honours
+    # campaign.json human_gates.dryrun_review=false (gate disabled). The
+    # companion `next` gate (scope_signoff) lives in sap_cc_campaign.ps1.
+    $cjPath = Join-Path $CampaignDir 'campaign.json'
+    $cj = $null
+    try { $cj = Get-Content -LiteralPath $cjPath -Raw -Encoding UTF8 | ConvertFrom-Json } catch { $cj = $null }
+    $gateOn = $true
+    if ($cj -and $cj.human_gates -and $null -ne $cj.human_gates.dryrun_review) { $gateOn = [bool]$cj.human_gates.dryrun_review }
+    if ($gateOn) {
+        $so = $null
+        if ($cj -and $cj.signoffs) { foreach ($s in @($cj.signoffs)) { if (([string]$s.gate) -eq 'dryrun_review') { $so = $s } } }
+        $gstat = if ($so -and $so.status) { [string]$so.status } else { 'PENDING' }
+        if ($gstat -ne 'APPROVED') {
+            Write-Output "BLOCKED: gate=dryrun_review status=$gstat action=record"
+            Write-Output 'INFO: review the dry-run diffs (remediation\*.diff), then record the approval: /sap-cc-campaign signoff --campaign <id> --gate dryrun_review --owner <name>'
+            Write-Output 'STATUS: BLOCKED'
+            exit 3
+        }
+    }
     if ([string]::IsNullOrWhiteSpace($ResultsFile) -or -not (Test-Path -LiteralPath $ResultsFile)) { Write-Output "ERROR: -ResultsFile not found: $ResultsFile"; Write-Output 'STATUS: ERROR'; exit 2 }
     $all = @(Get-Content -LiteralPath $ResultsFile)
     if ($all.Count -lt 2) { Write-Output 'ERROR: results file has no rows'; Write-Output 'STATUS: EMPTY'; exit 1 }

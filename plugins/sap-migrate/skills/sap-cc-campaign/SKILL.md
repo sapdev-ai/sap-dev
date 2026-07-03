@@ -346,7 +346,7 @@ Recommendation logic (the helper encodes this; documented here as the contract):
 |---|---|
 | `state.tsv` empty | `/sap-cc-inventory --campaign <id>` |
 | Objects `INVENTORIED`, no `decision` set | `/sap-cc-usage --campaign <id>` → then **GATE: scope sign-off** |
-| `human_gates.scope_signoff` and scope not yet approved | **PAUSE** — present scope summary; wait for operator approval |
+| `human_gates.scope_signoff` and scope not yet approved | **BLOCKED** (exit `3`) — the helper refuses to release the analyze step. Present the scope summary, get the operator decision, record it (`signoff --gate scope_signoff`), re-run `next` |
 | `REMEDIATE` objects not yet `ANALYZED` | `/sap-cc-analyze --campaign <id>` |
 | `ANALYZED` not yet `TRIAGED` | `/sap-cc-triage --campaign <id>` |
 | `TRIAGED` R1 objects not yet `REMEDIATED` | `/sap-cc-remediate apply --campaign <id>` (R1 dry-run) → **GATE: dry-run review** → deploy the approved diffs via the workbench skills, then `/sap-cc-remediate record` |
@@ -363,12 +363,27 @@ from the DONE check, so the campaign still converges (DONE notes `(<n> skipped:
 no ATC category)`). They remain visible as `SCOPED` in `status`/`report`; the
 reason is in `analyze_skipped.tsv`.
 
-The helper prints exactly one line:
-`NEXT: skill=<skill-or-DONE-or-PAUSE> reason=<short> [gate=<scope_signoff|dryrun_review>]`
+The helper prints exactly one line on success:
+`NEXT: skill=<skill-or-MANUAL-or-DONE> reason=<short> [gate=<scope_signoff|dryrun_review> gate_status=<APPROVED|PENDING|REJECTED>]`
+
+**Human gates are enforced in code, not just by convention:**
+
+- `gate=scope_signoff` with no APPROVED sign-off in `campaign.json.signoffs[]`
+  → the helper prints
+  `BLOCKED: gate=scope_signoff status=<PENDING|REJECTED> skill=<held> reason=<short>`
+  (+ an `INFO:` line with the exact signoff command) and exits `3`. Present the
+  scope to the operator, record the decision via the `signoff` subcommand
+  (Step 6), then re-run `next`.
+- `gate=dryrun_review` is NOT blocked at `next` (the dry-run must run to
+  produce the diffs the operator reviews — blocking here would be circular).
+  It is surfaced as `gate_status=PENDING` and hard-enforced downstream:
+  `sap_cc_remediate.ps1 -Action record` refuses (`BLOCKED`, exit `3`) to mark
+  campaign progress until the review sign-off is APPROVED.
 
 Surface that recommendation to the operator. **Never auto-run a downstream
-write skill past a gate** — at a gate, stop and ask for explicit approval.
-Exit `0`.
+write skill past a gate** — at a gate, stop and ask for explicit approval;
+the helpers enforce this even if a caller forgets.
+Exit `0`, or `3` when BLOCKED.
 
 ---
 
@@ -390,9 +405,12 @@ powershell -ExecutionPolicy Bypass -File "<SKILL_DIR>\references\sap_cc_campaign
   that isn't in `human_gates` is still recorded and shown (extra approval).
 - The helper stamps today's date, validates `campaign.json` re-parses after the
   write, and prints `SIGNOFF: gate=<g> status=<s> owner=<o> date=<d>`.
-- This is a **governance record**, not an enforcement gate: it does not unblock
-  `next` (the operator still approves interactively at the gate). It makes "who
-  approved what, when" visible on the dashboard.
+- This is both the **governance record and the enforcement input**: `next`
+  refuses (`BLOCKED`, exit `3`) to release the analyze step until
+  `scope_signoff` is APPROVED here, and `sap_cc_remediate.ps1 -Action record`
+  refuses to mark progress until `dryrun_review` is APPROVED. Record the
+  operator's explicit decision here, then re-run the blocked command. It also
+  makes "who approved what, when" visible on the dashboard.
 
 Exit `0` on success; `2` on missing `--gate` or workspace I/O failure.
 
