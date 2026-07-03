@@ -554,6 +554,19 @@ row per FM parameter:
 FM_NAME   SECTION   PARAM_NAME   OPTIONAL   TYPE_REF   TYPE_KIND
 ```
 
+Row 0 is a header; data rows follow. **`SECTION` is in CALLER perspective** —
+the keyword the calling ABAP writes in `CALL FUNCTION`, already flipped from
+the FM's own interface direction by `sap_rfc_lookup_fm.ps1`. So an FM IMPORT
+parameter is stored under `EXPORTING` and an FM EXPORT parameter under
+`IMPORTING` (e.g. `BAPI_MATERIAL_SAVEDATA HEADDATA` → `EXPORTING`, `RETURN` →
+`IMPORTING`). The contract lint (`scripts/lint-abap-contract.mjs`) and
+`sap_check_fm.vbs` compare this column **directly** against the caller keyword
+with no further flip. Consequence for diagnosis: a `CALLFUNC_WRONG_SECTION` on
+code that activates and passes ATC is a **flipped signature snapshot** (a
+stale/legacy FM cache — purged via the `.cache_format` marker), NOT a linter
+that "forgot to flip". Do not make the lint direction-aware; that inverts a
+correct contract (`selftestDirection()` locks both halves).
+
 `TYPE_REF` is the actual SAP type the formal parameter expects (e.g.
 `STRING`, `RLGRAP-FILENAME`, `BAPI_MARA`, `MATNR`). `TYPE_KIND` is
 `TAB` / `TDEF` / `TYP` / "" (none / exception).

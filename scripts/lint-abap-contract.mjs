@@ -448,6 +448,18 @@ function checkAuthz(text, parsed, fileName, fixtureMode) {
 // Parse _fm_signatures.txt content -> { byFm: Map(fm -> Map(param -> section)),
 // unavailable: Set(fm) }. UNAVAILABLE/NOT_FOUND section rows mark an FM whose
 // signature could not be resolved.
+//
+// DIRECTION CONTRACT: the SECTION column is in CALLER perspective -- the exact
+// keyword the calling ABAP writes in CALL FUNCTION. An FM IMPORT parameter
+// (e.g. BAPI_MATERIAL_SAVEDATA HEADDATA) is stored under EXPORTING; an FM
+// EXPORT parameter (e.g. RETURN) under IMPORTING. The producer
+// (shared/scripts/sap_rfc_lookup_fm.ps1) already performs that flip when it
+// reads RPY_FUNCTIONMODULE_READ_NEW, so checkCallFunction below compares this
+// column DIRECTLY against the caller keyword with NO further flip. Do NOT make
+// the comparison direction-aware to "fix" a wrong-section false positive: that
+// mis-diagnosis inverts a correct contract. A flipped snapshot is a PRODUCER
+// bug (stale/legacy cache) -- see selftestDirection().
+// Row 0 is the header (FM_NAME\tSECTION\t...); parsing starts at row 1.
 function parseFmSignatures(content) {
   const byFm = new Map();
   const unavailable = new Set();
@@ -739,11 +751,79 @@ function selftestFixture() {
   return failures;
 }
 
+// Direction self-test: locks the _fm_signatures.txt SECTION-column contract as
+// CALLER perspective. A real BAPI_MATERIAL_SAVEDATA call passes HEADDATA under
+// EXPORTING (it is the FM's IMPORT param) and receives RETURN under IMPORTING
+// (the FM's EXPORT param). The linter compares the snapshot SECTION directly
+// against the caller keyword with NO flip, so:
+//   (a) a CALLER-perspective snapshot MUST lint clean (0 CALLFUNC_* findings),
+//   (b) an FM-interface (flipped) snapshot MUST fire CALLFUNC_WRONG_SECTION for
+//       every parameter.
+// Half (a) is the regression the 2026-07-03 build hit (a stale/legacy cache put
+// the work-folder snapshot in FM-interface direction -> 11x false wrong-section).
+// Half (b) gives the test teeth: it fails if a producer regresses the direction
+// OR if someone "fixes" the linter by making the comparison direction-aware
+// (the abap-developer misdiagnosis). The clean case also asserts zero
+// CALLFUNC_UNKNOWN_PARAM, which proves the header row was skipped and BOTH data
+// rows were actually parsed (guards the producer's leading-header contract).
+function selftestDirection() {
+  const abap = [
+    'REPORT zdir.',
+    'START-OF-SELECTION.',
+    "  CALL FUNCTION 'BAPI_MATERIAL_SAVEDATA'",
+    '    EXPORTING headdata = ls_head',
+    '    IMPORTING return = ls_return.',
+  ].join('\n');
+  const H = 'FM_NAME\tSECTION\tPARAM_NAME\tOPTIONAL\tTYPE_REF\tTYPE_KIND';
+  const callerPerspective = [
+    H,
+    'BAPI_MATERIAL_SAVEDATA\tEXPORTING\tHEADDATA\t\tBAPIMATHEAD\tTDEF',
+    'BAPI_MATERIAL_SAVEDATA\tIMPORTING\tRETURN\t\tBAPIRET2\tTDEF',
+  ].join('\n');
+  const fmInterfaceFlipped = [
+    H,
+    'BAPI_MATERIAL_SAVEDATA\tIMPORTING\tHEADDATA\t\tBAPIMATHEAD\tTDEF',
+    'BAPI_MATERIAL_SAVEDATA\tEXPORTING\tRETURN\t\tBAPIRET2\tTDEF',
+  ].join('\n');
+
+  const runs = [
+    { name: 'direction: caller-perspective snapshot -> clean', fm: callerPerspective, wantWrongSection: 0 },
+    { name: 'direction: FM-interface (flipped) snapshot -> WRONG_SECTION x2', fm: fmInterfaceFlipped, wantWrongSection: 2 },
+  ];
+
+  let failures = 0;
+  for (const r of runs) {
+    const dir = mkdtempSync(join(tmpdir(), 'lintdir-'));
+    try {
+      const abapPath = join(dir, 'ZDIR.abap');
+      writeFileSync(abapPath, abap, 'utf8');
+      writeFileSync(join(dir, '_fm_signatures.txt'), r.fm, 'utf8');
+      const { findings } = lintFile(abapPath, dir, { fixture: true });
+      const wrongSection = findings.filter(f => f.rule === 'CALLFUNC_WRONG_SECTION').length;
+      const unknownParam = findings.filter(f => f.rule === 'CALLFUNC_UNKNOWN_PARAM').length;
+      // Clean case: also no UNKNOWN_PARAM (both rows parsed past the header).
+      const ok = wrongSection === r.wantWrongSection && (r.wantWrongSection > 0 || unknownParam === 0);
+      if (!ok) {
+        failures++;
+        console.log(`SELFTEST FAIL: ${r.name}`);
+        console.log(`  expected CALLFUNC_WRONG_SECTION=${r.wantWrongSection} got=${wrongSection}; CALLFUNC_UNKNOWN_PARAM got=${unknownParam}`);
+        for (const f of findings) console.log(`    ${f.severity} ${f.rule} @${f.line}: ${f.detail}`);
+      } else {
+        console.log(`SELFTEST ok: ${r.name}`);
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+  return failures;
+}
+
 function selftest() {
   const f1 = selftestSource();
   const f2 = selftestFixture();
-  const total = f1 + f2;
-  const cases = 9 + 3;
+  const f3 = selftestDirection();
+  const total = f1 + f2 + f3;
+  const cases = 9 + 3 + 2;
   console.log(`SELFTEST-SUMMARY: ${cases - total}/${cases} cases passed`);
   return total === 0 ? 0 : 1;
 }

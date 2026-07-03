@@ -14,10 +14,23 @@ Validates ABAP source code quality before deployment.
 
 ## SAP RFCs Used (Online Mode)
 
-| FM | Purpose |
-|---|---|
-| `DDIF_FIELDINFO_GET` | Determine if type is a structure; get field list; validate SQL table fields |
-| `DDIF_DTEL_GET` | Resolve data element to underlying built-in type |
+Type-existence classification is delegated to the shared sidecar helper
+`sap-dev-core/shared/scripts/sap_rfc_lookup_ddic.ps1`, which resolves each
+unknown type name through this chain (first hit wins) and returns a kind the
+VBS maps to `STRUCT` / `TTYP` / `DTEL` / `DOMAIN` / `CLASS` / `UNKNOWN`:
+
+| RFC / catalog | Resolves to | Purpose |
+|---|---|---|
+| `DDIF_FIELDINFO_GET` | `STRUCT` | Structure / transparent-pool-cluster table; also drives the field list for SQL-field validation |
+| `DD40L` (`RFC_READ_TABLE`) | `TTYP` | **Table type** (e.g. `FILETABLE` for `CL_GUI_FRONTEND_SERVICES=>gui_upload`) — resolves row type / row kind |
+| `DD04L` (`RFC_READ_TABLE`) | `DTEL` | Data element → underlying built-in type |
+| `DD01L` (`RFC_READ_TABLE`) | `DOMAIN` | Domain used directly as a type |
+| `SEOCLASS` (`RFC_READ_TABLE`) | `CLASS` | Global class / interface (reached via `TYPE REF TO`) |
+
+`DDIF_FIELDINFO_GET` raises `NOT_FOUND` for everything except structures and
+transparent/pool/cluster tables, so table types, data elements, domains, and
+classes each need their dedicated catalog table — the checker must not report
+`TYPE_NOT_FOUND` merely because a name isn't a structure.
 
 ## Usage
 

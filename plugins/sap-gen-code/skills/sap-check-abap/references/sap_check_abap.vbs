@@ -44,8 +44,16 @@ Dim DDIC_REQUEST_FILE   : DDIC_REQUEST_FILE   = "%%DDIC_REQUEST_FILE%%"
 Dim DDIC_RESULT_FILE    : DDIC_RESULT_FILE    = "%%DDIC_RESULT_FILE%%"
 
 ' --- Type kind constants ---
+' These string values MUST match the kind tokens emitted by the DDIC sidecar
+' helper sap_rfc_lookup_ddic.ps1 (STRUCT / TTYP / DTEL / DOMAIN / CLASS /
+' UNKNOWN). Any resolved kind the helper returns but this VBS fails to map is
+' folded to TK_UNKNOWN in the Phase-4 parse loop below, which then drives a
+' false TYPE_NOT_FOUND in Phase 5b.
 Const TK_STRUCT  = "STRUCT"
 Const TK_DTEL    = "DTEL"
+Const TK_TTYP    = "TTYP"      ' DD40L table type (e.g. FILETABLE)
+Const TK_DOMAIN  = "DOMAIN"    ' DD01L domain used directly as a type
+Const TK_CLASS   = "CLASS"     ' SEOCLASS global class / interface (TYPE REF TO)
 Const TK_BUILTIN = "BUILTIN"
 Const TK_UNKNOWN = "UNKNOWN"
 
@@ -1647,6 +1655,20 @@ If SAP_SERVER <> "" And DDIC_HELPER_PS1 <> "" Then
                             ' helper returns "DT:LEN:DEC"; preserve just DT for legacy g_typeDtel
                             Dim dp : dp = Split(dat, ":")
                             If UBound(dp) >= 0 Then g_typeDtel(nm) = dp(0)
+                        ElseIf kd = TK_TTYP Or kd = TK_DOMAIN Or kd = TK_CLASS Then
+                            ' Resolved DDIC kinds the sidecar helper returns beyond
+                            ' STRUCT/DTEL: TTYP (DD40L table type, e.g. FILETABLE for
+                            ' CL_GUI_FRONTEND_SERVICES=>gui_upload), DOMAIN (DD01L),
+                            ' CLASS (SEOCLASS class/interface, reached via TYPE REF TO).
+                            ' Store the kind verbatim so Phase 5b treats it as KNOWN.
+                            ' Without this branch these fall into the Else below, get
+                            ' marked TK_UNKNOWN, and drive a false TYPE_NOT_FOUND.
+                            ' Regression: `DATA lt_files TYPE filetable.` -- class 4 of
+                            ' the known false-positive set; confirmed on EC2 2026-07-03
+                            ' during the MaterialUpload A3 build (FILETABLE = 1 row in
+                            ' DD40L). The helper already resolved DD40L correctly; this
+                            ' VBS consumer was silently discarding the result.
+                            g_typeKind(nm) = kd
                         Else
                             g_typeKind(nm) = TK_UNKNOWN
                             g_tblFieldValid(nm) = False
@@ -1669,7 +1691,17 @@ If SAP_SERVER <> "" And DDIC_HELPER_PS1 <> "" Then
             If g_dKind(ui) = DK_VARIABLE Then
                 Dim uBase : uBase = ExtractBaseType(g_dType(ui))
                 If g_typeKind.Exists(uBase) Then
-                    If g_typeKind(uBase) = TK_STRUCT Then g_dKind(ui) = DK_STRUCTURE
+                    If g_typeKind(uBase) = TK_STRUCT Then
+                        g_dKind(ui) = DK_STRUCTURE
+                    ElseIf g_typeKind(uBase) = TK_TTYP Then
+                        ' A DDIC table type (DD40L, e.g. FILETABLE) makes the
+                        ' variable an internal table: reclassify DK_VARIABLE ->
+                        ' DK_TABLE so the naming check expects the lt_/gt_ prefix,
+                        ' not lv_. Without this, `DATA lt_files TYPE filetable.`
+                        ' also draws a false NAMING warning ("prefix lt_ expected
+                        ' lv_") on top of the TYPE_NOT_FOUND fixed above.
+                        g_dKind(ui) = DK_TABLE
+                    End If
                 End If
             End If
         Next

@@ -29,11 +29,26 @@
 #   %%REFRESH_CACHE%%  "true" to force re-fetch all (ignore cache)
 #   %%RFC_LIB_PS1%%    Absolute path to sap_rfc_lib.ps1
 #
-# Output TSV row format (one row per parameter, may be many per FM):
+# Output TSV format: ONE header row (row 0), then one row per parameter
+# (may be many per FM):
 #   FM_NAME<TAB>SECTION<TAB>PARAM_NAME<TAB>OPTIONAL<TAB>TYPE_REF<TAB>TYPE_KIND
 #     SECTION   = EXPORTING | IMPORTING | CHANGING | TABLES | EXCEPTIONS
 #     OPTIONAL  = " " (mandatory) or "X" (optional)
 #     TYPE_KIND = TAB | TDEF | TYP | "" (none / exception)
+#
+# *** SECTION is written in CALLER perspective (the keyword the calling ABAP
+# *** uses in CALL FUNCTION), NOT the FM's own interface direction. So an FM
+# *** IMPORT parameter (e.g. BAPI_MATERIAL_SAVEDATA HEADDATA) is emitted under
+# *** EXPORTING, and an FM EXPORT parameter (e.g. RETURN) under IMPORTING --
+# *** see the $sections table below. This is a load-bearing contract: the two
+# *** consumers (scripts/lint-abap-contract.mjs and sap_check_fm.vbs) compare
+# *** this SECTION column DIRECTLY against the caller's CALL FUNCTION keyword
+# *** with NO direction flip. Do not "simplify" it to FM-interface direction
+# *** or you reintroduce the 11x false CALLFUNC_WRONG_SECTION lint (2026-07-03).
+#
+# The header row exists so a consumer that skips row 0 (the linter does) parses
+# every data row. Legacy caches predating this contract are auto-purged via the
+# per-system format marker (.cache_format) so they can never poison the output.
 #
 # Plus a special row when the FM doesn't exist on the server:
 #   FM_NAME<TAB>NOT_FOUND<TAB><TAB><TAB><TAB>
@@ -55,6 +70,21 @@ $ErrorActionPreference = 'Continue'
 # (typically HEADDATA on BAPI_*_SAVEDATA family). Bug surfaced 2026-05-11
 # during MaterialUpload_JA build.
 $Utf8NoBom = New-Object System.Text.UTF8Encoding $false
+
+# Canonical header row for the concatenated RESULT_FILE. Consumers (the CI
+# lint scripts/lint-abap-contract.mjs, sap_check_fm.vbs) treat row 0 as the
+# header and start parsing at row 1, so RESULT_FILE MUST lead with this line
+# or the first FM's first parameter is silently dropped. Per-FM cache .tsv
+# files stay headerless (one is concatenated per requested FM); the header is
+# prepended once, here, to the assembled RESULT_FILE.
+$FM_SIG_HEADER = "FM_NAME`tSECTION`tPARAM_NAME`tOPTIONAL`tTYPE_REF`tTYPE_KIND"
+
+# Cache-format contract version. Bump when the per-FM .tsv shape or the SECTION
+# perspective changes. A per-system marker file ({cacheBase}\.cache_format)
+# records the version the cached files were written under; on mismatch/absence
+# the stale files are purged and re-fetched, so a pre-contract (e.g. FM-interface
+# direction) cache can never be concatenated as-is into a new build's output.
+$CACHE_FORMAT_VERSION = 2
 
 # ---- Inputs -----------------------------------------------------------------
 $REQUEST_FILE  = "%%REQUEST_FILE%%"
@@ -78,7 +108,7 @@ foreach ($line in Get-Content -LiteralPath $REQUEST_FILE) {
 }
 $requestedNames = $requestedNames | Select-Object -Unique
 if ($requestedNames.Count -eq 0) {
-    Set-Content -LiteralPath $RESULT_FILE -Value "" -Encoding UTF8
+    [System.IO.File]::WriteAllText($RESULT_FILE, $FM_SIG_HEADER + "`r`n", $Utf8NoBom)
     Write-Host "INFO: No FM names to look up."
     exit 0
 }
@@ -91,13 +121,37 @@ if (-not (Test-Path $cacheBase)) {
     Write-Host "INFO: Created cache dir: $cacheBase"
 }
 
+# ---- Cache-format guard -----------------------------------------------------
+# Purge any cache written under a prior contract version (or an unmarked legacy
+# cache) BEFORE triage, so a stale-direction / headerless .tsv can never be
+# served. Unconditional purge is safe: the files regenerate on the next fetch,
+# and stale-FORMAT data is poison we would rather drop than concatenate. When
+# RFC is up the requested FMs are re-fetched below and the marker is re-stamped;
+# when RFC is down the affected FMs fall through to UNAVAILABLE rows (which the
+# lint treats as an honest skip) instead of flipped signatures.
+$fmtMarkerPath = Join-Path $cacheBase ".cache_format"
+$cacheFormatStale = $true
+if (Test-Path $fmtMarkerPath) {
+    try {
+        $marker = ([string](Get-Content -Raw -LiteralPath $fmtMarkerPath)).Trim()
+        if ($marker -eq [string]$CACHE_FORMAT_VERSION) { $cacheFormatStale = $false }
+    } catch { }
+}
+if ($cacheFormatStale) {
+    Write-Host "INFO: FM cache format marker missing/stale in $cacheBase -- purging prior-format cache (guarantees caller-perspective signatures)."
+    try {
+        Get-ChildItem -LiteralPath $cacheBase -Filter *.tsv -ErrorAction SilentlyContinue |
+            Remove-Item -Force -ErrorAction SilentlyContinue
+    } catch { }
+}
+
 function Get-TtlDays($fmName) {
     if ($fmName.StartsWith("Z") -or $fmName.StartsWith("Y")) { return $TTL_Z_DAYS }
     return $TTL_STD_DAYS
 }
 
 function Test-CacheHit($fmName) {
-    if ($REFRESH_CACHE) { return $false }
+    if ($REFRESH_CACHE -or $cacheFormatStale) { return $false }
     $path = Join-Path $cacheBase ($fmName + ".tsv")
     if (-not (Test-Path $path)) { return $false }
     $age  = (Get-Date) - (Get-Item $path).LastWriteTime
@@ -133,6 +187,13 @@ if ($misses.Count -gt 0) {
         $missesUnreachable = @()
     }
 
+    # CALLER-PERSPECTIVE MAPPING -- Sect is the keyword the CALLING ABAP writes,
+    # which is the OPPOSITE of the FM's own interface tab:
+    #   FM IMPORT_PARAMETER  (FM receives) -> caller writes it under EXPORTING
+    #   FM EXPORT_PARAMETER  (FM returns)  -> caller reads  it under IMPORTING
+    # e.g. BAPI_MATERIAL_SAVEDATA: HEADDATA (IMPORT_PARAMETER) -> EXPORTING,
+    #      RETURN (EXPORT_PARAMETER) -> IMPORTING. Do NOT flip Sect<->Tab: the
+    # linter + sap_check_fm.vbs compare Sect directly against the caller keyword.
     $sections = @(
         @{ Sect = "EXPORTING";  Tab = "IMPORT_PARAMETER";   IsExc = $false },
         @{ Sect = "IMPORTING";  Tab = "EXPORT_PARAMETER";   IsExc = $false },
@@ -192,15 +253,27 @@ if ($misses.Count -gt 0) {
 
         # Write per-FM cache file (atomic-ish: write then move).
         # No BOM -- see header note; downstream VBS reads as plain ASCII.
+        # Headerless by design: the single RESULT_FILE header is prepended once
+        # during concatenation below, not per cache file.
         $cachePath = Join-Path $cacheBase ($fm + ".tsv")
         [System.IO.File]::WriteAllText($cachePath, $fmContent.ToString(), $Utf8NoBom)
+    }
+
+    # Stamp the cache-format marker now that the freshly-fetched files are in
+    # the current contract version. Only when RFC actually connected ($g_dest)
+    # -- an RFC-down run must leave a stale marker so the next healthy run heals.
+    if ($g_dest) {
+        try { [System.IO.File]::WriteAllText($fmtMarkerPath, [string]$CACHE_FORMAT_VERSION, $Utf8NoBom) } catch { }
     }
 
     Disconnect-SapRfc
 }
 
 # ---- Concatenate all requested FMs (cache hits + freshly fetched) into RESULT
+# Lead with the canonical header row: consumers skip row 0, so without it the
+# first FM's first parameter would be silently dropped by the lint.
 $out = New-Object System.Text.StringBuilder
+[void]$out.AppendLine($FM_SIG_HEADER)
 $writtenFms = @()
 $missingFms = @()
 foreach ($fm in $requestedNames) {

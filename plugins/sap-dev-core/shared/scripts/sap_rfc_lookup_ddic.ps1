@@ -43,6 +43,19 @@ $ErrorActionPreference = 'Continue'
 $REQUEST_FILE  = "%%REQUEST_FILE%%"
 $RESULT_FILE   = "%%RESULT_FILE%%"
 
+# Result TSV MUST be written as BOM-less UTF-8. Both [System.Text.Encoding]::UTF8
+# and Set-Content -Encoding UTF8 (Windows PowerShell 5.1) prepend a UTF-8 BOM
+# (EF BB BF). The VBS consumers (sap_check_abap.vbs / sap_check_fm.vbs) read this
+# file in ASCII / ANSI mode (OpenTextFile Tristate 0), so those 3 bytes decode as
+# garbage glued to the FIRST token of the FIRST line -- corrupting the first DDIC
+# name of every batch so it never matches g_typeKind, silently dropping it (a
+# genuine typo in the first-declared type slips through). The payload is pure
+# ASCII, so no BOM is needed. Under a CJK ANSI codepage (e.g. cp932) the 3 BOM
+# bytes do not even decode to the 3 chars 0xEF/0xBB/0xBF, so a consumer-side
+# Left(line,3) BOM strip is unreliable -- fixing it at the producer here is the
+# codepage-agnostic solution.
+$utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+
 if (-not (Test-Path $REQUEST_FILE)) { Write-Host "ERROR: Request file not found: $REQUEST_FILE"; exit 1 }
 $names = @()
 foreach ($line in Get-Content -LiteralPath $REQUEST_FILE) {
@@ -50,7 +63,7 @@ foreach ($line in Get-Content -LiteralPath $REQUEST_FILE) {
     if ($n -ne "") { $names += $n.ToUpper() }
 }
 if ($names.Count -eq 0) {
-    Set-Content -LiteralPath $RESULT_FILE -Value "" -Encoding UTF8
+    [System.IO.File]::WriteAllText($RESULT_FILE, "", $utf8NoBom)
     Write-Host "INFO: No names to look up."
     exit 0
 }
@@ -66,7 +79,7 @@ $g_dest = Connect-SapRfc -Server   "%%SAP_SERVER%%" `
                          -Language "%%SAP_LANGUAGE%%" `
                          -DestName "SAPDEV_DDIC"
 if (-not $g_dest) {
-    Set-Content -LiteralPath $RESULT_FILE -Value "" -Encoding UTF8
+    [System.IO.File]::WriteAllText($RESULT_FILE, "", $utf8NoBom)
     exit 1
 }
 
@@ -200,7 +213,7 @@ foreach ($name in $names) {
     [void]$sb.AppendLine("${name}`t${resKind}`t${resData}")
 }
 
-[System.IO.File]::WriteAllText($RESULT_FILE, $sb.ToString(), [System.Text.Encoding]::UTF8)
+[System.IO.File]::WriteAllText($RESULT_FILE, $sb.ToString(), $utf8NoBom)
 try { [SAP.Middleware.Connector.RfcDestinationManager]::RemoveDestination($g_rfcParams) | Out-Null } catch {}
 Write-Host "INFO: Lookup written to $RESULT_FILE"
 exit 0

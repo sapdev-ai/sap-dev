@@ -4,6 +4,54 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **`/sap-check-abap` false `TYPE_NOT_FOUND` on DDIC table types (DD40L) —
+  class 4 of the known false-positive set.** `DATA lt_files TYPE filetable.`
+  (FILETABLE = the standard table type for `CL_GUI_FRONTEND_SERVICES=>gui_upload`,
+  1 row in DD40L on the ERP system) was flagged as an unknown type. The DDIC
+  sidecar helper `sap_rfc_lookup_ddic.ps1` already resolved DD40L correctly
+  (returning kind `TTYP`); the defect was in the VBS **consumer**
+  `sap_check_abap.vbs`, whose result-parse loop mapped only `STRUCT`/`DTEL` and
+  folded every other resolved kind (`TTYP` table type, `DOMAIN`, `CLASS`) into the
+  `Else` → `TK_UNKNOWN` branch, driving a false `TYPE_NOT_FOUND` in Phase 5b. Added
+  `TK_TTYP`/`TK_DOMAIN`/`TK_CLASS` constants + a parse-loop branch that stores those
+  resolved kinds as KNOWN, and reclassified a `TTYP`-typed variable to `DK_TABLE`
+  — which also removes a *secondary* false `NAMING` warning (`lt_files` was
+  classified `DK_VARIABLE` → wrongly expected `lv_`). Documented in the skill's
+  "ABAP Parsing Limitations" + the README RFC-lookup table. Verified end-to-end
+  against the real edited VBS with a stubbed DDIC helper (A/B vs. reverted code:
+  `FILETABLE` / `ZDOMAIN_X` / `CL_GUI_FRONTEND_SERVICES` all flip from false
+  `TYPE_NOT_FOUND` to `TYPE_RESOLVED`, while a genuinely non-existent type stays
+  flagged — no over-suppression). Found on the MaterialUpload A3 build
+  (EC2, `ZMMRMAT0A3R01`, 2026-07-03).
+
+- **DDIC lookup sidecar `sap_rfc_lookup_ddic.ps1` wrote its result TSV with a
+  UTF-8 BOM — corrupting the FIRST batched type/table name for every consumer.**
+  A separate latent bug found while fixing the DD40L/TTYP false-positive above.
+  The helper wrote the result with `[System.IO.File]::WriteAllText(…,
+  [System.Text.Encoding]::UTF8)` (and the two empty-result paths with
+  `Set-Content -Encoding UTF8`), both of which emit a UTF-8 BOM (`EF BB BF`) under
+  the 32-bit Windows PowerShell 5.1 the helper runs on. Both VBS consumers read the
+  file in ASCII/ANSI mode (`OpenTextFile(…, 1, False, 0)`) **without** stripping a
+  BOM — `sap_check_abap.vbs` (line 1639) and `sap_check_fm.vbs`'s **DDIC** reader
+  (line 648; note its *FM* reader at line 542 already strips one). The 3 BOM bytes
+  decode as garbage glued to the first line's first token — on the cp932 (ja-JP)
+  test host, `FILETABLE` became `・ｿFILETABLE` (`U+30FB U+FF7F …`) — so it never
+  matches `g_typeKind`, and Phase 5b's `If g_typeKind.Exists(tvBase)` (no `Else`)
+  silently skips it: a genuine typo in the **first-declared** type/table slips
+  through (false negative). Online-mode only (offline skips Phase 4); deterministic
+  (batch order = source-declaration order). Fixed at the producer — the result TSV
+  (payload **and** both empty-result paths) is now written as BOM-less UTF-8 via
+  `New-Object System.Text.UTF8Encoding($false)`. Producer fix is codepage-agnostic:
+  a consumer-side `Left(line,3)=Chr(&HEF)&Chr(&HBB)&Chr(&HBF)` strip would **not**
+  match on cp932 (the bytes decode to `U+30FB U+FF7F`, not `EF BB BF`), so the BOM
+  is removed at the source rather than patched per-reader. Verified offline on the
+  real runtime (32-bit WinPS 5.1, cp932, 32-bit cscript): with a BOM the first
+  token reads `・ｿFILETABLE` (no match); BOM-less it reads `FILETABLE` (match).
+  `sap-check-fm` benefits from the same source fix. (task_dcc17d69,
+  `temp/testReport/ddic_lookup_bom_fix_20260703.md`.)
+
 ## [0.7.0] — 2026-07-03
 
 Customer-pain release built on the 2026-07-03 reviews
