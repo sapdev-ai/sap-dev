@@ -1,6 +1,6 @@
 {
   "name": "sap-migrate",
-  "version": "0.6.9",
+  "version": "0.7.0",
   "description": "S/4HANA custom-code migration engine: run a brownfield conversion as a tracked campaign — inventory custom (Z/Y) objects, flag unused code for decommission, run the S/4HANA-readiness ATC, triage findings, and remediate mechanical changes at scale on a sandbox. Companion to sap-dev-core (install that first).",
   "author": {
     "name": "KexiHe",

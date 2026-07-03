@@ -4,10 +4,18 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
-Fix wave for the 2026-07-03 post-fix review
-(`temp/testReport/plugin_skill_review_20260703.md`) — parallel-run safety,
-code-enforced migration gates, credential hygiene, and enterprise-adoption
-documentation.
+## [0.7.0] — 2026-07-03
+
+Customer-pain release built on the 2026-07-03 reviews
+(`temp/testReport/plugin_skill_review_20260703.md` + `…_pm.md`). Headlines: the
+S/4HANA migration campaign gains **execution + assurance** — `/sap-cc-decommission`
+(retire unused code behind a signed, audited ledger), a WORKLOAD usage fallback,
+landscape-drift detection, a unit-test exit gate, scripted `revert`, and batched ATC;
+**enterprise-adoption hardening** — a machine authorization probe, `docs/security.md`,
+code-enforced migration governance gates, and a closed credential crash-window;
+golden-screen drift coverage 8→120; and the first **clean-core codegen lane**,
+`/sap-gen-cds` (ADT-free CDS view generation, live-verified on S/4HANA 7.54 + 7.57).
+Also parallel-run safety (two-bucket temp complete) and shared RFC-read hardening.
 
 ### Added
 
@@ -356,7 +364,7 @@ documentation.
   zero-consumer dead code (untouched since v0.1.0; its CLAUDE.md row falsely
   claimed five deploy-skill consumers — TR validation moved into
   `/sap-transport-request` long ago): **deleted**, row removed.
-- README: grouped index of all 78 skills, "Current Limitations (v0.6.9)"
+- README: grouped index of all 80 skills, "Current Limitations (v0.7.0)"
   section, Windows-only prominence, install-order and settings-precedence
   notes; installation guide prerequisites hardened (server-side
   `sapgui/user_scripting` with Basis wording, Python requirement,

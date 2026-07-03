@@ -11,7 +11,7 @@ via SAP NCo); there is no macOS/Linux path.
 
 Project home: <https://sapdev.ai>
 
-## Available Plugins (4 plugins · 78 skills · 2 agents · v0.6.9)
+## Available Plugins (4 plugins · 80 skills · 2 agents · v0.7.0)
 
 | Plugin | Skills | Description |
 |--------|--------|-------------|
@@ -22,7 +22,7 @@ Project home: <https://sapdev.ai>
 
 ## Skill Index
 
-All 78 skills, grouped by task (all names are `/`-invocable in Claude Code;
+All 80 skills, grouped by task (all names are `/`-invocable in Claude Code;
 skills outside sap-dev-core are tagged with their plugin):
 
 - **Session & environment** — `sap-login`, `sap-doctor`, `sap-dev-init`,
@@ -58,7 +58,7 @@ skills outside sap-dev-core are tagged with their plugin):
   `sap-cc-learn`
 - **Test data (sap-tcd)** — `sap-bp`, `sap-mm01`, `sap-va01`
 
-## Current Limitations (v0.6.9)
+## Current Limitations (v0.7.0)
 
 Honest list of shipped-but-bounded functionality — these fail **loud**, not
 silent:

@@ -1,6 +1,6 @@
 {
   "name": "sap-tcd",
-  "version": "0.6.9",
+  "version": "0.7.0",
   "description": "SAP transaction automation for business processes: Business Partner (BP), Material Master (MM01), and Sales Order (VA01) management. Companion to sap-dev-core (install that first — its shared scripts are required at runtime).",
   "author": {
     "name": "KexiHe",
