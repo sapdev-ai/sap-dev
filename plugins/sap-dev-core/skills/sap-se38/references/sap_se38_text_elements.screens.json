@@ -2,23 +2,23 @@
   "schema": "sapdev.screenbaseline/1",
   "vbs": "sap_se38_text_elements.vbs",
   "captured_on": {
-    "release": "",
-    "kernel": "",
-    "date": "",
-    "method": "static"
+    "release": "S/4HANA 1909",
+    "kernel": "754",
+    "date": "2026-07-03",
+    "method": "live"
   },
   "checkpoints": [
     {
       "id": "initial",
       "reach": { "okcode": "/nSE38" },
-      "identity": { "program": "", "dynpro": "" },
+      "identity": { "program": "SAPLWBABAP", "dynpro": "0100" },
       "required_ids": [
         "wnd[0]/tbar[0]/okcd",
         "wnd[0]/usr/ctxtRS38M-PROGRAMM",
         "wnd[0]/usr/radRS38M-FUNC_TEXT",
         "wnd[0]/usr/btnCHAP"
       ],
-      "status": "pending_live"
+      "status": "captured"
     },
     {
       "id": "textpool",
@@ -46,12 +46,10 @@
     },
     {
       "id": "tr_popup",
-      "reach": { "note": "conditional transport-request popup on Change/Save (wnd[1])" },
+      "reach": { "note": "conditional transport-request popup on Change/Save (wnd[1]); KO008-TRKORR is the 1909 popup - the VBS's ctxtKORR_TXT-REQ_NUM / ctxtKO007-L_REQ probes are cross-release fallbacks in an either/or chain and deliberately NOT required" },
       "identity": { "program": "", "dynpro": "" },
       "required_ids": [
-        "wnd[1]/usr/ctxtKO008-TRKORR",
-        "wnd[1]/usr/ctxtKORR_TXT-REQ_NUM",
-        "wnd[1]/usr/ctxtKO007-L_REQ"
+        "wnd[1]/usr/ctxtKO008-TRKORR"
       ],
       "status": "pending_live"
     },

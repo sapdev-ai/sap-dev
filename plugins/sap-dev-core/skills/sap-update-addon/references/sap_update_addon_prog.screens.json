@@ -2,21 +2,21 @@
   "schema": "sapdev.screenbaseline/1",
   "vbs": "sap_update_addon_prog.vbs",
   "captured_on": {
-    "release": "",
-    "kernel": "",
-    "date": "",
-    "method": "static"
+    "release": "S/4HANA 1909",
+    "kernel": "754",
+    "date": "2026-07-03",
+    "method": "live"
   },
   "checkpoints": [
     {
       "id": "initial",
       "reach": { "okcode": "/nSA38" },
-      "identity": { "program": "", "dynpro": "" },
+      "identity": { "program": "SAPMS38M", "dynpro": "0101" },
       "required_ids": [
         "wnd[0]/tbar[0]/okcd",
         "wnd[0]/usr/ctxtRS38M-PROGRAMM"
       ],
-      "status": "pending_live"
+      "status": "captured"
     },
     {
       "id": "selection",

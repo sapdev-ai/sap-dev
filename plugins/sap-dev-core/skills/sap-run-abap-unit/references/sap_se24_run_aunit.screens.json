@@ -2,21 +2,21 @@
   "schema": "sapdev.screenbaseline/1",
   "vbs": "sap_se24_run_aunit.vbs",
   "captured_on": {
-    "release": "",
-    "kernel": "",
-    "date": "",
-    "method": "static"
+    "release": "S/4HANA 1909",
+    "kernel": "754",
+    "date": "2026-07-03",
+    "method": "live"
   },
   "checkpoints": [
     {
       "id": "initial",
       "reach": { "okcode": "/nSE24" },
-      "identity": { "program": "", "dynpro": "" },
+      "identity": { "program": "SAPLSEOD", "dynpro": "1000" },
       "required_ids": [
         "wnd[0]/usr/ctxtSEOCLASS-CLSNAME",
         "wnd[0]/usr/btnPUSH_DISPLAY"
       ],
-      "status": "pending_live"
+      "status": "captured"
     },
     {
       "id": "class_editor",
@@ -30,14 +30,10 @@
     },
     {
       "id": "results",
-      "reach": { "note": "ABAP Unit result display after the run menu" },
+      "reach": { "note": "ABAP Unit result display after the run menu; the VBS probes 4 result-grid shell paths (usr/shell...shellcont[0], ...shellcont[1], cntlGRID1, wnd[0]/shellcont) in order until one binds - either/or candidates, only one exists per release, so none is required" },
       "identity": { "program": "", "dynpro": "" },
       "required_ids": [
-        "wnd[0]/sbar",
-        "wnd[0]/usr/shell/shellcont/shell/shellcont[1]/shell/shellcont[0]/shell",
-        "wnd[0]/usr/shell/shellcont/shell/shellcont[1]/shell/shellcont[1]/shell",
-        "wnd[0]/usr/cntlGRID1/shellcont/shell",
-        "wnd[0]/shellcont/shell"
+        "wnd[0]/sbar"
       ],
       "status": "pending_live"
     },

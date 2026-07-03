@@ -55,7 +55,17 @@ param(
 # sap_rfc_read_source.ps1 is a pure function library (no param() block, sets no
 # script-scope prefs -- safe to dot-source) and itself dot-sources sap_rfc_lib.ps1,
 # so this one include yields Connect-SapRfc / Disconnect-SapRfc / Read-SapAbapSource.
-. "$PSScriptRoot\sap_rfc_read_source.ps1"
+# It lives in sap-dev-core shared\scripts; this file sits in sap-se38\references
+# (3 levels below the plugin root) since the 2026-07-03 single-consumer
+# relocation -- a bare $PSScriptRoot sibling include no longer resolves, which
+# silently disabled the gate (every deploy soft-warned CONTENT_VERIFY:
+# UNAVAILABLE; caught live on S4D 2026-07-03). Fail LOUD if the lib moves again.
+$readSourceLib = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\..\shared\scripts\sap_rfc_read_source.ps1'))
+if (-not (Test-Path -LiteralPath $readSourceLib)) {
+    Write-Host "ERROR: shared read-source lib not found: $readSourceLib (content verify unavailable)"
+    exit 1
+}
+. $readSourceLib
 
 $name = $ObjectName.ToUpperInvariant()
 

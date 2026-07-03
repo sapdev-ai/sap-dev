@@ -58,6 +58,17 @@ documentation.
 
 ### Fixed
 
+- **SE38 content-verify gate silently disabled by the single-consumer
+  relocation.** `sap_se38_content_verify.ps1` kept a bare `$PSScriptRoot`
+  sibling include of `sap_rfc_read_source.ps1` after moving from
+  `shared/scripts/` to `sap-se38/references/` (2026-07-03), so every deploy
+  soft-warned `CONTENT_VERIFY: UNAVAILABLE` — the stale-paste false-success
+  gate was off. Caught live on S4D during the 2026-07-03 smoke (fixture
+  create surfaced the WARN); the include now resolves
+  `<plugin>\shared\scripts\` from the references dir and fails LOUD when the
+  lib is missing. Verified live: MATCH on a clean deploy, MISMATCH (exit 2,
+  first-diff line report) against a stale source. The other three scripts
+  relocated the same day carry no `$PSScriptRoot` includes (checked).
 - **Two-bucket temp model completed.** The last 15 skills writing fixed-name
   state/scratch under `{WORK_TEMP}` moved to `{RUN_TEMP}` (all 10 substantive
   sap-gen-code skills + sap-diagnose / se41 / se51 / snro / trace) — the

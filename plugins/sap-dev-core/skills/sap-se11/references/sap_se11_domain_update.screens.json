@@ -2,23 +2,23 @@
   "schema": "sapdev.screenbaseline/1",
   "vbs": "sap_se11_domain_update.vbs",
   "captured_on": {
-    "release": "",
-    "kernel": "",
-    "date": "",
-    "method": "static"
+    "release": "S/4HANA 1909",
+    "kernel": "754",
+    "date": "2026-07-03",
+    "method": "live"
   },
   "checkpoints": [
     {
       "id": "initial",
       "reach": { "okcode": "/nSE11" },
-      "identity": { "program": "", "dynpro": "" },
+      "identity": { "program": "SAPLSD_ENTRY", "dynpro": "1000" },
       "required_ids": [
         "wnd[0]/tbar[0]/okcd",
         "wnd[0]/usr/radRSRD1-DOMA",
         "wnd[0]/usr/ctxtRSRD1-DOMA_VAL",
         "wnd[0]/usr/btnPUSHEDIT"
       ],
-      "status": "pending_live"
+      "status": "captured"
     },
     {
       "id": "orig_lang_popup",

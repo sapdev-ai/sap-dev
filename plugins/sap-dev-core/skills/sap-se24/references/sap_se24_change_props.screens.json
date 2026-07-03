@@ -2,16 +2,16 @@
   "schema": "sapdev.screenbaseline/1",
   "vbs": "sap_se24_change_props.vbs",
   "captured_on": {
-    "release": "",
-    "kernel": "",
-    "date": "",
-    "method": "static"
+    "release": "S/4HANA 1909",
+    "kernel": "754",
+    "date": "2026-07-03",
+    "method": "live"
   },
   "checkpoints": [
     {
       "id": "initial",
       "reach": { "okcode": "/nSE24" },
-      "identity": { "program": "", "dynpro": "" },
+      "identity": { "program": "SAPLSEOD", "dynpro": "1000" },
       "required_ids": [
         "wnd[0]/tbar[0]/okcd",
         "wnd[0]/usr/ctxtSEOCLASS-CLSNAME",
@@ -19,7 +19,7 @@
         "wnd[0]/mbar/menu[3]/menu[0]",
         "wnd[0]/sbar"
       ],
-      "status": "pending_live"
+      "status": "captured"
     },
     {
       "id": "class_editor",

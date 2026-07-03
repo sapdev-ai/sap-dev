@@ -2,22 +2,22 @@
   "schema": "sapdev.screenbaseline/1",
   "vbs": "sap_se38_delete.vbs",
   "captured_on": {
-    "release": "",
-    "kernel": "",
-    "date": "",
-    "method": "static"
+    "release": "S/4HANA 1909",
+    "kernel": "754",
+    "date": "2026-07-03",
+    "method": "live"
   },
   "checkpoints": [
     {
       "id": "initial",
       "reach": { "okcode": "/nSE38" },
-      "identity": { "program": "", "dynpro": "" },
+      "identity": { "program": "SAPLWBABAP", "dynpro": "0100" },
       "required_ids": [
         "wnd[0]/tbar[0]/okcd",
         "wnd[0]/usr/ctxtRS38M-PROGRAMM",
         "wnd[0]/usr/btnSHOP"
       ],
-      "status": "pending_live"
+      "status": "captured"
     },
     {
       "id": "verify",

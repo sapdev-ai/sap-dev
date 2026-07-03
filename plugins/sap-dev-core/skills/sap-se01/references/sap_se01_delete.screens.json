@@ -2,16 +2,16 @@
   "schema": "sapdev.screenbaseline/1",
   "vbs": "sap_se01_delete.vbs",
   "captured_on": {
-    "release": "",
-    "kernel": "",
-    "date": "",
-    "method": "static"
+    "release": "S/4HANA 1909",
+    "kernel": "754",
+    "date": "2026-07-03",
+    "method": "live"
   },
   "checkpoints": [
     {
       "id": "initial",
       "reach": { "okcode": "/nSE01" },
-      "identity": { "program": "", "dynpro": "" },
+      "identity": { "program": "RDDM0001", "dynpro": "0200" },
       "required_ids": [
         "wnd[0]/tbar[0]/okcd",
         "wnd[0]/usr/tabsMAINTABSTRIP/tabpTSSN",
@@ -19,7 +19,7 @@
         "wnd[0]/usr/tabsMAINTABSTRIP/tabpTSSN/ssubCOMMONSUBSCREEN:RDDM0001:0210/btn%_AUTOTEXT028",
         "wnd[0]/sbar"
       ],
-      "status": "pending_live"
+      "status": "captured"
     },
     {
       "id": "tr_display",

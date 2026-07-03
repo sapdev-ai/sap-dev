@@ -2,24 +2,22 @@
   "schema": "sapdev.screenbaseline/1",
   "vbs": "sap_update_addon_se16.vbs",
   "captured_on": {
-    "release": "",
-    "kernel": "",
-    "date": "",
-    "method": "static"
+    "release": "S/4HANA 1909",
+    "kernel": "754",
+    "date": "2026-07-03",
+    "method": "live"
   },
   "checkpoints": [
     {
       "id": "initial",
-      "reach": { "okcode": "/nSE16" },
-      "identity": { "program": "", "dynpro": "" },
+      "reach": { "okcode": "/nSE16", "note": "Create Entries = tbar[1]/btn[5] (verified ECC6+1909). The VBS's legacy fallbacks tbar[1]/btn[18] and mbar/menu[1]/menu[5] are probe-only alternates (btn[18] does not exist on the 1909 initial screen - live-confirmed 2026-07-03) and are deliberately NOT required" },
+      "identity": { "program": "SAPLSETB", "dynpro": "0230" },
       "required_ids": [
         "wnd[0]/tbar[0]/okcd",
         "wnd[0]/usr/ctxtDATABROWSE-TABLENAME",
-        "wnd[0]/tbar[1]/btn[5]",
-        "wnd[0]/tbar[1]/btn[18]",
-        "wnd[0]/mbar/menu[1]/menu[5]"
+        "wnd[0]/tbar[1]/btn[5]"
       ],
-      "status": "pending_live"
+      "status": "captured"
     },
     {
       "id": "entry_form",
