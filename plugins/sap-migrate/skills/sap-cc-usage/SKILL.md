@@ -6,15 +6,22 @@ description: |
   campaign's decommission policy, writes `usage.tsv` + `scope.tsv`
   (REMEDIATE / DECOMMISSION / REVIEW), and advances `state.tsv`. This is the
   step that produces the headline "X% retired without remediation" number.
-  Two usage sources: (FILE) a hand-supplied export, and (SCMON/UPL) a DIRECT
-  RFC read of the source system's ABAP Call Monitor (tx SCMON) / SUSG
-  aggregation — `sap_cc_scmon_read.ps1` reads `SUSG_V_DATA` (aggregated) or
-  `SCMON_VDATA` (raw) and produces the same export the FILE path ingests. The
-  FILE/NONE paths are offline; only the SCMON/UPL read opens an RFC connection
-  to the campaign's `source_profile`.
-  SAFETY: if SCMON/SUSG has NO data (monitoring not active), the read returns
-  NO_DATA and every object defaults to REMEDIATE — "no monitoring data" is never
-  read as "everything unused". A join-rate guard (`USAGE_JOIN:`) rejects a usage
+  Usage sources: (FILE) a hand-supplied export; (SCMON/UPL) a DIRECT RFC read of
+  the source system's ABAP Call Monitor (tx SCMON) / SUSG aggregation —
+  `sap_cc_scmon_read.ps1` reads `SUSG_V_DATA` (aggregated) or `SCMON_VDATA`
+  (raw); and (WORKLOAD) a coarse fallback for systems where SCMON was never
+  activated — `sap_cc_workload_read.ps1` reads the ST03N workload monitor
+  (`SWNC_GET_WORKLOAD_STATISTIC` → TCDET) as a POSITIVE-ONLY, LOW-confidence
+  proxy. All three write the same export the FILE path ingests. The FILE/NONE
+  paths are offline; SCMON/UPL/WORKLOAD open an RFC connection to the campaign's
+  `source_profile`.
+  SAFETY: if SCMON/SUSG/WORKLOAD has NO data (monitoring not active), the read
+  returns NO_DATA and every object defaults to REMEDIATE — "no monitoring data"
+  is never read as "everything unused". WORKLOAD is positive-only: it can confirm
+  a custom report/tcode-program RAN but never that one is unused (it never lists
+  classes/FMs/tables), so an object absent from a WORKLOAD read is UNKNOWN
+  (→ REMEDIATE) and an unseen PROG is REVIEW at most — never auto-DECOMMISSION,
+  even under `aggressive`. A join-rate guard (`USAGE_JOIN:`) rejects a usage
   file that matches zero inventory objects (and, without `--force-low-join`, one
   matching < 10%) before anything is written — a wrong-system/wrong-format
   export can never flag the estate unused. The `conservative` policy never auto-decommissions;
@@ -25,7 +32,7 @@ description: |
   Run after `/sap-cc-inventory`, before `/sap-cc-analyze`.
   Prerequisites: FILE/NONE need no SAP connection; SCMON/UPL need SAP NCo 3.1
   (32-bit) + a saved `source_profile` (or a pinned `/sap-login` connection).
-argument-hint: "--campaign <id> [--usage-source FILE|SCMON|UPL|NONE] [--usage-file <path>] [--source-profile <ref>] [--namespaces Z,Y] [--policy none|conservative|aggressive] [--min-exec 0] [--force-low-join]"
+argument-hint: "--campaign <id> [--usage-source FILE|SCMON|UPL|WORKLOAD|NONE] [--usage-file <path>] [--source-profile <ref>] [--namespaces Z,Y] [--policy none|conservative|aggressive] [--min-exec 0] [--force-low-join] [--workload-months 12]"
 ---
 
 # SAP Custom-Code Migration — Usage & Decommission Scoping
@@ -49,6 +56,7 @@ Task: $ARGUMENTS
 | `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_log_helper.ps1` | *(invoke)* | Start/step/end JSONL logging. |
 | `<SKILL_DIR>/references/sap_cc_usage.ps1` | *(invoke)* | Joins usage onto inventory, applies the policy, writes `usage.tsv` + `scope.tsv`, advances `state.tsv`. Emits parseable `USAGE:` / `DECISION:` / `METRIC:` / `STATUS:` lines. Offline (files only). |
 | `<SKILL_DIR>/references/sap_cc_scmon_read.ps1` | *(invoke, RFC)* | **Direct SCMON/UPL reader** (SCMON/UPL source only). Reads the source system's `SUSG_V_DATA` (aggregated) / `SCMON_VDATA` (raw) + `SUSG_ADMIN` (window) via RFC and writes a usage export TSV. Emits `SCMON:` / `WINDOW_WARN:` / `EXPORT:` / `STATUS: OK\|NO_DATA\|ERROR`. |
+| `<SKILL_DIR>/references/sap_cc_workload_read.ps1` | *(invoke, RFC)* | **Workload fallback reader** (WORKLOAD source only) for systems without SCMON. Reads the ST03N workload monitor via `SWNC_GET_WORKLOAD_STATISTIC` (TCDET per-entry counts) over the last N months, resolves Z/Y tcodes to programs via `TSTC`, and writes the same usage export TSV. **Positive-only, LOW-confidence.** Emits `WORKLOAD:` / `WINDOW_WARN:` / `EXPORT:` / `STATUS: OK\|NO_DATA\|ERROR`. |
 | `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_rfc_lib.ps1` + `sap_dpapi.ps1` | *(used by the reader)* | NCo 3.1 connect + source-profile password decrypt (SCMON/UPL path only). |
 | `/sap-where-used-list` | *(skill)* | Used in the **reference-safety check** (Step 4) to confirm a REVIEW candidate has no inbound callers among still-used objects before it is decommissioned. |
 
@@ -104,18 +112,28 @@ powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_
   TSV/CSV, **col1 = object name**, **col2 = exec count**, optional **col3 = last
   used**; a header row is auto-detected. A single-column file (just names) is
   treated as "present = used".
-- `--usage-source FILE|SCMON|UPL|NONE` — defaults to FILE when `--usage-file`
-  is given, else NONE.
+- `--usage-source FILE|SCMON|UPL|WORKLOAD|NONE` — defaults to FILE when
+  `--usage-file` is given, else NONE.
   - `FILE` — ingest the `--usage-file` export (offline).
   - `SCMON` / `UPL` — **read usage directly from the source system** (Step 1.5):
     run `sap_cc_scmon_read.ps1` over RFC, then ingest its export. On NW 7.52+/S4
-    SCMON subsumes UPL, so both read the same SUSG/SCMON path.
+    SCMON subsumes UPL, so both read the same SUSG/SCMON path. **Preferred** —
+    SCMON/SUSG is the canonical decommissioning source.
+  - `WORKLOAD` — **fallback when SCMON was never activated** (Step 1.5b): run
+    `sap_cc_workload_read.ps1` over RFC to read the ST03N workload monitor. This
+    is a **coarse, positive-only, LOW-confidence** signal — it confirms which
+    custom reports/tcode-programs ran but cannot prove anything unused, so it
+    never auto-decommissions (see the policy table). Use it to *narrow* the
+    decommission hunt, not to decide deletions.
   - `NONE` — no usage data; every object → REMEDIATE (safe).
-- `--source-profile <ref>` — (SCMON/UPL) connection profile of the system whose
-  usage to read; defaults to the campaign's `source_profile`, else the pinned
-  `/sap-login` connection.
-- `--namespaces <list>` — (SCMON/UPL) `OBJ_NAME` prefixes to read, default
-  `Z,Y`. Add customer namespaces (e.g. `Z,Y,/ACME/`) for non-Z/Y custom code.
+- `--source-profile <ref>` — (SCMON/UPL/WORKLOAD) connection profile of the
+  system whose usage to read; defaults to the campaign's `source_profile`, else
+  the pinned `/sap-login` connection.
+- `--namespaces <list>` — (SCMON/UPL/WORKLOAD) `OBJ_NAME` prefixes to read,
+  default `Z,Y`. Add customer namespaces (e.g. `Z,Y,/ACME/`) for non-Z/Y custom
+  code.
+- `--workload-months <n>` — (WORKLOAD) how many months of ST03N aggregates to
+  sum (default 12). Longer widens coverage but the collector's retention caps it.
 - `--policy none|conservative|aggressive` — defaults to the brief's
   `scope.decommission_policy`, else `conservative`.
 - `--min-exec <n>` — "used" means `exec_count > n` (default 0).
@@ -157,18 +175,47 @@ available (and prefer `conservative` policy, which already parks them as REVIEW)
 
 ---
 
+## Step 1.5b — Workload fallback read (only when `--usage-source WORKLOAD`)
+
+Use this **only when SCMON is unavailable** (Step 1.5 returned NO_DATA, or the
+system is a pre-7.50 / never-activated box). Run the workload reader via **32-bit
+PowerShell**:
+
+```bash
+C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File "<SKILL_DIR>\references\sap_cc_workload_read.ps1" -CampaignDir "{CAMPAIGN_DIR}" -WorkDir "{work_dir}"
+```
+
+Append `-SourceProfile "<ref>"`, `-Namespaces "Z,Y,/ACME/"`, and/or `-Months 12`
+to mirror the flags. It writes `{CAMPAIGN_DIR}\usage_workload_export.tsv`. Parse
+its last `STATUS:` line:
+
+| `STATUS:` | Meaning | Action |
+|---|---|---|
+| `OK` | Workload read; export written. | Proceed to Step 2 with `-UsageSource WORKLOAD -UsageFile {CAMPAIGN_DIR}\usage_workload_export.tsv`. |
+| `NO_DATA` | ST03N/SWNC has no custom-code entries in the window. | Run Step 2 with `-UsageSource NONE` (every object → REMEDIATE). Consider activating SCMON for a real decommissioning signal. |
+| `ERROR` | RFC/profile failure (see `ERROR:`). | Fix the connection (`/sap-login`). |
+
+**The reader always emits a `WINDOW_WARN`** restating that WORKLOAD is coarse and
+positive-only. Surface it. WORKLOAD's job is to *confirm which custom
+executables definitely ran* (so you focus decommission-hunting elsewhere), never
+to justify a deletion.
+
+---
+
 ## Step 2 — Run the Scoping Helper
 
 ```bash
 powershell -ExecutionPolicy Bypass -File "<SKILL_DIR>\references\sap_cc_usage.ps1" -CampaignDir "{CAMPAIGN_DIR}"
 ```
 
-Append any of `-UsageFile "<path>"`, `-UsageSource FILE|SCMON|UPL|NONE`,
+Append any of `-UsageFile "<path>"`, `-UsageSource FILE|SCMON|UPL|WORKLOAD|NONE`,
 `-Policy conservative`, `-MinExec 0`, `-ForceLowJoin` to mirror the flags. For the **SCMON/UPL**
 path, pass `-UsageSource SCMON -UsageFile {CAMPAIGN_DIR}\usage_scmon_export.tsv`
 (the Step 1.5 export) — the helper ingests it but stamps `usage_source=SCMON` in
-`usage.tsv` for provenance. The scoping helper itself needs no NCo (the RFC work
-is done in Step 1.5).
+`usage.tsv` for provenance. For **WORKLOAD**, pass
+`-UsageSource WORKLOAD -UsageFile {CAMPAIGN_DIR}\usage_workload_export.tsv` (the
+Step 1.5b export). The scoping helper itself needs no NCo (the RFC work is done
+in Step 1.5 / 1.5b).
 
 **Policy semantics:**
 
@@ -177,6 +224,13 @@ is done in Step 1.5).
 | `none` | REMEDIATE | REMEDIATE | REMEDIATE |
 | `aggressive` | REMEDIATE | **DECOMMISSION** (no reference check) | REMEDIATE |
 | `conservative` (default) | REMEDIATE | **REVIEW** (pending reference check) | REMEDIATE |
+
+**WORKLOAD source overrides the "unused" column** (positive-only, LOW-confidence):
+regardless of policy, an object *not seen* in the ST03N window is **UNKNOWN →
+REMEDIATE** if it is a class / FM / table / structure (workload never lists
+those), or **REVIEW** if it is a PROG (a weak unused candidate) — **never
+DECOMMISSION**. Only SCMON/SUSG or FILE usage can drive `aggressive` →
+DECOMMISSION. This is enforced in the engine, not just documented.
 
 ---
 
@@ -243,6 +297,7 @@ After any promotions, re-run `/sap-cc-campaign report` to refresh the dashboard.
 - `{CAMPAIGN_DIR}\scope.tsv` — `obj_name · obj_type · decision · reason · referenced_by_used` (this skill owns it).
 - `{CAMPAIGN_DIR}\state.tsv` — decisions set; INVENTORIED objects advanced to SCOPED / DECOMMISSIONED / REVIEW.
 - `{CAMPAIGN_DIR}\usage_scmon_export.tsv` — (SCMON/UPL source only) the raw export the reader produced from the source system's Call Monitor; kept as evidence of what usage was read.
+- `{CAMPAIGN_DIR}\usage_workload_export.tsv` — (WORKLOAD source only) the export the workload reader produced from the ST03N/SWNC aggregates; kept as evidence.
 
 ---
 
@@ -265,6 +320,22 @@ After any promotions, re-run `/sap-cc-campaign report` to refresh the dashboard.
     Solution Manager and use `--usage-file`.
   - Exec counts above the 32-bit range fall back to "used" (the used/unused
     signal is preserved; the exact count may be capped).
+- **WORKLOAD fallback shipped (2026-07-03) — positive-only, LOW-confidence.**
+  `--usage-source WORKLOAD` reads ST03N/SWNC (`SWNC_GET_WORKLOAD_STATISTIC` →
+  TCDET, summed over `--workload-months`) when SCMON is unavailable. Caveats:
+  - **Cannot prove "unused".** ST03N lists only *executed* transactions/reports,
+    never classes/FMs/tables, and its retention is short. So a WORKLOAD miss is
+    UNKNOWN (→ REMEDIATE), and an unseen PROG is REVIEW at most — it can **never**
+    drive an `aggressive` DECOMMISSION (engine-enforced). Use it to *confirm what
+    ran* and narrow the hunt, not to decide deletions.
+  - **Coarse mapping.** Z/Y tcodes resolve to their program via `TSTC`; a Z/Y
+    ENTRY_ID that is itself a report is used directly. A tcode pointing at an SAP
+    (non-custom) program is ignored. Function-level detail is not available.
+  - **Verified live (S/4HANA): the NO_DATA-safe path.** On the tested boxes the
+    SWNC collector had no retained aggregates → `STATUS: NO_DATA` → REMEDIATE
+    (safe). The positive-mapping path is offline-unit-tested (unseen PROG →
+    REVIEW, invisible CLAS/TABL → REMEDIATE, zero DECOMMISSION under aggressive);
+    exercise it live on a workload-populated system to confirm TCDET field names.
 - **Reference-safety promotion is manual in v1.** `conservative` parks unused
   objects as REVIEW; promoting them to DECOMMISSION via `/sap-where-used-list`
   is operator-driven (Step 4). The automated batch promotion is the next

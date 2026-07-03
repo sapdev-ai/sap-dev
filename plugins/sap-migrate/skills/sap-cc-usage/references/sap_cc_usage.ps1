@@ -144,25 +144,33 @@ try {
     $src = $UsageSource
     if ([string]::IsNullOrWhiteSpace($src)) { $src = if ($UsageFile) { 'FILE' } else { 'NONE' } }
     $src = $src.ToUpper()
+    # WORKLOAD (ST03N/SWNC) is a POSITIVE-ONLY, LOW-confidence signal: it confirms
+    # which custom executables RAN but can never prove one is unused (retention is
+    # short and it never lists classes/FMs/tables). So an object ABSENT from a
+    # WORKLOAD export is UNKNOWN (-> REMEDIATE), not unused -- and even an unseen
+    # PROG is capped at REVIEW, never auto-DECOMMISSION. See the decision block.
+    $positiveOnly = ($src -eq 'WORKLOAD')
     $usageMap = @{}; $haveUsage = $false
     if ($src -eq 'FILE') {
         if ([string]::IsNullOrWhiteSpace($UsageFile)) { Write-Output 'ERROR: -UsageSource FILE requires -UsageFile'; Write-Output 'STATUS: ERROR'; exit 2 }
         $u = Read-UsageFile $UsageFile
         if ($u.error) { Write-Output "ERROR: $($u.error)"; Write-Output 'STATUS: ERROR'; exit 2 }
         $usageMap = $u.map; $haveUsage = $true
-    } elseif ($src -eq 'SCMON' -or $src -eq 'UPL') {
-        # Direct read: sap_cc_scmon_read.ps1 (run by the SKILL via RFC against the
-        # source system) writes a usage export; we ingest it here but KEEP the
-        # SCMON/UPL provenance in usage.tsv. If no export was produced (monitoring
-        # not active -> reader emitted STATUS:NO_DATA), fall back to the SAFE NONE
-        # path: every object -> REMEDIATE, nothing decommissioned.
+    } elseif ($src -eq 'SCMON' -or $src -eq 'UPL' -or $src -eq 'WORKLOAD') {
+        # Direct read: the SKILL runs the matching reader over RFC against the
+        # source system (sap_cc_scmon_read.ps1 for SCMON/UPL, sap_cc_workload_read.ps1
+        # for WORKLOAD) which writes a usage export; we ingest it here but KEEP the
+        # source provenance in usage.tsv. If no export was produced (monitoring not
+        # active -> reader emitted STATUS:NO_DATA), fall back to the SAFE NONE path:
+        # every object -> REMEDIATE, nothing decommissioned.
         if (-not [string]::IsNullOrWhiteSpace($UsageFile) -and (Test-Path -LiteralPath $UsageFile)) {
             $u = Read-UsageFile $UsageFile
             if ($u.error) { Write-Output "ERROR: $($u.error)"; Write-Output 'STATUS: ERROR'; exit 2 }
             $usageMap = $u.map; $haveUsage = $true
         } else {
-            Write-Output "WARN: no $src usage export available (run sap_cc_scmon_read.ps1 first, or pass --usage-file). Proceeding with NO usage data (all objects -> REMEDIATE; nothing decommissioned)."
-            $src = 'NONE'
+            $rdr = if ($src -eq 'WORKLOAD') { 'sap_cc_workload_read.ps1' } else { 'sap_cc_scmon_read.ps1' }
+            Write-Output "WARN: no $src usage export available (run $rdr first, or pass --usage-file). Proceeding with NO usage data (all objects -> REMEDIATE; nothing decommissioned)."
+            $src = 'NONE'; $positiveOnly = $false
         }
     }
     # NONE -> no usage data: used_flag stays UNKNOWN, everything REMEDIATE (safe).
@@ -179,11 +187,16 @@ try {
     }
     $joinRate = if ($inv.Count -gt 0) { 100.0 * $joinHits / $inv.Count } else { 0.0 }
     Write-Output ("USAGE_JOIN: matched=$joinHits inventory=$($inv.Count) rate=" + [math]::Round($joinRate,1) + '%')
-    if ($haveUsage -and $joinHits -eq 0) {
+    # The join guards protect against a wrong-system/wrong-format export flagging
+    # the estate UNUSED. WORKLOAD is positive-only (absence = UNKNOWN, never
+    # unused), so a low/zero join cannot cause a wrongful decommission -- and a low
+    # join is the NORMAL case (only executables that ran match). The guards are
+    # therefore not applicable to WORKLOAD.
+    if ($haveUsage -and -not $positiveOnly -and $joinHits -eq 0) {
         Write-Output 'STATUS: ERROR USAGE_JOIN_ZERO (usage file matched no inventory object - wrong system/format?)'
         exit 2
     }
-    if ($haveUsage -and $joinRate -lt 10 -and -not $ForceLowJoin) {
+    if ($haveUsage -and -not $positiveOnly -and $joinRate -lt 10 -and -not $ForceLowJoin) {
         Write-Output ('STATUS: ERROR USAGE_JOIN_LOW (usage matched only ' + [math]::Round($joinRate,1) + '% of inventory - wrong system/format? re-run with -ForceLowJoin to accept)')
         exit 2
     }
@@ -205,8 +218,15 @@ try {
         $exec = 0; $last = ''; $usedFlag = 'U'
         if ($haveUsage) {
             $key = $nm.ToUpper()
-            if ($usageMap.ContainsKey($key)) { $exec = [int]$usageMap[$key].exec; $last = "$($usageMap[$key].last)" }
-            $usedFlag = if ($exec -gt $MinExec) { 'Y' } else { 'N' }
+            $inMap = $usageMap.ContainsKey($key)
+            if ($inMap) { $exec = [int]$usageMap[$key].exec; $last = "$($usageMap[$key].last)" }
+            if ($positiveOnly -and -not $inMap) {
+                # WORKLOAD never lists non-executables, so absence != unused. Only a
+                # PROG can be a (weak) unused candidate; anything else is UNKNOWN.
+                $usedFlag = if ($ty -eq 'PROG') { 'N' } else { 'U' }
+            } else {
+                $usedFlag = if ($exec -gt $MinExec) { 'Y' } else { 'N' }
+            }
         }
         switch ($usedFlag) { 'Y' { $cntUsed++ } 'N' { $cntUnused++ } default { $cntUnknown++ } }
         $usageLines.Add("$nm`t$ty`t$exec`t$last`t$src`t$usedFlag")
@@ -221,7 +241,12 @@ try {
             $decision = 'REMEDIATE'; $reason = "used: $exec exec(s)"; $refBy = 'N/A'
         } else {
             # unused
-            if ($pol -eq 'aggressive') {
+            if ($positiveOnly) {
+                # WORKLOAD is low-confidence: an unseen PROG is a REVIEW candidate at
+                # most (needs SCMON/where-used to confirm), NEVER auto-DECOMMISSION --
+                # even under aggressive policy.
+                $decision = 'REVIEW'; $reason = "not seen in WORKLOAD (ST03N) window -- LOW-confidence unused; confirm via SCMON/SUSG + /sap-where-used-list before retiring"; $refBy = 'PENDING'
+            } elseif ($pol -eq 'aggressive') {
                 $decision = 'DECOMMISSION'; $reason = "unused (<= $MinExec exec); aggressive policy -- no reference check"; $refBy = 'NOT_CHECKED'
             } else {
                 $decision = 'REVIEW'; $reason = "unused (<= $MinExec exec); pending reference-safety check"; $refBy = 'PENDING'

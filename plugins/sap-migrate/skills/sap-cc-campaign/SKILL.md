@@ -55,6 +55,7 @@ Task: $ARGUMENTS
 | `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_log_helper.ps1` | *(invoke)* | Start/step/end JSONL logging across bash blocks. |
 | `<SAP_DEV_CORE_SHARED_DIR>/templates/migration_brief.md` | *(read)* | Migration Campaign Brief (+ `migration_brief_sample.md`); supplies the campaign profile for `init` (resolved via the standard Template Language Resolution order). Distinct from the build-time `customer_brief.md`. |
 | `<SKILL_DIR>/references/sap_cc_campaign.ps1` | *(invoke)* | **Companion helper (v1, shipped).** Offline aggregator: performs the atomic `init` write (campaign.json + `state.tsv`), and for `status` / `report` / `next` reads `state.tsv` (+ the triage pattern summary) and emits parseable count / recommendation lines. |
+| `<SKILL_DIR>/references/sap_cc_drift_read.ps1` | *(invoke, RFC)* | **Landscape-drift reader** (optional `report` pre-step). Reads the source system's `E070`/`E071` for transports touching in-scope objects since the campaign start (`--MaxTrs`-bounded) + `SMODILOG` (SPDD/SPAU exposure), writes `drift\drift.tsv`. Read-only. Emits `DRIFT:` / `DRIFT_OBJ:` / `WINDOW_WARN:` / `STATUS: OK\|NO_DRIFT\|ERROR`. |
 
 > This skill drives no SAP GUI, so — unlike the deploy skills — it does NOT
 > include `language_independence_rules.md`, the session broker, the attach
@@ -261,9 +262,35 @@ Same aggregation as `status`, but **also** folds in three more ledgers and
 - **business-owner sign-offs** = `campaign.json.human_gates` cross-referenced
   with the optional `campaign.json.signoffs[]` (PENDING when not recorded).
 
+- **physical retirement** = rows in `decommission\decommissioned.tsv` (objects
+  `/sap-cc-decommission` CONFIRMED gone) → a `retired_without_remediation_pct`
+  metric, kept **separate** from the *flagged* decommission-savings number so the
+  dashboard distinguishes "decided to retire" from "actually retired";
+- **landscape drift** (optional pre-step below) = tracked objects changed on the
+  source since the campaign started → a **Landscape drift** section + an
+  `INFO: drift touched=<n> reanalyze=<r>` line.
+
 Every percentage is honest: a metric whose source ledger does not exist yet is
 reported as `-1` on the `METRIC:` line and rendered **`n/a`** (never `0%`) in the
 dashboard — so "not measured yet" is never mistaken for "perfect / zero".
+
+**Optional drift pre-step (long campaigns).** Before `report`, detect source-side
+drift — custom code the campaign already tracked but a developer changed on the
+**source** after the campaign started (a "done" object silently moving under you).
+Run via **32-bit PowerShell** (NCo 3.1); it is read-only:
+
+```bash
+C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File "<SKILL_DIR>\references\sap_cc_drift_read.ps1" -CampaignDir "{CAMPAIGN_DIR}" -WorkDir "{work_dir}"
+```
+
+It reads `E070`/`E071` for transports touching in-scope objects since the campaign
+start (bounded to the `--MaxTrs` most recent, with a `WINDOW_WARN` if exceeded;
+pass `--since <YYYY-MM-DD>` to set the baseline) and `SMODILOG` for SPDD/SPAU
+exposure, writing `drift\drift.tsv`. `STATUS: OK` = drift found (the `report`
+dashboard then shows the **Landscape drift** table; objects already
+REMEDIATED/VERIFIED are flagged **RE-ANALYZE** — re-run `/sap-cc-analyze` on
+them); `NO_DRIFT` = clean; see `knowledge/recipes/DUAL_MAINTENANCE.md` for the
+freeze/retrofit discipline. Run it weekly and always before a cutover rehearsal.
 
 ```bash
 powershell -ExecutionPolicy Bypass -File "<SKILL_DIR>\references\sap_cc_campaign.ps1" -Action report -CampaignDir "{CAMPAIGN_DIR}"

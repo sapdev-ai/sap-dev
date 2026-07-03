@@ -140,7 +140,7 @@ function Get-Phase($rows,$skipKeys){
 }
 
 function Get-Gates([string]$dir){
-    $g = [ordered]@{ scope_signoff = $true; dryrun_review = $true }   # default ON (safer)
+    $g = [ordered]@{ scope_signoff = $true; dryrun_review = $true; decommission_signoff = $true }   # default ON (safer)
     $p = Join-Path $dir 'campaign.json'
     if(Test-Path -LiteralPath $p){
         try {
@@ -148,6 +148,7 @@ function Get-Gates([string]$dir){
             if($j.human_gates){
                 if($null -ne $j.human_gates.scope_signoff){ $g.scope_signoff = [bool]$j.human_gates.scope_signoff }
                 if($null -ne $j.human_gates.dryrun_review){ $g.dryrun_review = [bool]$j.human_gates.dryrun_review }
+                if($null -ne $j.human_gates.decommission_signoff){ $g.decommission_signoff = [bool]$j.human_gates.decommission_signoff }
             }
         } catch {}
     }
@@ -268,11 +269,50 @@ function Emit-Metrics($rows,[string]$dir){
     $atc    = if($remTot -gt 0){ [int][math]::Round(100.0 * $clean / $remTot) } else { -1 }
     $af = Get-AutoFix $dir
     $um = Get-Unmatched $dir
+    $rt = Get-Retired $dir $scoped
     Write-Output "METRIC: decommission_savings_pct | VALUE: $save"
+    Write-Output "METRIC: retired_without_remediation_pct | VALUE: $($rt.pct)"
+    Write-Output "INFO: retired physically=$($rt.retired) flagged_decommission=$dec (retired = confirmed-gone rows in decommission\decommissioned.tsv; -1/n/a until /sap-cc-decommission has run)"
     Write-Output "METRIC: atc_clean_pct | VALUE: $atc"
     Write-Output "METRIC: auto_fix_rate_pct | VALUE: $($af.rate)"
     Write-Output "INFO: auto_fix_rate attempts=$($af.total) auto=$($af.auto) excluded=$($af.excluded) reverted=$($af.reverted) (excluded: assist/SOURCE_MISSING/non-R1 fixlog rows; reverted: rolled-back fixes, attempts that never count as auto)"
     Write-Output "METRIC: unmatched_findings_pct | VALUE: $($um.pct)"
+    $dr = Get-Drift $dir
+    if($dr.present){ Write-Output "INFO: drift touched=$($dr.touched) reanalyze=$($dr.reanalyze) (tracked objects changed on the source since campaign start; re-analyze the reanalyze set)" }
+}
+
+# Physically-retired share: rows in decommission\decommissioned.tsv (objects the
+# /sap-cc-decommission chain CONFIRMED gone) over the scoped total. Distinct from
+# decommission_savings_pct (which counts objects merely FLAGGED for retirement).
+# -1 => n/a (the ledger does not exist yet -- decommission has not run), so a
+# campaign that only flagged unused code never shows a false "retired" number.
+function Get-Retired([string]$dir,[int]$scoped){
+    $res = [ordered]@{ pct = -1; retired = 0 }
+    $p = Join-Path $dir 'decommission\decommissioned.tsv'
+    if(-not (Test-Path -LiteralPath $p)){ return $res }
+    try {
+        $rows = @(Import-Csv -LiteralPath $p -Delimiter "`t")
+        $res.retired = $rows.Count
+        if($scoped -gt 0){ $res.pct = [int][math]::Round(100.0 * $rows.Count / $scoped) } else { $res.pct = 0 }
+    } catch {}
+    return $res
+}
+
+# Source-side drift (from sap_cc_drift_read.ps1's drift\drift.tsv, if it ran):
+# tracked objects touched on the SOURCE after the campaign started, and how many
+# are RE-ANALYZE candidates (already REMEDIATED/VERIFIED but changed under us).
+# present=$false => the drift check has not been run (rendered n/a, never "clean").
+function Get-Drift([string]$dir){
+    $res = [ordered]@{ present=$false; touched=0; reanalyze=0; rows=@() }
+    $p = Join-Path $dir 'drift\drift.tsv'
+    if(-not (Test-Path -LiteralPath $p)){ return $res }
+    try {
+        $rows = @(Import-Csv -LiteralPath $p -Delimiter "`t")
+        $res.present = $true; $res.touched = $rows.Count
+        $res.reanalyze = @($rows | Where-Object { "$($_.reanalyze)" -eq 'Y' }).Count
+        $res.rows = $rows
+    } catch {}
+    return $res
 }
 
 function Emit-Status($rows,[string]$phase){
@@ -330,6 +370,19 @@ function Recommend-Next($rows,$gates,$skipKeys){
     $needTransport = CW $active { $_.state -eq 'VERIFIED' }
     if($needTransport -gt 0){
         return [pscustomobject]@{ skill='/sap-transport-request'; reason="$needTransport verified object(s) ready to bundle + release"; gate='' }
+    }
+    # Physical retirement: objects FLAGGED for decommission (decision=DECOMMISSION)
+    # that /sap-cc-decommission has not yet CONFIRMED gone (row in the ledger).
+    # Without this, a flagged-but-still-present object is treated as terminal and
+    # reaches DONE -- so the "unused code" is never actually retired. The ledger
+    # (decommission\decommissioned.tsv) is the source of truth for "physically
+    # gone", so re-running after retirement correctly stops recommending.
+    $ledgerKeys = @{}
+    try { $lp = Join-Path $CampaignDir 'decommission\decommissioned.tsv'; if(Test-Path -LiteralPath $lp){ foreach($lr in @(Import-Csv -LiteralPath $lp -Delimiter "`t")){ $ledgerKeys["$($lr.obj_name)|$($lr.obj_type)".ToUpper()] = $true } } } catch {}
+    $unretiredDec = CW $rows { ([string]$_.decision) -eq 'DECOMMISSION' -and -not $ledgerKeys.ContainsKey("$($_.obj_name)|$($_.obj_type)".ToUpper()) }
+    if($unretiredDec -gt 0){
+        $g = if($gates.decommission_signoff){ 'decommission_signoff' } else { '' }
+        return [pscustomobject]@{ skill='/sap-cc-decommission'; reason="$unretiredDec object(s) flagged for decommission not yet physically retired (action plan behind the sign-off, delete via the routed skills, then action record)"; gate=$g }
     }
     $nonTerminal = CW $active { $_.state -notin @('TRANSPORTED','DECOMMISSIONED') }
     if($nonTerminal -gt 0){
@@ -403,7 +456,9 @@ function Build-Dashboard([string]$dir,$rows,[string]$phase,$patCounts){
     $L.Add("## Key metrics")
     $L.Add("| Metric | Value |")
     $L.Add("|--------|-------|")
-    $L.Add("| Decommission savings | $save% (objects retired without remediation) |")
+    $rt = Get-Retired $dir $scoped
+    $L.Add("| Decommission savings (flagged) | $save% ($dec objects flagged for retirement) |")
+    $L.Add("| Physically retired | $(Pct $rt.pct) ($($rt.retired) confirmed-gone via /sap-cc-decommission; n/a until it runs) |")
     $L.Add("| ATC-clean after remediation | $(Pct $atc) |")
     $L.Add("| Auto-fix rate (R1 mechanical) | $(Pct $af.rate) ($($af.auto)/$($af.total) R1 attempt rows rewritten by rule; $($af.excluded) excluded: assist/missing-source/non-R1) |")
     $L.Add("| Unresolved findings (need human triage) | $(Pct $um.pct) ($($um.unmatched)/$($um.total) findings UNMATCHED) |")
@@ -434,6 +489,25 @@ function Build-Dashboard([string]$dir,$rows,[string]$phase,$patCounts){
         $L.Add("_Record with_ ``/sap-cc-campaign signoff --campaign <id> --gate <gate> --owner <name>``.")
     } else {
         $L.Add("_No human gates configured for this campaign._")
+    }
+    $L.Add("")
+    $L.Add("## Landscape drift (source-side changes during the campaign)")
+    $dr = Get-Drift $dir
+    if(-not $dr.present){
+        $L.Add("_Not checked. Run_ ``sap_cc_drift_read.ps1`` _(via the drift step) to detect tracked objects changed on the SOURCE after the campaign started._")
+    } elseif($dr.touched -eq 0){
+        $L.Add("_No tracked object was changed on the source since the campaign start -- no drift._")
+    } else {
+        $L.Add("**$($dr.touched) tracked object(s) changed on the source since the campaign start; $($dr.reanalyze) are RE-ANALYZE candidates** (already remediated/verified, now changed under us).")
+        $L.Add("")
+        $L.Add("| Object | Type | TR | TR status | By | On | Campaign state | Re-analyze |")
+        $L.Add("|--------|------|----|-----------|----|----|----------------|-----------|")
+        foreach($d in @($dr.rows | Select-Object -First 25)){
+            $L.Add("| $($d.obj_name) | $($d.obj_type) | $($d.tr) | $($d.tr_status) | $($d.touched_by) | $($d.touched_on) | $($d.campaign_state) | $($d.reanalyze) |")
+        }
+        if($dr.touched -gt 25){ $L.Add("_... and $($dr.touched - 25) more in_ ``drift\drift.tsv``.") }
+        $L.Add("")
+        $L.Add("Re-run ``/sap-cc-analyze`` on the RE-ANALYZE objects, and see ``knowledge/recipes/DUAL_MAINTENANCE.md`` for the freeze/retrofit discipline.")
     }
     return ($L -join "`r`n") + "`r`n"
 }

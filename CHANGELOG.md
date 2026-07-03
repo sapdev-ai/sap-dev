@@ -11,6 +11,45 @@ documentation.
 
 ### Added
 
+- **`/sap-cc-decommission` — execute the retirement of unused custom code
+  (pain-plan A2, headline).** New sap-migrate skill (total_skills 78→79) that turns
+  `/sap-cc-usage`'s DECOMMISSION *flags* into physical, audited deletions behind a
+  HARD `decommission_signoff` gate (BLOCKED exit 3 until APPROVED — deletions
+  transport to QA/PROD). Per object the SKILL runs a safety chain — where-used +
+  resolver re-verify → source backup (`Read-SapAbapSource` + `Register-SapArtifact
+  kind=source_backup`) → Workbench TR → delegated delete
+  (`/sap-se38|24|11|function-group`) → resolver `NOT_FOUND` confirmation — then the
+  offline engine (`references/sap_cc_decommission.ps1`, actions `plan`/`record`)
+  appends an audit ledger `decommission\decommissioned.tsv` (object · backup
+  artifact · TR · verified-gone date · sign-off owner). `plan` orders
+  consumers-before-providers (DDIC last) and is idempotent (ledgered objects
+  excluded); `/sap-cc-campaign report` gains `retired_without_remediation_pct`
+  (kept separate from the *flagged* savings, n/a until the ledger exists) and
+  `next` recommends decommission while any flagged object is unretired. Offline
+  end-to-end tested (gate block, ordered worklist, promotion, ledger, idempotency,
+  KPI, next). **Live retirement pending a smoke pass on a system with RFC+GUI
+  co-located.** Error classes `CC_DECOMMISSION_*` added.
+- **`/sap-cc-usage --usage-source WORKLOAD` — ST03N usage fallback (pain-plan A3).**
+  For systems where SCMON/UPL was never activated, `references/sap_cc_workload_read.ps1`
+  reads the SWNC workload monitor (`SWNC_GET_WORKLOAD_STATISTIC` → TCDET, summed
+  over `--workload-months`, Z/Y tcodes resolved to programs via `TSTC`) as a
+  **positive-only, LOW-confidence** proxy. Safety is engine-enforced: an object
+  absent from a WORKLOAD read is UNKNOWN → REMEDIATE if it is a class/FM/table
+  (workload never lists those), or REVIEW at most if a PROG — it can **never** drive
+  an `aggressive` DECOMMISSION, and the join guards are inert for it. Verified live
+  (S/4HANA): the NO_DATA-safe path (empty collector → REMEDIATE); positive-mapping
+  semantics offline-unit-tested (unseen PROG → REVIEW, invisible CLAS/TABL →
+  REMEDIATE, zero DECOMMISSION under aggressive).
+- **`/sap-cc-campaign` landscape-drift detection (pain-plan A4).** New optional
+  `report` pre-step `references/sap_cc_drift_read.ps1` reads the source system's
+  `E070`/`E071` for transports touching in-scope objects since the campaign start
+  (`--MaxTrs`-bounded with a `WINDOW_WARN`) plus `SMODILOG` (SPDD/SPAU exposure),
+  writing `drift\drift.tsv`. The dashboard gains a **Landscape drift** section
+  flagging objects already REMEDIATED/VERIFIED that changed under the campaign as
+  RE-ANALYZE candidates, and an `INFO: drift touched=<n> reanalyze=<r>` line. New
+  recipe `knowledge/recipes/DUAL_MAINTENANCE.md` documents the freeze/retrofit
+  discipline. Reader plumbing verified live (E070/E071/SMODILOG read, cap,
+  NO_DRIFT); report rendering offline-tested.
 - **Readiness-capability pre-check** (`shared/scripts/sap_readiness_probe.ps1`,
   `Get-SapReadinessCapability` dot-source + CLI) wired into **`/sap-doctor`**
   (new informational `READINESS_CAP` check, never degrades the verdict) and

@@ -12,7 +12,7 @@
     "version": "0.6.9",
     "last_updated": "2026-07-02",
     "total_plugins": 4,
-    "total_skills": 78,
+    "total_skills": 79,
     "categories": [
       "tooling"
     ]
@@ -206,6 +206,7 @@
         "./skills/sap-cc-analyze",
         "./skills/sap-cc-triage",
         "./skills/sap-cc-remediate",
+        "./skills/sap-cc-decommission",
         "./skills/sap-cc-learn"
       ],
       "agents": [
