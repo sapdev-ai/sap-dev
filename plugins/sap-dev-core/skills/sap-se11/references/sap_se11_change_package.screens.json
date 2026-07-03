@@ -1,0 +1,79 @@
+{
+  "schema": "sapdev.screenbaseline/1",
+  "vbs": "sap_se11_change_package.vbs",
+  "captured_on": {
+    "release": "",
+    "kernel": "",
+    "date": "",
+    "method": "static"
+  },
+  "checkpoints": [
+    {
+      "id": "initial",
+      "reach": { "okcode": "/nSE11" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/tbar[0]/okcd",
+        "wnd[0]/usr/radRSRD1-TBMA",
+        "wnd[0]/usr/ctxtRSRD1-TBMA_VAL",
+        "wnd[0]/usr/radRSRD1-VIMA",
+        "wnd[0]/usr/ctxtRSRD1-VIMA_VAL",
+        "wnd[0]/usr/radRSRD1-DDTYPE",
+        "wnd[0]/usr/ctxtRSRD1-DDTYPE_VAL",
+        "wnd[0]/usr/radRSRD1-TYMA",
+        "wnd[0]/usr/ctxtRSRD1-TYMA_VAL",
+        "wnd[0]/usr/radRSRD1-DOMA",
+        "wnd[0]/usr/ctxtRSRD1-DOMA_VAL",
+        "wnd[0]/usr/radRSRD1-SHMA",
+        "wnd[0]/usr/ctxtRSRD1-SHMA_VAL",
+        "wnd[0]/usr/radRSRD1-ENQU",
+        "wnd[0]/usr/ctxtRSRD1-ENQU_VAL",
+        "wnd[0]/mbar/menu[2]/menu[0]"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "objdir_popup",
+      "reach": { "note": "wnd[1] Object Directory Entry via Goto menu (menu[2]/menu[0]) from initial screen" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]/tbar[0]/btn[6]",
+        "wnd[1]/usr/ctxtKO007-L_DEVCLASS",
+        "wnd[1]/usr/ctxtTADIR-DEVCLASS",
+        "wnd[1]/tbar[0]/btn[0]"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "tr_popup",
+      "reach": { "note": "conditional wnd[1] transport prompt after confirming the package change" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]/usr/ctxtKO008-TRKORR",
+        "wnd[1]/tbar[0]/btn[0]",
+        "wnd[1]/tbar[0]/btn[8]"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "tr_create_popup",
+      "reach": { "note": "wnd[2] create-request dialog opened by btn[8] on the TR popup" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[2]/usr/txtKO013-AS4TEXT",
+        "wnd[2]/tbar[0]/btn[0]"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "result",
+      "reach": { "note": "back on wnd[0] after the dialog chain; Back press + status-bar gate" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/tbar[0]/btn[15]",
+        "wnd[0]/sbar"
+      ],
+      "status": "pending_live"
+    }
+  ]
+}

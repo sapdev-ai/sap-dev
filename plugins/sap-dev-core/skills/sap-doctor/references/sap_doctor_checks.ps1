@@ -211,6 +211,39 @@ if (-not $rfcOk) {
 }
 
 # ---------------------------------------------------------------------------
+# srv 2. S/4-readiness ATC capability (informational; never FAILs the doctor).
+#        Can this system run an S4HANA_READINESS check at all? No variants ->
+#        N/A (not a readiness system). Variants present -> capable, but a run
+#        that returns 0 findings WITH planning errors is NOT clean -- /sap-atc
+#        gates that as ATC_PLAN_ERRORS. Deliberately keyed on variant presence,
+#        NOT the SYCM_* table family (a proven false signal: SYCM_* tables exist
+#        on plan-erroring 1909 boxes and are absent on a working 2022 box --
+#        see cc_harvest_attempt_20260703 report). Delegates to the shared
+#        readiness probe so /sap-doctor and /sap-cc-analyze share one signal.
+# ---------------------------------------------------------------------------
+if (-not $rfcOk) {
+    Emit 'READINESS_CAP' 'srv' 'SKIP' 'RFC unavailable; cannot probe readiness capability' '-'
+} else {
+    $readinessProbe = "%%READINESS_PROBE_PS1%%"
+    if ([string]::IsNullOrWhiteSpace($readinessProbe) -or -not (Test-Path -LiteralPath $readinessProbe)) {
+        Emit 'READINESS_CAP' 'srv' 'SKIP' 'readiness probe helper not found (sap_readiness_probe.ps1)' '-'
+    } else {
+        try {
+            . $readinessProbe
+            $rc = Get-SapReadinessCapability -Dest $dest
+            if ($rc.verdict -eq 'NO_READINESS_VARIANTS') {
+                Emit 'READINESS_CAP' 'srv' 'PASS' 'N/A: no S4HANA_READINESS variants (not an S/4 readiness-check system) - readiness ATC does not apply here' '-'
+            } else {
+                $tv = if ($rc.target_variants.Count) { ' incl. ' + (($rc.target_variants | Select-Object -First 3) -join ',') } else { ' (header shells only; no release-suffixed variant)' }
+                Emit 'READINESS_CAP' 'srv' 'PASS' ("readiness-capable: {0} S4HANA_READINESS variant(s){1}. Caveat: a run with 0 findings + planning errors is NOT clean (/sap-atc reports ATC_PLAN_ERRORS)" -f $rc.variants, $tv) '-'
+            }
+        } catch {
+            Emit 'READINESS_CAP' 'srv' 'SKIP' ("readiness probe failed: {0}" -f $_.Exception.Message) '-'
+        }
+    }
+}
+
+# ---------------------------------------------------------------------------
 # Summary + cleanup
 # ---------------------------------------------------------------------------
 if ($rfcOk) { try { Disconnect-SapRfc } catch {} }

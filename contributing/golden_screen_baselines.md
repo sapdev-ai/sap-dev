@@ -111,20 +111,30 @@ One baseline per driving VBS, named `<vbs-stem>.screens.json`, beside the VBS in
 
 ## Seeded baselines
 
-All `initial`-checkpoint, `method: static`, `status: pending_live` — the
-required-control set is the real `findById` dependency set extracted from each
-VBS; the live `identity` is captured on the first
-`/sap-gui-screen-check <stem> --update-baseline` run. Coverage **7/116**.
+Coverage **120/121** (2026-07-03 seeding wave; the only gap is
+`sap_stms_import.vbs`, deliberately unbaselined until its PLACEHOLDER control
+IDs are calibrated via `/sap-gui-record` — a baseline would freeze placeholder
+text). Every driving VBS now ships a multi-checkpoint seed: `method: static`,
+`status: pending_live`, the required-control set extracted per checkpoint from
+the VBS's literal `findById` paths (dynamic/concatenated IDs excluded — capture
+live), popups as their own checkpoints. Live `identity` is captured and
+promoted per checkpoint by `/sap-gui-screen-check --update-baseline`
+(v1 captures OK-code-reachable checkpoints; deeper `note`-reach checkpoints
+stay `pending_live` until the probe learns step recipes).
 
-| Baseline | Reach |
-|---|---|
-| `sap-se38/references/sap_se38_create.screens.json` | `/nSE38` |
-| `sap-se37/references/sap_se37_create.screens.json` | `/nSE37` |
-| `sap-se24/references/sap_se24_create.screens.json` | `/nSE24` |
-| `sap-se11/references/sap_se11_domain_create.screens.json` | `/nSE11` |
-| `sap-se11/references/sap_se11_dataelement_create.screens.json` | `/nSE11` |
-| `sap-se11/references/sap_se11_structure_create.screens.json` | `/nSE11` |
-| `sap-se11/references/sap_se11_table_create.screens.json` | `/nSE11` |
+Seeding conventions established by the wave (follow these for new baselines):
+- Bare window containers (`wnd[0]`, `wnd[1]`, `wnd[0]/usr`) are omitted;
+  `wnd[0]/tbar[0]/okcd` only in `initial`; `wnd[0]/sbar` only at its
+  first-read checkpoint.
+- **Never seed an ABSENCE probe as required** — delete-verify screens and
+  "no-usages" popups probe IDs whose absence is the success signal; seeding
+  them would manufacture false DRIFT (see `sap_se37_delete.screens.json`
+  verify checkpoint's note, and `sap_where_used_list`'s no_usages_popup).
+- Either/or release alternatives (e.g. mm01's 1909 vs ECC6 view popup) get
+  separate checkpoints per release, never one merged required set.
+- Popup chains handled by the shared `sap_delete_popups.vbs` walker have no
+  per-VBS literals — such baselines legitimately carry an empty-`required_ids`
+  popup checkpoint or none at all.
 
 ## Promotion to a hard gate
 

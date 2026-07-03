@@ -1,0 +1,23 @@
+{
+  "schema": "sapdev.screenbaseline/1",
+  "vbs": "sap_activate_se24.vbs",
+  "captured_on": {
+    "release": "",
+    "kernel": "",
+    "date": "",
+    "method": "static"
+  },
+  "checkpoints": [
+    {
+      "id": "initial",
+      "reach": { "okcode": "/nse24" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/tbar[0]/okcd",
+        "wnd[0]/usr/ctxtSEOCLASS-CLSNAME",
+        "wnd[0]/sbar"
+      ],
+      "status": "pending_live"
+    }
+  ]
+}

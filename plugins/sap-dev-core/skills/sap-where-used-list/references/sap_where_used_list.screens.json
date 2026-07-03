@@ -1,0 +1,62 @@
+{
+  "schema": "sapdev.screenbaseline/1",
+  "vbs": "sap_where_used_list.vbs",
+  "captured_on": {
+    "release": "",
+    "kernel": "",
+    "date": "",
+    "method": "static"
+  },
+  "checkpoints": [
+    {
+      "id": "initial",
+      "reach": { "note": "/n<TXN> built from %%TXN%% (SE11/SE38/SE37/SE24/SE91); name-field and SE11 radio ids branch on TXN, captured live" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/tbar[0]/okcd",
+        "wnd[0]/sbar"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "scope_popup",
+      "reach": { "note": "where-used scope selection popup after Ctrl+Shift+F3 (wnd[1]): Select All + Continue" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]/tbar[0]/btn[7]",
+        "wnd[1]/tbar[0]/btn[0]"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "no_usages_popup",
+      "reach": { "note": "conditional 'no usages' SPOP dialog (wnd[1]); fingerprinted by OPTION1 present AND scope toolbar btn[7] absent" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]/usr/btnSPOP-OPTION1"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "usage_list",
+      "reach": { "note": "where-used result list on wnd[0]; List > Print > Print menu (btn[32] is the fallback print button)" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/mbar/menu[0]/menu[7]/menu[0]",
+        "wnd[0]/tbar[1]/btn[32]"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "print_popup",
+      "reach": { "note": "print parameters dialog (SAPLSPRI 0600, wnd[1]); btn[0] is the fallback Continue" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]/usr/subSUBSCREEN:SAPLSPRI:0600/cmbPRIPAR_DYN-PRIMM2",
+        "wnd[1]/tbar[0]/btn[13]",
+        "wnd[1]/tbar[0]/btn[0]"
+      ],
+      "status": "pending_live"
+    }
+  ]
+}

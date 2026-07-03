@@ -1,0 +1,33 @@
+{
+  "schema": "sapdev.screenbaseline/1",
+  "vbs": "sap_trace_sat.vbs",
+  "captured_on": {
+    "release": "",
+    "kernel": "",
+    "date": "",
+    "method": "static"
+  },
+  "checkpoints": [
+    {
+      "id": "initial",
+      "reach": { "okcode": "/nSAT" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/tbar[0]/okcd",
+        "wnd[0]/usr/tabsTS_START/tabpLIST",
+        "wnd[0]/usr/tabsTS_START/tabpLIST/ssubLIST_REF1:SAPLS_ABAP_TRACE_DATA:0102/cntlCONTENT_CONTROL/shellcont/shell"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "evaluation_desktop",
+      "reach": { "note": "evaluation desktop after double-click on a measurement row (SAPLATRA_TOOL_SE30_AGG_MAIN 0300); Hit List tab + grid" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/usr/ssubTPDAMYMAIN:SAPLATRA_TOOL_SE30_AGG_MAIN:0300/tabsTAB_MAIN/tabpMAIN_TAB_HIT",
+        "wnd[0]/usr/ssubTPDAMYMAIN:SAPLATRA_TOOL_SE30_AGG_MAIN:0300/tabsTAB_MAIN/tabpMAIN_TAB_HIT/ssubFULL:SAPLATRA_TOOL_HITLIST:0100/cntlCONTROL_HIT/shellcont/shell"
+      ],
+      "status": "pending_live"
+    }
+  ]
+}

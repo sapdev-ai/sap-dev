@@ -1,0 +1,79 @@
+{
+  "schema": "sapdev.screenbaseline/1",
+  "vbs": "sap_snro_create.vbs",
+  "captured_on": {
+    "release": "",
+    "kernel": "",
+    "date": "",
+    "method": "static"
+  },
+  "checkpoints": [
+    {
+      "id": "initial",
+      "reach": { "okcode": "/nSNRO" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/tbar[0]/okcd",
+        "wnd[0]/usr/ctxtNRIV-OBJECT",
+        "wnd[0]/usr/btnDISPLAY",
+        "wnd[0]/usr/btnINSERT",
+        "wnd[0]/sbar"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "confirm_popup",
+      "reach": { "note": "conditional wnd[1] create-object confirm after Display" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]/tbar[0]/btn[0]"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "attributes",
+      "reach": { "note": "NRO header maintenance screen after Insert (create mode)" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/usr/txtTNROT-TXTSHORT",
+        "wnd[0]/usr/txtTNROT-TXT",
+        "wnd[0]/usr/tabsNUMMERNKREIS/tabpNUMMERNKREIS_FC2",
+        "wnd[0]/usr/tabsNUMMERNKREIS/tabpNUMMERNKREIS_FC3",
+        "wnd[0]/usr/tabsNUMMERNKREIS/tabpNUMMERNKREIS_FC1",
+        "wnd[0]/tbar[0]/btn[15]"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "package_popup",
+      "reach": { "note": "wnd[1] package / Object Directory Entry popup after Save" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]/usr/ctxtKO007-L_DEVCLASS",
+        "wnd[1]/tbar[0]/btn[7]"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "tr_popup",
+      "reach": { "note": "wnd[1] transport request prompt after package popup" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]/usr/ctxtKO008-TRKORR",
+        "wnd[1]/tbar[0]/btn[8]",
+        "wnd[1]/tbar[0]/btn[0]"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "tr_create_popup",
+      "reach": { "note": "wnd[2] create-request dialog from the TR prompt" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[2]/usr/txtKO013-AS4TEXT",
+        "wnd[2]/tbar[0]/btn[0]"
+      ],
+      "status": "pending_live"
+    }
+  ]
+}

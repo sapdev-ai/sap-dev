@@ -1,0 +1,92 @@
+{
+  "schema": "sapdev.screenbaseline/1",
+  "vbs": "sap_se19_new_create.vbs",
+  "captured_on": {
+    "release": "",
+    "kernel": "",
+    "date": "",
+    "method": "static"
+  },
+  "checkpoints": [
+    {
+      "id": "initial",
+      "reach": { "okcode": "/nSE19" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/tbar[0]/okcd",
+        "wnd[0]/usr/radG_IS_NEW_2",
+        "wnd[0]/usr/ctxtG_ENHSPOTNAME",
+        "wnd[0]/usr/btnPUSHBUTTON_IMPLEMENT_TEXT"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "create_enh_impl_popup",
+      "reach": { "note": "Create Enhancement Implementation popup after Create" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]/usr/txtG_ENHSTRU-ENHNAME",
+        "wnd[0]/sbar",
+        "wnd[1]/usr/txtG_ENHSTRU-SHORTTEXT",
+        "wnd[1]/tbar[0]/btn[0]"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "tr_popup",
+      "reach": { "note": "object directory and TR popup chain; only literal discriminator seeded, rest built dynamically" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]/usr/ctxtKO008-TRKORR"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "badi_impl_popup",
+      "reach": { "note": "Create BAdI Implementations table popup; table cell ids built dynamically, capture live" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]/tbar[0]/btn[0]"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "impl_class_popup",
+      "reach": { "note": "Create Implementation Class popup; Create Empty Class button" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]/tbar[0]/btn[2]"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "confirm_popup",
+      "reach": { "note": "residual confirmation popup on some releases after class creation" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]/tbar[0]/btn[0]"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "editor",
+      "reach": { "note": "enhancement implementation editor screen" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/usr/txtENH_EDT_LAYOUT-OBJECT1",
+        "wnd[0]/tbar[1]/btn[27]",
+        "wnd[0]/usr/txtENH_EDT_LAYOUT-VERSION_TX"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "worklist_popup",
+      "reach": { "note": "inactive-objects worklist popup after Activate" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]/tbar[0]/btn[0]"
+      ],
+      "status": "pending_live"
+    }
+  ]
+}

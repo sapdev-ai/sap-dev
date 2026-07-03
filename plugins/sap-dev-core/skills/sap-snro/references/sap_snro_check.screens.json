@@ -1,0 +1,33 @@
+{
+  "schema": "sapdev.screenbaseline/1",
+  "vbs": "sap_snro_check.vbs",
+  "captured_on": {
+    "release": "",
+    "kernel": "",
+    "date": "",
+    "method": "static"
+  },
+  "checkpoints": [
+    {
+      "id": "initial",
+      "reach": { "okcode": "/nSNRO" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/tbar[0]/okcd",
+        "wnd[0]/usr/ctxtNRIV-OBJECT",
+        "wnd[0]/usr/btnDISPLAY",
+        "wnd[0]/sbar"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "confirm_popup",
+      "reach": { "note": "conditional wnd[1] create-object confirm after Display of a missing NRO" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]/tbar[0]/btn[12]"
+      ],
+      "status": "pending_live"
+    }
+  ]
+}

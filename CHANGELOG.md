@@ -9,6 +9,53 @@ Fix wave for the 2026-07-03 post-fix review
 code-enforced migration gates, credential hygiene, and enterprise-adoption
 documentation.
 
+### Added
+
+- **Readiness-capability pre-check** (`shared/scripts/sap_readiness_probe.ps1`,
+  `Get-SapReadinessCapability` dot-source + CLI) wired into **`/sap-doctor`**
+  (new informational `READINESS_CAP` check, never degrades the verdict) and
+  **`/sap-cc-analyze`** (Step 1.5 preflight before the ATC loop). Read-only RFC
+  probe of `SCICHKV_HD` → `READINESS_CAPABLE | NO_READINESS_VARIANTS |
+  RFC_ERROR` (+ variant count / release-suffixed target variants), so pointing a
+  readiness run at a system with no `S4HANA_READINESS` variants (e.g. an ECC
+  box) fails fast instead of looping plan-errors. Deliberately keyed on variant
+  presence, NOT the `SYCM_*` table family — that is a proven FALSE signal
+  (present on plan-erroring 1909 systems, absent on a working 2022 system; see
+  `temp/testReport/cc_harvest_attempt_20260703.md`). The authoritative catch
+  remains `/sap-atc`'s existing `ATC_PLAN_ERRORS` (`COUNT_PLNERR > 0`) gate.
+  Live-verified: EC2 → NO_READINESS_VARIANTS (0), S4D → 7 variants, S4H → 16
+  (incl. `_2022`/`_2020`).
+- **`/sap-cc-remediate revert` — scripted rollback for deployed fixes (pain-plan
+  C10).** New `revert` action stages the retained `<obj>.before.abap` as
+  `<obj>.revert.abap` (+ `.revert.diff` for operator review; default scope =
+  recheck-FAILED fixes, `-Objects "A,B"` for explicit DEPLOYED/VERIFIED
+  rollbacks); after the delegated sandbox redeploy (Step 4b: sandbox assertion +
+  workbench skills + CONTENT_VERIFY), `record` accepts `outcome=REVERTED`
+  (REMEDIATED|VERIFIED → TRIAGED; fixlog `status=REVERTED`,
+  `deploy_status=ROLLED_BACK`, note records the prior status). A results file
+  that is ALL `REVERTED` bypasses the `dryrun_review` gate — a rollback restores
+  the reviewed before-image; blocking it would strand a broken fix on the
+  sandbox. `/sap-cc-campaign report` keeps reverted fixes in the attempt
+  denominator but out of the auto-fixed numerator
+  (`INFO: auto_fix_rate ... reverted=<n>`). Offline-tested end-to-end: staging
+  selection (FAILED-default / explicit / NOT_DEPLOYED / BEFORE_MISSING /
+  NOT_IN_FIXLOG), gate bypass vs mixed-file BLOCK (exit 3), both ledger
+  transitions, and the KPI line.
+- **Golden-screen baseline coverage 8/121 → 120/121 (pain-plan C12).** Static
+  seeds (`method: static`, `status: pending_live`) authored for all 112
+  remaining driving VBS across sap-dev-core + sap-tcd — per-checkpoint
+  `findById` dependency sets with popups as their own checkpoints, dynamic IDs
+  excluded per contract, either/or release alternatives split into separate
+  checkpoints (mm01 1909 vs ECC6), absence-probes never seeded as required
+  (present-means-failure IDs like sap_se37_delete's post-delete tab strip).
+  Verified: consistency gate green (0 malformed baselines), plus an automated
+  cross-check that every seeded id exists verbatim in its paired VBS (0
+  violations in the new wave; 2 of the 8 pre-existing seeds carry assembled
+  full paths, exercised at live capture). The sole remaining gap is
+  `sap_stms_import.vbs` (placeholder IDs pending `/sap-gui-record`
+  calibration). Seeding conventions codified in
+  `contributing/golden_screen_baselines.md`.
+
 ### Fixed
 
 - **Two-bucket temp model completed.** The last 15 skills writing fixed-name

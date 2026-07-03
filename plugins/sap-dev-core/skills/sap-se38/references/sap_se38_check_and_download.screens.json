@@ -1,0 +1,34 @@
+{
+  "schema": "sapdev.screenbaseline/1",
+  "vbs": "sap_se38_check_and_download.vbs",
+  "captured_on": {
+    "release": "",
+    "kernel": "",
+    "date": "",
+    "method": "static"
+  },
+  "checkpoints": [
+    {
+      "id": "initial",
+      "reach": { "okcode": "/nSE38" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/usr/ctxtRS38M-PROGRAMM",
+        "wnd[0]/usr/radRS38M-FUNC_EDIT",
+        "wnd[0]/usr/btnSHOP"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "editor",
+      "reach": { "note": "Display (btnSHOP) opens the ABAP editor" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/usr/cntlEDITOR/shellcont/shell",
+        "wnd[0]/tbar[1]/btn[26]",
+        "wnd[0]/sbar"
+      ],
+      "status": "pending_live"
+    }
+  ]
+}

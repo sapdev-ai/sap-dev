@@ -1,6 +1,6 @@
 # sap-cc-remediate helper -- R1 mechanical remediation (dry-run) + state record (OFFLINE)
 #
-# Two file-only actions (no SAP/RFC/GUI here -- deploy/activate/ATC-recheck are
+# File-only actions (no SAP/RFC/GUI here -- deploy/activate/ATC-recheck are
 # delegated to /sap-se38|37|24, /sap-activate-object, /sap-atc by the SKILL.md):
 #
 #   apply  : for each TRIAGED R1 object, read its downloaded source
@@ -8,13 +8,27 @@
 #            write <obj>.after.abap + <obj>.diff + a fixlog row. AUTO rules
 #            rewrite; FLAG rules only report (no change). DRY-RUN -- never
 #            advances state, never touches SAP. Human reviews the diffs (gate).
+#   revert : stage a ROLLBACK of a deployed fix. For each selected object whose
+#            fixlog row shows a deploy happened (status DEPLOYED|VERIFIED|FAILED),
+#            copy the retained <obj>.before.abap to <obj>.revert.abap and write
+#            <obj>.revert.diff (deployed .after.abap vs the restore target) for
+#            the operator to review. Selection: -Objects "A[,B]" names explicit
+#            objects (any deployed status); WITHOUT -Objects only fixlog status
+#            FAILED rows are staged (the recheck-failed set -- the broken fix is
+#            live on the sandbox). File-staging only: state is unchanged and
+#            nothing touches SAP; the SKILL.md deploys <obj>.revert.abap via the
+#            workbench skills, then records outcome REVERTED.
 #   record : given a deploy/recheck results file (obj_name,obj_type,outcome with
-#            outcome VERIFIED|DEPLOYED|FAILED), advance the ledger and stamp the
-#            fixlog. Offline. Allowed transitions:
+#            outcome VERIFIED|DEPLOYED|FAILED|REVERTED), advance the ledger and
+#            stamp the fixlog. Offline. Allowed transitions:
 #              TRIAGED    -> REMEDIATED  (outcome DEPLOYED)
 #              TRIAGED    -> VERIFIED    (outcome VERIFIED; deploy + recheck in one pass)
 #              REMEDIATED -> VERIFIED    (outcome VERIFIED; recheck after an earlier DEPLOYED record)
 #              REMEDIATED -> TRIAGED     (outcome FAILED; recheck failed -- back into the loop)
+#              REMEDIATED -> TRIAGED     (outcome REVERTED; before-image redeployed -- back into the loop)
+#              VERIFIED   -> TRIAGED     (outcome REVERTED; a verified fix rolled back)
+#            (REVERTED on an already-TRIAGED object -- the recheck-failed case --
+#            keeps state and stamps only the fixlog.)
 #            Any other jump is blocked (illegal transition; state unchanged).
 #
 # SAFETY: only objects whose state is TRIAGED and tier is exactly R1 are touched.
@@ -22,31 +36,41 @@
 # findings are NOT auto-remediated here -- they are AI/human work.
 #
 # Params:
-#   -Action <apply|record>  (required)
+#   -Action <apply|assist|revert|record>  (required)
 #   -CampaignDir <dir>      (required)
 #   -RulesFile <path>       R1 rule pack (default: this references\migration_rules_r1.tsv;
 #                           customer override e.g. {custom_url}\knowledge\migration_rules_r1.tsv)
 #   -SourceDir <dir>        where <obj>.before.abap live (default: {CampaignDir}\remediation)
-#   -Limit <int>            (apply) cap objects processed (0 = all)
+#   -Limit <int>            (apply/revert) cap objects processed (0 = all)
 #   -ResultsFile <path>     (record) outcomes TSV
+#   -Objects <csv>          (revert) explicit object names; without it only
+#                           fixlog status=FAILED rows are staged
 #
 # Output grammar (parseable):
 #   APPLY: objects=<n> changed=<n> flagged=<n> norule=<n> missing=<n>
 #   OBJ: <name> | STATUS: <s> | AUTO: <n> | FLAG: <n>
-#   RECORD: verified=<n> remediated=<n> failed=<n>
+#   REVERT: objects=<n> ready=<r> notdeployed=<s> missing=<m>
+#   RECORD: verified=<n> remediated=<n> failed=<n> reverted=<n>
 #   BLOCKED: gate=dryrun_review status=<PENDING|REJECTED> action=record   (record only; exit 3)
 #   STATUS: OK | EMPTY | ERROR | BLOCKED
 # Exit: 0 ok | 1 empty (nothing to do) | 2 error | 3 blocked (dry-run review sign-off not APPROVED)
+#
+# Gate note: `record` enforces the dryrun_review sign-off for FORWARD progress
+# (VERIFIED/DEPLOYED/FAILED outcomes). A results file whose rows are ALL
+# outcome=REVERTED bypasses the gate -- a rollback restores the reviewed
+# before-image and reduces risk; blocking it on a sign-off would leave a broken
+# fix live on the sandbox with no scripted way back.
 
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory)][ValidateSet('apply','record','assist')][string]$Action,
+    [Parameter(Mandatory)][ValidateSet('apply','record','assist','revert')][string]$Action,
     [Parameter(Mandatory)][string]$CampaignDir,
     [string]$RulesFile = '',
     [string]$SourceDir = '',
     [int]$Limit = 0,
     [string]$ResultsFile = '',
-    [string]$KnowledgeDir = ''
+    [string]$KnowledgeDir = '',
+    [string]$Objects = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -310,6 +334,69 @@ try {
         exit 0
     }
 
+    # ---- revert (stage rollback of deployed fixes; file-staging only) ----
+    # Selects fixlog rows whose fix was DEPLOYED to the sandbox (status
+    # DEPLOYED|VERIFIED|FAILED -- FAILED means the ATC recheck failed AFTER a
+    # deploy, i.e. the broken fix is live). Copies the retained before-image to
+    # <obj>.revert.abap and writes <obj>.revert.diff (deployed .after.abap vs
+    # the restore target) for operator review. NO state change, NO SAP access:
+    # the SKILL.md deploys the staged file via the workbench skills (sandbox
+    # assertion applies), then records outcome REVERTED.
+    if ($Action -eq 'revert') {
+        $fix = Read-Fixlog $fixlogPath
+        $DEPLOYED_STATUSES = @('DEPLOYED','VERIFIED','FAILED')
+        $wanted = @()
+        if (-not [string]::IsNullOrWhiteSpace($Objects)) {
+            $names = @($Objects.Split(',') | ForEach-Object { $_.Trim().ToUpper() } | Where-Object { $_ })
+            foreach ($k in ($fix.Keys | Sort-Object)) { if ($names -contains ($fix[$k].obj_name.ToUpper())) { $wanted += $fix[$k] } }
+            $known = @($wanted | ForEach-Object { $_.obj_name.ToUpper() })
+            foreach ($nm in $names) { if ($known -notcontains $nm) { Write-Output "OBJ: $nm | STATUS: NOT_IN_FIXLOG" } }
+        } else {
+            # No -Objects: stage only the recheck-FAILED set (broken fix live on
+            # the sandbox). Rolling back DEPLOYED/VERIFIED fixes is deliberate --
+            # name them explicitly.
+            foreach ($k in ($fix.Keys | Sort-Object)) { if ($fix[$k].status -eq 'FAILED') { $wanted += $fix[$k] } }
+        }
+        if ($wanted.Count -eq 0) { Write-Output 'REVERT: objects=0 ready=0 notdeployed=0 missing=0'; Write-Output 'STATUS: EMPTY'; exit 1 }
+        $nReady = 0; $nSkip = 0; $nMiss = 0; $nDone = 0
+        foreach ($r in $wanted) {
+            if ($Limit -gt 0 -and $nDone -ge $Limit) { break }
+            $nDone++
+            if ($DEPLOYED_STATUSES -notcontains $r.status) { $nSkip++; Write-Output "OBJ: $($r.obj_name) | STATUS: NOT_DEPLOYED (fixlog status $($r.status))"; continue }
+            $before = Join-Path $remDir "$($r.obj_name).before.abap"
+            if (-not (Test-Path -LiteralPath $before)) { $nMiss++; Write-Output "OBJ: $($r.obj_name) | STATUS: BEFORE_MISSING (expected $before)"; continue }
+            $beforeLines = @(Get-Content -LiteralPath $before)
+            Write-Utf8NoBom (Join-Path $remDir "$($r.obj_name).revert.abap") (($beforeLines -join "`r`n") + "`r`n")
+            $afterPath = Join-Path $remDir "$($r.obj_name).after.abap"
+            if (Test-Path -LiteralPath $afterPath) {
+                $afterLines = @(Get-Content -LiteralPath $afterPath)
+                $diff = New-Object System.Collections.Generic.List[string]
+                $max = [math]::Max($beforeLines.Count, $afterLines.Count)
+                for ($n = 0; $n -lt $max; $n++) {
+                    $a = if ($n -lt $afterLines.Count) { $afterLines[$n] } else { $null }
+                    $b = if ($n -lt $beforeLines.Count) { $beforeLines[$n] } else { $null }
+                    if ($a -cne $b) {
+                        $diff.Add("@@ L$($n+1)")
+                        if ($null -ne $a) { $diff.Add("- $a") }
+                        if ($null -ne $b) { $diff.Add("+ $b") }
+                    }
+                }
+                if ($diff.Count -gt 0) { Write-Utf8NoBom (Join-Path $remDir "$($r.obj_name).revert.diff") (($diff -join "`r`n") + "`r`n") }
+            }
+            $nReady++
+            Write-Output "OBJ: $($r.obj_name) | STATUS: REVERT_READY (was $($r.status))"
+        }
+        Write-Output "REVERT: objects=$nDone ready=$nReady notdeployed=$nSkip missing=$nMiss"
+        if ($nReady -gt 0) {
+            Write-Output 'STATUS: OK'
+            Write-Output 'NOTE: staging only -- review remediation\<obj>.revert.diff, deploy <obj>.revert.abap via /sap-se38|37|24 + /sap-activate-object on the SANDBOX, then -Action record with outcome REVERTED.'
+            exit 0
+        } else {
+            Write-Output 'STATUS: EMPTY'
+            exit 1
+        }
+    }
+
     # ---- record ----
     # Hard human-gate (dryrun_review): `record` is what marks campaign progress
     # (TRIAGED -> REMEDIATED/VERIFIED), so it is the enforceable point of the
@@ -318,12 +405,26 @@ try {
     # /sap-cc-campaign signoff) or was skipped (this wall). Honours
     # campaign.json human_gates.dryrun_review=false (gate disabled). The
     # companion `next` gate (scope_signoff) lives in sap_cc_campaign.ps1.
+    # ROLLBACK EXEMPTION: a results file whose rows are ALL outcome=REVERTED
+    # bypasses the gate (see header Gate note) -- the results are therefore
+    # parsed BEFORE the gate check.
+    if ([string]::IsNullOrWhiteSpace($ResultsFile) -or -not (Test-Path -LiteralPath $ResultsFile)) { Write-Output "ERROR: -ResultsFile not found: $ResultsFile"; Write-Output 'STATUS: ERROR'; exit 2 }
+    $all = @(Get-Content -LiteralPath $ResultsFile)
+    if ($all.Count -lt 2) { Write-Output 'ERROR: results file has no rows'; Write-Output 'STATUS: EMPTY'; exit 1 }
+    $hdr = @($all[0].Split("`t") | ForEach-Object { $_.Trim() }); $ix = @{}; for ($i=0;$i -lt $hdr.Count;$i++){ $ix[$hdr[$i]]=$i }
+    $outcomesSeen = @()
+    for ($i = 1; $i -lt $all.Count; $i++){
+        $ln = $all[$i]; if (-not $ln.Trim()) { continue }
+        $f = $ln.Split("`t"); $o = (Cell $f $ix 'outcome').ToUpper()
+        if ($o) { $outcomesSeen += $o }
+    }
+    $allRevert = ($outcomesSeen.Count -gt 0 -and (@($outcomesSeen | Where-Object { $_ -ne 'REVERTED' }).Count -eq 0))
     $cjPath = Join-Path $CampaignDir 'campaign.json'
     $cj = $null
     try { $cj = Get-Content -LiteralPath $cjPath -Raw -Encoding UTF8 | ConvertFrom-Json } catch { $cj = $null }
     $gateOn = $true
     if ($cj -and $cj.human_gates -and $null -ne $cj.human_gates.dryrun_review) { $gateOn = [bool]$cj.human_gates.dryrun_review }
-    if ($gateOn) {
+    if ($gateOn -and -not $allRevert) {
         $so = $null
         if ($cj -and $cj.signoffs) { foreach ($s in @($cj.signoffs)) { if (([string]$s.gate) -eq 'dryrun_review') { $so = $s } } }
         $gstat = if ($so -and $so.status) { [string]$so.status } else { 'PENDING' }
@@ -334,15 +435,11 @@ try {
             exit 3
         }
     }
-    if ([string]::IsNullOrWhiteSpace($ResultsFile) -or -not (Test-Path -LiteralPath $ResultsFile)) { Write-Output "ERROR: -ResultsFile not found: $ResultsFile"; Write-Output 'STATUS: ERROR'; exit 2 }
-    $all = @(Get-Content -LiteralPath $ResultsFile)
-    if ($all.Count -lt 2) { Write-Output 'ERROR: results file has no rows'; Write-Output 'STATUS: EMPTY'; exit 1 }
-    $hdr = @($all[0].Split("`t") | ForEach-Object { $_.Trim() }); $ix = @{}; for ($i=0;$i -lt $hdr.Count;$i++){ $ix[$hdr[$i]]=$i }
 
     $stateRows = @(Read-StateRows $statePath)
     $stIdx = @{}; for ($i=0;$i -lt $stateRows.Count;$i++){ $stIdx["$($stateRows[$i].obj_name)|$($stateRows[$i].obj_type)"] = $i }
     $fix = Read-Fixlog $fixlogPath
-    $nV = 0; $nR = 0; $nF = 0
+    $nV = 0; $nR = 0; $nF = 0; $nRev = 0
     for ($i = 1; $i -lt $all.Count; $i++){
         $ln = $all[$i]; if (-not $ln.Trim()) { continue }
         $f = $ln.Split("`t")
@@ -357,24 +454,30 @@ try {
             # without this, a deployed object could never reach VERIFIED and
             # the campaign wedged at "await ATC re-check"). A FAILED recheck on
             # a REMEDIATED object returns it to TRIAGED so the remediation loop
-            # picks it up again. Everything else (e.g. SCOPED -> VERIFIED) is
-            # an illegal jump and is blocked.
+            # picks it up again. REVERTED returns a deployed object (REMEDIATED
+            # or VERIFIED) to TRIAGED -- the before-image is live again, so the
+            # object re-enters the remediation loop; on an already-TRIAGED
+            # object (the recheck-FAILED case) only the fixlog is stamped.
+            # Everything else (e.g. SCOPED -> VERIFIED) is an illegal jump and
+            # is blocked.
             if ($out -eq 'VERIFIED' -and $r.state -in @('TRIAGED','REMEDIATED')) { $r.state = 'VERIFIED'; $r.updated_on = $today }
             elseif ($out -eq 'DEPLOYED' -and $r.state -eq 'TRIAGED') { $r.state = 'REMEDIATED'; $r.updated_on = $today }
             elseif ($out -eq 'FAILED' -and $r.state -eq 'REMEDIATED') { $r.state = 'TRIAGED'; $r.updated_on = $today }
+            elseif ($out -eq 'REVERTED' -and $r.state -in @('REMEDIATED','VERIFIED')) { $r.state = 'TRIAGED'; $r.updated_on = $today }
         }
         if ($fix.ContainsKey($key)) {
             $fr = $fix[$key]
             if ($out -eq 'VERIFIED') { $fr.deploy_status='OK'; $fr.atc_recheck='CLEAN'; $fr.status='VERIFIED' }
             elseif ($out -eq 'DEPLOYED') { $fr.deploy_status='OK'; $fr.atc_recheck='PENDING'; $fr.status='DEPLOYED' }
+            elseif ($out -eq 'REVERTED') { $fr.notes = "reverted (was $($fr.status))"; $fr.deploy_status='ROLLED_BACK'; $fr.atc_recheck='-'; $fr.status='REVERTED' }
             else { $fr.deploy_status='FAILED'; $fr.status='FAILED' }
             $fr.updated_on = $today
         }
-        switch ($out) { 'VERIFIED' { $nV++ } 'DEPLOYED' { $nR++ } default { $nF++ } }
+        switch ($out) { 'VERIFIED' { $nV++ } 'DEPLOYED' { $nR++ } 'REVERTED' { $nRev++ } default { $nF++ } }
     }
     Write-StateRows $statePath $stateRows
     Write-Fixlog $fixlogPath $fix
-    Write-Output "RECORD: verified=$nV remediated=$nR failed=$nF"
+    Write-Output "RECORD: verified=$nV remediated=$nR failed=$nF reverted=$nRev"
     Write-Output 'STATUS: OK'
     exit 0
 }

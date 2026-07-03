@@ -1,0 +1,57 @@
+{
+  "schema": "sapdev.screenbaseline/1",
+  "vbs": "sap_se54_generate.vbs",
+  "captured_on": {
+    "release": "",
+    "kernel": "",
+    "date": "",
+    "method": "static"
+  },
+  "checkpoints": [
+    {
+      "id": "initial",
+      "reach": { "okcode": "/nSE54" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/tbar[0]/okcd",
+        "wnd[0]/usr/txtVIMDYNFLDS-VIEWNAME",
+        "wnd[0]/usr/radVIMDYNFLDS-ELEM_GEN",
+        "wnd[0]/usr/btnVIMDYNFLDS-PUSH_GMNT"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "create_module_popup",
+      "reach": { "note": "Create maintenance module Yes/No popup when no dialog exists" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]/usr/btnSPOP-OPTION1",
+        "wnd[1]/usr/txtMESSTXT1"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "generation_env",
+      "reach": { "note": "Generation Environment screen" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/usr/ctxtTDDAT-CCLASS",
+        "wnd[0]/sbar",
+        "wnd[0]/usr/ctxtTVDIR-AREA",
+        "wnd[0]/usr/radVIMDYNFLDS-MTYPE1",
+        "wnd[0]/usr/radVIMDYNFLDS-MTYPE2",
+        "wnd[0]/usr/txtTVDIR-LISTE",
+        "wnd[0]/usr/txtTVDIR-DETAIL",
+        "wnd[0]/usr/radVIMDYNFLDS-CORR_CON_S"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "tr_popup",
+      "reach": { "note": "post-generate KO007/KO008 popup chain via shared sap_delete_popups.vbs walker; ids built dynamically, capture live" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [],
+      "status": "pending_live"
+    }
+  ]
+}

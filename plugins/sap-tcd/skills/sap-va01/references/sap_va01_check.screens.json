@@ -1,0 +1,31 @@
+{
+  "schema": "sapdev.screenbaseline/1",
+  "vbs": "sap_va01_check.vbs",
+  "captured_on": {
+    "release": "",
+    "kernel": "",
+    "date": "",
+    "method": "static"
+  },
+  "checkpoints": [
+    {
+      "id": "initial",
+      "reach": { "okcode": "/nVA03" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/tbar[0]/okcd",
+        "wnd[0]/usr/ctxtVBAK-VBELN"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "overview_screen",
+      "reach": { "note": "order overview screen after Enter on an existing order" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/usr/tabsTAXI_TABSTRIP_OVERVIEW"
+      ],
+      "status": "pending_live"
+    }
+  ]
+}

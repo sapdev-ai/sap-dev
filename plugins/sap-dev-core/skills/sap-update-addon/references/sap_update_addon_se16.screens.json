@@ -1,0 +1,43 @@
+{
+  "schema": "sapdev.screenbaseline/1",
+  "vbs": "sap_update_addon_se16.vbs",
+  "captured_on": {
+    "release": "",
+    "kernel": "",
+    "date": "",
+    "method": "static"
+  },
+  "checkpoints": [
+    {
+      "id": "initial",
+      "reach": { "okcode": "/nSE16" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/tbar[0]/okcd",
+        "wnd[0]/usr/ctxtDATABROWSE-TABLENAME",
+        "wnd[0]/tbar[1]/btn[5]",
+        "wnd[0]/tbar[1]/btn[18]",
+        "wnd[0]/mbar/menu[1]/menu[5]"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "entry_form",
+      "reach": { "note": "Create Entries form (/1BCDWB/DB<table> 101); field ids are table-dependent, captured live" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/sbar"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "discard_popup",
+      "reach": { "note": "confirm-discard popup after F12 on a partial-match row (wnd[1])" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]/usr/btnSPOP-OPTION1"
+      ],
+      "status": "pending_live"
+    }
+  ]
+}

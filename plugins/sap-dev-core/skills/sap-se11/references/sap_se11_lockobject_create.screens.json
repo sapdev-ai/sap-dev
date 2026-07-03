@@ -1,0 +1,71 @@
+{
+  "schema": "sapdev.screenbaseline/1",
+  "vbs": "sap_se11_lockobject_create.vbs",
+  "captured_on": {
+    "release": "",
+    "kernel": "",
+    "date": "",
+    "method": "static"
+  },
+  "checkpoints": [
+    {
+      "id": "initial",
+      "reach": { "okcode": "/nSE11" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/tbar[0]/okcd",
+        "wnd[0]/usr/radRSRD1-ENQU",
+        "wnd[0]/usr/ctxtRSRD1-ENQU_VAL",
+        "wnd[0]/usr/btnPUSHADD"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "editor",
+      "reach": { "note": "lock object maintenance screen after pressing Create (btnPUSHADD)" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/usr/txtDD25L-DDTEXT",
+        "wnd[0]/usr/txtDD25E-DDTEXT",
+        "wnd[0]/usr/tabsTABSTRIP_DD25/tabpTABLES",
+        "wnd[0]/usr/tabsTABSTRIP_DD25/tabpLOCKARGS",
+        "wnd[0]/tbar[1]/btn[26]",
+        "wnd[0]/sbar",
+        "wnd[0]/tbar[1]/btn[27]"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "package_popup",
+      "reach": { "note": "conditional wnd[1] Object Directory Entry after Save (KO007)" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]/usr/ctxtKO007-L_DEVCLASS",
+        "wnd[1]/tbar[0]/btn[0]",
+        "wnd[1]/tbar[0]/btn[7]"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "tr_popup",
+      "reach": { "note": "conditional wnd[1] transport prompt after the package dialog (KO008)" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]/usr/ctxtKO008-TRKORR",
+        "wnd[1]/tbar[0]/btn[0]",
+        "wnd[1]/tbar[0]/btn[8]"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "tr_create_popup",
+      "reach": { "note": "wnd[2] create-request dialog opened by btn[8] on the TR popup" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[2]/usr/txtKO013-AS4TEXT",
+        "wnd[2]/tbar[0]/btn[0]"
+      ],
+      "status": "pending_live"
+    }
+  ]
+}

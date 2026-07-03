@@ -4,7 +4,7 @@ description: |
   Remediates the campaign's TRIAGED R1 objects and records the outcome. This is
   the only sap-migrate skill that changes SAP — and it does so ONLY on the
   sandbox, ONLY for tier-R1 objects, and ONLY after a mandatory dry-run review.
-  Three actions:
+  Four actions:
     apply  — DRY-RUN (R1): for each TRIAGED R1 object, apply the deterministic R1
              rule pack (migration_rules_r1.tsv) to the downloaded source and write
              <obj>.after.abap + <obj>.diff + a fixlog row. AUTO rules rewrite;
@@ -14,12 +14,19 @@ description: |
              the matched recipe + object/field/API maps + the findings + source,
              for the AI to produce a recipe-faithful rewrite. No rewrite, no SAP;
              DRAFT patterns are flagged advisory-only.
+    revert — ROLLBACK a deployed fix: stage the retained <obj>.before.abap as
+             <obj>.revert.abap (+ <obj>.revert.diff for review), operator
+             confirms, the file is redeployed via the workbench skills on the
+             sandbox, and record (outcome REVERTED) returns the object to
+             TRIAGED. Without --objects only recheck-FAILED fixes are staged;
+             name DEPLOYED/VERIFIED objects explicitly to roll those back.
     record — after the operator deploys the approved <obj>.after.abap (via
              /sap-se38|37|24 -> /sap-activate-object -> /sap-atc re-check) and
              passes an outcomes file, advance state TRIAGED -> REMEDIATED
              (deployed) / TRIAGED|REMEDIATED -> VERIFIED (ATC clean; a deployed
              object reaches VERIFIED on a later recheck record) / REMEDIATED ->
-             TRIAGED on a FAILED recheck, and stamp the fixlog.
+             TRIAGED on a FAILED recheck / REMEDIATED|VERIFIED -> TRIAGED on
+             REVERTED (rollback recorded), and stamp the fixlog.
   R1 is deterministic (apply). R2/R3 (data-model / HANA) are AI-reasoned: assist
   prepares the context, the AI rewrites per the recipe, and a human reviews
   before deploy — never auto-applied. Objects with tier '?' (unclassified) and
@@ -27,7 +34,7 @@ description: |
   `/sap-cc-triage`.
   Prerequisites: downloaded source for each R1 object; deploy/activate happen via
   the delegated workbench skills on the sandbox system.
-argument-hint: "<apply|assist|record> --campaign <id> [--rules <path>] [--knowledge <dir>] [--source-dir <dir>] [--limit <n>] [--results <path>]"
+argument-hint: "<apply|assist|revert|record> --campaign <id> [--rules <path>] [--knowledge <dir>] [--source-dir <dir>] [--limit <n>] [--results <path>] [--objects <a,b>]"
 ---
 
 # SAP Custom-Code Migration — Remediate (R1)
@@ -49,7 +56,7 @@ Task: $ARGUMENTS
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/settings_lookup.md` | *(rule)* | Settings / `work_dir` resolution. |
 | `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_settings_lib.ps1` + `sap_connection_lib.ps1` | *(dot-source)* | `Get-SapWorkDir`; `Resolve-SapProfileHint` + `Get-SapCurrentConnectionProfile` for the Step 3.0 sandbox assertion. |
 | `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_log_helper.ps1` | *(invoke)* | Start/step/end JSONL logging. |
-| `<SKILL_DIR>/references/sap_cc_remediate.ps1` | *(invoke)* | Offline engine: `apply` (rule-pack dry-run) + `record` (state/fixlog advance). |
+| `<SKILL_DIR>/references/sap_cc_remediate.ps1` | *(invoke)* | Offline engine: `apply` (rule-pack dry-run) + `assist` (R2/R3 context bundles) + `revert` (rollback staging) + `record` (state/fixlog advance). |
 | `<SKILL_DIR>/references/migration_rules_r1.tsv` | *(read)* | Deterministic R1 transforms. `mode` AUTO (rewrite) / FLAG (report only). Customer override via `--rules {custom_url}\knowledge\migration_rules_r1.tsv`. |
 | `<SKILL_DIR>/../../shared/knowledge/recipes/<pattern>.md` | *(read)* | Recipe guidance for R2/R3 (AI-assisted) remediation. |
 | `/sap-se38` `/sap-se37` `/sap-se24` | *(skills)* | Download source + deploy the approved `<obj>.after.abap`. |
@@ -214,22 +221,83 @@ skipped diff review cannot be marked as campaign progress. Present the
 `/sap-cc-campaign signoff --campaign <id> --gate dryrun_review --owner <name>`
 and re-run `record`.
 
-Ledger transitions (forward-only; anything else is blocked):
+Ledger transitions (anything else is blocked):
 TRIAGED → REMEDIATED (`DEPLOYED`); TRIAGED → VERIFIED (`VERIFIED`, deploy +
 recheck recorded in one pass); **REMEDIATED → VERIFIED** (`VERIFIED`, recheck
 recorded after an earlier `DEPLOYED` record — so a deployed object still
 reaches VERIFIED); REMEDIATED → TRIAGED (`FAILED` recheck — the object goes
-back into the remediation loop). The fixlog is stamped for every row. Output:
-`RECORD: verified=<n> remediated=<n> failed=<n>`.
+back into the remediation loop); **REMEDIATED|VERIFIED → TRIAGED** (`REVERTED`
+— rollback recorded, see Step 4b; on an already-TRIAGED object only the fixlog
+is stamped). The fixlog is stamped for every row. Output:
+`RECORD: verified=<n> remediated=<n> failed=<n> reverted=<n>`.
 Then `/sap-cc-campaign report` / `next` (→ transport bundle for VERIFIED objects).
+
+**Rollback exemption:** a results file whose rows are ALL `outcome=REVERTED`
+bypasses the dryrun_review gate — a rollback restores the reviewed
+before-image and reduces risk; blocking it would leave a broken fix live on
+the sandbox with no scripted way back. Any mixed file (forward outcomes
+present) is gated as above.
+
+---
+
+## Step 4b — Revert a deployed fix (rollback)
+
+When a deployed fix must come back out — the ATC recheck failed, a functional
+test broke, or the operator withdraws approval — restore the retained
+before-image. Never hand-edit on the sandbox; the rollback goes through the
+same staged → reviewed → delegated-deploy → recorded loop as the fix itself.
+
+1. **Stage** (offline; no state change, no SAP):
+
+```bash
+powershell -ExecutionPolicy Bypass -File "<SKILL_DIR>\references\sap_cc_remediate.ps1" -Action revert -CampaignDir "{CAMPAIGN_DIR}"
+```
+
+Without `-Objects`, only fixlog `status=FAILED` rows (recheck failed AFTER a
+deploy — the broken fix is live) are staged. Rolling back a `DEPLOYED` or
+`VERIFIED` fix is deliberate: name it explicitly with
+`-Objects "ZMM_REPORT1,ZMM_REPORT2"`. Output per object:
+
+```
+OBJ: <name> | STATUS: <REVERT_READY|NOT_DEPLOYED|BEFORE_MISSING|NOT_IN_FIXLOG>
+REVERT: objects=<n> ready=<r> notdeployed=<s> missing=<m>
+```
+
+It writes `remediation\<obj>.revert.abap` (the restore target — a copy of the
+before-image) and `remediation\<obj>.revert.diff` (deployed `.after.abap` vs
+the restore target). Exit `0` staged, `1` nothing to stage, `2` bad workspace.
+
+2. **Confirm with the operator.** Present each `.revert.diff` and get explicit
+   approval — restoring known-good code still changes sandbox content.
+
+3. **Sandbox assertion** — run the Step 3.0 guard again (`SANDBOX_GUARD: OK`
+   required). A rollback must not leak off the sandbox any more than a fix.
+
+4. **Redeploy the before-image** via the matching workbench skill
+   (`/sap-se38` / `/sap-se37` / `/sap-se24`) using `<obj>.revert.abap` as the
+   source, then `/sap-activate-object`. The se38 path's CONTENT_VERIFY gate
+   confirms the deployed source now matches the restore target line-for-line.
+
+5. **Record** — build an outcomes TSV (`obj_name`, `obj_type`, `outcome`) with
+   `outcome=REVERTED` and run `-Action record` (Step 4). The object returns to
+   TRIAGED (back into the remediation loop), its fixlog row becomes
+   `status=REVERTED` / `deploy_status=ROLLED_BACK` with a note recording the
+   prior status, and `/sap-cc-campaign report` excludes it from the auto-fixed
+   numerator (`INFO: auto_fix_rate ... reverted=<n>`).
+
+Scope note: this restores the **source of this object** to the retained
+before-image. It does not undo TR object-entries, DDIC side effects of other
+objects, or anything a fix changed outside this object's source — those need
+their own review.
 
 ---
 
 ## Step 5 — Outputs (campaign workspace)
 
 - `remediation\<obj>.before.abap` / `.after.abap` / `.diff` — per-object dry-run artifacts.
-- `remediation\fixlog.tsv` — `obj_name · obj_type · status · auto_changes · flag_hits · deploy_status · atc_recheck · updated_on · notes`.
-- `state.tsv` — R1 objects advanced to REMEDIATED / VERIFIED.
+- `remediation\<obj>.revert.abap` / `.revert.diff` — staged rollback artifacts (Step 4b).
+- `remediation\fixlog.tsv` — `obj_name · obj_type · status · auto_changes · flag_hits · deploy_status · atc_recheck · updated_on · notes`. Statuses include `REVERTED` (`deploy_status=ROLLED_BACK`) for recorded rollbacks.
+- `state.tsv` — R1 objects advanced to REMEDIATED / VERIFIED (a recorded rollback returns the object to TRIAGED).
 
 ---
 
@@ -248,6 +316,12 @@ Then `/sap-cc-campaign report` / `next` (→ transport bundle for VERIFIED objec
   the sandbox, only after the operator approves the diffs.
 - **The flywheel.** Every approved R2/R3 fix is a candidate to append to the
   knowledge pack (a vetted before/after + real `detect_message_ids`).
+- **Rollback is source-level, per object.** `revert` (Step 4b) restores this
+  object's retained before-image; it does not undo TR object-entries, DDIC
+  changes owned by other objects, or data written by test executions. The
+  before-image must still exist in `remediation\` — it is retained by Step 1
+  and never cleaned automatically; treat the campaign workspace as the audit
+  store it is.
 
 ---
 

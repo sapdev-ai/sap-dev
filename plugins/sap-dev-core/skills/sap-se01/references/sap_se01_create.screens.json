@@ -1,0 +1,63 @@
+{
+  "schema": "sapdev.screenbaseline/1",
+  "vbs": "sap_se01_create.vbs",
+  "captured_on": {
+    "release": "",
+    "kernel": "",
+    "date": "",
+    "method": "static"
+  },
+  "checkpoints": [
+    {
+      "id": "initial",
+      "reach": { "okcode": "/nse01" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/tbar[0]/okcd",
+        "wnd[0]/tbar[1]/btn[6]",
+        "wnd[0]/sbar"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "request_type_popup",
+      "reach": { "note": "Create (btn[6]) request-type popup (KO042)" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]/usr/radKO042-REQ_CONS_K",
+        "wnd[1]/usr/radKO042-REQ_CUST_W",
+        "wnd[1]/tbar[0]/btn[0]"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "description_popup",
+      "reach": { "note": "request description prompt (KO013)" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]/usr/txtKO013-AS4TEXT"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "se16n_fallback",
+      "reach": { "note": "/nse16n fallback TRKORR lookup (row cells built dynamically - captured live)" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/usr/ctxtGD-TAB",
+        "wnd[0]/usr/tblSAPLSE16NSELFIELDS_TC",
+        "wnd[0]/tbar[1]/btn[8]"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "se16n_results",
+      "reach": { "note": "SE16N result grid after Execute (F8)" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/usr/cntlRESULT_LIST/shellcont/shell"
+      ],
+      "status": "pending_live"
+    }
+  ]
+}

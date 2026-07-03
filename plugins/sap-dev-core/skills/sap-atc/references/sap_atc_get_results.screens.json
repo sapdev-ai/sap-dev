@@ -1,0 +1,61 @@
+{
+  "schema": "sapdev.screenbaseline/1",
+  "vbs": "sap_atc_get_results.vbs",
+  "captured_on": {
+    "release": "",
+    "kernel": "",
+    "date": "",
+    "method": "static"
+  },
+  "checkpoints": [
+    {
+      "id": "initial",
+      "reach": { "okcode": "/nATC" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/tbar[0]/okcd",
+        "wnd[0]/shellcont/shell/shellcont[1]/shell"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "selection",
+      "reach": { "note": "double-click tree node 14 lands on the Manage Results selection screen" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/usr/ctxtS_RUNSR-LOW",
+        "wnd[0]/usr/ctxtS_SDLON-HIGH"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "results_grid",
+      "reach": { "note": "F8 from the selection screen to the Manage Results grid" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/usr/shell/shellcont/shell"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "export_format_popup",
+      "reach": { "note": "grid Export dropdown &MB_EXPORT > &PC raises the save-list format popup" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]/usr/subSUBSCREEN_STEPLOOP:SAPLSPO5:0150/sub:SAPLSPO5:0150/radSPOPLI-SELFLAG[1,0]",
+        "wnd[1]/tbar[0]/btn[0]"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "file_save_popup",
+      "reach": { "note": "Continue on the format popup opens the file-save dialog" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]/usr/ctxtDY_PATH",
+        "wnd[1]/usr/ctxtDY_FILENAME"
+      ],
+      "status": "pending_live"
+    }
+  ]
+}

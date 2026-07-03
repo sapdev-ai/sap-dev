@@ -1,0 +1,33 @@
+{
+  "schema": "sapdev.screenbaseline/1",
+  "vbs": "sap_se37_check.vbs",
+  "captured_on": {
+    "release": "",
+    "kernel": "",
+    "date": "",
+    "method": "static"
+  },
+  "checkpoints": [
+    {
+      "id": "initial",
+      "reach": { "okcode": "/nSE37" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/tbar[0]/okcd",
+        "wnd[0]/usr/ctxtRS38L-NAME",
+        "wnd[0]/usr/btnBUT3",
+        "wnd[0]/sbar"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "editor",
+      "reach": { "note": "Display (btnBUT3) opens the Function Builder" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/usr/tabsFUNC_TAB_STRIP"
+      ],
+      "status": "pending_live"
+    }
+  ]
+}

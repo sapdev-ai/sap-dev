@@ -1,0 +1,41 @@
+{
+  "schema": "sapdev.screenbaseline/1",
+  "vbs": "sap_atc_drill_findings.vbs",
+  "captured_on": {
+    "release": "",
+    "kernel": "",
+    "date": "",
+    "method": "static"
+  },
+  "checkpoints": [
+    {
+      "id": "initial",
+      "reach": { "okcode": "/nATC" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/tbar[0]/okcd",
+        "wnd[0]/shellcont/shell/shellcont[1]/shell"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "selection",
+      "reach": { "note": "double-click tree node 14 lands on the Manage Results selection screen" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/usr/ctxtS_RUNSR-LOW",
+        "wnd[0]/usr/ctxtS_SDLON-HIGH"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "results_grid",
+      "reach": { "note": "F8 from the selection screen to the Manage Results grid" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/usr/shell/shellcont/shell"
+      ],
+      "status": "pending_live"
+    }
+  ]
+}

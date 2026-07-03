@@ -1,0 +1,103 @@
+{
+  "schema": "sapdev.screenbaseline/1",
+  "vbs": "sap_se41_ops.vbs",
+  "captured_on": {
+    "release": "",
+    "kernel": "",
+    "date": "",
+    "method": "static"
+  },
+  "checkpoints": [
+    {
+      "id": "initial",
+      "reach": { "okcode": "/nSE41" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/tbar[0]/okcd",
+        "wnd[0]/usr/radRSMPE-B_STATUS",
+        "wnd[0]/usr/ctxtRSMPE-PROGRAM",
+        "wnd[0]/usr/ctxtRSMPE-STATUS",
+        "wnd[0]/usr/btn%#AUTOTEXT003",
+        "wnd[0]/usr/btn%#AUTOTEXT004",
+        "wnd[0]/usr/btn%#AUTOTEXT005",
+        "wnd[0]/tbar[1]/btn[24]",
+        "wnd[0]/tbar[1]/btn[30]",
+        "wnd[0]/tbar[1]/btn[27]",
+        "wnd[0]/sbar"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "master_lang_popup",
+      "reach": { "note": "conditional wnd[1] logon-language vs original-language popup" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]/usr/btnPUSH1",
+        "wnd[1]/usr/btnPUSH_TEXT_3"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "create_popup",
+      "reach": { "note": "wnd[1] Create Status dialog after Create button" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]/usr/txtRSMPE-MENUDOC",
+        "wnd[1]/usr/radRSMPE-B_DIAL",
+        "wnd[1]/usr/radRSMPE-B_POPUP",
+        "wnd[1]/usr/radRSMPE-B_CONTEXT"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "editor",
+      "reach": { "note": "Menu Painter status editor after create/change" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/usr/lbl[0,6]",
+        "wnd[0]/tbar[1]/btn[27]"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "save_popup",
+      "reach": { "note": "wnd[1] Enter Function Text popup chain during save" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]/usr/radRSMPE-B_TXT_STAT",
+        "wnd[1]/usr/txtRSMPE-FUNC",
+        "wnd[1]/usr/txtRSMPE-MENU"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "activation_popup",
+      "reach": { "note": "conditional wnd[2] activation-errors popup during activate" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[2]/usr/btnBUTTON_1"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "delete_popup",
+      "reach": { "note": "wnd[1] delete confirmation popup after Delete status" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]/usr/btn%#AUTOTEXT002"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "copy_popup",
+      "reach": { "note": "wnd[1] Copy Status dialog after Copy button" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]/usr/ctxtRSMPE-CP_PROGRAM",
+        "wnd[1]/usr/txtRSMPE-CP_STATUS",
+        "wnd[1]/tbar[0]/btn[0]"
+      ],
+      "status": "pending_live"
+    }
+  ]
+}

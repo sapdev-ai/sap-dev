@@ -1,0 +1,35 @@
+{
+  "schema": "sapdev.screenbaseline/1",
+  "vbs": "sap_se19_new_display.vbs",
+  "captured_on": {
+    "release": "",
+    "kernel": "",
+    "date": "",
+    "method": "static"
+  },
+  "checkpoints": [
+    {
+      "id": "initial",
+      "reach": { "okcode": "/nSE19" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/tbar[0]/okcd",
+        "wnd[0]/usr/radG_IS_NEW_1",
+        "wnd[0]/usr/ctxtG_ENHNAME",
+        "wnd[0]/usr/btnPUSHBUTTON_DISPLAY_TEXT"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "editor",
+      "reach": { "note": "enhancement implementation display, editor screen" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/usr/txtENH_EDT_LAYOUT-OBJECT1",
+        "wnd[0]/usr/txtENH_EDT_LAYOUT-VERSION_TX",
+        "wnd[0]/sbar"
+      ],
+      "status": "pending_live"
+    }
+  ]
+}

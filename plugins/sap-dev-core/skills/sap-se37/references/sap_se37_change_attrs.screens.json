@@ -1,0 +1,83 @@
+{
+  "schema": "sapdev.screenbaseline/1",
+  "vbs": "sap_se37_change_attrs.vbs",
+  "captured_on": {
+    "release": "",
+    "kernel": "",
+    "date": "",
+    "method": "static"
+  },
+  "checkpoints": [
+    {
+      "id": "initial",
+      "reach": { "okcode": "/nSE37" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/tbar[0]/okcd",
+        "wnd[0]/usr/ctxtRS38L-NAME",
+        "wnd[0]/usr/btnBUT4"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "language_popup",
+      "reach": { "note": "conditional SAPLSETX original-language popup (wnd[1])" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]/usr/ctxtRSETX-MASTERLANG",
+        "wnd[1]/usr/btnPUSH1"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "attributes",
+      "reach": { "note": "Change (btnBUT4) opens Function Builder; Attributes tab" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/usr/tabsFUNC_TAB_STRIP/tabpHEADER",
+        "wnd[0]/tbar[0]/btn[11]",
+        "wnd[0]/tbar[1]/btn[27]",
+        "wnd[0]/sbar"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "tr_popup",
+      "reach": { "note": "conditional transport-request popup on Save (wnd[1])" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]/usr/ctxtKO008-TRKORR"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "confirm_popup",
+      "reach": { "note": "conditional data-changed prompt on back-out (wnd[1])" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]/usr/btnSPOP-OPTION2"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "message_popup",
+      "reach": { "note": "conditional error/info popup after Save (wnd[1])" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]/usr/txtMESSTXT1",
+        "wnd[1]/usr/txtMESSTXT2",
+        "wnd[1]/tbar[0]/btn[12]"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "worklist_popup",
+      "reach": { "note": "conditional inactive-objects popup on Activate (wnd[1])" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]/tbar[0]/btn[0]"
+      ],
+      "status": "pending_live"
+    }
+  ]
+}

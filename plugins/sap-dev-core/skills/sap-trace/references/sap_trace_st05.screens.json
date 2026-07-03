@@ -1,0 +1,59 @@
+{
+  "schema": "sapdev.screenbaseline/1",
+  "vbs": "sap_trace_st05.vbs",
+  "captured_on": {
+    "release": "",
+    "kernel": "",
+    "date": "",
+    "method": "static"
+  },
+  "checkpoints": [
+    {
+      "id": "initial",
+      "reach": { "okcode": "/nST05" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/tbar[0]/okcd",
+        "wnd[0]/tbar[1]/btn[7]"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "filter",
+      "reach": { "note": "trace display filter screen after Display Trace (R_ST05_TRACE_FILTER 1000, full wnd[0] screen, not a popup)" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/usr/ctxtUSER-LOW",
+        "wnd[0]/usr/ctxtFROMTIME",
+        "wnd[0]/usr/ctxtTOTIME",
+        "wnd[0]/tbar[1]/btn[8]"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "no_data_popup",
+      "reach": { "note": "conditional info popup after Execute when no readable trace exists (wnd[1]); detected by window presence only, no control ids" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [],
+      "status": "pending_live"
+    },
+    {
+      "id": "trace_list",
+      "reach": { "note": "trace display list after Execute (SAPLSTMO 201); Trace > Structure-Identical Statements menu" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/mbar/menu[0]/menu[0]"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "summarized_view",
+      "reach": { "note": "structure-identical statements view after the Trace menu select" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/usr/cntlGUI_CONTROL_CONTAINER/shellcont/shell"
+      ],
+      "status": "pending_live"
+    }
+  ]
+}

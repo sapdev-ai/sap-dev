@@ -1,0 +1,80 @@
+{
+  "schema": "sapdev.screenbaseline/1",
+  "vbs": "sap_function_group_gui_activate.vbs",
+  "captured_on": {
+    "release": "",
+    "kernel": "",
+    "date": "",
+    "method": "static"
+  },
+  "checkpoints": [
+    {
+      "id": "initial",
+      "reach": { "okcode": "/nse37" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/tbar[0]/okcd",
+        "wnd[0]/mbar/menu[2]/menu[3]/menu[1]"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "change_group_popup",
+      "reach": { "note": "Goto > Function Groups > Change Group popup" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]/usr/ctxtRS38L-AREA",
+        "wnd[1]/tbar[0]/btn[0]"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "info_popup",
+      "reach": { "note": "optional 'being processed' info popup" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]/tbar[0]/btn[5]"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "fg_editor",
+      "reach": { "note": "function group change screen after Change Group" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/tbar[1]/btn[27]",
+        "wnd[0]/sbar",
+        "wnd[0]/tbar[0]/btn[15]"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "inactive_objects_popup",
+      "reach": { "note": "Inactive Objects list after Ctrl+F3" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]/tbar[0]/btn[9]"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "activation_errors_popup",
+      "reach": { "note": "activation errors popup (wnd[2])" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[2]/usr/btnSPOP-VAROPTION1",
+        "wnd[2]/usr/btnBUTTON_1"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "unsaved_confirm_popup",
+      "reach": { "note": "unsaved-changes prompt on Back/Exit" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]/usr/btnSPOP-OPTION2"
+      ],
+      "status": "pending_live"
+    }
+  ]
+}

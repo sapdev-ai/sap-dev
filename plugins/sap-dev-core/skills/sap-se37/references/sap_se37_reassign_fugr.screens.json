@@ -1,0 +1,53 @@
+{
+  "schema": "sapdev.screenbaseline/1",
+  "vbs": "sap_se37_reassign_fugr.vbs",
+  "captured_on": {
+    "release": "",
+    "kernel": "",
+    "date": "",
+    "method": "static"
+  },
+  "checkpoints": [
+    {
+      "id": "initial",
+      "reach": { "okcode": "/nSE37" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/tbar[0]/okcd",
+        "wnd[0]/usr/ctxtRS38L-NAME",
+        "wnd[0]/tbar[1]/btn[31]",
+        "wnd[0]/tbar[1]/btn[27]",
+        "wnd[0]/sbar"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "reassign_popup",
+      "reach": { "note": "Reassign (btn[31]) opens the function-group dialog (wnd[1])" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]/usr/ctxtRS38L_FUNC-AREA",
+        "wnd[1]/tbar[0]/btn[0]"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "tr_popup",
+      "reach": { "note": "conditional transport-request popup after reassign/activate (wnd[1])" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]/usr/ctxtKO008-TRKORR"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "worklist_popup",
+      "reach": { "note": "conditional inactive-objects popup on re-activate (wnd[1])" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]/tbar[0]/btn[0]"
+      ],
+      "status": "pending_live"
+    }
+  ]
+}

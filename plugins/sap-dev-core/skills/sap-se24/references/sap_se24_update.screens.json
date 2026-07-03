@@ -1,0 +1,96 @@
+{
+  "schema": "sapdev.screenbaseline/1",
+  "vbs": "sap_se24_update.vbs",
+  "captured_on": {
+    "release": "",
+    "kernel": "",
+    "date": "",
+    "method": "static"
+  },
+  "checkpoints": [
+    {
+      "id": "initial",
+      "reach": { "okcode": "/nSE24" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/tbar[0]/okcd",
+        "wnd[0]/usr/ctxtSEOCLASS-CLSNAME",
+        "wnd[0]/usr/btnPUSH_CHANGE"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "orig_lang_popup",
+      "reach": { "note": "conditional original-language popup after Change" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]/usr/ctxtRSETX-MASTERLANG",
+        "wnd[1]/usr/btnPUSH1"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "class_editor",
+      "reach": { "note": "source-code-based editor in change mode" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/usr/txtDY0400_STATUS",
+        "wnd[0]/usr/tabsCTS",
+        "wnd[0]/mbar/menu[3]/menu[8]/menu[2]/menu[0]",
+        "wnd[0]/mbar/menu[3]/menu[9]/menu[2]/menu[0]",
+        "wnd[0]/mbar/menu[3]/menu[2]/menu[0]",
+        "wnd[0]/tbar[1]/btn[27]",
+        "wnd[0]/tbar[1]/btn[26]",
+        "wnd[0]/sbar"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "tr_popup",
+      "reach": { "note": "conditional transport-request prompt on pre-save / Save" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]/usr/ctxtKO008-TRKORR"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "save_query_popup",
+      "reach": { "note": "conditional save-before-upload query - press No" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]/usr/btnBUTTON_2"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "upload_popup",
+      "reach": { "note": "file-selection dialog after the Upload menu" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]/usr/ctxtDY_PATH",
+        "wnd[1]/usr/ctxtDY_FILENAME"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "worklist_popup",
+      "reach": { "note": "inactive-objects worklist after Activate" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]/tbar[0]/btn[0]"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "activation_error_popup",
+      "reach": { "note": "conditional wnd[2] activation-errors popup" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[2]/usr/btnSPOP-VAROPTION1",
+        "wnd[2]/usr/btnBUTTON_1"
+      ],
+      "status": "pending_live"
+    }
+  ]
+}

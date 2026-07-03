@@ -1,0 +1,34 @@
+{
+  "schema": "sapdev.screenbaseline/1",
+  "vbs": "sap_cmod_deactivate.vbs",
+  "captured_on": {
+    "release": "",
+    "kernel": "",
+    "date": "",
+    "method": "static"
+  },
+  "checkpoints": [
+    {
+      "id": "initial",
+      "reach": { "okcode": "/nCMOD" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]",
+        "wnd[0]/tbar[0]/okcd",
+        "wnd[0]/usr/ctxtMOD0-NAME",
+        "wnd[0]/tbar[1]/btn[28]",
+        "wnd[0]/sbar"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "confirm_popup",
+      "reach": { "note": "conditional confirmation popup after Deactivate (tbar[1]/btn[28])" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]"
+      ],
+      "status": "pending_live"
+    }
+  ]
+}

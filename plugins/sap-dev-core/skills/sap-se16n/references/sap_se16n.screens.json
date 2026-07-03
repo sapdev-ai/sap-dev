@@ -1,0 +1,73 @@
+{
+  "schema": "sapdev.screenbaseline/1",
+  "vbs": "sap_se16n.vbs",
+  "captured_on": {
+    "release": "",
+    "kernel": "",
+    "date": "",
+    "method": "static"
+  },
+  "checkpoints": [
+    {
+      "id": "initial",
+      "reach": { "okcode": "/nse16n" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/tbar[0]/okcd",
+        "wnd[0]/usr/ctxtGD-TAB"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "selection",
+      "reach": { "note": "selection criteria populated after Enter on table name; per-row cell ids are dynamic, captured live" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/usr/tblSAPLSE16NSELFIELDS_TC",
+        "wnd[0]/tbar[1]/btn[8]"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "multi_select_popup",
+      "reach": { "note": "multi-value selection popup via btnPUSH on a criteria row (wnd[1])" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]/usr/tblSAPLSE16NMULTI_TC",
+        "wnd[1]/usr/tblSAPLSE16NMULTI_TC/ctxtGS_MULTI_SELECT-LOW[1,0]",
+        "wnd[1]/tbar[0]/btn[0]",
+        "wnd[1]/tbar[0]/btn[8]"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "result_grid",
+      "reach": { "note": "result ALV after F8 execute" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/usr/cntlRESULT_LIST/shellcont/shell",
+        "wnd[0]/sbar"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "export_format_popup",
+      "reach": { "note": "ALV export format chooser after &MB_EXPORT > &PC (SAPLSPO5 0150, wnd[1]); radio base paths are concatenated, captured live" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]/tbar[0]/btn[0]"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "file_dialog",
+      "reach": { "note": "export file save dialog (wnd[1])" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]/usr/ctxtDY_PATH",
+        "wnd[1]/usr/ctxtDY_FILENAME"
+      ],
+      "status": "pending_live"
+    }
+  ]
+}

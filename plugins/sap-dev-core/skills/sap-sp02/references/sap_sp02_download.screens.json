@@ -1,0 +1,50 @@
+{
+  "schema": "sapdev.screenbaseline/1",
+  "vbs": "sap_sp02_download.vbs",
+  "captured_on": {
+    "release": "",
+    "kernel": "",
+    "date": "",
+    "method": "static"
+  },
+  "checkpoints": [
+    {
+      "id": "initial",
+      "reach": { "okcode": "/nSP02" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/tbar[0]/okcd"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "spool_contents",
+      "reach": { "note": "spool contents display after F2 on a selected list row; list lbl/chk cell ids are dynamic, captured live" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/sbar",
+        "wnd[0]/tbar[1]/btn[48]"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "format_popup",
+      "reach": { "note": "export format chooser after Save (SAPLSPO5 0150, wnd[1]); radio index is dynamic, captured live" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]/tbar[0]/btn[0]"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "file_dialog",
+      "reach": { "note": "file save dialog (wnd[1])" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]/usr/ctxtDY_PATH",
+        "wnd[1]/usr/ctxtDY_FILENAME"
+      ],
+      "status": "pending_live"
+    }
+  ]
+}

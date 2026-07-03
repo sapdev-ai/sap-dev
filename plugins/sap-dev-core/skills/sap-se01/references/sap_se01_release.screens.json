@@ -1,0 +1,45 @@
+{
+  "schema": "sapdev.screenbaseline/1",
+  "vbs": "sap_se01_release.vbs",
+  "captured_on": {
+    "release": "",
+    "kernel": "",
+    "date": "",
+    "method": "static"
+  },
+  "checkpoints": [
+    {
+      "id": "initial",
+      "reach": { "okcode": "/nse01" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/tbar[0]/okcd",
+        "wnd[0]/usr/tabsMAINTABSTRIP/tabpTSSN",
+        "wnd[0]/usr/tabsMAINTABSTRIP/tabpTSSN/ssubCOMMONSUBSCREEN:RDDM0001:0210/ctxtTRDYSE01SN-TR_TRKORR",
+        "wnd[0]/usr/tabsMAINTABSTRIP/tabpTSSN/ssubCOMMONSUBSCREEN:RDDM0001:0210/btn%_AUTOTEXT028"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "tr_display",
+      "reach": { "note": "Display button opens request/task tree" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/usr",
+        "wnd[0]/mbar/menu[0]/menu[3]/menu[0]",
+        "wnd[0]/tbar[0]/btn[3]",
+        "wnd[0]/sbar"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "release_popup",
+      "reach": { "note": "confirm popups during task/request release" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]"
+      ],
+      "status": "pending_live"
+    }
+  ]
+}

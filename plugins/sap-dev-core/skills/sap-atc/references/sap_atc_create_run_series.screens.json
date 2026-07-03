@@ -1,0 +1,64 @@
+{
+  "schema": "sapdev.screenbaseline/1",
+  "vbs": "sap_atc_create_run_series.vbs",
+  "captured_on": {
+    "release": "",
+    "kernel": "",
+    "date": "",
+    "method": "static"
+  },
+  "checkpoints": [
+    {
+      "id": "initial",
+      "reach": { "okcode": "/nATC" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/tbar[0]/okcd",
+        "wnd[0]/shellcont/shell/shellcont[1]/shell"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "run_series",
+      "reach": { "note": "double-click tree node 12 (Manage Run Series grid)" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/usr/shell/shellcont/shell",
+        "wnd[0]/tbar[1]/btn[8]"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "name_popup",
+      "reach": { "note": "CREATE_SERIE toolbar button raises the series-name popup" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]/usr/ctxtSATC_CI_S_CFG_SERIE_UI_02-NAME",
+        "wnd[1]/tbar[0]/btn[0]"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "config",
+      "reach": { "note": "Continue on the name popup opens the run-series config screen" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/usr/chkG_DYNP_3000-BEHAVIOR-GENERATED_CODE-ANALYZE",
+        "wnd[0]/usr/chkG_DYNP_3000-BEHAVIOR-QUICKFIXES-GENERATE_QUICKFIXES",
+        "wnd[0]/sbar"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "confirm_popup",
+      "reach": { "note": "conditional post-Save / post-EXECUTE_SERIE confirmation popup" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]/usr/btnBUTTON_1",
+        "wnd[1]/usr/btnSPOP-BUTTON_1",
+        "wnd[1]/tbar[0]/btn[0]"
+      ],
+      "status": "pending_live"
+    }
+  ]
+}

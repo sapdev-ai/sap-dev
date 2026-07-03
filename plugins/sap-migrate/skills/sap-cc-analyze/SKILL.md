@@ -42,6 +42,7 @@ Task: $ARGUMENTS
 | `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_settings_lib.ps1` + `sap_connection_lib.ps1` | *(dot-source)* | `Get-SapWorkDir`. |
 | `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_log_helper.ps1` | *(invoke)* | Start/step/end JSONL logging. |
 | `<SKILL_DIR>/references/sap_cc_analyze.ps1` | *(invoke)* | Offline spine: `prepare` (scope→worklist) and `ingest` (ATC results→`findings_raw.tsv`, state→ANALYZED). |
+| `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_readiness_probe.ps1` | *(invoke, RFC)* | Step 1.5 readiness-capability preflight — confirms the connected system HAS `S4HANA_READINESS` variants before the ATC loop (shared with `/sap-doctor`). |
 | `/sap-atc` | *(skill)* | The ATC engine. Run per worklist object with `--variant=S4HANA_READINESS`. Needs a one-time recorded session per release (see that skill). |
 
 Workspace contract (`findings/findings_raw.tsv` columns, the ANALYZED state)
@@ -101,6 +102,35 @@ Add `-Limit <n>` to cap the batch (useful for a first controlled run). Output:
 skipped sidecar and kept OUT of the worklist, so they are not later mis-marked
 ANALYZED. Exit `1`/`STATUS: EMPTY` means nothing is in REMEDIATE/SCOPED -- run
 `/sap-cc-usage` first (or all objects are already ANALYZED).
+
+---
+
+## Step 1.5 — Readiness-capability preflight (RFC; before the ATC loop)
+
+The whole step runs `/sap-atc --variant=S4HANA_READINESS` in a loop. If the
+connected system cannot run that check, EVERY object plan-errors — a run that
+reads as "clean" (0 findings) while producing nothing. Catch it once, up front,
+instead of grinding the whole worklist. Run the shared readiness probe against
+the pinned connection (the same system `/sap-atc` will target):
+
+```bash
+C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_readiness_probe.ps1"
+```
+
+Read the `READINESS: verdict=<V> …` line and act on it:
+
+| verdict | Meaning | Action |
+|---|---|---|
+| `NO_READINESS_VARIANTS` | The connected system has **no** `S4HANA_READINESS` variants — it cannot run the readiness check at all (e.g. `/sap-cc-analyze` was pointed at an ECC source system directly, or a non-readiness box). | **STOP.** Do NOT start the ATC loop. Surface `DETAIL:` + `FIX:` — connect to an S/4 check hub that carries the variants (`/sap-login --switch <hub>`), or check the source remotely FROM a hub (central ATC: SM59 + ATC → Manage System Groupings). |
+| `READINESS_CAPABLE` | Variants present — the run is possible. | **Proceed** to Step 2, but heed the caveat: if the FIRST `/sap-atc` object comes back with `ERROR: ATC_PLAN_ERRORS` (0 findings + planning errors), the readiness checks cannot service this system (e.g. `readiness_<rel>` on the same release, or content the check classes can't load). **STOP the loop then** — do not grind the whole worklist plan-erroring — and treat it as a Basis prerequisite, not a clean analysis. |
+| `RFC_ERROR` | The probe could not connect over RFC (NCo/creds/pin). | This is advisory only — RFC is not required for the GUI ATC run. Note it and proceed; the definitive gate is still `/sap-atc`'s `ATC_PLAN_ERRORS`. |
+
+> This preflight is a **fast fail**, not the authoritative gate. The reliable
+> catch for "readiness cannot run here" is `/sap-atc` reporting `ATC_PLAN_ERRORS`
+> (`COUNT_PLNERR > 0`) on the run — the probe just spares you a worklist-long
+> loop of plan-errors when the system has no variants at all. It deliberately
+> does NOT inspect `SYCM_*` tables — those are a false content signal (present on
+> plan-erroring systems, absent on working ones; see the harvest report).
 
 ---
 

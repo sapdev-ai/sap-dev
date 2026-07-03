@@ -1,0 +1,32 @@
+{
+  "schema": "sapdev.screenbaseline/1",
+  "vbs": "sap_se37_delete.vbs",
+  "captured_on": {
+    "release": "",
+    "kernel": "",
+    "date": "",
+    "method": "static"
+  },
+  "checkpoints": [
+    {
+      "id": "initial",
+      "reach": { "okcode": "/nSE37" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/tbar[0]/okcd",
+        "wnd[0]/usr/ctxtRS38L-NAME",
+        "wnd[0]/usr/btnBUT3"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "verify",
+      "reach": { "note": "Display (btnBUT3) pressed to verify deletion; the VBS probes tabsFUNC_TAB_STRIP for ABSENCE (present = FM still exists = delete failed), so that id must not be required here" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/sbar"
+      ],
+      "status": "pending_live"
+    }
+  ]
+}

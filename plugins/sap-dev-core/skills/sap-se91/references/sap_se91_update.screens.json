@@ -1,0 +1,77 @@
+{
+  "schema": "sapdev.screenbaseline/1",
+  "vbs": "sap_se91_update.vbs",
+  "captured_on": {
+    "release": "",
+    "kernel": "",
+    "date": "",
+    "method": "static"
+  },
+  "checkpoints": [
+    {
+      "id": "initial",
+      "reach": { "okcode": "/nSE91" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]",
+        "wnd[0]/tbar[0]/okcd",
+        "wnd[0]/usr/ctxtRSDAG-ARBGB",
+        "wnd[0]/usr/radRSDAG-MSGFLAG",
+        "wnd[0]/usr/btnMODTASTE"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "lang_popup",
+      "reach": { "note": "conditional SAPLSETX original-language popup after Change (btnMODTASTE)" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]/usr/ctxtRSETX-MASTERLANG",
+        "wnd[1]/usr/btnPUSH1"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "messages",
+      "reach": { "note": "editor Messages tab after Change; table cell ids are built dynamically" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/sbar",
+        "wnd[0]/usr/tabsCONTROL1000/tabpMESS"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "tr_popup",
+      "reach": { "note": "conditional KO008 transport-request popup after Save" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]",
+        "wnd[1]/usr/ctxtKO008-TRKORR",
+        "wnd[1]/tbar[0]/btn[8]",
+        "wnd[1]/tbar[0]/btn[0]"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "objdir_popup",
+      "reach": { "note": "conditional KO007 package popup after Save" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]/usr/ctxtKO007-L_DEVCLASS",
+        "wnd[1]/tbar[0]/btn[7]"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "create_tr_popup",
+      "reach": { "note": "conditional create-request dialog (wnd[2]) via btn[8]" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[2]/usr/txtKO013-AS4TEXT",
+        "wnd[2]/tbar[0]/btn[0]"
+      ],
+      "status": "pending_live"
+    }
+  ]
+}

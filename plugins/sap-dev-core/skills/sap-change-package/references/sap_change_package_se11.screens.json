@@ -1,0 +1,89 @@
+{
+  "schema": "sapdev.screenbaseline/1",
+  "vbs": "sap_change_package_se11.vbs",
+  "captured_on": {
+    "release": "",
+    "kernel": "",
+    "date": "",
+    "method": "static"
+  },
+  "checkpoints": [
+    {
+      "id": "initial",
+      "reach": { "okcode": "/nse11" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/tbar[0]/okcd",
+        "wnd[0]/usr/radRSRD1-TBMA",
+        "wnd[0]/usr/ctxtRSRD1-TBMA_VAL",
+        "wnd[0]/usr/radRSRD1-VIMA",
+        "wnd[0]/usr/ctxtRSRD1-VIMA_VAL",
+        "wnd[0]/usr/radRSRD1-DDTYPE",
+        "wnd[0]/usr/ctxtRSRD1-DDTYPE_VAL",
+        "wnd[0]/usr/radRSRD1-TYMA",
+        "wnd[0]/usr/ctxtRSRD1-TYMA_VAL",
+        "wnd[0]/usr/radRSRD1-DOMA",
+        "wnd[0]/usr/ctxtRSRD1-DOMA_VAL",
+        "wnd[0]/usr/radRSRD1-SHMA",
+        "wnd[0]/usr/ctxtRSRD1-SHMA_VAL",
+        "wnd[0]/usr/radRSRD1-ENQU",
+        "wnd[0]/usr/ctxtRSRD1-ENQU_VAL",
+        "wnd[0]/mbar/menu[2]/menu[0]",
+        "wnd[0]/sbar"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "objdir_popup",
+      "reach": { "note": "Goto > Object Directory Entry dialog (KO007)" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]/tbar[0]/btn[6]",
+        "wnd[1]/usr/ctxtKO007-L_DEVCLASS",
+        "wnd[1]/tbar[0]/btn[0]",
+        "wnd[1]/tbar[0]/btn[12]"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "tr_popup",
+      "reach": { "note": "TR assignment dialog after package entry (KO008)" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]/usr/ctxtKO008-TRKORR",
+        "wnd[1]/tbar[0]/btn[8]"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "tr_desc_popup",
+      "reach": { "note": "Create Request description prompt (KO013)" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[2]/usr/txtKO013-AS4TEXT",
+        "wnd[2]/tbar[0]/btn[0]"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "message_popup",
+      "reach": { "note": "message-only refusal popup (MESSTXT)" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[2]/usr/txtMESSTXT1",
+        "wnd[2]/usr/txtMESSTXT2",
+        "wnd[2]/tbar[0]/btn[1]"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "confirm_popup",
+      "reach": { "note": "Yes/No confirm popup (SPOP)" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[2]/usr/btnSPOP-OPTION1"
+      ],
+      "status": "pending_live"
+    }
+  ]
+}

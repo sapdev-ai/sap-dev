@@ -1,0 +1,51 @@
+{
+  "schema": "sapdev.screenbaseline/1",
+  "vbs": "sap_se38_check.vbs",
+  "captured_on": {
+    "release": "",
+    "kernel": "",
+    "date": "",
+    "method": "static"
+  },
+  "checkpoints": [
+    {
+      "id": "initial",
+      "reach": { "okcode": "/nse16n" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/tbar[0]/okcd",
+        "wnd[0]/usr/ctxtGD-TAB"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "selection",
+      "reach": { "note": "table name TRDIR + Enter renders the selection fields" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/usr/tblSAPLSE16NSELFIELDS_TC/ctxtGS_SELFIELDS-LOW[2,0]",
+        "wnd[0]/tbar[1]/btn[7]"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "results",
+      "reach": { "note": "Execute (btn[7]/F8) runs the query" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/sbar"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "count_popup",
+      "reach": { "note": "conditional number-of-hits popup (wnd[1])" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]/usr/txtGD-NUMBER",
+        "wnd[1]/tbar[0]/btn[0]"
+      ],
+      "status": "pending_live"
+    }
+  ]
+}

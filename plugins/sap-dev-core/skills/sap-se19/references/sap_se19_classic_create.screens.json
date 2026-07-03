@@ -1,0 +1,74 @@
+{
+  "schema": "sapdev.screenbaseline/1",
+  "vbs": "sap_se19_classic_create.vbs",
+  "captured_on": {
+    "release": "",
+    "kernel": "",
+    "date": "",
+    "method": "static"
+  },
+  "checkpoints": [
+    {
+      "id": "initial",
+      "reach": { "okcode": "/nSE19" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/tbar[0]/okcd",
+        "wnd[0]/usr/radG_IS_CLASSIC_2",
+        "wnd[0]/usr/ctxtRSEXSCRN-EXIT_NAME",
+        "wnd[0]/usr/btnPUSHBUTTON_IMPLEMENT_TEXT",
+        "wnd[0]/usr/radG_IS_CLASSIC_1",
+        "wnd[0]/usr/ctxtRSEXSCRN-IMP_NAME",
+        "wnd[0]/usr/btnPUSHBUTTON_CHANGE_TEXT"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "create_impl_popup",
+      "reach": { "note": "Create Implementation popup after Create on initial screen" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]/usr/ctxtRSEXSCRN-IMP_NAME",
+        "wnd[0]/sbar",
+        "wnd[1]/tbar[0]/btn[0]"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "detail",
+      "reach": { "note": "classic implementation detail screen after popup Continue" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/usr/txtRSEXSCRN-IMP_TEXT",
+        "wnd[0]/usr/txtRSEXSCRN-ACTIVE",
+        "wnd[0]/tbar[1]/btn[27]"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "save_confirm_popup",
+      "reach": { "note": "optional Yes/No save-changes popup after Save" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]/usr/btnBUTTON_1"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "tr_popup",
+      "reach": { "note": "object directory and transport popup chain after Save; ids built dynamically, capture live" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [],
+      "status": "pending_live"
+    },
+    {
+      "id": "worklist_popup",
+      "reach": { "note": "optional inactive-objects worklist popup after Activate" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]/tbar[0]/btn[0]"
+      ],
+      "status": "pending_live"
+    }
+  ]
+}

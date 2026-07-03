@@ -1,0 +1,92 @@
+{
+  "schema": "sapdev.screenbaseline/1",
+  "vbs": "sap_se11_typegroup_create.vbs",
+  "captured_on": {
+    "release": "",
+    "kernel": "",
+    "date": "",
+    "method": "static"
+  },
+  "checkpoints": [
+    {
+      "id": "initial",
+      "reach": { "okcode": "/nSE11" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/tbar[0]/okcd",
+        "wnd[0]/usr/radRSRD1-TYMA",
+        "wnd[0]/usr/ctxtRSRD1-TYMA_VAL",
+        "wnd[0]/usr/btnPUSHADD"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "attributes",
+      "reach": { "note": "conditional description screen after Create, before the source editor" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/usr/txtDD40T-DDTEXT",
+        "wnd[0]/usr/txtDD42L-DDTEXT"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "editor",
+      "reach": { "note": "type-pool source editor after Enter on the attributes screen" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/usr/txtED_EDIT-36[0,0]",
+        "wnd[0]/usr/cntlEDITOR_CONTAINER/shellcont/shell",
+        "wnd[0]/usr/cntlED_EDIT/shellcont/shell",
+        "wnd[0]/mbar/menu[3]/menu[5]",
+        "wnd[0]/mbar/menu[3]/menu[3]",
+        "wnd[0]/mbar/menu[2]/menu[5]",
+        "wnd[0]/tbar[1]/btn[27]",
+        "wnd[0]/sbar"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "upload_popup",
+      "reach": { "note": "wnd[1] file dialog from the Utilities upload menu fallback" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]/usr/ctxtDY_FILENAME",
+        "wnd[1]/tbar[0]/btn[0]"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "package_popup",
+      "reach": { "note": "conditional wnd[1] Object Directory Entry after Save (KO007)" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]/usr/ctxtKO007-L_DEVCLASS",
+        "wnd[1]/tbar[0]/btn[0]",
+        "wnd[1]/tbar[0]/btn[7]"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "tr_popup",
+      "reach": { "note": "conditional wnd[1] transport prompt after the package dialog (KO008)" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]/usr/ctxtKO008-TRKORR",
+        "wnd[1]/tbar[0]/btn[0]",
+        "wnd[1]/tbar[0]/btn[8]"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "tr_create_popup",
+      "reach": { "note": "wnd[2] create-request dialog opened by btn[8] on the TR popup" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[2]/usr/txtKO013-AS4TEXT",
+        "wnd[2]/tbar[0]/btn[0]"
+      ],
+      "status": "pending_live"
+    }
+  ]
+}

@@ -1,0 +1,61 @@
+{
+  "schema": "sapdev.screenbaseline/1",
+  "vbs": "sap_update_addon_prog.vbs",
+  "captured_on": {
+    "release": "",
+    "kernel": "",
+    "date": "",
+    "method": "static"
+  },
+  "checkpoints": [
+    {
+      "id": "initial",
+      "reach": { "okcode": "/nSA38" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/tbar[0]/okcd",
+        "wnd[0]/usr/ctxtRS38M-PROGRAMM"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "selection",
+      "reach": { "note": "ZCMRUPDATE_ADDON_TABLE selection screen 1000 (F8 from SA38)" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/usr/txtP_TABLE",
+        "wnd[0]/usr/ctxtP_FILE"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "result_list",
+      "reach": { "note": "list output after F8 execute" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/sbar",
+        "wnd[0]/mbar/menu[0]/menu[1]/menu[2]"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "save_format",
+      "reach": { "note": "format chooser after System > List > Save > Local File (SAPLSPO5 0150, wnd[0]-rooted)" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/usr/subSUBSCREEN_STEPLOOP:SAPLSPO5:0150/sub:SAPLSPO5:0150/radSPOPLI-SELFLAG[4,0]"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "file_dialog",
+      "reach": { "note": "local file save dialog (wnd[1])" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]/usr/ctxtDY_FILENAME",
+        "wnd[1]/usr/ctxtDY_PATH"
+      ],
+      "status": "pending_live"
+    }
+  ]
+}

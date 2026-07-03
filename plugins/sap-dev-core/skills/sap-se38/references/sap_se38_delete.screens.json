@@ -1,0 +1,33 @@
+{
+  "schema": "sapdev.screenbaseline/1",
+  "vbs": "sap_se38_delete.vbs",
+  "captured_on": {
+    "release": "",
+    "kernel": "",
+    "date": "",
+    "method": "static"
+  },
+  "checkpoints": [
+    {
+      "id": "initial",
+      "reach": { "okcode": "/nSE38" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/tbar[0]/okcd",
+        "wnd[0]/usr/ctxtRS38M-PROGRAMM",
+        "wnd[0]/usr/btnSHOP"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "verify",
+      "reach": { "note": "Display (btnSHOP) pressed to verify deletion" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/sbar",
+        "wnd[0]/titl"
+      ],
+      "status": "pending_live"
+    }
+  ]
+}

@@ -1,0 +1,50 @@
+{
+  "schema": "sapdev.screenbaseline/1",
+  "vbs": "sap_bp_update.vbs",
+  "captured_on": {
+    "release": "",
+    "kernel": "",
+    "date": "",
+    "method": "static"
+  },
+  "checkpoints": [
+    {
+      "id": "initial",
+      "reach": { "okcode": "/nBP" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/tbar[0]/okcd",
+        "wnd[0]/tbar[1]/btn[17]"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "open_dialog",
+      "reach": { "note": "Open BP dialog after pressing tbar[1]/btn[17] (Shift+F5) on the BP screen" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]/usr/ctxtBUS_JOEL_MAIN-OPEN_NUMBER"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "partner_screen",
+      "reach": { "note": "partner opened from the Open BP dialog; btn[6] toggles change mode, btn[25] switches to General Data" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/tbar[1]/btn[6]",
+        "wnd[0]/tbar[1]/btn[25]"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "exit_confirm_popup",
+      "reach": { "note": "conditional data-loss confirm after /n navigation post-save" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]/usr/btnSPOP-OPTION1"
+      ],
+      "status": "pending_live"
+    }
+  ]
+}

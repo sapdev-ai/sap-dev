@@ -1,0 +1,56 @@
+{
+  "schema": "sapdev.screenbaseline/1",
+  "vbs": "sap_se38_run_aunit.vbs",
+  "captured_on": {
+    "release": "",
+    "kernel": "",
+    "date": "",
+    "method": "static"
+  },
+  "checkpoints": [
+    {
+      "id": "initial",
+      "reach": { "okcode": "/nSE38" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/usr/ctxtRS38M-PROGRAMM",
+        "wnd[0]/usr/radRS38M-FUNC_EDIT",
+        "wnd[0]/usr/btnSHOP"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "source_editor",
+      "reach": { "note": "program opened in SE38 display mode" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/usr/cntlEDITOR/shellcont/shell",
+        "wnd[0]/mbar/menu[0]/menu[9]/menu[2]",
+        "wnd[0]/mbar/menu[0]/menu[9]/menu[3]/menu[0]"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "results",
+      "reach": { "note": "ABAP Unit result display after the run menu" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/sbar",
+        "wnd[0]/usr/shell/shellcont/shell/shellcont[1]/shell/shellcont[0]/shell",
+        "wnd[0]/usr/shell/shellcont/shell/shellcont[1]/shell/shellcont[1]/shell",
+        "wnd[0]/usr/cntlGRID1/shellcont/shell",
+        "wnd[0]/shellcont/shell"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "coverage",
+      "reach": { "note": "AUCV coverage display (Coverage Metrics tab)" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/usr/tabsTAB_COMBI/tabpFSCOV"
+      ],
+      "status": "pending_live"
+    }
+  ]
+}

@@ -42,6 +42,7 @@ Task: $ARGUMENTS
 | `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_connection_lib.ps1` | *(dot-source)* | `Get-SapWorkDir` (Step 0) |
 | `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_check_gui_login_status.vbs` | *(static VBS)* | gui group — SAP GUI / scripting reachability probe (no tokens) |
 | `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_rfc_lib.ps1` | `%%RFC_LIB_PS1%%` | cfg/rfc/srv groups — `Connect-SapRfc` (pinned-profile fallback) |
+| `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_readiness_probe.ps1` | `%%READINESS_PROBE_PS1%%` | srv group — `Get-SapReadinessCapability` for the `READINESS_CAP` check (dot-sourced; shared with `/sap-cc-analyze`) |
 | `<SKILL_DIR>/references/sap_doctor_checks.ps1` | *(template)* | cfg + rfc + srv checks (filled + run in 32-bit PowerShell) |
 | `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_log_helper.ps1` | *(logging)* | Step 0.5 / Final logging |
 
@@ -116,6 +117,7 @@ $shared = '<SAP_DEV_CORE_SHARED_DIR>'
 $skill  = '<SKILL_DIR>'
 $ps     = Get-Content "$skill\references\sap_doctor_checks.ps1" -Raw -Encoding UTF8
 $ps     = $ps.Replace('%%RFC_LIB_PS1%%',  "$shared\scripts\sap_rfc_lib.ps1")
+$ps     = $ps.Replace('%%READINESS_PROBE_PS1%%', "$shared\scripts\sap_readiness_probe.ps1")
 $ps     = $ps.Replace('%%WORK_DIR%%',     '{work_dir}')
 $ps     = $ps.Replace('%%SAP_SERVER%%',   '')
 $ps     = $ps.Replace('%%SAP_SYSNR%%',    '')

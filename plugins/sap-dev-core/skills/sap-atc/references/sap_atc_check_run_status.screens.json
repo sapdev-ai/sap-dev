@@ -1,0 +1,32 @@
+{
+  "schema": "sapdev.screenbaseline/1",
+  "vbs": "sap_atc_check_run_status.vbs",
+  "captured_on": {
+    "release": "",
+    "kernel": "",
+    "date": "",
+    "method": "static"
+  },
+  "checkpoints": [
+    {
+      "id": "initial",
+      "reach": { "okcode": "/nATC" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/tbar[0]/okcd",
+        "wnd[0]/shellcont/shell/shellcont[1]/shell"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "run_monitor",
+      "reach": { "note": "double-click tree node 13, then F8 from the selection screen to the monitor grid" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/usr/shell/shellcont[0]/shell",
+        "wnd[0]/usr/shell/shellcont/shell"
+      ],
+      "status": "pending_live"
+    }
+  ]
+}

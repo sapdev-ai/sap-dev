@@ -1,0 +1,21 @@
+{
+  "schema": "sapdev.screenbaseline/1",
+  "vbs": "sap_stms_queue_read.vbs",
+  "captured_on": {
+    "release": "",
+    "kernel": "",
+    "date": "",
+    "method": "static"
+  },
+  "checkpoints": [
+    {
+      "id": "initial",
+      "reach": { "okcode": "/nSTMS_IMPORT" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/tbar[0]/okcd"
+      ],
+      "status": "pending_live"
+    }
+  ]
+}

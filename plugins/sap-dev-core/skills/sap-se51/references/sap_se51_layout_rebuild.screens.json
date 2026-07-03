@@ -1,0 +1,60 @@
+{
+  "schema": "sapdev.screenbaseline/1",
+  "vbs": "sap_se51_layout_rebuild.vbs",
+  "captured_on": {
+    "release": "",
+    "kernel": "",
+    "date": "",
+    "method": "static"
+  },
+  "checkpoints": [
+    {
+      "id": "initial",
+      "reach": { "okcode": "/nSE51" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/tbar[0]/okcd",
+        "wnd[0]/usr/ctxtRS37A-DYNPROG",
+        "wnd[0]/usr/ctxtFELD-DYNNR",
+        "wnd[0]/usr/radRS37A-FUNED",
+        "wnd[0]/usr/btnAENDERN"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "layout_editor",
+      "reach": { "note": "alphanumeric Screen Painter (SAPMSSY0) after Change" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/usr",
+        "wnd[0]/mbar/menu[1]/menu[8]/menu[1]",
+        "wnd[0]/tbar[0]/btn[11]",
+        "wnd[0]/tbar[1]/btn[27]",
+        "wnd[0]/sbar"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "element_dialog",
+      "reach": { "note": "wnd[1] Create Element dialog via Edit menu" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]/usr/txtFELD-STXT",
+        "wnd[1]/usr/txtFELD-LENG",
+        "wnd[1]/usr/txtFELD-NAME",
+        "wnd[1]/tbar[0]/btn[0]",
+        "wnd[1]/tbar[0]/btn[5]"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "confirm_popup",
+      "reach": { "note": "conditional wnd[1] discard-changes confirm during back-out without save" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]/usr/btnSPOP-OPTION2"
+      ],
+      "status": "pending_live"
+    }
+  ]
+}

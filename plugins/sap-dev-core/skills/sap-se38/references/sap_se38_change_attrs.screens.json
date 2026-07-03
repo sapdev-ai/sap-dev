@@ -1,0 +1,75 @@
+{
+  "schema": "sapdev.screenbaseline/1",
+  "vbs": "sap_se38_change_attrs.vbs",
+  "captured_on": {
+    "release": "",
+    "kernel": "",
+    "date": "",
+    "method": "static"
+  },
+  "checkpoints": [
+    {
+      "id": "initial",
+      "reach": { "okcode": "/nSE38" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/tbar[0]/okcd",
+        "wnd[0]/usr/radRS38M-FUNC_EDIT",
+        "wnd[0]/usr/ctxtRS38M-PROGRAMM",
+        "wnd[0]/usr/btnCHAP"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "editor",
+      "reach": { "note": "Change (btnCHAP) opens the ABAP editor" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/mbar/menu[2]/menu[0]",
+        "wnd[0]/sbar"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "attributes",
+      "reach": { "note": "Goto > Attributes dialog (wnd[1]) from the editor" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]/usr/txtRS38M-REPTI",
+        "wnd[1]/usr/cmbTRDIR-RSTAT",
+        "wnd[1]/usr/cmbTRDIR-SUBC",
+        "wnd[1]/tbar[0]/btn[0]"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "language_popup",
+      "reach": { "note": "conditional SAPLSETX original-language popup (wnd[1])" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]/usr/ctxtRSETX-MASTERLANG",
+        "wnd[1]/usr/btnPUSH1"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "tr_popup",
+      "reach": { "note": "conditional transport-request popup after Save/Activate (wnd[1])" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]/usr/ctxtKO008-TRKORR"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "confirm_popup",
+      "reach": { "note": "conditional message popup drained after Save/Activate (wnd[1])" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]/usr/txtMESSTXT1",
+        "wnd[1]/usr/txtMESSTXT2"
+      ],
+      "status": "pending_live"
+    }
+  ]
+}

@@ -1,0 +1,37 @@
+{
+  "schema": "sapdev.screenbaseline/1",
+  "vbs": "sap_st22_read.vbs",
+  "captured_on": {
+    "release": "",
+    "kernel": "",
+    "date": "",
+    "method": "static"
+  },
+  "checkpoints": [
+    {
+      "id": "initial",
+      "reach": { "okcode": "/nST22" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/tbar[0]/okcd"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "dump_list",
+      "reach": { "note": "dump list after F8; selection fields and ALV grid ids are release-variant candidate scans, captured live" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [],
+      "status": "pending_live"
+    },
+    {
+      "id": "dump_detail",
+      "reach": { "note": "dump detail after double-click on a list row (DEEP mode); body scraped from GuiTextedit children of the user area" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/usr"
+      ],
+      "status": "pending_live"
+    }
+  ]
+}

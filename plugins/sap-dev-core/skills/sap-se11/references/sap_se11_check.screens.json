@@ -1,0 +1,37 @@
+{
+  "schema": "sapdev.screenbaseline/1",
+  "vbs": "sap_se11_check.vbs",
+  "captured_on": {
+    "release": "",
+    "kernel": "",
+    "date": "",
+    "method": "static"
+  },
+  "checkpoints": [
+    {
+      "id": "initial",
+      "reach": { "okcode": "/nse11" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/tbar[0]/okcd",
+        "wnd[0]/usr/radRSRD1-TBMA",
+        "wnd[0]/usr/ctxtRSRD1-TBMA_VAL",
+        "wnd[0]/usr/radRSRD1-VIMA",
+        "wnd[0]/usr/ctxtRSRD1-VIMA_VAL",
+        "wnd[0]/usr/radRSRD1-DDTYPE",
+        "wnd[0]/usr/ctxtRSRD1-DDTYPE_VAL",
+        "wnd[0]/usr/radRSRD1-TYMA",
+        "wnd[0]/usr/ctxtRSRD1-TYMA_VAL",
+        "wnd[0]/usr/radRSRD1-DOMA",
+        "wnd[0]/usr/ctxtRSRD1-DOMA_VAL",
+        "wnd[0]/usr/radRSRD1-SHMA",
+        "wnd[0]/usr/ctxtRSRD1-SHMA_VAL",
+        "wnd[0]/usr/radRSRD1-ENQU",
+        "wnd[0]/usr/ctxtRSRD1-ENQU_VAL",
+        "wnd[0]/usr/btnPUSHSHOW",
+        "wnd[0]/sbar"
+      ],
+      "status": "pending_live"
+    }
+  ]
+}

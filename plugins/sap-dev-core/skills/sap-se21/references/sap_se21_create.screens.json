@@ -1,0 +1,35 @@
+{
+  "schema": "sapdev.screenbaseline/1",
+  "vbs": "sap_se21_create.vbs",
+  "captured_on": {
+    "release": "",
+    "kernel": "",
+    "date": "",
+    "method": "static"
+  },
+  "checkpoints": [
+    {
+      "id": "initial",
+      "reach": { "okcode": "/nSE21" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/tbar[0]/okcd",
+        "wnd[0]/usr/radPBENSCREEN-CHECKPACK",
+        "wnd[0]/usr/ctxtPBENSCREEN-PACKNAME",
+        "wnd[0]/usr/btnCREATE",
+        "wnd[0]/sbar"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "description_popup",
+      "reach": { "note": "Create raises the package-description popup" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]/usr/txtSCOMPKDTLN-CTEXT",
+        "wnd[1]/tbar[0]/btn[0]"
+      ],
+      "status": "pending_live"
+    }
+  ]
+}

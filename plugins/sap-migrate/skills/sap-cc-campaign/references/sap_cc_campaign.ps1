@@ -20,9 +20,10 @@
 #   METRIC:   <name> | VALUE: <int>          (-1 = not applicable yet)
 #             names: decommission_savings_pct, atc_clean_pct, auto_fix_rate_pct,
 #                    unmatched_findings_pct
-#   INFO:     auto_fix_rate attempts=<n> auto=<a> excluded=<k> (...)
+#   INFO:     auto_fix_rate attempts=<n> auto=<a> excluded=<k> reverted=<r> (...)
 #             (audit line for the auto-fix denominator: R1 apply-attempt rows
-#              only; assist / SOURCE_MISSING / non-R1 fixlog rows are excluded)
+#              only; assist / SOURCE_MISSING / non-R1 fixlog rows are excluded;
+#              REVERTED rows stay attempts but never count as auto-fixed)
 #   SIGNOFF:  gate=<g> status=<APPROVED|PENDING|REJECTED> owner=<o> date=<d>   (report/signoff)
 #   NEXT:     skill=<name|MANUAL|DONE> reason=<text> [gate=<scope_signoff|dryrun_review> gate_status=<APPROVED|PENDING|REJECTED>]
 #   BLOCKED:  gate=scope_signoff status=<PENDING|REJECTED> skill=<held skill> reason=<text>   (next only; exit 3.
@@ -169,9 +170,11 @@ function Pct([int]$v){ if($v -lt 0){ return 'n/a' } else { return "$v%" } }
 # apply attempt -- assist rows (AI_CONTEXT_*) and SOURCE_MISSING rows carry
 # auto_changes=0 BY DESIGN and would dilute the management-facing number, so
 # they (and non-R1 objects) are excluded and reported in `excluded` for audit.
-# Distinguishes "0% auto-fixable" from "no attempt yet" (-1 => n/a).
+# A REVERTED row stays in the denominator (it WAS an attempt) but never counts
+# as auto-fixed -- a rolled-back rewrite did not stick; `reverted` reports the
+# count. Distinguishes "0% auto-fixable" from "no attempt yet" (-1 => n/a).
 function Get-AutoFix([string]$dir){
-    $res = [ordered]@{ rate = -1; auto = 0; total = 0; excluded = 0 }
+    $res = [ordered]@{ rate = -1; auto = 0; total = 0; excluded = 0; reverted = 0 }
     $p = Join-Path $dir 'remediation\fixlog.tsv'
     if(-not (Test-Path -LiteralPath $p)){ return $res }
     try {
@@ -179,17 +182,19 @@ function Get-AutoFix([string]$dir){
         if($rows.Count -eq 0){ return $res }
         $tierByKey = @{}
         foreach($lr in (Get-Ledger $dir)){ $tierByKey[("$($lr.obj_name)|$($lr.obj_type)").ToUpper()] = [string]$lr.tier }
-        $attTot = 0; $attAuto = 0; $excl = 0
+        $attTot = 0; $attAuto = 0; $excl = 0; $rev = 0
         foreach($fr in $rows){
             $k = ("$($fr.obj_name)|$($fr.obj_type)").ToUpper()
             $st = [string]$fr.status
             $isR1 = ($tierByKey.ContainsKey($k) -and ($tierByKey[$k] -eq 'R1'))
             if((-not $isR1) -or ($st -eq 'SOURCE_MISSING') -or ($st -like 'AI_CONTEXT*')){ $excl++; continue }
             $attTot++
+            if($st -eq 'REVERTED'){ $rev++; continue }
             $n = 0; [void][int]::TryParse([string]$fr.auto_changes, [ref]$n)
             if($n -gt 0){ $attAuto++ }
         }
         $res.excluded = $excl
+        $res.reverted = $rev
         if($attTot -gt 0){
             $res.total = $attTot; $res.auto = $attAuto
             $res.rate  = [int][math]::Round(100.0 * $attAuto / $attTot)
@@ -266,7 +271,7 @@ function Emit-Metrics($rows,[string]$dir){
     Write-Output "METRIC: decommission_savings_pct | VALUE: $save"
     Write-Output "METRIC: atc_clean_pct | VALUE: $atc"
     Write-Output "METRIC: auto_fix_rate_pct | VALUE: $($af.rate)"
-    Write-Output "INFO: auto_fix_rate attempts=$($af.total) auto=$($af.auto) excluded=$($af.excluded) (excluded: assist/SOURCE_MISSING/non-R1 fixlog rows)"
+    Write-Output "INFO: auto_fix_rate attempts=$($af.total) auto=$($af.auto) excluded=$($af.excluded) reverted=$($af.reverted) (excluded: assist/SOURCE_MISSING/non-R1 fixlog rows; reverted: rolled-back fixes, attempts that never count as auto)"
     Write-Output "METRIC: unmatched_findings_pct | VALUE: $($um.pct)"
 }
 

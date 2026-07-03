@@ -1,0 +1,58 @@
+{
+  "schema": "sapdev.screenbaseline/1",
+  "vbs": "sap_se24_check_and_download.vbs",
+  "captured_on": {
+    "release": "",
+    "kernel": "",
+    "date": "",
+    "method": "static"
+  },
+  "checkpoints": [
+    {
+      "id": "initial",
+      "reach": { "okcode": "/nSE24" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/tbar[0]/okcd",
+        "wnd[0]/usr/ctxtSEOCLASS-CLSNAME",
+        "wnd[0]/usr/btnPUSH_DISPLAY",
+        "wnd[0]/usr/btnPUSH_CHANGE"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "class_editor",
+      "reach": { "note": "source-code-based editor after Display (syntax check) / Change (download)" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/usr/txtDY0400_STATUS",
+        "wnd[0]/usr/tabsCTS",
+        "wnd[0]/tbar[1]/btn[26]",
+        "wnd[0]/sbar",
+        "wnd[0]/mbar/menu[3]/menu[8]/menu[2]/menu[1]",
+        "wnd[0]/mbar/menu[3]/menu[9]/menu[2]/menu[1]",
+        "wnd[0]/mbar/menu[3]/menu[2]/menu[1]"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "download_popup",
+      "reach": { "note": "file-selection dialog after the Download menu" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]/usr/ctxtDY_PATH",
+        "wnd[1]/usr/ctxtDY_FILENAME"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "confirm_popup",
+      "reach": { "note": "conditional discard-changes confirmation on F3 back" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]/usr/btnBUTTON_1"
+      ],
+      "status": "pending_live"
+    }
+  ]
+}

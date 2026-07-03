@@ -1,0 +1,43 @@
+{
+  "schema": "sapdev.screenbaseline/1",
+  "vbs": "sap_update_addon_sm30.vbs",
+  "captured_on": {
+    "release": "",
+    "kernel": "",
+    "date": "",
+    "method": "static"
+  },
+  "checkpoints": [
+    {
+      "id": "initial",
+      "reach": { "okcode": "/nSM30" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/tbar[0]/okcd",
+        "wnd[0]/usr/ctxtVIEWNAME",
+        "wnd[0]/usr/btnUPDATE_PUSH"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "maintenance_view",
+      "reach": { "note": "generated maintenance dialog after Maintain; record field ids are table-dependent, captured live" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/tbar[1]/btn[14]",
+        "wnd[0]/mbar/menu[1]/menu[4]",
+        "wnd[0]/sbar"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "tr_popup",
+      "reach": { "note": "transport request prompt (wnd[1])" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]/usr/ctxtKO008-TRKORR"
+      ],
+      "status": "pending_live"
+    }
+  ]
+}

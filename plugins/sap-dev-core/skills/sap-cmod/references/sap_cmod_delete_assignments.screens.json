@@ -1,0 +1,45 @@
+{
+  "schema": "sapdev.screenbaseline/1",
+  "vbs": "sap_cmod_delete_assignments.vbs",
+  "captured_on": {
+    "release": "",
+    "kernel": "",
+    "date": "",
+    "method": "static"
+  },
+  "checkpoints": [
+    {
+      "id": "initial",
+      "reach": { "okcode": "/nCMOD" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]",
+        "wnd[0]/tbar[0]/okcd",
+        "wnd[0]/usr/ctxtMOD0-NAME",
+        "wnd[0]/usr/radMODF-CHAK",
+        "wnd[0]/usr/btnPAEND"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "assignments",
+      "reach": { "note": "enhancement-assignment screen after btnPAEND (Change); EXITNAME row ids are built dynamically" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/sbar",
+        "wnd[0]/tbar[1]/btn[33]"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "tr_popup",
+      "reach": { "note": "conditional transport-request popup after Save" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]",
+        "wnd[1]/usr/ctxtKO008-TRKORR"
+      ],
+      "status": "pending_live"
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "schema": "sapdev.screenbaseline/1",
+  "vbs": "sap_gui_diagnose_capture.vbs",
+  "captured_on": {
+    "release": "",
+    "kernel": "",
+    "date": "",
+    "method": "static"
+  },
+  "checkpoints": [
+    {
+      "id": "initial",
+      "reach": { "note": "no navigation; probes wnd[0]..wnd[5] generically on whatever screens the session currently shows (all window ids dynamic)" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [],
+      "status": "pending_live"
+    }
+  ]
+}

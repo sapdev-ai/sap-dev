@@ -1,0 +1,56 @@
+{
+  "schema": "sapdev.screenbaseline/1",
+  "vbs": "sap_se01_delete.vbs",
+  "captured_on": {
+    "release": "",
+    "kernel": "",
+    "date": "",
+    "method": "static"
+  },
+  "checkpoints": [
+    {
+      "id": "initial",
+      "reach": { "okcode": "/nSE01" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/tbar[0]/okcd",
+        "wnd[0]/usr/tabsMAINTABSTRIP/tabpTSSN",
+        "wnd[0]/usr/tabsMAINTABSTRIP/tabpTSSN/ssubCOMMONSUBSCREEN:RDDM0001:0210/ctxtTRDYSE01SN-TR_TRKORR",
+        "wnd[0]/usr/tabsMAINTABSTRIP/tabpTSSN/ssubCOMMONSUBSCREEN:RDDM0001:0210/btn%_AUTOTEXT028",
+        "wnd[0]/sbar"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "tr_display",
+      "reach": { "note": "Display button opens request display (SAPMSSY0)" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/usr",
+        "wnd[0]/tbar[1]/btn[13]"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "task_editor",
+      "reach": { "note": "F2 drill-in opens node object editor (SAPLSCTSREQ; object-tab ids built dynamically - captured live)" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/tbar[1]/btn[25]",
+        "wnd[0]/usr/tabsREQ_TABSTRIP/tabpOBJECTS"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "confirm_popup",
+      "reach": { "note": "confirm cascade after object unassign" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]/usr/btnSPOP-OPTION1",
+        "wnd[1]/usr/btnBUTTON_1",
+        "wnd[1]/tbar[0]/btn[0]"
+      ],
+      "status": "pending_live"
+    }
+  ]
+}

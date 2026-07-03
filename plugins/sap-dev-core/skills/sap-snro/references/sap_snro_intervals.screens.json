@@ -1,0 +1,57 @@
+{
+  "schema": "sapdev.screenbaseline/1",
+  "vbs": "sap_snro_intervals.vbs",
+  "captured_on": {
+    "release": "",
+    "kernel": "",
+    "date": "",
+    "method": "static"
+  },
+  "checkpoints": [
+    {
+      "id": "initial",
+      "reach": { "okcode": "/nSNRO" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/tbar[0]/okcd",
+        "wnd[0]/usr/ctxtNRIV-OBJECT",
+        "wnd[0]/usr/btnINTV",
+        "wnd[0]/tbar[1]/btn[6]",
+        "wnd[0]/sbar"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "intervals_overview",
+      "reach": { "note": "intervals overview screen after Number Ranges button" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/tbar[1]/btn[16]"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "intervals_edit",
+      "reach": { "note": "intervals maintenance screen after Change Intervals" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/tbar[1]/btn[6]",
+        "wnd[0]/tbar[0]/btn[15]"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "interval_popup",
+      "reach": { "note": "wnd[1] Insert Interval dialog per row" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]/usr/txtRV60S-NRRANG_NR",
+        "wnd[1]/usr/txtRV60S-NRRANG_FROM",
+        "wnd[1]/usr/txtRV60S-NRRANG_TO",
+        "wnd[1]/usr/chkRV60S-NRRANG_EXT",
+        "wnd[1]/sbar"
+      ],
+      "status": "pending_live"
+    }
+  ]
+}
