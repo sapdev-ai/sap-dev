@@ -19,7 +19,7 @@ description: |
   Prerequisites: the connected system must offer the `S4HANA_READINESS` check
   variant with the Simplification Database loaded, and `/sap-atc` must be
   working (it needs a one-time Scripting Recorder session per SAP release).
-argument-hint: "<prepare|ingest> --campaign <id> [--results <file|dir>] [--limit <n>]"
+argument-hint: "<prepare|ingest> --campaign <id> [--results <file|dir>] [--limit <n>] [--batch-size <n>] [--variant <NAME>]"
 ---
 
 # SAP Custom-Code Migration — S/4 Readiness Analysis
@@ -103,6 +103,16 @@ skipped sidecar and kept OUT of the worklist, so they are not later mis-marked
 ANALYZED. Exit `1`/`STATUS: EMPTY` means nothing is in REMEDIATE/SCOPED -- run
 `/sap-cc-usage` first (or all objects are already ANALYZED).
 
+**Batched analysis (A5, `--batch-size <n>`).** For large estates, add
+`-BatchSize <n>` so `prepare` ALSO writes `--object-list` batch files
+(`findings\atc_raw\batches\analyze_batch_<nnn>.tsv`, `<ATC_TYPE> <OBJ_NAME>` per
+line, ≤ n objects each) and emits `BATCHES: total=<k> size=<n> dir=<...>`. One
+batch = one `/sap-atc --object-list` run instead of n single runs — the
+analyze-phase wall-clock drops by ≈ batch-size. Stale batch files are cleared on
+each re-prepare. Omit (or 0) for the legacy per-object worklist. Pick n to fit
+the estate and the ATC run timeout (50–100 is a sane starting point; every
+object in one batch shares one run series + one poll).
+
 ---
 
 ## Step 1.5 — Readiness-capability preflight (RFC; before the ATC loop)
@@ -151,7 +161,41 @@ that `ingest` consumes:
 
 This writes `<obj_name>.txt.findings.tsv` (PRIO/CHECK_ID/CHECK_TITLE/OBJECT/
 LINE/MSG_TEXT). Collect every drill export under one folder, e.g.
-`{CAMPAIGN_DIR}\findings\atc_raw\`. Notes:
+`{CAMPAIGN_DIR}\findings\atc_raw\`.
+
+**Variant override.** The default variant is `S4HANA_READINESS` (the point of
+this skill). A `--variant <NAME>` argument overrides it for every `/sap-atc`
+call — use it when the connected system cannot service readiness locally and you
+only need a generic quality pass (e.g. `--variant DEFAULT`), or when validating
+the batched path (A5) against a variant that produces real findings. When
+overridden, the readiness preflight (Step 1.5) is advisory only.
+
+### Batched mode (A5, when `prepare` wrote `BATCHES:`)
+
+If Step 1 emitted `BATCHES: total=<k> …`, prefer the batched loop — it collapses
+n single ATC runs into k runs. For each `analyze_batch_<nnn>.tsv`:
+
+```
+/sap-atc --object-list={CAMPAIGN_DIR}\findings\atc_raw\batches\analyze_batch_<nnn>.tsv \
+         --object-set=ZCC_<campaign>_B<nnn> \
+         --variant=S4HANA_READINESS --drill \
+         --save-to={CAMPAIGN_DIR}\findings\atc_raw\batch_<nnn>.txt
+```
+
+`/sap-atc` builds ONE SCI object set from the list, runs ONE series, and drills
+ONE `batch_<nnn>.txt.findings.tsv` with an `OBJ_NAME` column — the per-object
+key `ingest` already consumes. **Record clean objects as checked for the whole
+batch:** after a batch run COMPLETES, append **every** object in that batch's
+list to `checked_objects.tsv` (Step "Record clean objects as checked" below) —
+objects with findings additionally appear in the drill TSV; `ingest` dedupes
+findings and counts the rest as clean coverage. A batch whose `/sap-atc` run
+FAILED / aborted / plan-errored contributes NOTHING (do not append its objects).
+Then `ingest` the whole `atc_raw\` folder once (Step 3) — it folds every batch
+drill + the checked list together. Everything else (readiness variant, central
+hub, fail-loud on `ATC_PLAN_ERRORS`) is unchanged; batching only changes how
+many runs it takes.
+
+Notes:
 
 - **Readiness variant.** Always pass **`--variant=S4HANA_READINESS`** — this is
   the whole point of the analysis step. `/sap-atc` sets that variant on the ATC
@@ -269,9 +313,13 @@ After ingest, recommend triage: `/sap-cc-campaign next` (→ `/sap-cc-triage`).
 
 ## Limitations / Known gaps (draft)
 
-- **Per-object ATC in v1.** The worklist is looped through `/sap-atc` one object
-  at a time. A single batched ATC **object set** (one run for many objects) is
-  still a scale enhancement (needs its own recorded flow).
+- **Batched ATC (A5) available.** `prepare --batch-size <n>` emits
+  `--object-list` batch files that `/sap-atc` runs as one object set / one run
+  each (see Step 1 "Batched analysis" + Step 2 "Batched mode"), collapsing n
+  single runs into ⌈n/BatchSize⌉. The per-object worklist loop remains the
+  default when `--batch-size` is omitted. Per-object verdicts are identical
+  either way (findings are attributed by the drill's `OBJ_NAME` column, which is
+  independent of how the object set was populated).
 - **Central / remote check system supported (see Step 2 "Central / remote check
   system").** Run readiness on the hub via `/sap-login --switch <check_system>`
   (recommended), or — when the hub is configured for central ATC — pass

@@ -578,6 +578,11 @@ try {
             foreach($so in @(Get-Signoffs $CampaignDir)){ Write-Output "SIGNOFF: gate=$($so.gate) status=$($so.status) owner=$($so.owner) date=$($so.date)" }
             Update-Phase $CampaignDir $phase
             $dashPath = Join-Path $CampaignDir 'reports\dashboard.md'
+            # Ensure the reports dir exists -- `init` creates it, but `report`
+            # must not assume it (a hand-assembled or partially-cleaned workspace
+            # would otherwise fail the WriteAllText with a path-not-found).
+            $dashDir = Split-Path -Parent $dashPath
+            if(-not (Test-Path -LiteralPath $dashDir)){ New-Item -ItemType Directory -Force -Path $dashDir | Out-Null }
             Write-Utf8NoBom $dashPath (Build-Dashboard $CampaignDir $rows $phase $patCounts)
             Write-Output "REPORT: wrote $dashPath"
             Emit-Status $rows $phase

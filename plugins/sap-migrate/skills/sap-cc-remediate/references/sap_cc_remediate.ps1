@@ -42,24 +42,48 @@
 #                           customer override e.g. {custom_url}\knowledge\migration_rules_r1.tsv)
 #   -SourceDir <dir>        where <obj>.before.abap live (default: {CampaignDir}\remediation)
 #   -Limit <int>            (apply/revert) cap objects processed (0 = all)
-#   -ResultsFile <path>     (record) outcomes TSV
+#   -ResultsFile <path>     (record) outcomes TSV. Columns: obj_name, obj_type,
+#                           outcome[, aunit_status, aunit_methods, aunit_failures].
+#                           The 3 aunit_* columns are optional -- absent = units
+#                           not run (treated as no-test / COULD_NOT_CHECK).
 #   -Objects <csv>          (revert) explicit object names; without it only
 #                           fixlog status=FAILED rows are staged
+#   -GatePolicyLib <path>   (record) sap_gate_policy.ps1 -- consulted for the
+#                           ABAP-Unit gate when no explicit -UnitGate override
+#   -BriefPath <path>       (record) migration brief for Get-SapGatePolicy
+#   -UnitGate <BLOCK|WARN|INFO>          (record) explicit unit-gate override
+#   -UnitGateWhenNoTests <BLOCK|WARN>    (record) explicit no-test-class override
 #
 # Output grammar (parseable):
 #   APPLY: objects=<n> changed=<n> flagged=<n> norule=<n> missing=<n>
 #   OBJ: <name> | STATUS: <s> | AUTO: <n> | FLAG: <n>
 #   REVERT: objects=<n> ready=<r> notdeployed=<s> missing=<m>
-#   RECORD: verified=<n> remediated=<n> failed=<n> reverted=<n>
+#   INFO: unit_gate=<BLOCK|WARN|INFO> unit_gate_when_no_tests=<BLOCK|WARN>   (record)
+#   RECORD: verified=<n> remediated=<n> failed=<n> reverted=<n> unit_blocked=<n>
 #   BLOCKED: gate=dryrun_review status=<PENDING|REJECTED> action=record   (record only; exit 3)
+#   BLOCKED: gate=unit_tests obj=<name> aunit=<FAIL|NO_TESTS|NOT_RUN> failures=<n> action=record  (record; per held object; exit 3)
 #   STATUS: OK | EMPTY | ERROR | BLOCKED
-# Exit: 0 ok | 1 empty (nothing to do) | 2 error | 3 blocked (dry-run review sign-off not APPROVED)
+# Exit: 0 ok | 1 empty (nothing to do) | 2 error
+#       3 blocked (dry-run review sign-off not APPROVED, OR the ABAP-Unit gate
+#         held >=1 object back from VERIFIED under unit_gate=BLOCK)
 #
 # Gate note: `record` enforces the dryrun_review sign-off for FORWARD progress
 # (VERIFIED/DEPLOYED/FAILED outcomes). A results file whose rows are ALL
 # outcome=REVERTED bypasses the gate -- a rollback restores the reviewed
 # before-image and reduces risk; blocking it on a sign-off would leave a broken
 # fix live on the sandbox with no scripted way back.
+#
+# Unit-test gate (C9): when the brief's ABAP-Unit bar is mandatory (unit_gate=
+# BLOCK), a VERIFIED outcome is honoured only if its results row carries
+# aunit_status=PASS. A FAIL -- or (under unit_gate_when_no_tests=BLOCK) a missing
+# test class -- does NOT reach VERIFIED: the object was deployed + ATC-clean, so
+# it is held at REMEDIATED (deployed, not verified) and the run exits 3. Unlike
+# the dryrun pre-wall (which persists nothing), the unit gate PERSISTS the
+# legitimate transitions (passing VERIFIEDs, DEPLOYEDs, REVERTEDs) and holds only
+# the individual objects that failed their tests -- so one red suite never blocks
+# recording the rest. unit_gate=WARN records VERIFIED with a note; INFO is silent.
+# An object with no test class under the default WARN policy is COULD_NOT_CHECK
+# (honest), never a silent pass.
 
 [CmdletBinding()]
 param(
@@ -70,7 +94,15 @@ param(
     [int]$Limit = 0,
     [string]$ResultsFile = '',
     [string]$KnowledgeDir = '',
-    [string]$Objects = ''
+    [string]$Objects = '',
+    # C9 -- ABAP-Unit exit gate (record only). The gate policy is brief-driven:
+    # -GatePolicyLib + -BriefPath let `record` consult Get-SapGatePolicy against
+    # the migration brief; -UnitGate / -UnitGateWhenNoTests are explicit overrides
+    # (win over the lib) so the gate is offline-testable without the shared lib.
+    [string]$GatePolicyLib = '',
+    [string]$BriefPath = '',
+    [ValidateSet('','BLOCK','WARN','INFO')][string]$UnitGate = '',
+    [ValidateSet('','BLOCK','WARN')][string]$UnitGateWhenNoTests = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -111,7 +143,9 @@ function Write-StateRows([string]$path,$rows){
     Write-Utf8NoBom $path (($L -join "`r`n") + "`r`n")
 }
 
-$FIXLOG_HEADER = "obj_name`tobj_type`tstatus`tauto_changes`tflag_hits`tdeploy_status`tatc_recheck`tupdated_on`tnotes"
+# Fixlog schema (C9 appended aunit_status/methods/failures at the END so old
+# 9-column fixlogs read back with the aunit fields defaulted -- append-compatible).
+$FIXLOG_HEADER = "obj_name`tobj_type`tstatus`tauto_changes`tflag_hits`tdeploy_status`tatc_recheck`tupdated_on`tnotes`taunit_status`taunit_methods`taunit_failures"
 function Read-Fixlog([string]$path){
     $h = @{}
     if (-not (Test-Path -LiteralPath $path)) { return $h }
@@ -124,6 +158,7 @@ function Read-Fixlog([string]$path){
             obj_name=(Field $f 0); obj_type=(Field $f 1); status=(Field $f 2); auto_changes=(Field $f 3)
             flag_hits=(Field $f 4); deploy_status=$(if((Field $f 5)){(Field $f 5)}else{'-'}); atc_recheck=$(if((Field $f 6)){(Field $f 6)}else{'-'})
             updated_on=(Field $f 7); notes=(Field $f 8)
+            aunit_status=$(if((Field $f 9)){(Field $f 9)}else{'-'}); aunit_methods=$(if((Field $f 10)){(Field $f 10)}else{'0'}); aunit_failures=$(if((Field $f 11)){(Field $f 11)}else{'0'})
         }
     }
     return $h
@@ -133,7 +168,10 @@ function Write-Fixlog([string]$path,$map){
     $L.Add($FIXLOG_HEADER)
     foreach ($k in ($map.Keys | Sort-Object)) {
         $r = $map[$k]
-        $L.Add("$($r.obj_name)`t$($r.obj_type)`t$($r.status)`t$($r.auto_changes)`t$($r.flag_hits)`t$($r.deploy_status)`t$($r.atc_recheck)`t$($r.updated_on)`t$($r.notes)")
+        $au  = if ($null -ne $r.aunit_status)   { $r.aunit_status }   else { '-' }
+        $aum = if ($null -ne $r.aunit_methods)  { $r.aunit_methods }  else { '0' }
+        $auf = if ($null -ne $r.aunit_failures) { $r.aunit_failures } else { '0' }
+        $L.Add("$($r.obj_name)`t$($r.obj_type)`t$($r.status)`t$($r.auto_changes)`t$($r.flag_hits)`t$($r.deploy_status)`t$($r.atc_recheck)`t$($r.updated_on)`t$($r.notes)`t$au`t$aum`t$auf")
     }
     Write-Utf8NoBom $path (($L -join "`r`n") + "`r`n")
 }
@@ -436,16 +474,80 @@ try {
         }
     }
 
+    # --- C9: resolve the ABAP-Unit exit gate (brief-driven; overridable) ---
+    # Precedence: explicit -UnitGate/-UnitGateWhenNoTests override > Get-SapGatePolicy
+    # (via -GatePolicyLib against -BriefPath) > safe default (WARN = non-blocking).
+    $unitGate    = if ($UnitGate) { $UnitGate.ToUpper() } else { '' }
+    $unitNoTests = if ($UnitGateWhenNoTests) { $UnitGateWhenNoTests.ToUpper() } else { '' }
+    if ((-not $unitGate -or -not $unitNoTests) -and $GatePolicyLib -and (Test-Path -LiteralPath $GatePolicyLib)) {
+        try {
+            . $GatePolicyLib
+            if (Get-Command Get-SapGatePolicy -ErrorAction SilentlyContinue) {
+                $pol = Get-SapGatePolicy -BriefPath $BriefPath
+                if (-not $unitGate    -and $pol.unit_gate)               { $unitGate    = "$($pol.unit_gate)".ToUpper() }
+                if (-not $unitNoTests -and $pol.unit_gate_when_no_tests) { $unitNoTests = "$($pol.unit_gate_when_no_tests)".ToUpper() }
+            }
+        } catch { Write-Output "INFO: gate policy lib load failed ($($_.Exception.Message)); defaulting unit gate to WARN" }
+    }
+    if (-not $unitGate)    { $unitGate    = 'WARN' }   # no policy resolvable -> non-blocking, honest
+    if (-not $unitNoTests) { $unitNoTests = 'WARN' }
+    Write-Output "INFO: unit_gate=$unitGate unit_gate_when_no_tests=$unitNoTests"
+
     $stateRows = @(Read-StateRows $statePath)
     $stIdx = @{}; for ($i=0;$i -lt $stateRows.Count;$i++){ $stIdx["$($stateRows[$i].obj_name)|$($stateRows[$i].obj_type)"] = $i }
     $fix = Read-Fixlog $fixlogPath
-    $nV = 0; $nR = 0; $nF = 0; $nRev = 0
+    $nV = 0; $nR = 0; $nF = 0; $nRev = 0; $nUnitBlocked = 0
     for ($i = 1; $i -lt $all.Count; $i++){
         $ln = $all[$i]; if (-not $ln.Trim()) { continue }
         $f = $ln.Split("`t")
         $nm = (Cell $f $ix 'obj_name'); $ty = (Cell $f $ix 'obj_type'); $out = (Cell $f $ix 'outcome').ToUpper()
         if (-not $nm) { continue }
         $key = "$nm|$ty"
+
+        # --- C9 unit-test gate: read the optional aunit_* columns and decide
+        #     whether a VERIFIED outcome is honoured or held back at REMEDIATED. ---
+        $auStatus = ''; $auMethods = '0'; $auFailures = '0'
+        if ($ix.ContainsKey('aunit_status'))   { $auStatus   = (Cell $f $ix 'aunit_status').ToUpper() }
+        if ($ix.ContainsKey('aunit_methods'))  { $auMethods  = (Cell $f $ix 'aunit_methods') }
+        if ($ix.ContainsKey('aunit_failures')) { $auFailures = (Cell $f $ix 'aunit_failures') }
+        if ([string]::IsNullOrWhiteSpace($auMethods))  { $auMethods  = '0' }
+        if ([string]::IsNullOrWhiteSpace($auFailures)) { $auFailures = '0' }
+
+        $unitHeld = $false; $unitReason = ''; $unitNote = ''
+        if ($out -eq 'VERIFIED' -and $unitGate -eq 'BLOCK') {
+            if ($auStatus -eq 'PASS') {
+                # green units -> VERIFIED allowed
+            } elseif ($auStatus -eq 'FAIL') {
+                $unitHeld = $true; $unitReason = 'FAIL'
+            } else {
+                # no PASS on record (NO_TESTS / NOT_RUN / blank) -> no-test-class policy
+                if ([string]::IsNullOrWhiteSpace($auStatus)) { $auStatus = 'NOT_RUN' }
+                if ($unitNoTests -eq 'BLOCK') { $unitHeld = $true; $unitReason = $auStatus }
+                else { $unitNote = "unit gate BLOCK but $auStatus (COULD_NOT_CHECK; no-test policy=WARN)" }
+            }
+        } elseif ($out -eq 'VERIFIED' -and $unitGate -eq 'WARN') {
+            if ($auStatus -and $auStatus -ne 'PASS') { $unitNote = "unit=$auStatus (gate=WARN, not blocking)" }
+        }
+
+        if ($unitHeld) {
+            # Deploy happened + ATC was clean; only unit verification is short.
+            # Hold at REMEDIATED (deployed, not verified) -- never VERIFIED.
+            if ($stIdx.ContainsKey($key)) {
+                $r = $stateRows[$stIdx[$key]]
+                if ($r.state -eq 'TRIAGED') { $r.state = 'REMEDIATED'; $r.updated_on = $today }
+            }
+            if ($fix.ContainsKey($key)) {
+                $fr = $fix[$key]
+                $fr.deploy_status='OK'; $fr.atc_recheck='CLEAN'; $fr.status='UNIT_BLOCKED'
+                $fr.aunit_status=$unitReason; $fr.aunit_methods=$auMethods; $fr.aunit_failures=$auFailures
+                $fr.notes="unit gate=BLOCK held ($unitReason); fix tests, re-run /sap-run-abap-unit, then re-record VERIFIED"
+                $fr.updated_on = $today
+            }
+            Write-Output "BLOCKED: gate=unit_tests obj=$nm aunit=$unitReason failures=$auFailures action=record"
+            $nUnitBlocked++
+            continue
+        }
+
         if ($stIdx.ContainsKey($key)) {
             $r = $stateRows[$stIdx[$key]]
             # Ledger transition table (see header). VERIFIED is reachable from
@@ -467,7 +569,13 @@ try {
         }
         if ($fix.ContainsKey($key)) {
             $fr = $fix[$key]
-            if ($out -eq 'VERIFIED') { $fr.deploy_status='OK'; $fr.atc_recheck='CLEAN'; $fr.status='VERIFIED' }
+            $prevStatus = [string]$fr.status
+            if ($out -eq 'VERIFIED') {
+                $fr.deploy_status='OK'; $fr.atc_recheck='CLEAN'; $fr.status='VERIFIED'
+                $fr.aunit_status=$(if ($auStatus) { $auStatus } else { '-' }); $fr.aunit_methods=$auMethods; $fr.aunit_failures=$auFailures
+                if ($unitNote) { $fr.notes = (@($fr.notes, $unitNote) | Where-Object { $_ }) -join '; ' }
+                elseif ($prevStatus -eq 'UNIT_BLOCKED') { $fr.notes = 'verified after unit-gate hold (tests green on re-record)' }
+            }
             elseif ($out -eq 'DEPLOYED') { $fr.deploy_status='OK'; $fr.atc_recheck='PENDING'; $fr.status='DEPLOYED' }
             elseif ($out -eq 'REVERTED') { $fr.notes = "reverted (was $($fr.status))"; $fr.deploy_status='ROLLED_BACK'; $fr.atc_recheck='-'; $fr.status='REVERTED' }
             else { $fr.deploy_status='FAILED'; $fr.status='FAILED' }
@@ -477,7 +585,12 @@ try {
     }
     Write-StateRows $statePath $stateRows
     Write-Fixlog $fixlogPath $fix
-    Write-Output "RECORD: verified=$nV remediated=$nR failed=$nF reverted=$nRev"
+    Write-Output "RECORD: verified=$nV remediated=$nR failed=$nF reverted=$nRev unit_blocked=$nUnitBlocked"
+    if ($nUnitBlocked -gt 0) {
+        Write-Output "INFO: $nUnitBlocked object(s) deployed + ATC-clean but held at REMEDIATED by the ABAP-Unit gate (unit_gate=BLOCK). Fix the failing tests, re-run /sap-run-abap-unit, then re-record with outcome VERIFIED + aunit_status=PASS."
+        Write-Output 'STATUS: BLOCKED'
+        exit 3
+    }
     Write-Output 'STATUS: OK'
     exit 0
 }

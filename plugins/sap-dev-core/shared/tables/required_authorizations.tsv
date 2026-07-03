@@ -1,0 +1,27 @@
+# required_authorizations.tsv  -  machine-readable mirror of docs/security.md Sec.1
+# Read by /sap-doctor (references\sap_doctor_authz_probe.ps1) to probe the LOGGED-IN
+# user via SUSR_USER_AUTH_FOR_OBJ_GET (RFC-enabled). Also a reference for /sap-evidence-pack.
+#
+# Grammar: rows sharing (capability, auth_object) form ONE AUTHORITY-CHECK group -- a
+# single authorization instance must satisfy EVERY listed field. A capability with
+# multiple auth_objects passes only when ALL its objects pass.
+# values: `|`-separated acceptable values for the field (OR); empty = presence-only.
+#         `*` in the user grant matches any required value.
+# Cell separator is TAB. Lines starting with # and blank lines are skipped.
+capability	auth_object	field	values	description
+workbench_program	S_DEVELOP	ACTVT	01|02	Create/change ABAP programs (/sap-se38)
+workbench_program	S_DEVELOP	OBJTYPE	PROG	
+workbench_fugr	S_DEVELOP	ACTVT	01|02	Create/change function groups (/sap-se37, /sap-function-group)
+workbench_fugr	S_DEVELOP	OBJTYPE	FUGR	
+workbench_class	S_DEVELOP	ACTVT	01|02	Create/change classes & interfaces (/sap-se24)
+workbench_class	S_DEVELOP	OBJTYPE	CLAS	
+workbench_ddic	S_DEVELOP	ACTVT	01|02	Create/change DDIC objects (/sap-se11)
+workbench_ddic	S_DEVELOP	OBJTYPE	TABL	
+package_maintain	S_DEVELOP	ACTVT	01|02	Create/change packages (/sap-se21, /sap-change-package)
+package_maintain	S_DEVELOP	OBJTYPE	DEVC	
+transport_manage	S_TRANSPRT	ACTVT	01|02	Create/change transport requests (/sap-transport-request, /sap-se01)
+transport_manage	S_TRANSPRT	TTYPE	DTRA|TASK	
+rfc_execute	S_RFC	ACTVT	16	Execute RFC FMs -- verification gates, lookups, wrapper
+gui_file_transfer	S_GUI	ACTVT	61	GUI file up/download (source paste, SE16N export)
+table_display	S_TABU_DIS	ACTVT	03	Display table contents (/sap-se16n, diagnose readers)
+tcode_workbench	S_TCODE	TCD	SE38	ABAP editor transaction (representative workbench S_TCODE)

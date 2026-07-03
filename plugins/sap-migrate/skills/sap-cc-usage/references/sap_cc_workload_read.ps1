@@ -147,7 +147,21 @@ try {
         if (-not $tc -or $tc.RowCount -eq 0) { continue }
 
         if (-not $entryCol) {
-            $names = @(); foreach ($col in $tc.Metadata) { $names += $col.Name }
+            # TCDET row fields live on the table's LINE TYPE (RfcStructureMetadata),
+            # NOT on the table metadata itself: iterating $tc.Metadata yields a
+            # single entry named for the table type (SWNCGL_T_AGGTCDET), so the
+            # ENTRY_ID/COUNT candidates never match and the reader falsely warns +
+            # returns NO_DATA even on a populated system. Enumerate LineType fields
+            # (verified live on S/4HANA 2022: 31 fields incl. ENTRY_ID + COUNT).
+            $names = @()
+            try {
+                $lt = $tc.Metadata.LineType
+                for ($ci = 0; $ci -lt $lt.FieldCount; $ci++) { $names += $lt[$ci].Name }
+            } catch {
+                # Fallback for any NCo build where LineType is unavailable: enumerate
+                # the table metadata directly (older behaviour).
+                try { foreach ($col in $tc.Metadata) { $names += $col.Name } } catch {}
+            }
             foreach ($cand in @('ENTRY_ID','ACCOUNT','TCODE','REPORT')) { if ($names -contains $cand) { $entryCol = $cand; break } }
             foreach ($cand in @('COUNT','ENTRY_CNT','CNT')) { if ($names -contains $cand) { $countCol = $cand; break } }
             if (-not $entryCol -or -not $countCol) {

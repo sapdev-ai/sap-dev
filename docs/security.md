@@ -40,9 +40,14 @@ Practical notes:
   `STAUTHTRACE`/`ST01` traces while exercising the skills you'll use, and cut
   the role from the trace. After any authorization failure, `SU53` on the AI's
   user shows the missing object.
-- **`/sap-doctor` does not yet probe authorizations mechanically** (roadmap —
-  needs the dev-init wrapper FM to reach `SUSR_USER_AUTH_FOR_OBJ_GET`). Until
-  then this table + SU53 is the contract.
+- **`/sap-doctor` probes authorizations mechanically** (auth group, Step 3b):
+  `references/sap_doctor_authz_probe.ps1` reads the machine-readable mirror of
+  this table — `sap-dev-core/shared/tables/required_authorizations.tsv` — and
+  calls `SUSR_USER_AUTH_FOR_OBJ_GET` (RFC-enabled; **no dev-init wrapper
+  needed**) for the logged-in user, emitting `AUTH: PASS|FAIL <capability>`.
+  **Keep the TSV in sync with this table when you edit either.** This table +
+  SU53 remains the authoritative contract for the exact, release-specific field
+  values (the probe checks the representative object/fields per capability).
 - **Recommendation:** give the AI a dedicated, personal-but-separate Dialog
   user (e.g. `DEV_AI_<initials>`) on DEV only. That makes every SAP change
   attributable to the AI-assisted workflow in standard SAP audit trails

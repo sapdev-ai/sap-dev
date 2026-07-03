@@ -2,12 +2,14 @@
 name: sap-doctor
 description: |
   Read-only environment preflight ("doctor") for the sap-dev toolchain.
-  Diagnoses why skills fail BEFORE they run, across five groups:
+  Diagnoses why skills fail BEFORE they run, across six groups:
     * gui    — SAP GUI installed + SAP GUI Scripting reachable (client + server)
     * cfg    — 32-bit PowerShell, SAP NCo 3.1 in GAC_32, work_dir env var +
                writability, connections.json present + valid
     * rfc    — RFC connectivity to the AI-session's pinned connection profile
     * srv    — client Repository modifiability (T000 change option)
+    * auth   — the logged-in user's SAP authorizations vs the required set
+               (SUSR_USER_AUTH_FOR_OBJ_GET; mirror of docs/security.md §1)
     * devenv — TR / package / function group / wrapper artefacts (delegated to
                /sap-dev-status)
   Emits one parseable CHECK line per probe and an overall verdict
@@ -43,6 +45,8 @@ Task: $ARGUMENTS
 | `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_check_gui_login_status.vbs` | *(static VBS)* | gui group — SAP GUI / scripting reachability probe (no tokens) |
 | `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_rfc_lib.ps1` | `%%RFC_LIB_PS1%%` | cfg/rfc/srv groups — `Connect-SapRfc` (pinned-profile fallback) |
 | `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_readiness_probe.ps1` | `%%READINESS_PROBE_PS1%%` | srv group — `Get-SapReadinessCapability` for the `READINESS_CAP` check (dot-sourced; shared with `/sap-cc-analyze`) |
+| `<SKILL_DIR>/references/sap_doctor_authz_probe.ps1` | *(32-bit PS)* | auth group — probes the pinned user's authorizations via `SUSR_USER_AUTH_FOR_OBJ_GET` (Step 3b) |
+| `<SAP_DEV_CORE_SHARED_DIR>/tables/required_authorizations.tsv` | *(read)* | auth group — required-authorization set read by the probe above (machine-readable mirror of `docs/security.md §1`) |
 | `<SKILL_DIR>/references/sap_doctor_checks.ps1` | *(template)* | cfg + rfc + srv checks (filled + run in 32-bit PowerShell) |
 | `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_log_helper.ps1` | *(logging)* | Step 0.5 / Final logging |
 
@@ -162,6 +166,40 @@ If `RFC_PING` already FAILED, skip the `/sap-dev-status` call and mark devenv
 
 ---
 
+## Step 3b — auth group: probe authorizations
+
+Unless `RFC_PING` already FAILED (RFC down → skip, mark auth **SKIP**), probe the
+pinned RFC user's authorizations against the required set. Run via **32-bit
+PowerShell** (NCo 3.1 in `GAC_32`):
+
+```bash
+C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File "<SKILL_DIR>\references\sap_doctor_authz_probe.ps1"
+```
+
+It reads `<SAP_DEV_CORE_SHARED_DIR>\tables\required_authorizations.tsv` (the
+machine-readable mirror of `docs/security.md §1`) and, for the logged-in user,
+calls `SUSR_USER_AUTH_FOR_OBJ_GET` (RFC-enabled — **no dev-init wrapper needed**)
+once per authorization object, evaluating each capability with faithful
+AUTHORITY-CHECK semantics (a single authorization instance must cover every
+required field; `*` matches anything). Output:
+
+```
+AUTH: <PASS|FAIL> <capability> (<objects>) - <description>
+AUTH: NOT_PROBED (<why>)     # FM unavailable / auth data unreadable — honest, never a fabricated verdict
+AUTH_SUMMARY: probed=<n> pass=<p> fail=<f> user=<u> fully_authorized_objects=<list>
+```
+
+Map to the **auth** group: all `PASS` → **PASS**; any `FAIL` → **WARN**;
+`NOT_PROBED` (or RFC down) → **SKIP**. An auth `FAIL` is a *role-provisioning*
+gap, not a broken runtime — it **DEGRADES**, never **BLOCKS** (over-blocking
+would break the pre-flight for read-only skills the user is entitled to run).
+Keep the per-capability `AUTH:` lines for Step 4; surface each `FAIL` as a
+next-action bullet.
+
+Exit code (probe): `0` all pass · `1` ≥1 FAIL · `2` NOT_PROBED.
+
+---
+
 ## Step 4 — Compose and report
 
 Combine the three sources (Step 1 gui, Step 2 cfg/rfc/srv, Step 3 devenv) into
@@ -184,6 +222,7 @@ SAP Doctor — <SYSTEM>/<CLIENT> as <USER>
 │ CONNECTIONS       │ cfg   │ PASS   │ connections.json present and valid            │
 │ RFC_PING          │ rfc   │ PASS   │ pinned profile reachable                      │
 │ CLIENT_MODIFIABLE │ srv   │ PASS   │ client 100 allows Repository changes          │
+│ auth (10 caps)    │ auth  │ PASS   │ 10/10 capabilities pass (DEVELOPER)           │
 │ devenv (5 arts)   │ devenv│ PASS   │ /sap-dev-status ALL_OK                        │
 └───────────────────┴───────┴────────┴───────────────────────────────────────────────┘
 VERDICT: DEGRADED  (0 FAIL · 1 WARN · 0 SKIP)
@@ -193,14 +232,15 @@ For every `FAIL` (and notable `WARN`), list the check's **FIX** string as a
 next-action bullet. If the verdict is `READY`, say so plainly. Honor `--quiet`
 by collapsing PASS rows and printing only WARN/FAIL/SKIP plus the verdict.
 
-**Authorizations note (manual check — always append after the table):** the
-doctor cannot yet probe SAP authorizations mechanically (needs the dev-init
-wrapper FM to reach `SUSR_USER_AUTH_FOR_OBJ_GET`; roadmap). Append one line:
-`AUTH: not probed — required-authorization table: docs/security.md §1; after
-any authorization failure run SU53 on this user, or capture STAUTHTRACE
-during a pilot to cut the final role.` This keeps the #1 security-team
-question answerable from the doctor output even before the mechanical probe
-exists.
+**Authorizations (auth group — append the Step 3b lines after the table).**
+Append the probe's per-capability `AUTH:` lines verbatim below the table, then
+the `AUTH_SUMMARY`. If it returned `AUTH: NOT_PROBED` (or RFC was down), append
+that single line plus the pointer: *required-authorization table:
+`docs/security.md §1`; after any authorization failure run SU53 on this user, or
+capture STAUTHTRACE during a pilot to cut the final role.* For each `AUTH: FAIL`,
+add a next-action bullet naming the failing capability + the same SU53/§1 pointer
+(the user requests the missing role from Basis). An `AUTH: FAIL` maps to the
+**auth** group `WARN` → the verdict DEGRADES, never BLOCKS.
 
 ---
 
@@ -252,10 +292,19 @@ Read-only and fast, so it is safe to chain.
 - **`--fix` is not implemented in v1.** All remediations are reported as FIX
   strings; nothing is changed automatically. (Planned: auto-create work_dir
   subfolders, set the env var.)
+- **auth group reads *assigned* authorizations, not a live AUTHORITY-CHECK.**
+  The probe evaluates `SUSR_USER_AUTH_FOR_OBJ_GET` (the user's granted values)
+  with AUTHORITY-CHECK semantics — one authorization instance must cover all
+  required fields — for the representative object + fields per capability in
+  `required_authorizations.tsv`, not every field/value a skill might hit. A
+  `PASS` means "has the core grant", not "provably can never be denied"; an
+  `AUTH: FAIL` is high-signal (the grant is genuinely absent). After a runtime
+  denial, SU53 on the user remains the authoritative cut. The probe reads its
+  OWN user's data, so it needs no special auth; if the read is refused it says
+  `NOT_PROBED`, never a fabricated verdict.
 - **Planned (not in v1):** explicit server-side `sapgui/user_scripting`
   parameter read (to distinguish client-vs-server when the gui probe returns
-  `NO_SCRIPTING`); best-effort `S_DEVELOP` / `S_TRANSPORT` authorization probe;
-  ADT/SICF reachability line; per-profile RFC fan-out.
+  `NO_SCRIPTING`); ADT/SICF reachability line; per-profile RFC fan-out.
 
 ---
 
@@ -264,5 +313,9 @@ Read-only and fast, so it is safe to chain.
 On the first S4D run, confirm: (1) the T000 field names (`CCNOCLIIND`,
 `CCCORACTIV`) and value semantics on your release; (2) that the empty-credential
 substitution correctly triggers the `Connect-SapRfc` pinned-profile fallback;
-(3) the `sap_check_gui_login_status.vbs` STATUS values map as tabled above.
-Write the run report to `sap-dev/temp/testReport/sap_doctor_e2e_<SID>_<date>.md`.
+(3) the `sap_check_gui_login_status.vbs` STATUS values map as tabled above;
+(4) the auth probe — `SUSR_USER_AUTH_FOR_OBJ_GET` is RFC-enabled and the
+capability PASS/FAIL matches the user's role. (Auth probe live-verified on
+S4H/easy 2026-07-03: a DEVELOPER passed 10/10; an ungranted `ACTVT=99` correctly
+FAILed; missing rules → `NOT_PROBED`.) Write the run report to
+`sap-dev/temp/testReport/sap_doctor_e2e_<SID>_<date>.md`.

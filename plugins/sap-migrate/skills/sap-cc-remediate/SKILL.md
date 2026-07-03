@@ -26,7 +26,10 @@ description: |
              (deployed) / TRIAGED|REMEDIATED -> VERIFIED (ATC clean; a deployed
              object reaches VERIFIED on a later recheck record) / REMEDIATED ->
              TRIAGED on a FAILED recheck / REMEDIATED|VERIFIED -> TRIAGED on
-             REVERTED (rollback recorded), and stamp the fixlog.
+             REVERTED (rollback recorded), and stamp the fixlog. When the brief's
+             ABAP-Unit bar is mandatory, VERIFIED also requires a passing
+             /sap-run-abap-unit result or the object is held at REMEDIATED (the
+             unit-test gate).
   R1 is deterministic (apply). R2/R3 (data-model / HANA) are AI-reasoned: assist
   prepares the context, the AI rewrites per the recipe, and a human reviews
   before deploy — never auto-applied. Objects with tier '?' (unclassified) and
@@ -34,7 +37,7 @@ description: |
   `/sap-cc-triage`.
   Prerequisites: downloaded source for each R1 object; deploy/activate happen via
   the delegated workbench skills on the sandbox system.
-argument-hint: "<apply|assist|revert|record> --campaign <id> [--rules <path>] [--knowledge <dir>] [--source-dir <dir>] [--limit <n>] [--results <path>] [--objects <a,b>]"
+argument-hint: "<apply|assist|revert|record> --campaign <id> [--rules <path>] [--knowledge <dir>] [--source-dir <dir>] [--limit <n>] [--results <path>] [--objects <a,b>] [--brief <path>]"
 ---
 
 # SAP Custom-Code Migration — Remediate (R1)
@@ -61,6 +64,8 @@ Task: $ARGUMENTS
 | `<SKILL_DIR>/../../shared/knowledge/recipes/<pattern>.md` | *(read)* | Recipe guidance for R2/R3 (AI-assisted) remediation. |
 | `/sap-se38` `/sap-se37` `/sap-se24` | *(skills)* | Download source + deploy the approved `<obj>.after.abap`. |
 | `/sap-activate-object`, `/sap-atc`, `/sap-fix-abap` | *(skills)* | Activate, ATC re-check (variant `S4HANA_READINESS`), and assist on syntax. |
+| `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_gate_policy.ps1` | *(record: `-GatePolicyLib`)* | `Get-SapGatePolicy` reads the migration brief's ABAP-Unit bar → `unit_gate` / `unit_gate_when_no_tests` for the record-action unit-test gate (C9). |
+| `/sap-run-abap-unit`, `/sap-gen-abap-unit` | *(skills)* | Run — and, when a test class is absent under a mandatory unit gate, generate — ABAP Unit tests on the sandbox to back a `VERIFIED` outcome. |
 
 Workspace contract (`remediation\*`, `fixlog.tsv`, REMEDIATED/VERIFIED states)
 is defined by `/sap-cc-campaign`. This skill **owns** `remediation\`.
@@ -200,16 +205,48 @@ For each approved `<obj>.after.abap`:
 3. Re-run readiness ATC via `/sap-atc <type> <name> --variant=S4HANA_READINESS`
    and confirm the original finding(s) cleared.
 
+### Step 3b — ABAP Unit run (when the brief's unit bar is mandatory)
+
+If the migration brief's **ABAP Unit gate** is `mandatory (block)`, a `VERIFIED`
+outcome must be backed by a green unit run — otherwise `record` holds the object
+at REMEDIATED (Step 4). For each object you intend to mark `VERIFIED`, after the
+ATC re-check run its tests on the **sandbox**:
+
+```bash
+/sap-run-abap-unit <OBJECT_NAME> --type=<PROGRAM|CLASS>
+```
+
+Map its verdict into the outcomes TSV's `aunit_*` columns:
+
+| `/sap-run-abap-unit` output | `aunit_status` | `aunit_methods` / `aunit_failures` |
+|---|---|---|
+| `AUNIT_VERDICT: PASS` | `PASS` | from `UNIT_TEST_RUN: EXECUTED methods=… failed=…` |
+| `AUNIT_VERDICT: FAIL` | `FAIL` | methods / failures |
+| `UNIT_TEST_RUN: SKIPPED:NO_TESTS` | `NO_TESTS` | `0` / `0` |
+| `UNIT_TEST_RUN: NEEDS_RECORDING` or `ERROR:` | `NOT_RUN` | `0` / `0` |
+
+If the object has **no test class** and the brief's unit bar is mandatory,
+generate one first with `/sap-gen-abap-unit <OBJECT_NAME>` (deploy + activate the
+test class on the sandbox), then run it — rather than recording `NO_TESTS`.
+
 Build an outcomes TSV — `obj_name`, `obj_type`, `outcome`
 (`VERIFIED` = deployed + ATC clean / `DEPLOYED` = deployed, recheck pending /
-`FAILED`).
+`FAILED` / `REVERTED`) **plus, when you ran units, `aunit_status`,
+`aunit_methods`, `aunit_failures`**. The three `aunit_*` columns are optional;
+absent = units not run (the gate treats that as `COULD_NOT_CHECK`).
 
 ---
 
 ## Step 4 — Record outcomes
 
+Resolve the migration brief so the unit gate can read the campaign's ABAP-Unit
+bar: `{BRIEF}` = `--brief <path>` if given, else `{custom_url}\migration_brief.md`
+if it exists, else `<SAP_DEV_CORE_SHARED_DIR>\templates\migration_brief.md` (the
+shared template always exists, so `-BriefPath` never resolves to the wrong
+build-time `customer_brief.md`).
+
 ```bash
-powershell -ExecutionPolicy Bypass -File "<SKILL_DIR>\references\sap_cc_remediate.ps1" -Action record -CampaignDir "{CAMPAIGN_DIR}" -ResultsFile "<outcomes.tsv>"
+powershell -ExecutionPolicy Bypass -File "<SKILL_DIR>\references\sap_cc_remediate.ps1" -Action record -CampaignDir "{CAMPAIGN_DIR}" -ResultsFile "<outcomes.tsv>" -GatePolicyLib "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_gate_policy.ps1" -BriefPath "{BRIEF}"
 ```
 
 **Dry-run-review gate (enforced).** When the campaign's
@@ -221,6 +258,21 @@ skipped diff review cannot be marked as campaign progress. Present the
 `/sap-cc-campaign signoff --campaign <id> --gate dryrun_review --owner <name>`
 and re-run `record`.
 
+**Unit-test gate (C9 — enforced when the brief's ABAP-Unit bar is mandatory).**
+`record` first prints `INFO: unit_gate=<BLOCK|WARN|INFO> unit_gate_when_no_tests=<BLOCK|WARN>`.
+Under `unit_gate=BLOCK`, a `VERIFIED` outcome is honoured only if its row carries
+`aunit_status=PASS`. A `FAIL` — or, under `unit_gate_when_no_tests=block`, a
+missing test class (`NO_TESTS`/`NOT_RUN`) — does NOT reach VERIFIED: the object
+was deployed + ATC-clean, so it is **held at REMEDIATED**, the run prints
+`BLOCKED: gate=unit_tests obj=<name> aunit=<FAIL|NO_TESTS|NOT_RUN> failures=<n> action=record`
+and exits `3`. Unlike the dryrun pre-wall (which persists nothing), the unit gate
+**persists the legitimate transitions** (passing VERIFIEDs, DEPLOYEDs, REVERTEDs)
+and holds back only the objects that failed their tests — one red suite never
+blocks recording the rest. Fix the tests, re-run `/sap-run-abap-unit`, and
+re-record those objects with `aunit_status=PASS`. `unit_gate=WARN` records
+VERIFIED with a note; an object with no test class under the default `WARN`
+policy is `COULD_NOT_CHECK`, never a silent pass.
+
 Ledger transitions (anything else is blocked):
 TRIAGED → REMEDIATED (`DEPLOYED`); TRIAGED → VERIFIED (`VERIFIED`, deploy +
 recheck recorded in one pass); **REMEDIATED → VERIFIED** (`VERIFIED`, recheck
@@ -229,7 +281,8 @@ reaches VERIFIED); REMEDIATED → TRIAGED (`FAILED` recheck — the object goes
 back into the remediation loop); **REMEDIATED|VERIFIED → TRIAGED** (`REVERTED`
 — rollback recorded, see Step 4b; on an already-TRIAGED object only the fixlog
 is stamped). The fixlog is stamped for every row. Output:
-`RECORD: verified=<n> remediated=<n> failed=<n> reverted=<n>`.
+`RECORD: verified=<n> remediated=<n> failed=<n> reverted=<n> unit_blocked=<n>`
+(`unit_blocked` = objects held at REMEDIATED by the unit gate, above).
 Then `/sap-cc-campaign report` / `next` (→ transport bundle for VERIFIED objects).
 
 **Rollback exemption:** a results file whose rows are ALL `outcome=REVERTED`
@@ -296,7 +349,7 @@ their own review.
 
 - `remediation\<obj>.before.abap` / `.after.abap` / `.diff` — per-object dry-run artifacts.
 - `remediation\<obj>.revert.abap` / `.revert.diff` — staged rollback artifacts (Step 4b).
-- `remediation\fixlog.tsv` — `obj_name · obj_type · status · auto_changes · flag_hits · deploy_status · atc_recheck · updated_on · notes`. Statuses include `REVERTED` (`deploy_status=ROLLED_BACK`) for recorded rollbacks.
+- `remediation\fixlog.tsv` — `obj_name · obj_type · status · auto_changes · flag_hits · deploy_status · atc_recheck · updated_on · notes · aunit_status · aunit_methods · aunit_failures`. Statuses include `REVERTED` (`deploy_status=ROLLED_BACK`) for recorded rollbacks and `UNIT_BLOCKED` (deployed + ATC-clean but held at REMEDIATED by the unit gate). The three `aunit_*` columns are append-compatible — a pre-C9 9-column fixlog reads back with them defaulted (`-` / `0` / `0`).
 - `state.tsv` — R1 objects advanced to REMEDIATED / VERIFIED (a recorded rollback returns the object to TRIAGED).
 
 ---
@@ -314,6 +367,11 @@ their own review.
 - **Deploy is delegated + manual-gated.** The helper never writes to SAP; it
   produces proposals. Deploy/activate/re-check go through the workbench skills on
   the sandbox, only after the operator approves the diffs.
+- **Unit-test gate is evidence-driven, not a SAP call.** The helper never runs
+  tests itself — it reads the `aunit_*` columns you fill from `/sap-run-abap-unit`
+  (Step 3b). Marking `VERIFIED` without those columns under a mandatory unit bar
+  holds the object (`COULD_NOT_CHECK`), never a silent pass. `WARN`/`INFO` bars
+  never block, and the gate only ever affects `VERIFIED` outcomes.
 - **The flywheel.** Every approved R2/R3 fix is a candidate to append to the
   knowledge pack (a vetted before/after + real `detect_message_ids`).
 - **Rollback is source-level, per object.** `revert` (Step 4b) restores this
@@ -332,4 +390,7 @@ powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_
 ```
 
 For exit `1` use `-Status SKIPPED -ExitCode 1 -ErrorClass CC_REMEDIATE_EMPTY`;
-for exit `2` use `-Status FAILED -ExitCode 2 -ErrorClass CC_REMEDIATE_BAD_INPUT`.
+for exit `2` use `-Status FAILED -ExitCode 2 -ErrorClass CC_REMEDIATE_BAD_INPUT`;
+for exit `3` (a human/unit gate held progress — dryrun_review not APPROVED, or
+the ABAP-Unit gate held ≥1 object) use
+`-Status SKIPPED -ExitCode 3 -ErrorClass CC_REMEDIATE_GATE_BLOCKED`.

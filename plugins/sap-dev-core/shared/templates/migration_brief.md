@@ -79,6 +79,25 @@ credentials from the connection store.
 | Human gate — dry-run review (before apply) | `yes` (default) | |
 | Human gate — tier R2+ sign-off (semantic fixes) | `yes` (default) | |
 
+**Remediation unit-test gate (C9).** Unlike the table above, **narrow each Pick
+cell to one option** (delete the others) — the same fill style as the build
+`customer_brief.md`. `/sap-cc-remediate record` reads these to decide whether a
+remediated object may reach VERIFIED without a green ABAP-Unit run. Left as the
+full option list (unfilled) → the non-blocking `warn` default.
+
+| Gate | Pick |
+|---|---|
+| ABAP Unit gate on remediated objects | `mandatory (block)` / `nice to have (warn)` / `no` |
+| ABAP Unit gate when no test class present | `block` / `warn (default)` |
+
+- **mandatory (block)** — a remediated object reaches VERIFIED only with a
+  passing `/sap-run-abap-unit`; a failing suite holds it at REMEDIATED.
+- **nice to have (warn)** — units run and are recorded, but never block VERIFIED.
+- **no** — the unit gate is off (INFO).
+- **when no test class → block** — treat a missing test class as blocking too
+  (generate one with `/sap-gen-abap-unit`); **warn** (default) records it as an
+  honest `COULD_NOT_CHECK`, never a silent pass.
+
 ---
 
 ## 6. References (do **not** restate here)

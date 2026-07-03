@@ -42,7 +42,12 @@ param(
     [Parameter(Mandatory)][ValidateSet('prepare','ingest')][string]$Action,
     [Parameter(Mandatory)][string]$CampaignDir,
     [string]$ResultsPath = '',
-    [int]$Limit = 0
+    [int]$Limit = 0,
+    # A5 batched ATC: when > 0, `prepare` ALSO chunks the worklist into
+    # object-list files of <= BatchSize objects each (findings\atc_raw\batches\
+    # analyze_batch_<nnn>.tsv, one "<ATC_TYPE> <OBJ_NAME>" line per object) that
+    # the orchestrator feeds to `/sap-atc --object-list`. 0 = per-object (legacy).
+    [int]$BatchSize = 0
 )
 
 $ErrorActionPreference = 'Stop'
@@ -159,6 +164,7 @@ try {
         $work.Add("obj_name`tobj_type`tatc_type")
         $skip = New-Object System.Collections.Generic.List[string]
         $skip.Add("obj_name`tobj_type`treason")
+        $pairs = New-Object System.Collections.Generic.List[object]   # @(atc_type, obj_name) for batching
         $count = 0; $nSkip = 0
         foreach ($row in $scope.rows){
             $nm = (Field $row $iName).Trim(); $ty = (Field $row $iType).Trim(); $dec = (Field $row $iDec).Trim()
@@ -174,6 +180,7 @@ try {
                 continue
             }
             $work.Add("$nm`t$ty`t$atc")
+            $pairs.Add(@($atc, $nm))
             $count++
             if ($Limit -gt 0 -and $count -ge $Limit) { break }
         }
@@ -183,6 +190,29 @@ try {
         Write-Utf8NoBom $skipPath (($skip -join "`r`n") + "`r`n")
         Write-Output "WORKLIST: total=$count file=$wlPath"
         Write-Output "SKIPPED: total=$nSkip file=$skipPath"
+
+        # A5: chunk the worklist into /sap-atc --object-list batch files.
+        if ($BatchSize -gt 0 -and $count -gt 0) {
+            $batchDir = Join-Path $findingsDir 'atc_raw\batches'
+            if (Test-Path -LiteralPath $batchDir) {
+                # clear stale batch files so a re-prepare doesn't leave orphans
+                Get-ChildItem -LiteralPath $batchDir -Filter 'analyze_batch_*.tsv' -File -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
+            } else {
+                New-Item -ItemType Directory -Force -Path $batchDir | Out-Null
+            }
+            $nBatch = 0
+            for ($b = 0; $b -lt $pairs.Count; $b += $BatchSize){
+                $nBatch++
+                $lines = New-Object System.Collections.Generic.List[string]
+                $lines.Add("# sap-cc-analyze batch $nBatch (<= $BatchSize objects) -- feed to /sap-atc --object-list")
+                $end = [Math]::Min($b + $BatchSize, $pairs.Count) - 1
+                for ($k = $b; $k -le $end; $k++){ $lines.Add("$($pairs[$k][0]) $($pairs[$k][1])") }
+                $bPath = Join-Path $batchDir ('analyze_batch_{0:000}.tsv' -f $nBatch)
+                Write-Utf8NoBom $bPath (($lines -join "`r`n") + "`r`n")
+            }
+            Write-Output "BATCHES: total=$nBatch size=$BatchSize dir=$batchDir"
+        }
+
         if ($count -eq 0) { Write-Output 'STATUS: EMPTY'; exit 1 }
         Write-Output 'STATUS: OK'; exit 0
     }

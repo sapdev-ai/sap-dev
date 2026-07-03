@@ -46,14 +46,21 @@ $script:SapStrictPromote = @('LOCK_OTHER_USER', 'MISSING_DEPENDENCY')
 #   * A line that still carries the template's option list (`a` / `b` / `c`) is
 #     treated as UNFILLED -> defaults apply (ATC gates P1+P2, unit warns).
 #   * A filled line (customer narrowed to one answer) is matched by keyword.
-# Defaults: atc_gate_severity = HIGH (P1+P2 gating), unit_gate = WARN.
+# Defaults: atc_gate_severity = HIGH (P1+P2 gating), unit_gate = WARN,
+#           unit_gate_when_no_tests = WARN (an object with no test class is
+#           COULD_NOT_CHECK, not a failure -> warn by default).
 # ---------------------------------------------------------------------------
 function _Read-SapBriefQualityBar {
     param([string] $Text)
-    $atc  = 'HIGH'
-    $unit = 'WARN'
+    $atc         = 'HIGH'
+    $unit        = 'WARN'
+    $unitNoTests = 'WARN'
     foreach ($line in ($Text -split "`n")) {
         $l = $line.ToLower()
+        # Gate directives live ONLY in the brief's Pick tables (`| Field | Pick |`).
+        # Skip every non-table line so explanatory prose ("when no test class ->
+        # block", "mandatory ...") can never be misread as a filled directive.
+        if ($l -notmatch '^\s*\|') { continue }
         $isOptionsList = ($l -match '`\s*/\s*`')   # template option list -> skip
 
         if ($l -match 'atc' -and $l -match 'pass' -and -not $isOptionsList) {
@@ -61,13 +68,21 @@ function _Read-SapBriefQualityBar {
             elseif ($l -match 'priority\s*1')                               { $atc = 'BLOCKER' }
             elseif ($l -match '\bno\b')                                     { $atc = '' }
         }
+        # The "no test class" policy line is checked (and consumed) BEFORE the
+        # main unit-bar parse: it also contains "abap unit", and its "no" in
+        # "no test class" would otherwise trip the '\bno\b' -> INFO branch below.
+        if (($l -match 'no test class' -or $l -match 'when no test') -and -not $isOptionsList) {
+            if     ($l -match '\bblock\b') { $unitNoTests = 'BLOCK' }
+            elseif ($l -match '\bwarn\b')  { $unitNoTests = 'WARN' }
+            continue
+        }
         if (($l -match 'abap unit' -or $l -match 'unit test') -and -not $isOptionsList) {
             if     ($l -match 'mandatory')      { $unit = 'BLOCK' }
             elseif ($l -match 'nice to have')   { $unit = 'WARN' }
             elseif ($l -match '\bno\b')         { $unit = 'INFO' }
         }
     }
-    return @{ atc = $atc; unit = $unit }
+    return @{ atc = $atc; unit = $unit; unit_no_tests = $unitNoTests }
 }
 
 # ---------------------------------------------------------------------------
@@ -105,26 +120,29 @@ function Get-SapGatePolicy {
         foreach ($c in $cand) { if ($c -and (Test-Path -LiteralPath $c)) { $resolved = $c; break } }
     }
 
-    $atc  = 'HIGH'
-    $unit = 'WARN'
+    $atc         = 'HIGH'
+    $unit        = 'WARN'
+    $unitNoTests = 'WARN'
     if ($resolved) {
         try {
             $qb = _Read-SapBriefQualityBar -Text ([System.IO.File]::ReadAllText($resolved))
-            $atc  = $qb.atc
-            $unit = $qb.unit
+            $atc         = $qb.atc
+            $unit        = $qb.unit
+            $unitNoTests = $qb.unit_no_tests
             $source = 'brief'
         } catch { $source = 'default' }
     }
 
     return [pscustomobject][ordered]@{
-        schema            = 'sapdev.gate-policy/1'
-        strict            = [bool]$Strict
-        atc_gate_severity = $atc      # '' = ATC not gating
-        unit_gate         = $unit     # BLOCK | WARN | INFO
-        category_gate     = (_New-SapDefaultCategoryGate)
-        strict_promote    = $script:SapStrictPromote
-        brief_path        = $resolved
-        source            = $source
+        schema                  = 'sapdev.gate-policy/1'
+        strict                  = [bool]$Strict
+        atc_gate_severity       = $atc          # '' = ATC not gating
+        unit_gate               = $unit         # BLOCK | WARN | INFO
+        unit_gate_when_no_tests = $unitNoTests  # BLOCK | WARN (object with no test class)
+        category_gate           = (_New-SapDefaultCategoryGate)
+        strict_promote          = $script:SapStrictPromote
+        brief_path              = $resolved
+        source                  = $source
     }
 }
 

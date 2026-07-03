@@ -611,16 +611,35 @@ If ATC reports any finding at priority ≤ `ATC_MAX`, STOP. Surface findings
 to the user; do NOT mark the build complete. The user decides whether to
 fix-and-redeploy or accept-and-document.
 
-### 2j. Deploy the test class
+### 2j. Deploy (or generate) the test class
 
-If `MODE_UNIT_TESTS != OFF` and `Z<PROGRAM_ID>_TEST.abap` was generated, deploy
-it the same way as the main program (after the main object is active):
+If `MODE_UNIT_TESTS != OFF` and a real `Z<PROGRAM_ID>_TEST.abap` was generated,
+deploy it the same way as the main program (after the main object is active):
 
 ```
 /sap-se38 Z<PROGRAM_ID>_TEST {work_folder}\Z<PROGRAM_ID>_TEST.abap --transport <TR>
 ```
 
+**No test class (or skeleton-only) under a mandatory bar.** If
+`MODE_UNIT_TESTS = MANDATORY` but no test class was emitted — or the spec had no
+Golden Tests rows so the emitted file is skeleton-only (0 real methods) —
+generate real tests first instead of skipping the gate:
+
+```
+/sap-gen-abap-unit Z<PROGRAM_ID> --deploy yes [--target-coverage <MODE_MIN_COVERAGE>]
+```
+
+`/sap-gen-abap-unit` generates the test container, deploys + activates it, runs
+`/sap-run-abap-unit`, and iterates until green (or reports honestly what is
+untestable without a refactor). Use its final `AUNIT_VERDICT` as the gate below —
+you then do NOT need a separate 2j.1 run. If it hands off `AUNIT_GEN_NOT_GREEN`
+or `AUNIT_GEN_NO_SEAM`, treat the build as **not verified** — surface it; do not
+mark complete.
+
 ### 2j.1. Run ABAP Unit (auto-run gate)
+
+(Skip this run if 2j already generated + ran the tests via `/sap-gen-abap-unit` —
+use that verdict.)
 
 `MODE_UNIT_TESTS` is tri-state, read from the Customer Brief "ABAP Unit tests
 required?" line: `MANDATORY` ("yes (mandatory)"), `OPTIONAL` ("nice to have"),

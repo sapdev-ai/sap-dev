@@ -27,8 +27,29 @@ documentation.
   (kept separate from the *flagged* savings, n/a until the ledger exists) and
   `next` recommends decommission while any flagged object is unretired. Offline
   end-to-end tested (gate block, ordered worklist, promotion, ledger, idempotency,
-  KPI, next). **Live retirement pending a smoke pass on a system with RFC+GUI
-  co-located.** Error classes `CC_DECOMMISSION_*` added.
+  KPI, next). **Live-verified end-to-end on S4H (2026-07-03, RFC+GUI co-located):**
+  3 throwaway `$TMP` programs deployed → gate BLOCKED unsigned (exit 3) → sign-off
+  → `plan` (3× PROG→se38) → per-object chain (system-assertion OK → resolver
+  RESOLVED → source backup + artifact → se38 delete → resolver **NOT_FOUND** with
+  TRDIR=0/TADIR=0) → `record` (ledger + state DECOMMISSIONED) →
+  `retired_without_remediation_pct=100`. Error classes `CC_DECOMMISSION_*` added.
+- **Batched ATC for large estates (pain-plan A5).** `/sap-atc --object-list=<file>`
+  builds ONE SCI object set from a file of `<TYPE> <NAME>` lines (grouped by
+  category, mixed types allowed) → ONE run series → ONE result, keyed per object
+  by the Stage-4b drill `OBJ_NAME` — collapsing one-run-per-object into
+  one-run-per-batch. `sap_sci_create_object_set.vbs` gains a multi-object mode
+  that drives the select-options **Multiple Selection** dialog (`SAPLALDB`
+  `tblSAPLALDBSINGLE`, page-8 fill with bottom-row scroll — the live-proven
+  sap-se16n pattern; `VisibleRowCount`/`pageSize` over-count and `findById`
+  resolves phantom rows, so neither is trusted); the single-object path is
+  byte-identical to before. `/sap-cc-analyze --batch-size <n>` (`prepare
+  -BatchSize`) chunks the worklist into `findings\atc_raw\batches\
+  analyze_batch_<nnn>.tsv` object-list files and loops them through the batched
+  `/sap-atc`; a `--variant <NAME>` override lets the analyze loop run a
+  non-readiness variant. **Live-verified on S4H (2026-07-03, DEFAULT variant):** a
+  10-program batch (`ZGATE_A5B10`) produced **exactly** the same per-object
+  verdicts as 10 single ATC runs — aggregate P1=2 P2=8 P3=203 on both sides, and
+  the sole P1 carrier matched slice-for-slice.
 - **`/sap-cc-usage --usage-source WORKLOAD` — ST03N usage fallback (pain-plan A3).**
   For systems where SCMON/UPL was never activated, `references/sap_cc_workload_read.ps1`
   reads the SWNC workload monitor (`SWNC_GET_WORKLOAD_STATISTIC` → TCDET, summed
@@ -39,7 +60,16 @@ documentation.
   an `aggressive` DECOMMISSION, and the join guards are inert for it. Verified live
   (S/4HANA): the NO_DATA-safe path (empty collector → REMEDIATE); positive-mapping
   semantics offline-unit-tested (unseen PROG → REVIEW, invisible CLAS/TABL →
-  REMEDIATE, zero DECOMMISSION under aggressive).
+  REMEDIATE, zero DECOMMISSION under aggressive). **Live-confirmed on S4H
+  (2026-07-03):** TSTC Z/Y→program mapping (20 mappings) + TCDET `ENTRY_ID`/`COUNT`
+  field-name resolution against live line-type metadata + end-to-end NO_DATA-safe
+  plumbing. **Fixed a metadata-introspection bug found by that verification:** the
+  reader enumerated `$tc.Metadata` (which yields the single table-type name
+  `SWNCGL_T_AGGTCDET`) instead of `$tc.Metadata.LineType` (the 31 row fields incl.
+  ENTRY_ID/COUNT), so the columns never resolved and the positive path returned
+  NO_DATA *even on a populated system* — now enumerates LineType (with a fallback).
+  Real-row aggregation still awaits a workload-populated collector (Basis
+  prerequisite; none of the accessible S4H/S4D/S4G/EC2 boxes has one).
 - **`/sap-cc-campaign` landscape-drift detection (pain-plan A4).** New optional
   `report` pre-step `references/sap_cc_drift_read.ps1` reads the source system's
   `E070`/`E071` for transports touching in-scope objects since the campaign start
@@ -48,8 +78,57 @@ documentation.
   flagging objects already REMEDIATED/VERIFIED that changed under the campaign as
   RE-ANALYZE candidates, and an `INFO: drift touched=<n> reanalyze=<r>` line. New
   recipe `knowledge/recipes/DUAL_MAINTENANCE.md` documents the freeze/retrofit
-  discipline. Reader plumbing verified live (E070/E071/SMODILOG read, cap,
-  NO_DRIFT); report rendering offline-tested.
+  discipline. **Fully verified live on S4H (2026-07-03) with authentic drift** —
+  real developer TRs touching tracked Z programs: `touched=4 reanalyze=3
+  open_trs=2 released_trs=2 modlog=22570`, RE-ANALYZE correctly `Y` for touched
+  REMEDIATED/ANALYZED objects and `N` for SCOPED, and the dashboard **Landscape
+  drift** table renders with the flags + recipe pointer. Also **fixed** `report`
+  to create the `reports\` dir defensively before writing `dashboard.md` (it was
+  created only by `init`, so `report` on a hand-assembled/cleaned workspace
+  path-not-found-failed).
+- **`/sap-doctor` authorization probe (pain-plan E15a).** New `auth` group:
+  `references/sap_doctor_authz_probe.ps1` reads
+  `shared/tables/required_authorizations.tsv` (machine-readable mirror of
+  `docs/security.md §1`) and, for the logged-in RFC user, calls
+  `SUSR_USER_AUTH_FOR_OBJ_GET` — **found to be RFC-enabled, so no dev-init
+  wrapper is needed** (the original plan assumed otherwise) — once per
+  authorization object, evaluating each capability with faithful
+  AUTHORITY-CHECK semantics (a single authorization instance must cover every
+  required field; `*` and `VON..BIS` ranges honoured). Emits
+  `AUTH: PASS|FAIL <capability>` + `AUTH_SUMMARY`; a `FAIL` DEGRADES the verdict
+  (never BLOCKS — a role-provisioning gap, not a broken runtime); FM/read
+  unavailable → honest `AUTH: NOT_PROBED`, never a fabricated verdict. Replaces
+  the old "AUTH: not probed" placeholder; `docs/security.md §1` updated to point
+  at the probe + TSV. **Live-verified (S4H/easy):** a DEVELOPER passed 10/10
+  capabilities; an ungranted `ACTVT=99` correctly FAILed; missing rules →
+  NOT_PROBED (7/7 negative cases).
+- **Unit-test exit gate for migration remediation (pain-plan C9).**
+  `/sap-cc-remediate record` now consults `Get-SapGatePolicy`: when the
+  migration brief's ABAP-Unit bar is `mandatory (block)`, a `VERIFIED` outcome
+  is honoured only with a passing `/sap-run-abap-unit` result (new optional
+  results-file columns `aunit_status`/`aunit_methods`/`aunit_failures`; the
+  fixlog gains the same three, **append-compatible** with pre-C9 9-column logs).
+  A failing suite — or, under `unit_gate_when_no_tests=block`, a missing test
+  class — holds the object at REMEDIATED (deployed + ATC-clean but not verified)
+  with a `BLOCKED: gate=unit_tests …` line and exit 3; the gate **persists** the
+  passing transitions, so one red suite never blocks recording the rest.
+  `sap_gate_policy.ps1` gains `unit_gate_when_no_tests` (default WARN) and now
+  reads gate directives only from the brief's Pick tables (prose can't be
+  mis-parsed). The `migration_brief` template + sample gain narrow-in-place
+  ABAP-Unit gate rows; the `abap-developer` agent's post-ATC flow generates
+  tests via `/sap-gen-abap-unit` when a mandatory bar finds no test class. Error
+  class `CC_REMEDIATE_GATE_BLOCKED` added. Offline-tested 30/30 (pass/fail/
+  no-tests paths, append-compat, brief parse, lib-driven resolution).
+  **Live-verified end-to-end on S4H (topsap, S/4HANA 2022 / 7.57):** a real
+  `$TMP` fixture with a deliberately failing ABAP Unit test was deployed +
+  activated, `/sap-run-abap-unit` returned a real FAIL (`methods=1 failed=1`),
+  and `record` (gate resolved live from the migration brief → `unit_gate=BLOCK`)
+  **held it at REMEDIATED** (`UNIT_BLOCKED`, exit 3) — with the pre-C9 9-column
+  fixlog upgraded to 12 columns on the live system; the test was then fixed,
+  re-run (real PASS `methods=1 passed=1`), and re-recorded → **VERIFIED** (exit
+  0). Fixture cleaned up afterward. The live run also surfaced + fixed a cosmetic
+  note refresh (a held→VERIFIED row now records "verified after unit-gate hold"
+  rather than retaining the stale hold note).
 - **Readiness-capability pre-check** (`shared/scripts/sap_readiness_probe.ps1`,
   `Get-SapReadinessCapability` dot-source + CLI) wired into **`/sap-doctor`**
   (new informational `READINESS_CAP` check, never degrades the verdict) and

@@ -62,6 +62,13 @@ expected to remove ~45% of the ~1,800 in-scope objects without remediation.
 | Human gate — dry-run review | `yes` — every R1 batch reviewed as a diff before apply |
 | Human gate — tier R2+ sign-off | `yes` — ACDOCA / Business-Partner semantic rewrites need developer sign-off |
 
+**Remediation unit-test gate** (narrowed to one option each):
+
+| Gate | Pick |
+|---|---|
+| ABAP Unit gate on remediated objects | `mandatory (block)` — semantic (R2) rewrites must ship with green ABAP Unit |
+| ABAP Unit gate when no test class present | `warn` — mechanical R1 objects often have none; recorded as COULD_NOT_CHECK, not blocked |
+
 ---
 
 ## 6. References

@@ -14,7 +14,7 @@ description: |
   /sap-gui-record if your release uses different tree node IDs / grid
   column IDs.
   Prerequisites: Active SAP GUI session (use /sap-login first).
-argument-hint: "<OBJECT_TYPE> <OBJECT_NAME> [--variant=<NAME>] [--object-provider=<ID>] [--max-priority=<n>] [--object-set=<NAME>] [--run-series=<NAME>] [--poll-interval=<sec>] [--max-wait=<sec>] [--save-to=<PATH>] [--drill] [--no-drill]"
+argument-hint: "<OBJECT_TYPE> <OBJECT_NAME> | --object-list=<file> [--variant=<NAME>] [--object-provider=<ID>] [--max-priority=<n>] [--object-set=<NAME>] [--run-series=<NAME>] [--poll-interval=<sec>] [--max-wait=<sec>] [--save-to=<PATH>] [--drill] [--no-drill]"
 ---
 
 # SAP ATC Quality Gate Skill
@@ -133,8 +133,9 @@ If neither brief nor argument supplies a value, default to `2`.
 
 | Arg | Required | Default | Notes |
 |---|---|---|---|
-| `OBJECT_TYPE` | yes | — | One of `PROGRAM` / `CLASS` / `INTERFACE` / `FUGR` / `DDIC` / `TYPEGROUP` / `WDYN`. SCI groups Class and Interface under one category, so both map to `XSO_CLAS` + `SO_CLAS-LOW`. **`FM` is intentionally rejected** — SCI Object Sets have no per-function-module category; pass `FUGR <function-group-name>` instead to scope at FG level. |
-| `OBJECT_NAME` | yes | — | UPPERCASE repository name. |
+| `OBJECT_TYPE` | yes\* | — | One of `PROGRAM` / `CLASS` / `INTERFACE` / `FUGR` / `DDIC` / `TYPEGROUP` / `WDYN`. SCI groups Class and Interface under one category, so both map to `XSO_CLAS` + `SO_CLAS-LOW`. **`FM` is intentionally rejected** — SCI Object Sets have no per-function-module category; pass `FUGR <function-group-name>` instead to scope at FG level. \*Not required when `--object-list` is supplied. |
+| `OBJECT_NAME` | yes\* | — | UPPERCASE repository name. \*Not required when `--object-list` is supplied. |
+| `--object-list=<file>` | no | — | **Batch mode (A5).** Path to a file of `<OBJECT_TYPE> <OBJECT_NAME>` lines (whitespace/tab separated; blank + `#`-comment lines ignored). ALL objects go into **one** SCI Object Set → **one** ATC run → **one** result set, keyed per object by the Stage-4b drill's `OBJ_NAME` column. Mutually exclusive with the positional `OBJECT_TYPE`/`OBJECT_NAME`. Objects are grouped by SCI category, so a list may mix PROGRAM/CLASS/FUGR/DDIC/… freely. Cuts a 1000-object estate's analyze phase from one-run-per-object to one-run-per-batch — see `/sap-cc-analyze --batch-size`. When set, `--drill` is implied (per-object attribution needs the drill TSV) and the empty-scope gate is applied per resolved object (Step 2b). |
 | `--variant=<NAME>` | no | *(empty = system default)* | Global ATC check variant to run, e.g. `S4HANA_READINESS` for an S/4HANA-conversion readiness check. When omitted, the run series leaves the check-variant field untouched and ATC runs the system's configured default variant (the prior behaviour). **Passing a named variant is mandatory for migration readiness** — see `/sap-cc-analyze`, which calls this skill with `--variant=S4HANA_READINESS`. The named variant must EXIST and be GLOBAL on the connected system (readiness needs the Simplification Database loaded). Accepts `--check-variant=<NAME>` as an alias. |
 | `--object-provider=<ID>` | no | *(empty = LOCAL)* | **Central / remote ATC.** Binds the run series to a registered remote object provider (`DATA_SOURCE_ID`) so a central hub analyzes a remote satellite's code. Requires the hub to be configured (tx ATC → Manage System Groupings + an SM59 RFC destination to the satellite, hub check content ≥ the satellite's target release). When omitted, the run is LOCAL. When supplied but the provider field isn't on the config screen, Stage 2 **fails loud** (never silently runs local-as-remote). **The provider field id is UNVERIFIED** — no configured hub was available to record against; see "Central / remote ATC" below. |
 | `--max-priority=<n>` | no | `2` (or brief) | Gate threshold — fail if any priority ≤ this value has count > 0. |
@@ -149,9 +150,13 @@ If neither brief nor argument supplies a value, default to `2`.
 **Naming generation** (when not supplied):
 
 - **Object set**: `ZGATE_` + first 8 hex chars of an MD5 of
-  `<OBJECT_TYPE>:<OBJECT_NAME>`. Stable across runs of the same target.
-  Max length budget: SCI accepts up to 30 chars on `SCI_DYNP-OBJS`; we
-  use 14.
+  `<OBJECT_TYPE>:<OBJECT_NAME>` (single mode), or of the newline-joined,
+  upper-cased, **sorted** `<TYPE> <NAME>` lines of the `--object-list` file
+  (batch mode — stable for the same batch content regardless of line order).
+  Stable across runs of the same target/batch. Max length budget: SCI accepts
+  up to 30 chars on `SCI_DYNP-OBJS`; we use 14. Callers that manage their own
+  set lifecycle (e.g. `/sap-cc-analyze --batch-size` names each batch
+  `ZCC_<campaign>_B<nnn>`) pass `--object-set=<NAME>` explicitly.
 - **Run series**: `R_` + `Get-Date -Format "yyMMdd_HHmmss"` →
   `R_260509_195347` (16 chars). The ATC popup field
   `ctxtSATC_CI_S_CFG_SERIE_UI_02-NAME` has **MaxLength = 16** on
@@ -201,13 +206,33 @@ Read the `STATUS:` line of the output:
 - `STATUS: AMBIGUOUS` / `UNKNOWN_TYPE` → surface the resolver output and ask
   the operator before proceeding.
 
+**Batch mode (`--object-list`).** Resolve EACH line's object the same way
+(`-Token "<KIND> <NAME>"`). Drop any `NOT_FOUND` object from the list with a
+`WARN: dropped <TYPE> <NAME> (NOT_FOUND)` and rewrite the object-list file to
+the surviving objects before Stage 1 (an empty object silently sinks the whole
+batch's counts). If **every** object resolves `NOT_FOUND`, ABORT with
+`ERROR: ATC_EMPTY_SCOPE`. If the resolver cannot run (`RFC_ERROR`/no NCo), emit
+`WARN: batch existence UNVERIFIED` and proceed with the full list (the Stage-4
+plan-error + object-count checks remain the backstop). Remember the surviving
+count for the Stage-4 gate.
+
 ---
 
 ## Step 3 — Stage 1: Create Object Set (SCI)
 
 Fill `sap_sci_create_object_set.vbs` and run it. Tokens:
 `%%OBJECT_SET_NAME%%`, `%%OBJECT_TYPE%%`, `%%OBJECT_NAME%%`,
-`%%SESSION_LOCK_VBS%%`.
+`%%OBJECT_LIST_FILE%%`, `%%SESSION_LOCK_VBS%%`.
+
+**Single vs batch mode.** The VBS decides by whether `%%OBJECT_LIST_FILE%%` is
+non-empty: single-object mode fills `%%OBJECT_TYPE%%`/`%%OBJECT_NAME%%` straight
+into the category's LOW field (the verified pre-A5 path, byte-identical); batch
+mode reads the list file, groups objects by SCI category, and drives the
+select-options **Multiple Selection** dialog per category (row-by-row fill,
+scrolling the `tblSAPLALDBSINGLE` table past its 8-row window, Copy=F8). In
+batch mode leave `%%OBJECT_TYPE%%`/`%%OBJECT_NAME%%` empty and substitute
+`%%OBJECT_LIST_FILE%%` with the (post-Step-2b) list path; in single mode leave
+`%%OBJECT_LIST_FILE%%` empty.
 
 ```powershell
 # IMPORTANT: read with explicit UTF-8 and write with UTF-16 LE (BOM).
@@ -222,8 +247,10 @@ $skillDir = '<SKILL_DIR>'
 $shared   = '<SAP_DEV_CORE_SHARED_DIR>'
 $content  = [System.IO.File]::ReadAllText("$skillDir\references\sap_sci_create_object_set.vbs", [System.Text.Encoding]::UTF8)
 $content  = $content.Replace('%%OBJECT_SET_NAME%%','THE_OBJECT_SET')
-$content  = $content.Replace('%%OBJECT_TYPE%%',    'THE_OBJECT_TYPE')
-$content  = $content.Replace('%%OBJECT_NAME%%',    'THE_OBJECT_NAME')
+$content  = $content.Replace('%%OBJECT_TYPE%%',    'THE_OBJECT_TYPE')     # empty in batch mode
+$content  = $content.Replace('%%OBJECT_NAME%%',    'THE_OBJECT_NAME')     # empty in batch mode
+# Batch mode (A5): absolute path to the <TYPE> <NAME> object-list file, else empty.
+$content  = $content.Replace('%%OBJECT_LIST_FILE%%','THE_OBJECT_LIST_FILE')
 $content  = $content.Replace('%%SESSION_LOCK_VBS%%',"$shared\scripts\sap_session_lock.vbs")
 # Phase 3.5 session-attach plumbing.
 $sessionPath = ''
