@@ -4,3 +4,7 @@ fm002	MATDOC_STOCK	MARD-INSME	NSDM_V_MARD-INSME	COMPAT_VIEW		Stock in quality in
 fm003	MATDOC_STOCK	MARD-SPEME	NSDM_V_MARD-SPEME	COMPAT_VIEW		Blocked stock
 fm004	MATDOC_STOCK	MARD-RETME	NSDM_V_MARD-RETME	COMPAT_VIEW		Blocked stock returns
 fm005	MATDOC_STOCK	MARD-UMLME	NSDM_V_MARD-UMLME	COMPAT_VIEW		Stock in transfer (stor loc to stor loc)
+fm006	SD_STATUS_TABLES	VBUK-GBSTK	VBAK-GBSTK	DIRECT		Overall processing status, sales-doc header; verify field presence per release
+fm007	SD_STATUS_TABLES	VBUK-LFSTK	VBAK-LFSTK	DIRECT		Delivery status, sales-doc header
+fm008	SD_STATUS_TABLES	VBUP-GBSTA	VBAP-GBSTA	DIRECT		Overall processing status, item
+fm009	SD_STATUS_TABLES	VBUP-LFSTA	VBAP-LFSTA	DIRECT		Delivery status, item

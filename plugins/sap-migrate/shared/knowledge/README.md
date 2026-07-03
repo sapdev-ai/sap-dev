@@ -11,18 +11,35 @@ This is a **plugin-shared resource**, distinct from the per-campaign workspace
 under `{work_dir}\migrations\{campaign_id}\` (which is owned by
 `/sap-cc-campaign`). Nothing here is campaign-specific.
 
-> **Status:** 12 patterns (3 ACTIVE, 9 DRAFT). All DRAFT patterns carry
+> **Status:** 13 patterns (3 ACTIVE, 10 DRAFT). All DRAFT patterns carry
 > representative mappings that MUST be verified against the target release
 > before auto-remediation (and `/sap-cc-remediate` excludes DRAFT from
 > auto-apply). The 2026-06 additions are S/4 data-model + functional patterns:
-> `SD_PRICING` (KONV→PRCD_ELEMENTS, R2), `FI_OPENITEM_INDEX` (BSID/BSAD/BSIK/BSAK
-> compat views, R2), `MATDOC_DOCS` (MKPF/MSEG→MATDOC, R2), `CREDIT_MGMT`
+> `SD_PRICING` (KONV→PRCD_ELEMENTS, R2), `FI_OPENITEM_INDEX` (FI index tables
+> BSID/BSAD/BSIK/BSAK + BSIS/BSAS compat views, R2), `MATDOC_DOCS`
+> (MKPF/MSEG→MATDOC, R2), `CREDIT_MGMT`
 > (FD32→FSCM, R3 MANUAL), `OUTPUT_MGMT` (NAST→S/4 OM, R3 MANUAL), `LIS_ANALYTICS`
 > (info structures→CDS, R3 MANUAL), `COMPAT_VIEW_WRITE` (DML on read-only compat
-> views, R2 MANUAL). None are R1 — they expand the AI-assisted (R2/R3) base, not
-> the mechanical auto-remediator. Their `detect_message_ids` are intentionally
-> blank (filled from real ATC runs via the flywheel); they match on
-> simplification item / code regex until then. See `manifest.json`.
+> views, R2 MANUAL). 2026-07 added `SD_STATUS_TABLES` (VBUK/VBUP eliminated, R2)
+> and enriched every pattern's detection: `detect_simpl_items` now also carries
+> the full public item title, and the regexes match both quoted-statement forms
+> and ATC message phrasings ("table X" / "usage of X"). None are R1 — they
+> expand the AI-assisted (R2/R3) base, not the mechanical auto-remediator.
+> `detect_message_ids` are intentionally blank on every pattern (filled from
+> real ATC runs via the flywheel); matching runs on simplification item / code
+> regex until then. See `manifest.json`.
+
+> **Coverage expectation (tell the customer this up front):** the pack is a
+> CURATED top slice of SAP's Simplification Item space — the mechanical
+> data-model/field-length patterns that hit most ECC6 custom estates — not a
+> mirror of the ~500-item catalog. On a typical brownfield estate expect
+> roughly **20–30% of readiness findings to auto-classify** today; the rest
+> surface as `UNMATCHED` → REVIEW **by design** (that is the honest signal to
+> route them to AI-assisted/manual triage, not a defect). Shops with heavy
+> custom finance/reporting/integration layers will sit at the low end. The
+> ratio compounds with every campaign via the flywheel (real
+> `detect_message_ids` + new patterns), and a customer can extend the pack at
+> `{custom_url}\knowledge\` without waiting on releases.
 
 ## Why it is layered (not one big TSV)
 Remediation needs two kinds of content: *queryable structured data* (old→new
@@ -59,9 +76,9 @@ shared/knowledge/
 | `tier` | `R1` \| `R2` \| `R3` \| `R4` (drives automation; matches the remediate tiers) |
 | `simplification_item` | SAP S4TWL item name (provenance); blank for behavioral patterns |
 | `title` / `description` | human title + one-line summary |
-| `detect_simpl_items` | csv of SAP simplification-item / note ids the ATC finding may carry |
-| `detect_message_ids` | csv of ATC message ids (seed blank — fill from real ATC runs; see flywheel) |
-| `detect_code_regex` | coarse code-signature pre-filter (refined by the message ids) |
+| `detect_simpl_items` | csv of tokens matched **exactly (case-insensitive)** against the finding's `simplification_item` column. Include BOTH the short provenance key (`S4TWL-SD-PRICING`) AND the full public item title (`S4TWL - Data Model Changes in SD Pricing`) — ATC exports usually carry the title. No commas inside a token (csv split). |
+| `detect_message_ids` | csv of ATC message ids (seed blank — fill from real ATC runs; see flywheel). The only locale-proof channel. |
+| `detect_code_regex` | fallback regex matched against the finding's **`message_text` + `check_id`** (NOT the ABAP source!). Write it to hit both quoted-statement forms (`FROM konv`) and message phrasings (`table KONV` / `usage of KONV`). EN-biased by nature — on non-EN logons rely on message ids once harvested. Keep read patterns `from|join`-anchored so DML findings still route to `COMPAT_VIEW_WRITE`. |
 | `recipe_ref` | `recipes/<pattern_id>.md` |
 | `confidence_default` | `AUTO_OK` \| `AI_REVIEW` \| `MANUAL_ONLY` (default fixability) |
 | `applies_modules` | FI \| MM \| SD \| CROSS \| ... |

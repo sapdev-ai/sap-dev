@@ -74,9 +74,11 @@ silent:
   protects only those until the live capture pass lands.
 - sap-tcd control IDs were recorded on S/4HANA 1909; `sap-bp` / `sap-va01`
   popups need a re-record for ECC6 (`sap-mm01` already probes both layouts).
-- sap-migrate's knowledge pack ships 3 ACTIVE + 9 DRAFT patterns (~20–30% of
-  typical ECC6 findings auto-classify today); DRAFT patterns are advisory-only
-  by design, and the pack grows via `/sap-cc-learn` from real campaign runs.
+- sap-migrate's knowledge pack ships 13 patterns (3 ACTIVE + 10 DRAFT;
+  ~20–30% of typical ECC6 findings auto-classify today); DRAFT patterns are
+  advisory-only by design, and the pack grows via `/sap-cc-learn` from real
+  campaign runs — no pattern carries harvested ATC message ids yet (regex +
+  simplification-item matching until the flywheel fills them).
 - Central/remote ATC (`--object-provider`) is implemented fail-loud but the
   provider field ID is unverified against a live hub.
 

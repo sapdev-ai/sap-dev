@@ -87,6 +87,33 @@ documentation.
 
 ### Changed
 
+- **sap-migrate knowledge pack 2026.07** (13 patterns; 3 ACTIVE + 10 DRAFT):
+  - Detection reworked for its REAL haystack — `/sap-cc-triage` matches
+    `detect_code_regex` against the finding's message text + check id, not
+    source code, so every table pattern now also matches ATC message
+    phrasings (`table X` / `usage of X`), and `detect_simpl_items` carries
+    the full public S4TWL item title alongside the short provenance key
+    (exports usually carry the title; exact-token matching previously could
+    never fire). README schema docs corrected to say all this.
+  - `BP_CVI` regex narrowed to writes + maintenance APIs/tcodes per its own
+    description — a bare `SELECT ... FROM kna1` (legitimate in S/4) no longer
+    false-classifies; it stays UNMATCHED → REVIEW.
+  - `BSIS`/`BSAS` moved from `ACDOCA_FIN` to `FI_OPENITEM_INDEX` (SAP's
+    index-table item, now titled "FI index tables"), added to
+    `COMPAT_VIEW_WRITE`'s DML list, and given object_map rows.
+  - New DRAFT pattern **`SD_STATUS_TABLES`** (VBUK/VBUP eliminated; status
+    fields moved into VBAK/VBAP/LIKP/LIPS/VBRK/VBRP; no like-for-like compat
+    views) with recipe, object_map and field_map rows — one of the most
+    common SD adaptation items and previously a guaranteed UNMATCHED.
+  - `MATNR_EXTENSION` (the ACTIVE R1 pattern) gains a message-text regex —
+    it previously had no regex channel at all.
+  - Coverage honesty: pack README now states the ~20–30% auto-classify
+    expectation and the UNMATCHED-by-design framing up front (repo README
+    limitations updated to 13 patterns).
+  - Verified offline: 13×14 TSV integrity, all regexes compile, and a
+    9-finding synthetic triage run hits every intended pattern/basis
+    (SIMPL_ITEM title match, message-phrasing regex, write-vs-read
+    disambiguation, narrowed BP_CVI leaving reads UNMATCHED, new pattern).
 - sap-gen-code / sap-tcd descriptions (plugin.json + marketplace) now declare
   the sap-dev-core dependency and install order (sap-migrate already did).
 - sap-se01 SKILL.md frontmatter description trimmed ~350 → ~130 words
