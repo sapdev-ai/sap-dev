@@ -8,21 +8,30 @@
 #      ECC/older system without the readiness add-on. It cannot scope or run the
 #      check. RELIABLY pre-detectable here (variant count = 0) and the main value
 #      of this probe.
-#   B. Variants exist but the run PLAN-ERRORS (0 findings + planning errors),
-#      e.g. running readiness_1909 on a 1909 target (no forward delta) or content
-#      the check classes can't service. This is NOT reliably pre-detectable by a
-#      table probe -- the authoritative catch is the RUN's planning-error count,
-#      which /sap-atc already gates as ATC_PLAN_ERRORS (COUNT_PLNERR > 0 -> FAIL,
-#      never a clean PASS). This probe surfaces that as a caveat, not a verdict.
+#   B. Variants exist but the run PLAN-ERRORS (0 findings + planning errors).
+#      The dominant cause is STRUCTURAL, not a variant-picking mistake: running
+#      S4HANA_READINESS LOCALLY on an S/4 *target* system against that system's
+#      own custom code has no source->target delta to analyze, so every check
+#      class plan-errors. This is NOT reliably pre-detectable by any table/variant
+#      probe -- the authoritative catch is the RUN's planning-error count, which
+#      /sap-atc already gates as ATC_PLAN_ERRORS (COUNT_PLNERR > 0 -> FAIL, never
+#      a clean PASS). This probe surfaces that as a caveat, not a verdict.
 #
-# History (2026-07-03, cc_harvest_attempt report): an earlier draft of this probe
-# keyed "content present" on the SYCM_* table family. That was a FALSE SIGNAL --
-# S4D (1909, plan-errors live) has 167 SYCM_* tables, and S4H (a fully-provisioned
-# S/4HANA 2022) has NONE; SYCM_DOWNLOAD_STA/_MESSAGE are source-side (ECC)
-# download tables, absent on S/4 targets. So this probe does NOT claim
-# content-present/absent. The reliable pre-signals are variant COUNT and variant
-# RICHNESS (does a target-release variant newer-or-equal to a real conversion
-# target exist); the definitive signal is the run's planning-error count.
+# History (2026-07-03, cc_harvest_attempt report) -- two disproven signals, do
+# not resurrect either:
+#   1. SYCM_* table family as "content present" -> FALSE. S4D (1909, plan-errors
+#      live) has 167 SYCM_* tables; S4H (a working S/4HANA 2022) has NONE.
+#      SYCM_DOWNLOAD_STA/_MESSAGE are source-side (ECC) download tables, absent on
+#      S/4 targets. So this probe does NOT claim content present/absent.
+#   2. Target-release variant RICHNESS (release-suffixed variants like _2022) as
+#      "this run will produce findings" -> ALSO FALSE. The fixture harvest ran
+#      LIVE on S4H (S/4HANA 2022) with 16 variants INCLUDING _2022/_2020 and STILL
+#      returned 0 findings + 7 planning errors -- identical to S4D (1909). So
+#      richness only tells you which target releases the variants NOMINALLY cover;
+#      it does NOT predict a productive run. The ONLY reliable pre-signal is
+#      COUNT == 0 (case A). The definitive signal is always the RUN's plan-error
+#      count. Readiness findings come from the ECC *source* (readiness add-on
+#      there) or a hub checking a source REMOTELY -- not a local S/4-target run.
 #
 # DUAL USE (mirrors sap_object_resolver.ps1):
 #   * Dot-source -> Get-SapReadinessCapability -Dest $dest   (caller owns the
@@ -81,8 +90,10 @@ function Get-SapReadinessCapability {
     $names = @()
     if ($null -ne $rows) { foreach ($r in $rows) { $n = ($r -split '\|')[0].Trim(); if ($n) { $names += $n } } }
     $variants = $names.Count
-    # "target" variants = release-suffixed ones (e.g. _1909/_2020/_2022) -- their
-    # presence signals real readiness content vs a bare header shell.
+    # "target" variants = release-suffixed ones (e.g. _1909/_2020/_2022). These
+    # tell you which target releases the variants NOMINALLY cover -- they do NOT
+    # predict a productive run (S4H had _2022/_2020 and still plan-errored; see
+    # the header). Reported for context only, never as a go/no-go signal.
     $targets = @($names | Where-Object { $_ -match '_(15\d\d|16\d\d|17\d\d|18\d\d|19\d\d|20\d\d|21\d\d|22\d\d)(_|$)' })
 
     if ($variants -eq 0) {
@@ -94,7 +105,7 @@ function Get-SapReadinessCapability {
     }
     return [pscustomobject]@{
         verdict = 'READINESS_CAPABLE'; variants = $variants; target_variants = $targets
-        detail  = ("{0} S4HANA_READINESS* variant(s) present{1}. A run is possible -- but a run that returns 0 findings WITH planning errors (COUNT_PLNERR>0) means the checks could not service this system (e.g. readiness_<rel> on the same release); /sap-atc gates that as ATC_PLAN_ERRORS, not a clean pass." -f $variants, $(if ($targets.Count) { " incl. target-release " + (($targets | Select-Object -First 4) -join ',') } else { " (header shells only; no release-suffixed target variant)" }))
+        detail  = ("{0} S4HANA_READINESS* variant(s) present{1} -- the variants exist, so a run is POSSIBLE, but this does NOT predict findings. A LOCAL run on an S/4 target commonly returns 0 findings + planning errors (no source->target delta; observed live on S/4HANA 1909 AND 2022) -- /sap-atc gates that as ATC_PLAN_ERRORS, not a clean pass. Readiness findings come from the ECC source or a hub checking a source remotely." -f $variants, $(if ($targets.Count) { " incl. target-release " + (($targets | Select-Object -First 4) -join ',') + " (nominal coverage only)" } else { " (header shells only; no release-suffixed target variant)" }))
         fix     = '-'
     }
 }

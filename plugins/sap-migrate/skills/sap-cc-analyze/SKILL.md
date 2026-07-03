@@ -122,15 +122,19 @@ Read the `READINESS: verdict=<V> …` line and act on it:
 | verdict | Meaning | Action |
 |---|---|---|
 | `NO_READINESS_VARIANTS` | The connected system has **no** `S4HANA_READINESS` variants — it cannot run the readiness check at all (e.g. `/sap-cc-analyze` was pointed at an ECC source system directly, or a non-readiness box). | **STOP.** Do NOT start the ATC loop. Surface `DETAIL:` + `FIX:` — connect to an S/4 check hub that carries the variants (`/sap-login --switch <hub>`), or check the source remotely FROM a hub (central ATC: SM59 + ATC → Manage System Groupings). |
-| `READINESS_CAPABLE` | Variants present — the run is possible. | **Proceed** to Step 2, but heed the caveat: if the FIRST `/sap-atc` object comes back with `ERROR: ATC_PLAN_ERRORS` (0 findings + planning errors), the readiness checks cannot service this system (e.g. `readiness_<rel>` on the same release, or content the check classes can't load). **STOP the loop then** — do not grind the whole worklist plan-erroring — and treat it as a Basis prerequisite, not a clean analysis. |
+| `READINESS_CAPABLE` | Variants present — a run is POSSIBLE. **This is not a green light** — variants present ≠ the run will find things, and target-release variant richness (e.g. `_2022`) does **not** predict findings (a live run on S/4HANA 2022 with `_2022`/`_2020` variants still plan-errored, identical to 1909). | **Proceed** to Step 2, but treat the FIRST object as the real gate: if it returns `ERROR: ATC_PLAN_ERRORS` (0 findings + planning errors), the readiness checks can't service this system. The usual cause is running readiness **locally on an S/4 target** (its own code has no source→target delta) — observed on S/4HANA 1909 AND 2022. **STOP the loop then** — do not grind the whole worklist plan-erroring — and treat it as a run-mode/Basis prerequisite: readiness findings come from the ECC **source** (readiness add-on there) or a hub checking a source **remotely** (central ATC), not a local S/4-target run. |
 | `RFC_ERROR` | The probe could not connect over RFC (NCo/creds/pin). | This is advisory only — RFC is not required for the GUI ATC run. Note it and proceed; the definitive gate is still `/sap-atc`'s `ATC_PLAN_ERRORS`. |
 
 > This preflight is a **fast fail**, not the authoritative gate. The reliable
 > catch for "readiness cannot run here" is `/sap-atc` reporting `ATC_PLAN_ERRORS`
-> (`COUNT_PLNERR > 0`) on the run — the probe just spares you a worklist-long
-> loop of plan-errors when the system has no variants at all. It deliberately
-> does NOT inspect `SYCM_*` tables — those are a false content signal (present on
-> plan-erroring systems, absent on working ones; see the harvest report).
+> (`COUNT_PLNERR > 0`) on the run — the probe only spares you a worklist-long
+> loop when the system has **no** variants at all (the one thing it can predict).
+> It deliberately does NOT gate on `SYCM_*` tables **or** on target-variant
+> richness — both are proven false signals (2026-07-03 harvest report): `SYCM_*`
+> is present on plan-erroring 1909 boxes and absent on a working 2022 box, and
+> S/4HANA 2022 with `_2022` variants plan-errored just like 1909. Point
+> `/sap-cc-analyze` at an S/4 hub checking the source **remotely**, not at an S/4
+> target's own code.
 
 ---
 

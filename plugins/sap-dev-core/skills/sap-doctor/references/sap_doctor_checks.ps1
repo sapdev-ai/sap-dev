@@ -213,13 +213,16 @@ if (-not $rfcOk) {
 # ---------------------------------------------------------------------------
 # srv 2. S/4-readiness ATC capability (informational; never FAILs the doctor).
 #        Can this system run an S4HANA_READINESS check at all? No variants ->
-#        N/A (not a readiness system). Variants present -> capable, but a run
-#        that returns 0 findings WITH planning errors is NOT clean -- /sap-atc
-#        gates that as ATC_PLAN_ERRORS. Deliberately keyed on variant presence,
-#        NOT the SYCM_* table family (a proven false signal: SYCM_* tables exist
-#        on plan-erroring 1909 boxes and are absent on a working 2022 box --
-#        see cc_harvest_attempt_20260703 report). Delegates to the shared
-#        readiness probe so /sap-doctor and /sap-cc-analyze share one signal.
+#        N/A (not a readiness system). Variants present -> a run is POSSIBLE, but
+#        "capable" is NOT "will find things": a LOCAL run on an S/4 target
+#        commonly returns 0 findings + planning errors (no source->target delta;
+#        observed live on 1909 AND 2022) -- /sap-atc gates that as
+#        ATC_PLAN_ERRORS. Deliberately keyed on variant presence only; two
+#        disproven signals NOT to reintroduce (cc_harvest_attempt_20260703
+#        report): the SYCM_* table family (present on plan-erroring 1909 boxes,
+#        absent on a working 2022 box) and target-variant richness (S4H had _2022
+#        and still plan-errored). Delegates to the shared readiness probe so
+#        /sap-doctor and /sap-cc-analyze share one signal.
 # ---------------------------------------------------------------------------
 if (-not $rfcOk) {
     Emit 'READINESS_CAP' 'srv' 'SKIP' 'RFC unavailable; cannot probe readiness capability' '-'
@@ -234,8 +237,8 @@ if (-not $rfcOk) {
             if ($rc.verdict -eq 'NO_READINESS_VARIANTS') {
                 Emit 'READINESS_CAP' 'srv' 'PASS' 'N/A: no S4HANA_READINESS variants (not an S/4 readiness-check system) - readiness ATC does not apply here' '-'
             } else {
-                $tv = if ($rc.target_variants.Count) { ' incl. ' + (($rc.target_variants | Select-Object -First 3) -join ',') } else { ' (header shells only; no release-suffixed variant)' }
-                Emit 'READINESS_CAP' 'srv' 'PASS' ("readiness-capable: {0} S4HANA_READINESS variant(s){1}. Caveat: a run with 0 findings + planning errors is NOT clean (/sap-atc reports ATC_PLAN_ERRORS)" -f $rc.variants, $tv) '-'
+                $tv = if ($rc.target_variants.Count) { ' incl. ' + (($rc.target_variants | Select-Object -First 3) -join ',') + ' (nominal coverage; not a findings predictor)' } else { ' (header shells only; no release-suffixed variant)' }
+                Emit 'READINESS_CAP' 'srv' 'PASS' ("readiness-capable: {0} S4HANA_READINESS variant(s){1}. Caveat: variants present != will find things -- a LOCAL run on an S/4 target commonly returns 0 findings + planning errors (/sap-atc reports ATC_PLAN_ERRORS); findings come from the ECC source or a hub checking a source remotely" -f $rc.variants, $tv) '-'
             }
         } catch {
             Emit 'READINESS_CAP' 'srv' 'SKIP' ("readiness probe failed: {0}" -f $_.Exception.Message) '-'
