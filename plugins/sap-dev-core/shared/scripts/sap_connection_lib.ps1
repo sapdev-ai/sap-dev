@@ -51,6 +51,10 @@
 #   Find-SapConnectionByMatch        -> first matching profile
 #   Find-SapConnectionById           -> profile by UUID
 #   Get-SapDefaultConnection         -> profile with is_default_target=$true (or $null)
+#   Find-SapConnectionsByIdentityTuple -> profiles matching (system,client,user)
+#   Get-SapLiveGuiConnections        -> live COM read of attached SAP GUI conns
+#   Get-SapGuiActiveIdentity         -> unambiguous GUI-active (sys,client,user) or $null
+#   Resolve-SapGuiActiveProfile      -> GUI-active identity -> saved profile
 #   Set-SapDefaultConnection         -> singleton enforce; clears others
 #   Save-SapConnection               -> dedup + insert/update; returns saved profile
 #   Remove-SapConnection             -> remove by id
@@ -632,6 +636,42 @@ function Find-SapConnectionById {
     if ([string]::IsNullOrWhiteSpace($Id)) { return $null }
     $store = Read-SapConnectionStore
     return ($store.connections | Where-Object { "$($_.id)" -eq $Id } | Select-Object -First 1)
+}
+
+function Find-SapConnectionsByIdentityTuple {
+    <#
+    .SYNOPSIS
+        Return every stored profile whose (system_name, client, user) identity
+        tuple equals the given one. Newest-last_used_at first.
+    .DESCRIPTION
+        This is the ONLY correct way to match a profile from a live-GUI read:
+        Info.SystemName / .Client / .User is all the running SAP GUI exposes,
+        and the 4-step Test-SapConnectionsEqual deliberately FAILS on an
+        endpoint-less probe (steps 2-4 require a logon-pad / message-server /
+        app-server identifier on both sides -- meant for dedup, not identity
+        recall). The comparison mirrors the broker's own connection identity
+        key (sap_session_broker.ps1 _ConnectionIdentityKey): system_name and
+        user upper-cased + trimmed, client trimmed exact. Returns @() when the
+        store is empty or nothing matches.
+    #>
+    param(
+        [string]$SystemName = '',
+        [string]$Client     = '',
+        [string]$User       = ''
+    )
+    $sn = "$SystemName".Trim().ToUpperInvariant()
+    $cl = "$Client".Trim()
+    $us = "$User".Trim().ToUpperInvariant()
+    if ($sn -eq '' -and $cl -eq '' -and $us -eq '') { return @() }
+    $store = Read-SapConnectionStore
+    if (-not $store -or -not $store.connections) { return @() }
+    $hits = @($store.connections | Where-Object {
+        ("$($_.system_name)".Trim().ToUpperInvariant() -eq $sn) -and
+        ("$($_.client)".Trim() -eq $cl) -and
+        ("$($_.user)".Trim().ToUpperInvariant() -eq $us)
+    })
+    if ($hits.Count -le 1) { return $hits }
+    return @($hits | Sort-Object { try { [datetime]$_.last_used_at } catch { [datetime]::MinValue } } -Descending)
 }
 
 function Get-SapDefaultConnection {
@@ -1675,6 +1715,155 @@ function Get-SapCurrentSessionPath {
     return "$($entry.path)"
 }
 
+function Get-SapLiveGuiConnections {
+    <#
+    .SYNOPSIS
+        Best-effort live read of the SAP GUI connections attached RIGHT NOW,
+        via the broker's COM helper (INFO). Returns an array of objects each
+        carrying system_name / client / user / connection_path (+ sessions),
+        or @() on any failure. Never throws.
+    .DESCRIPTION
+        This is the authoritative ground truth for "what system is the GUI on"
+        even when NOTHING has registered with the broker yet -- e.g. after a
+        manual SAP Logon that bypassed /sap-login's finalize+pin step, when the
+        session_registry.json blocks are empty/stale. Shells the same 32-bit
+        cscript COM helper the broker uses (sap_session_broker_com.vbs INFO)
+        and honours the SAPDEV_BROKER_FAKE_INFO offline test seam so the
+        preference logic can be exercised without a live SAP GUI.
+
+        Deliberately kept dependency-light: it does NOT dot-source
+        sap_session_broker.ps1 (that would invert the shared-lib layering);
+        it re-implements the ~10-line INFO shell-out locally. Read-only; no
+        broker mutex, no registry write.
+    #>
+    param()
+    try {
+        $raw = $null
+        if (-not [string]::IsNullOrWhiteSpace($env:SAPDEV_BROKER_FAKE_INFO)) {
+            $raw = if (Test-Path -LiteralPath $env:SAPDEV_BROKER_FAKE_INFO) {
+                Get-Content -LiteralPath $env:SAPDEV_BROKER_FAKE_INFO -Raw -Encoding UTF8
+            } else { $env:SAPDEV_BROKER_FAKE_INFO }
+        } else {
+            $comVbs = Join-Path $PSScriptRoot 'sap_session_broker_com.vbs'
+            if (-not (Test-Path $comVbs)) { return @() }
+            $cscript = 'C:\Windows\SysWOW64\cscript.exe'
+            if (-not (Test-Path $cscript)) { $cscript = 'cscript.exe' }
+            $out = & $cscript '//NoLogo' $comVbs 'INFO' 2>&1
+            $raw = ($out | Where-Object { $_ -match '^\s*\{' } | Select-Object -Last 1)
+        }
+        if ([string]::IsNullOrWhiteSpace($raw)) { return @() }
+        $obj = $raw | ConvertFrom-Json
+        if (-not $obj -or -not $obj.connections) { return @() }
+        return @($obj.connections)
+    } catch {
+        return @()
+    }
+}
+
+function Get-SapGuiActiveIdentity {
+    <#
+    .SYNOPSIS
+        Resolve the UNAMBIGUOUS (system_name, client, user) identity of the SAP
+        GUI session this AI session is driving, or $null when it can't be told
+        unambiguously (no GUI / several GUIs and no way to pick).
+    .DESCRIPTION
+        Two-tier, cheapest-first:
+          1. Registry (pure PS, no shell-out): the broker mirrors live SAP
+             identity onto each connection block. Yields an identity ONLY when
+             it is unambiguous for this AI session -- a sole connection block,
+             or a block carrying an entry this AI session has claimed.
+          2. Live COM fallback (Get-SapLiveGuiConnections): fires when the
+             registry can't decide (empty after a manual login, or multiple
+             blocks with no claim). Yields an identity ONLY when EXACTLY ONE
+             SAP GUI connection is attached -- with several attached and no pin
+             there is no safe way to say which one is "active".
+        Returns @{ system_name; client; user; source='registry'|'com' } or $null.
+    #>
+    param(
+        [string]$RuntimeDir = '',
+        [string]$WorkTemp   = ''
+    )
+    try {
+        if ([string]::IsNullOrWhiteSpace($RuntimeDir)) {
+            if (-not [string]::IsNullOrWhiteSpace($WorkTemp)) {
+                $RuntimeDir = Join-Path (Split-Path -Parent $WorkTemp) 'runtime'
+            } else {
+                $RuntimeDir = Get-SapWorkRuntimeDir
+            }
+        }
+
+        # --- Tier 1: registry (pure PS) --------------------------------------
+        $reg = _Read-SessionRegistry -RuntimeDir $RuntimeDir
+        if ($reg -and $reg.connections) {
+            $blocks = @($reg.connections)
+            $blk = $null
+            if ($blocks.Count -eq 1) {
+                $blk = $blocks[0]
+            } else {
+                $aid = ''
+                try { $aid = Get-SapAiSessionId -RuntimeDir $RuntimeDir } catch { $aid = '' }
+                if ($aid) {
+                    $blk = $blocks | Where-Object {
+                        $_.entries -and (@($_.entries | Where-Object { "$($_.ai_session_id)" -eq $aid }).Count -gt 0)
+                    } | Select-Object -First 1
+                }
+            }
+            if ($blk -and -not [string]::IsNullOrWhiteSpace("$($blk.system_name)")) {
+                return @{
+                    system_name = "$($blk.system_name)"
+                    client      = "$($blk.client)"
+                    user        = "$($blk.user)"
+                    source      = 'registry'
+                }
+            }
+        }
+
+        # --- Tier 2: live COM INFO (authoritative) ---------------------------
+        $live = @(Get-SapLiveGuiConnections | Where-Object {
+            -not [string]::IsNullOrWhiteSpace("$($_.system_name)")
+        })
+        if ($live.Count -eq 1) {
+            return @{
+                system_name = "$($live[0].system_name)"
+                client      = "$($live[0].client)"
+                user        = "$($live[0].user)"
+                source      = 'com'
+            }
+        }
+        return $null
+    } catch {
+        return $null
+    }
+}
+
+function Resolve-SapGuiActiveProfile {
+    <#
+    .SYNOPSIS
+        Map the unambiguous GUI-active identity to a SAVED profile.
+    .OUTPUTS
+        $null when there is no usable GUI signal (headless / ambiguous), else
+        @{ identity=<hashtable>; profile=<profile|$null>; matched=<bool> }.
+        matched=$false means the GUI is on a system with no saved profile --
+        the caller should WARN (it can't heal, but the mismatch is worth
+        surfacing) and fall through to its normal default.
+    #>
+    param(
+        [string]$RuntimeDir = '',
+        [string]$WorkTemp   = ''
+    )
+    $ident = Get-SapGuiActiveIdentity -RuntimeDir $RuntimeDir -WorkTemp $WorkTemp
+    if (-not $ident) { return $null }
+    $hits = @(Find-SapConnectionsByIdentityTuple -SystemName $ident.system_name -Client $ident.client -User $ident.user)
+    if ($hits.Count -eq 0) {
+        return @{ identity = $ident; profile = $null; matched = $false }
+    }
+    # Find-SapConnectionsByIdentityTuple already sorts newest-first; prefer the
+    # one flagged default if several share the tuple, else the newest.
+    $pick = $hits | Where-Object { $_.is_default_target } | Select-Object -First 1
+    if (-not $pick) { $pick = $hits[0] }
+    return @{ identity = $ident; profile = $pick; matched = $true }
+}
+
 function Get-SapCurrentConnectionProfile {
     <#
     .SYNOPSIS
@@ -1685,8 +1874,13 @@ function Get-SapCurrentConnectionProfile {
         Resolution order:
           1. AI session's pin from session_registry.json
              (ai_sessions[<id>].connection_id).
-          2. Default profile (Get-SapDefaultConnection).
-          3. Phase 4.4 auto-bootstrap: exactly one saved profile with a
+          2. (only with -PreferGuiActive) GUI-active connection: when there is
+             no pin, prefer the saved profile matching the SAP GUI session this
+             AI session is actually driving, OVER the default guess below. This
+             closes the wrong-system-RFC hazard where a manual GUI login (no
+             pin) let RFC silently resolve the unrelated default profile.
+          3. Default profile (Get-SapDefaultConnection).
+          4. Phase 4.4 auto-bootstrap: exactly one saved profile with a
              non-empty password_dpapi -> return that profile, emit INFO
              to stderr so the action is visible. Skip when -StrictMode is
              set (callers that must fail on ambiguity).
@@ -1697,11 +1891,19 @@ function Get-SapCurrentConnectionProfile {
         When set, skip the Phase 4.4 single-profile auto-bootstrap. The
         function returns the pin or default exactly; ambiguous / empty
         states return $null instead of guessing.
+    .PARAMETER PreferGuiActive
+        When set, and ONLY when no pin resolves, insert step 2 above: resolve
+        the GUI-active identity (registry -> live COM) and, if it uniquely
+        matches a saved profile, return that profile instead of the default.
+        Opt-in because it may shell a 32-bit cscript COM read -- Connect-SapRfc
+        opts in (the write-hazard path); cheap callers (banner / release
+        marker) leave it off and keep today's pin-or-default behaviour.
     #>
     param(
         [string]$WorkTemp    = '',
         [string]$RuntimeDir  = '',
-        [switch]$StrictMode
+        [switch]$StrictMode,
+        [switch]$PreferGuiActive
     )
 
     if ([string]::IsNullOrWhiteSpace($RuntimeDir)) {
@@ -1722,6 +1924,30 @@ function Get-SapCurrentConnectionProfile {
     if ($pinnedConnId) {
         $p = Find-SapConnectionById -Id $pinnedConnId
         if ($p) { return $p }
+    }
+
+    # Step 2 -- GUI-active preference (opt-in; only reached with no usable pin).
+    # Prefer the saved profile matching the SAP GUI session this AI session is
+    # actually driving over the default guess below. Silent no-op when there is
+    # no unambiguous GUI signal (headless / several GUIs) -> today's behaviour.
+    if ($PreferGuiActive) {
+        try {
+            $gui = Resolve-SapGuiActiveProfile -RuntimeDir $RuntimeDir
+            if ($gui -and $gui.profile) {
+                $curDef = Get-SapDefaultConnection
+                if (-not $curDef -or "$($curDef.id)" -ne "$($gui.profile.id)") {
+                    # Only surface the override when it actually changes the
+                    # target (GUI-active != default) -- that is the hazard case.
+                    [Console]::Error.WriteLine("INFO: RFC target = GUI-active connection $($gui.identity.system_name)/$($gui.identity.client)/$($gui.identity.user) (via $($gui.identity.source)), overriding the saved default -- no AI-session pin is set. Run '/sap-login --switch $($gui.identity.system_name)' to pin it and silence this.")
+                }
+                return $gui.profile
+            }
+            if ($gui -and -not $gui.matched) {
+                [Console]::Error.WriteLine("WARN: SAP GUI is active on $($gui.identity.system_name)/$($gui.identity.client)/$($gui.identity.user) but no saved profile matches it; RFC will fall back to the saved default -- a possible wrong-system target. Pass explicit -Server/-Sysnr/-Client, or run /sap-login to save this connection.")
+            }
+        } catch {
+            # Best-effort preference; any failure falls through to the default.
+        }
     }
 
     $defp = Get-SapDefaultConnection

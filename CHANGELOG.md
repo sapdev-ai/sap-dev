@@ -11,6 +11,31 @@ documentation.
 
 ### Added
 
+- **`/sap-gen-cds` — ADT-free CDS view generation + deploy (pain-plan D13,
+  clean-core codegen lane).** New sap-gen-code skill (total_skills 79→80) that
+  generates classic CDS DDL (`DEFINE VIEW … @AbapCatalog.sqlViewName`, SAP_BASIS
+  7.50-7.54) or view entities (`DEFINE VIEW ENTITY`, 7.55+) from a spec/description
+  and deploys it to a live system **without ADT**, via the RFC-enabled installer FM
+  `Z_CDS_DDL_INSTALL` (hosts `CL_DD_DDL_HANDLER_FACTORY`: create → save →
+  write_tadir(prid=-1) → activate). Release-gated ≥7.50 (a file-based CVERS probe
+  — `references/sap_cds_release_probe.ps1` — so no shell-var-eaten inline command;
+  honest `NOT_SUPPORTED` on ECC6/7.31), naming-checked (`CDS_VIEW`/`CDS_SQL_VIEW`
+  rows in `sap_object_naming_rules.tsv`), and RFC-verified: classic views by the
+  generated SQL view `AS4LOCAL=A` (DD02L/DD25L, checked per-row), **view entities by
+  a DWINACTIV activation probe** (no SQL view exists — never reports ACTIVE on TADIR
+  presence alone). WHERE clauses are split one-per-OPTIONS-row so DDL names ≥21 chars
+  don't overflow RFC_READ_TABLE. `--activate|--no-activate` wired through
+  (`EV_STATE=CREATED` stages inactive). Guarded delete flow: handler delete →
+  **confirmed `EV_STATE=DELETED`** → only then the `sap_tadir_delete` orphan clear
+  (`-Force` justified by the API's positive delete confirmation, never on an
+  unconfirmed delete). `DDDDLSRC` added to the shared `sap_rfc_lib` forbidden-read
+  guard (STRING column → SAPLSDTX cast dump, same class as REPOSRC). **Live e2e on
+  S4D 1909** (D13 spike + Phase 1: `ZCM_GENCDS_TEST_V` → `VERIFY: ACTIVE` → delete →
+  `VERIFY: MISSING`; decision doc `temp/testReport/cds_rap_spike_D13_20260703.md`).
+  ATC-on-DDLS deferred (`/sap-atc` has no CDS SCI category yet → honest
+  `ATC: SKIPPED`). Error classes `CDS_RELEASE_UNSUPPORTED` / `CDS_INSTALLER_MISSING`
+  / `CDS_ACTIVATE_FAILED` registered in `error_classes.md`. Phase 2 (RAP behaviour
+  definitions / OData) stays demand-gated.
 - **`/sap-cc-decommission` — execute the retirement of unused custom code
   (pain-plan A2, headline).** New sap-migrate skill (total_skills 78→79) that turns
   `/sap-cc-usage`'s DECOMMISSION *flags* into physical, audited deletions behind a
@@ -176,6 +201,82 @@ documentation.
 
 ### Fixed
 
+- **`/sap-login` reconnect via connection string false-reported "Could not
+  obtain a SAP GUI session" and then stacked a duplicate logon screen.** On a
+  direct `/H/<host>/S/<port>` open (`OpenConnectionByConnectionString`),
+  `sap_login.vbs` identified the just-opened connection by matching
+  `GuiConnection.Description == connectionString` — but for a connection-string
+  open the Description does **not** echo that string while the session sits on
+  `SAPMSYST` (observed live 2026-07-03: S4D, `sap1.vicp.cc` sysnr 70, from
+  NO_SESSION). So the Step-3 wait loop never matched → `ERROR: Could not obtain
+  a SAP GUI session` even though the connection *had* opened; and the Step-2
+  reuse scan missed the leftover logon screen (its identity match needs
+  client+user, both empty pre-login; the description fallback fails for the same
+  reason), so a re-run opened a **second** `con[N]` login screen instead of
+  reusing the first. Two changes: **(1)** Step 3 now identifies the new
+  connection by **connection Id** — the handle returned by the `Open*` call, with
+  a pre-open Id-snapshot diff as fallback — instead of by Description, and polls
+  until a session materializes; this is endpoint-shape-agnostic and still
+  excludes a pre-existing logged-in connection (no false "Already logged in").
+  **(2)** Step 2 gains a **login-screen-of-our-system** tier `(1b)`: a session
+  still on `SAPMSYST` has no client/user yet but its backend `SystemName` is
+  known, so the leftover logon screen is adopted when `SystemName == <profile
+  SID>` — a positive-signal-only match (never adopts a different system's login
+  screen; skipped for legacy no-SID profiles). Net: the first run now succeeds
+  instead of erroring, and any leftover logon screen is reused rather than
+  duplicated. Offline whole-file VBScript compile verified (early-`WScript.Quit`
+  injection under 32-bit cscript, plus a broken-syntax negative control). Related
+  memory: `feedback_sap_login_multi_connection_wait_loop`.
+- **`sap_tadir_delete.ps1` could not clear TADIR orphans for long object
+  names.** Its `Read-Rows` helper passed the whole
+  `PGMID = … AND OBJECT = … AND OBJ_NAME = '<name>'` key as ONE
+  `RFC_READ_TABLE` OPTIONS row; for a DDLS/CDS name ≥21 chars the clause
+  exceeds the 72-char OPTIONS cap → `SAPSQL_PARSE_ERROR` → the read returned
+  `$null` → `TADIR: FAILED … (TADIR read failed)`, so both the def-gone safety
+  guard and the orphan delete silently broke (same class as the `/sap-gen-cds`
+  verify fix). Now splits the WHERE one clause per OPTIONS row (the shared
+  `Add-RfcWhereClauses` rule). **Found live on S4D during the `/sap-gen-cds`
+  delete test** (24-char view name): before the fix the orphan clear reported
+  `TADIR read failed`; after it, `TADIR: DELETED` and verify returned
+  `MISSING`. Affects every caller (dev-clean, se01 remove-objects, the P2
+  orphan remediation) for any object name ≥21 chars.
+- **`/sap-se37` forced EXPORTING parameters to pass-by-reference on
+  RFC-enabled FMs.** `Build-ParamTabCode` — the interface-tab generator in
+  `sap-se37/SKILL.md`, used by both the create (`sap_se37_create.vbs`) and
+  update (`sap_se37_update.vbs`) flows — hardcoded the Pass-by-Value checkbox at
+  `chkRSFBPARA-VALUE[5,r]` for *every* tab. Column 5 is correct for
+  IMPORTING/CHANGING, but the EXPORTING tab has no Default(3)/Optional(4)
+  columns, so its Value checkbox sits at column **3**; writing col 5 there was a
+  swallowed no-op, so `VALUE(EV_*)` export params silently persisted as
+  pass-by-**reference** and activating the FM as Remote-Enabled failed with
+  *"In RFC modules, only parameters with pass by value are allowed."* The
+  generator now takes explicit per-tab `$optionalCol`/`$valueCol` (EXPORT = 0/3,
+  IMPORTING/CHANGING = 4/5, TABLES = 4/0) instead of one `$hasValue` flag, and
+  the "SE37 Component IDs Reference" table documents the per-tab checkbox
+  columns. Found during the Plan D13 spike deploying `Z_CDS_DDL_INSTALL`;
+  RFC-verified live on S/4HANA 1909 (all 4 EXPORTING params were by-reference
+  until `chkRSFBPARA-VALUE[3,r]` was ticked). Offline logic test covers all four
+  tabs + reference params. *(Investigated but NOT changed: the reported
+  `/sap-activate-object` SE37 worklist "Select All" concern — `sap_activate_se37.vbs`
+  contains no `sendVKey 26` and deliberately presses Continue-only, using
+  `btn[9]` solely to detect the worklist, per the proven-safe SE38 model.)*
+- **`/sap-activate-object` (SE11) stale comment implied "activate all listed
+  objects."** The header comment in `sap_activate_se11.vbs` documented the
+  inactive-objects worklist as "-> press btn[9] + btn[0] to activate all listed
+  objects" — the exact over-activation its own body (correctly Continue-only)
+  guards against; a maintainer "fixing the code to match the docs" would have
+  co-activated unrelated developers' inactive objects on a shared DEV. Comment
+  corrected to match the shipped Continue-only behavior. **Live-verified the
+  worklist model is safe on BOTH S/4HANA 1909 (S4D) and ECC 6.0 (EC2):** a
+  controlled test — a throwaway `$TMP` inactive report activated next to 28
+  (S4D) / 5 (EC2) other inactive objects — showed the SE38/SE37 worklist
+  pre-selects ONLY the triggering object (`SELECTED_COUNT=1`; the others aren't
+  even listed without the "Whole Worklist" `btn[18]` / "Select All" `btn[9]`,
+  which the skills never press). RFC before/after confirmed nothing else
+  activated. Note the worklist grid id differs by release (S4D
+  `tblSAPLSEWORKINGAREAT_LOCAL` under a Transportable/Local tab strip; ECC 6.0
+  `tblSAPLSEWORKINGAREAENVIRONMENT` with no tab strip) — identified by the
+  locale-independent `btn[9]` discriminator, not the grid path.
 - **SE38 content-verify gate silently disabled by the single-consumer
   relocation.** `sap_se38_content_verify.ps1` kept a bare `$PSScriptRoot`
   sibling include of `sap_rfc_read_source.ps1` after moving from

@@ -10,9 +10,9 @@
   },
   "metadata": {
     "version": "0.6.9",
-    "last_updated": "2026-07-02",
+    "last_updated": "2026-07-03",
     "total_plugins": 4,
-    "total_skills": 79,
+    "total_skills": 80,
     "categories": [
       "tooling"
     ]
@@ -146,6 +146,7 @@
         "./skills/sap-fix-fm",
         "./skills/sap-gen-abap",
         "./skills/sap-gen-abap-unit",
+        "./skills/sap-gen-cds",
         "./skills/sap-review-abap"
       ],
       "version": "0.6.9",
@@ -154,6 +155,9 @@
         "abap",
         "auto-fix",
         "abap-unit",
+        "cds",
+        "cds-view",
+        "clean-core",
         "code-generation",
         "code-quality",
         "code-review",

@@ -113,7 +113,17 @@ function New-AsXml([string] $val) {
 function Read-Rows($dest, [string]$table, [string]$where, [string[]]$fields, [int]$rowcount = 0) {
     try {
         $fn = New-RfcReadTable -Destination $dest -Table $table
-        if ($where) { Add-RfcOption $fn $where }
+        # Split the WHERE at AND boundaries: RFC_READ_TABLE caps each OPTIONS row
+        # at 72 chars, so a combined `A AND B AND C` overflows for long object
+        # names (a >=21-char DDLS/CDS name makes the TADIR key clause 76+ chars ->
+        # SAPSQL_PARSE_ERROR -> this read returns $null -> "TADIR read failed").
+        if ($where) {
+            $parts = [regex]::Split($where, '\s+AND\s+')
+            for ($wi = 0; $wi -lt $parts.Count; $wi++) {
+                $clause = if ($wi -eq 0) { $parts[$wi].Trim() } else { 'AND ' + $parts[$wi].Trim() }
+                Add-RfcOption $fn $clause
+            }
+        }
         foreach ($f in $fields) { Add-RfcField $fn $f }
         if ($rowcount -gt 0) { [void]$fn.SetValue('ROWCOUNT', $rowcount) }
         $fn.Invoke($dest)

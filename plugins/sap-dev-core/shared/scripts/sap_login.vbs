@@ -22,7 +22,8 @@
 '   %%SAP_LANGUAGE%%             Logon language
 '
 ' Connection logic (in this order -- first match wins):
-'   1. Session already on the login screen -> reuse it.
+'   1. Session already open for this system (logged in, or on the login
+'      screen for the same SID) -> reuse it.
 '   2. SAP_LOGON_DESC set -> OpenConnection(desc).
 '   3. SAP_MESSAGE_SERVER set and SAP_SERVER empty -> load-balanced connection
 '      string  /M/<msgsrv>/G/<grp>/S/<sysid>.  LogonGroup defaults to " " if blank.
@@ -150,12 +151,17 @@ If eSrv <> "" And SAP_SYSNR <> "" Then
     sExpectedDesc3 = "/H/" & eSrv & "/S/" & sPortMatch
 End If
 
-' Two-tier match strategy:
+' Three-tier match strategy:
 '   (1) Identity match on oSession.Info (SystemName + Client + User). Two
 '       endpoint shapes (pad-entry vs /M/.../G/.../S/... vs /H/.../S/...)
 '       for the SAME backend produce different GuiConnection.Description
 '       strings but the same Info, so identity catches the duplicate-tab
 '       case the description-only match used to miss.
+'   (1b) Login-screen-of-our-system match. A connection still on SAPMSYST has
+'       no Client/User yet (so (1) cannot fire) but its backend SystemName is
+'       known -- match on SystemName alone so a re-run adopts a leftover logon
+'       screen instead of stacking a duplicate connection. Positive-signal
+'       only, so it never adopts a different system's login screen.
 '   (2) Description-equality fallback. Covers sessions still on SAPMSYST
 '       where Info is unreadable for ~500ms after open, and the legacy
 '       no-SID profile case where eSysName is empty.
@@ -165,13 +171,30 @@ Dim oLoginScreenCheck
 Dim sCandDesc, bSystemMatch
 Dim oFirstSes, oCandInfo
 Dim sCandSys, sCandClient, sCandUser
+Dim oLoginSes, oLoginInfo, sLoginSys
 On Error Resume Next
 For Each oCandidate In oApplication.Children
     Err.Clear
     bSystemMatch = False
     sCandDesc = oCandidate.Description
 
-    ' (1) Identity match.
+    ' Find a login-screen (SAPMSYST) session on this connection, if any. A
+    ' connection that a previous (failed / manual) run left sitting on the logon
+    ' screen has one; detect it up front so (1b) below can adopt it instead of
+    ' stacking a duplicate con[N], and so the selection step fills credentials
+    ' into it.
+    Set oLoginSes = Nothing
+    For Each oSessIter In oCandidate.Children
+        Err.Clear
+        Set oLoginScreenCheck = oSessIter.findById("wnd[0]/usr/txtRSYST-MANDT")
+        If Err.Number = 0 And Not (oLoginScreenCheck Is Nothing) Then
+            Set oLoginSes = oSessIter
+            Exit For
+        End If
+        Err.Clear
+    Next
+
+    ' (1) Identity match (system + client + user) -- for a logged-in connection.
     If oCandidate.Children.Count > 0 Then
         Set oFirstSes = oCandidate.Children(0)
         Err.Clear
@@ -189,6 +212,27 @@ For Each oCandidate In oApplication.Children
         Err.Clear
     End If
 
+    ' (1b) Login-screen-of-our-system match. A session still on SAPMSYST has no
+    ' Client/User filled yet, so the full identity match above cannot fire, but
+    ' the backend SystemName is already known once the connection is up. Adopt
+    ' the login screen when that SystemName is our target -- this is what lets a
+    ' re-run reuse the logon screen a previous failed open left behind (the
+    ' duplicate-con[N] bug, observed live 2026-07-03 on a direct /H/<host>/S/<port>
+    ' reconnect) instead of opening another one. Positive-signal only (requires
+    ' SystemName = eSysName), so it can never adopt a login screen belonging to a
+    ' different system. Skipped for a legacy no-SID profile (eSysName empty).
+    If (Not bSystemMatch) And (Not (oLoginSes Is Nothing)) And eSysName <> "" Then
+        Err.Clear
+        Set oLoginInfo = oLoginSes.Info
+        If Err.Number = 0 And Not (oLoginInfo Is Nothing) Then
+            sLoginSys = oLoginInfo.SystemName
+            If sLoginSys <> "" And StrComp(sLoginSys, eSysName, vbTextCompare) = 0 Then
+                bSystemMatch = True
+            End If
+        End If
+        Err.Clear
+    End If
+
     ' (2) Description-equality fallback.
     If Not bSystemMatch Then
         If sExpectedDesc1 <> "" And sCandDesc = sExpectedDesc1 Then bSystemMatch = True
@@ -197,20 +241,13 @@ For Each oCandidate In oApplication.Children
     End If
 
     If bSystemMatch Then
-        ' Prefer a session at the login screen (we'll fill credentials below).
-        ' If none, take the first session -- it's already logged in for THIS
-        ' system, so the bOnLogin check in Step 4 will see "Already logged in".
-        For Each oSessIter In oCandidate.Children
-            Err.Clear
-            Set oLoginScreenCheck = oSessIter.findById("wnd[0]/usr/txtRSYST-MANDT")
-            If Err.Number = 0 And Not (oLoginScreenCheck Is Nothing) Then
-                Set oSession = oSessIter
-                WScript.Echo "INFO: Reusing login-screen session of existing connection '" & sCandDesc & "'."
-                Exit For
-            End If
-            Err.Clear
-        Next
-        If oSession Is Nothing And oCandidate.Children.Count > 0 Then
+        ' Prefer the login-screen session (we'll fill credentials in Step 4). If
+        ' none, take the first session -- it's already logged in for THIS system,
+        ' so the bOnLogin check in Step 4 will see "Already logged in".
+        If Not (oLoginSes Is Nothing) Then
+            Set oSession = oLoginSes
+            WScript.Echo "INFO: Reusing login-screen session of existing connection '" & sCandDesc & "'."
+        ElseIf oCandidate.Children.Count > 0 Then
             Set oSession = oCandidate.Children(0)
             WScript.Echo "INFO: Reusing already-logged-in session of existing connection '" & sCandDesc & "'."
         End If
@@ -219,8 +256,29 @@ For Each oCandidate In oApplication.Children
 Next
 On Error GoTo 0
 
-' ------ 3. Open connection (only if no login-screen session found) -----------
+' ------ 3. Open connection (only if no reusable session found) ---------------
 If oSession Is Nothing Then
+    ' Snapshot the connection Ids that already exist, so the wait loop below can
+    ' identify the connection we are about to open by ELIMINATION: the new con[N]
+    ' is the slot that was not present before the Open* call. This does NOT
+    ' depend on GuiConnection.Description echoing the connection string -- which
+    ' it does not for a direct /H/<host>/S/<port> open (observed live 2026-07-03:
+    ' Description != "/H/.../S/..." while the session sits on SAPMSYST, so the
+    ' former Description-equality filter never matched and the script falsely
+    ' reported "Could not obtain a SAP GUI session" even though the connection
+    ' had in fact opened). Ids are delimited with "|" (con paths never contain it).
+    Dim sPreConnIds, oPreConn
+    sPreConnIds = "|"
+    On Error Resume Next
+    For Each oPreConn In oApplication.Children
+        sPreConnIds = sPreConnIds & oPreConn.Id & "|"
+    Next
+    Err.Clear
+    On Error GoTo 0
+
+    Dim oNewConn
+    Set oNewConn = Nothing
+
     If eDesc <> "" Then
         ' Path A: Use SAP Logon pad entry name
         WScript.Echo "INFO: Opening connection via SAP Logon: " & eDesc
@@ -232,6 +290,7 @@ If oSession Is Nothing Then
                          "       Verify the entry name matches exactly what is in SAP Logon pad (case-sensitive)."
             WScript.Quit 1
         End If
+        Set oNewConn = oConnA
         On Error GoTo 0
     ElseIf eMsrv <> "" And eSrv = "" Then
         ' Path B: Load-balanced via Message Server + Logon Group + System ID
@@ -254,6 +313,7 @@ If oSession Is Nothing Then
             WScript.Echo "ERROR: Could not open load-balanced connection '" & sConnStrLB & "': " & Err.Description
             WScript.Quit 1
         End If
+        Set oNewConn = oConnLB
         On Error GoTo 0
     Else
         ' Path C: Direct connection via Application Server + System Number
@@ -275,33 +335,42 @@ If oSession Is Nothing Then
             WScript.Echo "ERROR: Could not open connection with string '" & sConnStr & "': " & Err.Description
             WScript.Quit 1
         End If
+        Set oNewConn = oConnB
         On Error GoTo 0
     End If
 
-    ' Compute the expected GuiConnection.Description for the connection we
-    ' just opened so the wait loop only picks a session belonging to THAT
-    ' connection. Without this filter, a pre-existing already-logged-in
-    ' connection (e.g. from an earlier /sap-login in the same session) would
-    ' be picked instead, and Step 4 would print a false "Already logged in"
-    ' while the newly opened connection sits stuck on SAPMSYST.
-    Dim sNewConnDesc
-    If eDesc <> "" Then
-        sNewConnDesc = eDesc
-    ElseIf eMsrv <> "" And eSrv = "" Then
-        sNewConnDesc = sConnStrLB
-    Else
-        sNewConnDesc = sConnStr
-    End If
+    ' Identify the just-opened connection by Id. The connection object returned
+    ' by the Open* call is the most direct handle; capture its Id as the primary
+    ' key, and fall back to the pre-open snapshot (the con[N] not seen before)
+    ' when that handle is unreadable. Matching by Id -- not Description -- is what
+    ' makes the wait loop find a direct /H/<host>/S/<port> session whose
+    ' Description does not echo the connection string. A pre-existing
+    ' already-logged-in connection is excluded either way (its Id was in the
+    ' snapshot and differs from the new one), so Step 4 cannot print a false
+    ' "Already logged in" against it.
+    Dim sNewConnId
+    sNewConnId = ""
+    On Error Resume Next
+    If Not (oNewConn Is Nothing) Then sNewConnId = oNewConn.Id
+    Err.Clear
+    On Error GoTo 0
 
-    ' Wait for a session to become available on the NEW connection.
+    ' Wait for a session to materialize on the NEW connection -- the handle is
+    ' not usable immediately after the open call, so poll (up to 30s).
     Set oSession = Nothing
-    Dim iWait
+    Dim iWait, bIsNewConn
     For iWait = 1 To 30
         WScript.Sleep 1000
         On Error Resume Next
         Set oApplication = oSAPGUI.GetScriptingEngine
         For Each oCandidate In oApplication.Children
-            If oCandidate.Description = sNewConnDesc Then
+            bIsNewConn = False
+            If sNewConnId <> "" Then
+                If oCandidate.Id = sNewConnId Then bIsNewConn = True
+            ElseIf InStr(sPreConnIds, "|" & oCandidate.Id & "|") = 0 Then
+                bIsNewConn = True
+            End If
+            If bIsNewConn Then
                 For Each oSessIter In oCandidate.Children
                     Set oSession = oSessIter
                     Exit For
@@ -314,7 +383,7 @@ If oSession Is Nothing Then
     Next
 
     If oSession Is Nothing Then
-        WScript.Echo "ERROR: Could not obtain a SAP GUI session."
+        WScript.Echo "ERROR: Could not obtain a SAP GUI session (connection opened but no session materialized within 30s)."
         WScript.Quit 1
     End If
 

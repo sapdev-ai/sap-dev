@@ -48,6 +48,14 @@ differs per release; verify each field before relying on it.
 - None required — this is a read redirect onto the document tables (or the
   released sales-document CDS views, verify names per release).
 
+## Modern successor — read via a CDS view (`/sap-gen-cds`)
+Where the status read feeds reporting/analytics, the modern pattern is a **CDS
+view** over the owning document header/item (VBAK/VBAP, LIKP/LIPS, VBRK/VBRP)
+exposing the status fields — a released SD status view where one exists, otherwise
+a thin custom projection scaffolded with `/sap-gen-cds` — rather than scattering
+raw `SELECT`s. Still `AI_REVIEW` (per-document-category correctness applies to the
+view's source just as to a direct read).
+
 ## Caveats & non-1:1 cases (when to downgrade to MANUAL_ONLY)
 - Code that reads VBUK for a **mixed set of document categories** through one
   generic path -> needs a per-category split (VBAK vs LIKP vs VBRK) -> MANUAL.

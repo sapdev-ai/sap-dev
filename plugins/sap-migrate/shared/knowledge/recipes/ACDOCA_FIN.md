@@ -37,6 +37,14 @@ release — **verify before relying on a name**.
 - Read: ACDOCA-based compatibility / released CDS views (verify names per release).
 - Post: `BAPI_ACC_DOCUMENT_POST`.
 
+## Modern successor — read via a CDS view (`/sap-gen-cds`)
+For FI/CO reporting reads, the modern pattern is a **CDS view** over ACDOCA — a
+released analytical/compatibility view where one fits, otherwise a thin custom
+projection scaffolded with `/sap-gen-cds` (ledger- and currency-aware, selective
+`WHERE`, embedded-analytics annotations for KPIs). Reads only; **never** a posting
+path (use `BAPI_ACC_DOCUMENT_POST`). Financial correctness stays human-signed-off
+(`AI_REVIEW`, leaning MANUAL).
+
 ## Caveats & non-1:1 cases (frequently MANUAL)
 - Logic that depended on the *physical* layout of GLT0/BSEG (totals buckets,
   period columns) usually needs a functional rewrite → MANUAL.

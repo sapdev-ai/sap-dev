@@ -509,10 +509,24 @@ powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_login_run.ps1"
 
 **The VBScript handles four scenarios** (first match wins):
 
-1. **Login-screen session found** → Reuses existing connection, fills credentials.
+1. **Reusable session for this system found** → Adopts it. An already-logged-in
+   session (identity match on SID + client + user) is used as-is; a session still
+   on the logon screen **for the same SID** has credentials filled into it — so a
+   re-run after a failed/partial open reuses the leftover logon screen instead of
+   stacking a duplicate `con[N]`. (The logon-screen match keys on the backend
+   `SystemName` alone, since client/user aren't filled pre-login; it's
+   positive-signal-only, so it never adopts a different system's logon screen.)
 2. **SAP Logon Description provided** → Opens connection via `OpenConnection(desc)`, fills login screen.
 3. **MessageServer provided + ApplicationServer empty** → Opens load-balanced via `OpenConnectionByConnectionString("/M/<msrv>/G/<grp>/S/<sid>")` (LogonGroup defaults to one space when blank).
 4. **ApplicationServer provided** → Opens direct via `OpenConnectionByConnectionString("/H/<server>/S/<port>")` where port = 3200 + SystemNumber.
+
+> After opening (scenarios 2–4), the newly-opened connection is identified by
+> its **connection Id** (the handle returned by the `Open*` call, with a
+> pre-open Id-snapshot diff as fallback), **not** by `GuiConnection.Description`
+> — a direct `/H/<host>/S/<port>` connection's Description does not echo the
+> connection string while it sits on the logon screen, which previously caused a
+> false `Could not obtain a SAP GUI session` and a duplicate connection on
+> re-run.
 
 **On success** (last line starts with `SUCCESS:`): tell the user login succeeded. Show full output.
 
@@ -527,6 +541,7 @@ powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_login_run.ps1"
 | `No endpoint configured` | All three endpoint sets blank | Configure profile with one of: logon_pad_entry, message_server + system_id, or application_server + system_number |
 | `Could not open connection with string` | Server unreachable or wrong server/port | Check server hostname and system number |
 | `Could not open load-balanced connection` | Message server unreachable / wrong logon group / wrong SID | Check msrv hostname, logon group exists in RZ12, SID matches /sapmnt/<SID> |
+| `Could not obtain a SAP GUI session` | Connection opened but no session appeared within 30s (server slow/unreachable, or SAP GUI busy) | Re-run — a leftover logon screen is now reused, not duplicated; if it persists, open the connection manually in SAP Logon and re-run |
 | `Login failed` | Wrong credentials | Check client, username, and password in profile |
 | `Login timed out` | No manual login within 5 min | Re-run and log in promptly |
 

@@ -38,6 +38,14 @@ on the analysis - **verify per release**.
 ## Released APIs / objects
 - Released CDS analytical views for logistics (SD/MM) - verify names per release.
 
+## Modern successor — build with `/sap-gen-cds`
+When no released view fits (custom metric / aggregation), scaffold a **custom CDS
+analytical view** with `/sap-gen-cds` (spec or description -> classic DDL on
+7.50-7.54, or a view entity on 7.55+; deployed ADT-free via the installer FM and
+RFC-verified). Keep it a thin projection over released document sources and add the
+embedded-analytics annotations (`@Analytics.dataCategory`, `@Aggregation`,
+`@DefaultAggregation`). Still `MANUAL_ONLY` — a human owns metric reconciliation.
+
 ## Caveats & non-1:1 cases (always MANUAL_ONLY)
 - Metric semantics differ (real-time vs. periodically updated info structure);
   numbers may legitimately change - reconcile with the business.

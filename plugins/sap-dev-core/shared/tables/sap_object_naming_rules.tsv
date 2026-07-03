@@ -17,3 +17,5 @@ DDIC_LOCKOBJECT	^EZ[A-Z0-9_]*$	EZHKDL_ORDER	Lock object: SAP-mandated E prefix +
 DDIC_TYPEGROUP	^Z[A-Z0-9_]{0,7}$	ZHKGCM	Type group: Z + up to 7 chars = 8 total (SAP limit)
 DDIC_TABLETYPE	^Z[A-Z0-9_]*$	ZHKDC_ORDERS	Customer-namespace table type (max 30 chars per SAP)
 MESSAGE_CLASS	^Z[A-Z0-9_]{0,19}$	ZHK15	Message class: Z + up to 19 chars = 20 total (SAP limit)
+CDS_VIEW	^Z[A-Z0-9_]*$	ZCM_SALES_V	CDS DDL source / view entity name (DDLS object, customer namespace, max 30 chars). /sap-gen-cds emits classic DEFINE VIEW on <7.55.
+CDS_SQL_VIEW	^Z[A-Z0-9_]{0,15}$	ZCMSALESSQLV	Generated SQL view for a classic CDS view (@AbapCatalog.sqlViewName): DDIC view name, Z + up to 15 = 16 chars max (SAP DDIC name limit).

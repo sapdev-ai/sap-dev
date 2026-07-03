@@ -45,6 +45,9 @@
 #   - REPOSRC  (program source: DATA = LRAW). Use PROGDIR.STATE for activation
 #              state, RPY_PROGRAM_READ for source, or `/sap-se16n REPOSRC`
 #              (drives SAP GUI, not RFC) for a row listing.
+#   - DDDDLSRC (CDS/DDL source: SOURCE = STRING). Verify DDLS via TADIR +
+#              DD02L/DD25L (classic) or DWINACTIV (activation state); read the
+#              DDL text through CL_DD_DDL_HANDLER, not RFC_READ_TABLE.
 #
 # Callers that go through `New-RfcReadTable` (recommended) get this guard for
 # free. Callers that still use `$dest.Repository.CreateFunction("RFC_READ_TABLE")`
@@ -147,7 +150,14 @@ function Connect-SapRfc {
             }
             $prof = $null
             if (Get-Command Get-SapCurrentConnectionProfile -ErrorAction SilentlyContinue) {
-                $prof = Get-SapCurrentConnectionProfile
+                # -PreferGuiActive: when no AI-session pin resolves, prefer the
+                # profile matching the SAP GUI session this AI session is
+                # actually driving over the saved DEFAULT profile. Without this,
+                # a manual GUI login that bypassed /sap-login's pin step let RFC
+                # silently target the unrelated default system (wrong-system
+                # write hazard). Explicit-param callers never reach this block;
+                # pinned sessions resolve the pin first (GUI step is skipped).
+                $prof = Get-SapCurrentConnectionProfile -PreferGuiActive
             }
             if ($prof) {
                 # Endpoint: prefer existing input shape (direct vs load-balanced);
@@ -387,7 +397,7 @@ function Add-RfcOption($fn, [string]$where) {
 # Forbidden tables for RFC_READ_TABLE. See header comment for rationale.
 # Match is case-insensitive. Extend this list only after confirming the
 # table actually triggers the SAPLSDTX cast dump on the target release.
-$script:_SapRfc_ForbiddenReadTables = @('REPOSRC')
+$script:_SapRfc_ForbiddenReadTables = @('REPOSRC', 'DDDDLSRC')
 
 # Hard-fail if QUERY_TABLE is on the forbidden list. Call this AFTER setting
 # QUERY_TABLE on an RFC_READ_TABLE function but BEFORE Invoke(). Throws a
@@ -403,6 +413,7 @@ function Assert-RfcReadTableAllowed {
     if ($script:_SapRfc_ForbiddenReadTables -contains $upper) {
         $hint = switch ($upper) {
             'REPOSRC' { "REPOSRC contains LRAW DATA and exceeds the 512-byte row cap - use PROGDIR.STATE for activation state, RPY_PROGRAM_READ for source content, or /sap-se16n REPOSRC for a row listing." }
+            'DDDDLSRC' { "DDDDLSRC.SOURCE is a STRING column that raises ASSIGN ... CASTING in SAPLSDTX (same class as REPOSRC; confirmed by the D13 CDS spike). Verify CDS/DDL objects via TADIR(OBJECT=DDLS) + the generated SQL view (DD02L/DD25L) or DWINACTIV for activation state; read DDL source through the CL_DD_DDL_HANDLER API, not RFC_READ_TABLE." }
             default   { "(no migration hint registered for $upper - see sap_rfc_lib.ps1 header comments)" }
         }
         throw "RFC_READ_TABLE on '$QueryTable' is FORBIDDEN by sap_rfc_lib.ps1 policy. $hint"

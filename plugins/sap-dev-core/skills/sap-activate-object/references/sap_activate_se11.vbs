@@ -194,7 +194,11 @@ Sub HandleWorklistPopup
     ' per language_independence_rules.md):
     '
     '   (a) Inactive-objects worklist: has wnd[N]/tbar[0]/btn[9] (Select All)
-    '       -> press btn[9] + btn[0] to activate all listed objects.
+    '       -> press btn[0] (Continue) ONLY, which activates the pre-selected
+    '          triggering object (+ its dependent includes). btn[9] is just the
+    '          DISCRIMINATOR and is NEVER pressed: Select All would co-activate
+    '          every UNRELATED inactive object in the user's worklist (see the
+    '          matching rationale at branch (a) in the sweep loop below).
     '
     '   (b) "Warning during activation -- display activation log?" popup:
     '       3 SPOP buttons (OPTION1=Yes, OPTION2=No, OPTION3=Cancel).

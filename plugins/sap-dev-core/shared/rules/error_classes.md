@@ -94,6 +94,14 @@ Contract:
 | `STMS_BLOCKED` | Queue/import blocked (predecessor, target lock). |
 | `STMS_IMPORT_RC_ERROR` | Import finished with RC >= 8. |
 
+## CDS generation (`/sap-gen-cds`)
+
+| Class | Meaning |
+|---|---|
+| `CDS_RELEASE_UNSUPPORTED` | Target SAP_BASIS < 7.50 — the CDS DDL handler infrastructure is absent; the skill stops with an honest NOT_SUPPORTED (use `/sap-gen-abap` for classic ABAP). |
+| `CDS_INSTALLER_MISSING` | Installer FM `Z_CDS_DDL_INSTALL` absent or not Remote-Enabled (FMODE != R) — run the Step 3 bootstrap. |
+| `CDS_ACTIVATE_FAILED` | DDL source saved but activation raised (syntax / DDIC error) — the generated SQL view was not produced. |
+
 Registered consumers: `/sap-log-analyze` (Top error_class section),
 `sap_error_hints.ps1 -Action record` (auto-record attribution), customer
 dashboards reading `{log_dir}` JSONL. See the Logging Settings section in the

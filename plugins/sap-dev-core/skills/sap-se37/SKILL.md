@@ -446,7 +446,12 @@ function Get-DismissBlock {
 }
 
 function Build-ParamTabCode {
-    param([string]$tabId,[string]$subId,[string]$tblName,$params,[bool]$hasValue)
+    # $optionalCol / $valueCol = zero-based table-control column of the Optional /
+    # Pass-by-Value checkbox ON THIS TAB (0 = that column is absent here). The tabs
+    # do NOT share one layout: IMPORT/CHANGING have Default(3)+Optional(4)+Value(5),
+    # but EXPORT drops the Default+Optional columns so its Value checkbox is at col 3,
+    # and TABLES has Optional(4) but no Value. See the call sites for the per-tab values.
+    param([string]$tabId,[string]$subId,[string]$tblName,$params,[int]$optionalCol,[int]$valueCol)
     $pfx = "wnd[0]/usr/tabsFUNC_TAB_STRIP/$tabId/ssubSCREEN_HEADER:$subId/$tblName"
     $c  = "oSession.findById(`"wnd[0]/usr/tabsFUNC_TAB_STRIP/$tabId`").select`r`n"
     $c += "WScript.Sleep 500`r`n"
@@ -458,11 +463,11 @@ function Build-ParamTabCode {
         if ($p.TypeName -ne "") {
             $c += "oSession.findById(`"$pfx/ctxtRSFBPARA-STRUCTURE[2,$r]`").text = `"$($p.TypeName)`"`r`n"
         }
-        if ($p.Optional) {
-            $c += "oSession.findById(`"$pfx/chkRSFBPARA-OPTIONAL[4,$r]`").selected = true`r`n"
+        if ($p.Optional -and $optionalCol -gt 0) {
+            $c += "oSession.findById(`"$pfx/chkRSFBPARA-OPTIONAL[$optionalCol,$r]`").selected = true`r`n"
         }
-        if ($hasValue -and $p.PassBy -eq "VALUE") {
-            $c += "oSession.findById(`"$pfx/chkRSFBPARA-VALUE[5,$r]`").selected = true`r`n"
+        if ($valueCol -gt 0 -and $p.PassBy -eq "VALUE") {
+            $c += "oSession.findById(`"$pfx/chkRSFBPARA-VALUE[$valueCol,$r]`").selected = true`r`n"
         }
         $c += (Get-DismissBlock)
     }
@@ -483,10 +488,10 @@ function Build-ExceptTabCode {
 }
 
 $ifaceCode = "On Error Resume Next`r`n"
-if ($importing.Count  -gt 0) { $ifaceCode += Build-ParamTabCode "tabpIMPORT" "SAPLSFUNCTION_BUILDER:3050" "tblSAPLSFUNCTION_BUILDERIMPORT" $importing  $true  }
-if ($exporting.Count  -gt 0) { $ifaceCode += Build-ParamTabCode "tabpEXPORT" "SAPLSFUNCTION_BUILDER:3052" "tblSAPLSFUNCTION_BUILDEREXPORT" $exporting  $true  }
-if ($changing.Count   -gt 0) { $ifaceCode += Build-ParamTabCode "tabpCHANGE" "SAPLSFUNCTION_BUILDER:3054" "tblSAPLSFUNCTION_BUILDERCHANGE" $changing   $true  }
-if ($tables.Count     -gt 0) { $ifaceCode += Build-ParamTabCode "tabpTABLES" "SAPLSFUNCTION_BUILDER:3060" "tblSAPLSFUNCTION_BUILDERTABLES" $tables     $false }
+if ($importing.Count  -gt 0) { $ifaceCode += Build-ParamTabCode "tabpIMPORT" "SAPLSFUNCTION_BUILDER:3050" "tblSAPLSFUNCTION_BUILDERIMPORT" $importing  4 5 }  # Optional col 4, Value col 5
+if ($exporting.Count  -gt 0) { $ifaceCode += Build-ParamTabCode "tabpEXPORT" "SAPLSFUNCTION_BUILDER:3052" "tblSAPLSFUNCTION_BUILDEREXPORT" $exporting  0 3 }  # no Optional col; Value col 3
+if ($changing.Count   -gt 0) { $ifaceCode += Build-ParamTabCode "tabpCHANGE" "SAPLSFUNCTION_BUILDER:3054" "tblSAPLSFUNCTION_BUILDERCHANGE" $changing   4 5 }  # Optional col 4, Value col 5
+if ($tables.Count     -gt 0) { $ifaceCode += Build-ParamTabCode "tabpTABLES" "SAPLSFUNCTION_BUILDER:3060" "tblSAPLSFUNCTION_BUILDERTABLES" $tables     4 0 }  # Optional col 4, no Value col
 if ($exceptions.Count -gt 0) { $ifaceCode += Build-ExceptTabCode $exceptions }
 $ifaceCode += "Err.Clear : On Error GoTo 0`r`n"
 
@@ -651,10 +656,14 @@ Write-Host "TABLES    ($($tables.Count)): $($tables    | ForEach-Object {"$($_.N
 Write-Host "EXCEPTIONS($($exceptions.Count)): $($exceptions -join ', ')"
 
 # ── 2. Build interface VBS code ──────────────────────────────────
-# hasOptVal = true  → generates Optional[4,r] and Value[5,r] checkbox lines
-# IMPORTING, EXPORTING, CHANGING: hasOptVal true
-# TABLES: no Value checkbox (col 4 = Optional only, no col 5)
-# EXCEPTIONS: separate function (different column layout)
+# Per-tab checkbox columns are passed explicitly ($optionalCol,$valueCol)
+# because the tabs do NOT share one layout (0 = column absent on that tab):
+#   IMPORTING / CHANGING : Optional col 4, Pass-by-Value col 5
+#   EXPORTING            : no Optional col; Pass-by-Value col 3 (dropping the
+#                          Default+Optional columns shifts Value left) -- live-
+#                          verified on S/4HANA 1909 (2026-07-03)
+#   TABLES               : Optional col 4, no Pass-by-Value col
+#   EXCEPTIONS           : separate function (different column layout)
 
 function Build-ParamTabCode {
     param(
@@ -662,7 +671,8 @@ function Build-ParamTabCode {
         [string]$subId,
         [string]$tblName,
         $params,
-        [bool]$hasValue    # whether this tab has a Pass by Value checkbox at col 5
+        [int]$optionalCol,  # zero-based col of the Optional checkbox on this tab (0 = none)
+        [int]$valueCol      # zero-based col of the Pass-by-Value checkbox on this tab (0 = none)
     )
     $pfx = "wnd[0]/usr/tabsFUNC_TAB_STRIP/$tabId/ssubSCREEN_HEADER:$subId/$tblName"
     # Defensive overlay: keep On Error Resume Next ACROSS the entire block.
@@ -682,9 +692,11 @@ function Build-ParamTabCode {
         $c += "oSession.findById(`"$pfx/txtRSFBPARA-PARAMETER[0,$r]`").text = `"`"`r`n"
         $c += "oSession.findById(`"$pfx/ctxtRSFBPARA-TYPEFIELD[1,$r]`").text = `"`"`r`n"
         $c += "oSession.findById(`"$pfx/ctxtRSFBPARA-STRUCTURE[2,$r]`").text = `"`"`r`n"
-        $c += "oSession.findById(`"$pfx/chkRSFBPARA-OPTIONAL[4,$r]`").selected = false`r`n"
-        if ($hasValue) {
-            $c += "oSession.findById(`"$pfx/chkRSFBPARA-VALUE[5,$r]`").selected = false`r`n"
+        if ($optionalCol -gt 0) {
+            $c += "oSession.findById(`"$pfx/chkRSFBPARA-OPTIONAL[$optionalCol,$r]`").selected = false`r`n"
+        }
+        if ($valueCol -gt 0) {
+            $c += "oSession.findById(`"$pfx/chkRSFBPARA-VALUE[$valueCol,$r]`").selected = false`r`n"
         }
         $c += "Err.Clear`r`n"
     }
@@ -696,11 +708,11 @@ function Build-ParamTabCode {
         if ($p.TypeName -ne "") {
             $c += "oSession.findById(`"$pfx/ctxtRSFBPARA-STRUCTURE[2,$r]`").text = `"$($p.TypeName)`"`r`n"
         }
-        if ($p.Optional) {
-            $c += "oSession.findById(`"$pfx/chkRSFBPARA-OPTIONAL[4,$r]`").selected = true`r`n"
+        if ($p.Optional -and $optionalCol -gt 0) {
+            $c += "oSession.findById(`"$pfx/chkRSFBPARA-OPTIONAL[$optionalCol,$r]`").selected = true`r`n"
         }
-        if ($hasValue -and $p.PassBy -eq "VALUE") {
-            $c += "oSession.findById(`"$pfx/chkRSFBPARA-VALUE[5,$r]`").selected = true`r`n"
+        if ($valueCol -gt 0 -and $p.PassBy -eq "VALUE") {
+            $c += "oSession.findById(`"$pfx/chkRSFBPARA-VALUE[$valueCol,$r]`").selected = true`r`n"
         }
         $c += "Err.Clear`r`n"
     }
@@ -765,10 +777,10 @@ function Build-ExceptTabCode {
 }
 
 $ifaceCode = "On Error Resume Next`r`n"
-if ($importing.Count  -gt 0) { $ifaceCode += Build-ParamTabCode "tabpIMPORT" "SAPLSFUNCTION_BUILDER:3050" "tblSAPLSFUNCTION_BUILDERIMPORT" $importing  $true  }
-if ($exporting.Count  -gt 0) { $ifaceCode += Build-ParamTabCode "tabpEXPORT" "SAPLSFUNCTION_BUILDER:3052" "tblSAPLSFUNCTION_BUILDEREXPORT" $exporting  $true  }
-if ($changing.Count   -gt 0) { $ifaceCode += Build-ParamTabCode "tabpCHANGE" "SAPLSFUNCTION_BUILDER:3054" "tblSAPLSFUNCTION_BUILDERCHANGE" $changing   $true  }
-if ($tables.Count     -gt 0) { $ifaceCode += Build-ParamTabCode "tabpTABLES" "SAPLSFUNCTION_BUILDER:3060" "tblSAPLSFUNCTION_BUILDERTABLES" $tables     $false }
+if ($importing.Count  -gt 0) { $ifaceCode += Build-ParamTabCode "tabpIMPORT" "SAPLSFUNCTION_BUILDER:3050" "tblSAPLSFUNCTION_BUILDERIMPORT" $importing  4 5 }  # Optional col 4, Value col 5
+if ($exporting.Count  -gt 0) { $ifaceCode += Build-ParamTabCode "tabpEXPORT" "SAPLSFUNCTION_BUILDER:3052" "tblSAPLSFUNCTION_BUILDEREXPORT" $exporting  0 3 }  # no Optional col; Value col 3
+if ($changing.Count   -gt 0) { $ifaceCode += Build-ParamTabCode "tabpCHANGE" "SAPLSFUNCTION_BUILDER:3054" "tblSAPLSFUNCTION_BUILDERCHANGE" $changing   4 5 }  # Optional col 4, Value col 5
+if ($tables.Count     -gt 0) { $ifaceCode += Build-ParamTabCode "tabpTABLES" "SAPLSFUNCTION_BUILDER:3060" "tblSAPLSFUNCTION_BUILDERTABLES" $tables     4 0 }  # Optional col 4, no Value col
 if ($exceptions.Count -gt 0) { $ifaceCode += Build-ExceptTabCode $exceptions }
 $ifaceCode += "Err.Clear : On Error GoTo 0`r`n"
 
@@ -1588,9 +1600,30 @@ Parameter row column indices (zero-based):
 | Parameter name | 0 | `txtRSFBPARA-PARAMETER[0,row]` |
 | Type flag (TYPE / LIKE) | 1 | `ctxtRSFBPARA-TYPEFIELD[1,row]` |
 | Type / structure name | 2 | `ctxtRSFBPARA-STRUCTURE[2,row]` |
-| Default value | 3 | `txtRSFBPARA-DEFAULTVAL[3,row]` |
-| Optional checkbox | 4 | `chkRSFBPARA-OPTIONAL[4,row]` |
-| Pass by Value checkbox | 5 | `chkRSFBPARA-VALUE[5,row]` (Import/Export/Changing only) |
+| Default value | 3 | `txtRSFBPARA-DEFAULTVAL[3,row]` (Importing/Changing only) |
+| Optional checkbox | 4 | `chkRSFBPARA-OPTIONAL[4,row]` (Importing/Changing/Tables) |
+| Pass by Value checkbox | 5 | `chkRSFBPARA-VALUE[5,row]` (Importing/Changing) |
+
+> **The checkbox columns differ per tab — do NOT hardcode col 5.** The indices
+> above are the **IMPORTING / CHANGING** layout. Tabs that drop the Default /
+> Optional columns shift the remaining checkboxes left, so resolve the checkbox
+> column per tab:
+>
+> | Tab | Optional checkbox | Pass by Value checkbox |
+> |---|---|---|
+> | Importing | `chkRSFBPARA-OPTIONAL[4,row]` | `chkRSFBPARA-VALUE[5,row]` |
+> | Exporting | (none — export params can't be optional) | `chkRSFBPARA-VALUE[3,row]` |
+> | Changing | `chkRSFBPARA-OPTIONAL[4,row]` | `chkRSFBPARA-VALUE[5,row]` |
+> | Tables | `chkRSFBPARA-OPTIONAL[4,row]` | (none — no Pass by Value) |
+>
+> The **Exporting** tab has no Default(3) / Optional(4) columns, so its
+> Pass-by-Value checkbox lands at **column 3**, not 5. Hardcoding col 5 for
+> Exporting silently persists `VALUE(EV_*)` parameters as pass-by-**reference**,
+> so activating the FM as Remote-Enabled fails with *"In RFC modules, only
+> parameters with pass by value are allowed."* RFC-verified live on S/4HANA 1909
+> (2026-07-03). The `Build-ParamTabCode` generator (Steps 5a / 5b) passes the
+> correct `$optionalCol` / `$valueCol` per tab; the Exceptions tab uses a
+> separate generator (`Build-ExceptTabCode`).
 
 ---
 
