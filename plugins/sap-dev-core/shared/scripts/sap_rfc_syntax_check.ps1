@@ -45,6 +45,15 @@
 #   -Fixpt  <X| >         fixed-point arithmetic (default X)
 #   -AllErrors <X| >      return every error, not just the first (default X)
 #   -OutTsv <path>        also write a house-style *.check.tsv findings file
+#   -Wrap                 fragment mode: wrap an FM (SUBC=F) or class pool
+#                         (SUBC=K) as a self-contained SUBC=1 program so the
+#                         method / FM BODY is syntax-checkable PRE-INSERT with
+#                         zero persistence (Strategy A). Findings are line-mapped
+#                         back to the ORIGINAL file; scaffold warnings dropped; a
+#                         signature too complex to model degrades to
+#                         STATUS: COULD_NOT_CHECK (never a false-fail). Proven
+#                         live S4D 2026-07-04. Complements -- not replaces -- the
+#                         authoritative in-context Ctrl+F2 after inactive insert.
 #   -WrapperFm <NAME>     default Z_GENERIC_RFC_WRAPPER_TBL
 #   Connection params (-Server/-Sysnr/-Client/-User/-Password/-Language, or
 #   load-balanced -MessageServer/-LogonGroup/-SystemID) fall through to
@@ -57,6 +66,8 @@
 #   Then a summary:
 #     STATUS: CLEAN errors=0 warnings=<w>
 #     STATUS: FINDINGS errors=<e> warnings=<w>
+#     STATUS: COULD_NOT_CHECK <reason>   (-Wrap only: signature too complex to
+#                                         model -> caller degrades, never fails)
 #     STATUS: RFC_ERROR <msg>
 #     STATUS: INPUT_ERROR <msg>
 #   Exit code: 0 = check RAN (clean or with findings -- gate on the counts);
@@ -72,6 +83,7 @@ param(
     [string] $Fixpt       = 'X',
     [string] $AllErrors   = 'X',
     [string] $OutTsv      = '',
+    [switch] $Wrap,
     [string] $WrapperFm   = 'Z_GENERIC_RFC_WRAPPER_TBL',
 
     [string] $Server   = '',
@@ -106,6 +118,126 @@ if ([string]::IsNullOrWhiteSpace($SourceFile) -or -not (Test-Path -LiteralPath $
 }
 $srcLines = @(Get-Content -LiteralPath $SourceFile -Encoding UTF8)
 if ($srcLines.Count -eq 0) { $srcLines = @('') }   # empty file -> one blank line so the table isn't empty
+
+# --- optional fragment wrapping (Strategy A) --------------------------------
+# FM includes (SUBC=F) and class pools (SUBC=K) are NOT standalone-compilable, so
+# a raw fragment fails with "FUNCTION not usable here" / "Missing REPORT". With
+# -Wrap we re-present the fragment as a self-contained SUBC=1 program so the
+# compiler checks the method / FM BODY pre-insert with zero persistence:
+#   class -> strip the class-pool PUBLIC marker after DEFINITION (keep CREATE
+#            PUBLIC), prepend REPORT -> checked as a LOCAL class.
+#   FM    -> synthesize IMPORTING/EXPORTING/CHANGING/TABLES params as DATA decls,
+#            body under START-OF-SELECTION.
+# A line-map translates findings back to ORIGINAL line numbers; warnings on the
+# synthesized scaffold are dropped; an ERROR on a scaffold line means the
+# signature was too complex to model faithfully -> COULD_NOT_CHECK (degrade,
+# never false-fail). Proven live on S4D 2026-07-04.
+$script:wrapping  = $false
+$script:wrapMap   = @{}   # wrapped 1-based line -> original 1-based line
+$script:wrapSynth = @{}   # wrapped 1-based line -> $true (scaffold line)
+
+function Build-AbapWrap([string[]] $orig, [string] $mode) {
+    $r = @{ ok = $false; reason = ''; lines = @(); map = @{}; synth = @{} }
+    if ($mode -eq 'K') {
+        # ---- class / interface pool -> local class in a dummy report --------
+        $stripped = @()
+        foreach ($ln in $orig) {
+            if ($ln -match '\b(CLASS|INTERFACE)\b' -and $ln -match '\bDEFINITION\b') {
+                $stripped += ($ln -replace '(\bDEFINITION\b)\s+PUBLIC\b', '$1')
+            } else { $stripped += $ln }
+        }
+        $lines = @('REPORT zsynwrap.') + $stripped
+        $map = @{}
+        for ($i = 0; $i -lt $stripped.Count; $i++) { $map[$i + 2] = $i + 1 }   # REPORT is wrapped line 1
+        $r.ok = $true; $r.lines = $lines; $r.map = $map; $r.synth = @{ 1 = $true }
+        return $r
+    }
+    if ($mode -eq 'F') {
+        # ---- function module include -> body in a dummy report --------------
+        $funcIdx = -1; $endIdx = -1
+        for ($i = 0; $i -lt $orig.Count; $i++) {
+            $t = $orig[$i].Trim().ToUpperInvariant()
+            if ($funcIdx -lt 0 -and $t -match '^FUNCTION(\s|$)') { $funcIdx = $i }
+            if ($t -match '^ENDFUNCTION\b') { $endIdx = $i }
+        }
+        if ($funcIdx -lt 0 -or $endIdx -lt 0 -or $endIdx -le $funcIdx) {
+            $r.reason = 'no FUNCTION/ENDFUNCTION block found'; return $r
+        }
+        # interface comment block = consecutive *"-lines right after FUNCTION
+        $bodyStart = $funcIdx + 1
+        $iface = New-Object System.Collections.ArrayList
+        for ($i = $funcIdx + 1; $i -lt $endIdx; $i++) {
+            if ($orig[$i].Trim().StartsWith('*"')) { [void]$iface.Add($orig[$i]); $bodyStart = $i + 1 }
+            else { break }
+        }
+        # parse the interface -> local DATA declarations
+        $decls = New-Object System.Collections.ArrayList
+        $section = ''
+        foreach ($rawL in $iface) {
+            $s = $rawL.Trim()
+            $s = $s.Substring(2).Trim()                       # drop the leading *"
+            if ($s -eq '' -or $s -match '^-+$') { continue }  # blank / separator
+            if ($s -match '(?i)Local Interface') { continue }
+            $u = $s.ToUpperInvariant()
+            if ($u -match '^(IMPORTING|EXPORTING|CHANGING|TABLES|EXCEPTIONS|RAISING)$') { $section = $u; continue }
+            if ($section -eq '' -or $section -in @('EXCEPTIONS', 'RAISING')) { continue }
+            $p = $s -replace '(?i)\s+OPTIONAL\s*$', '' -replace '(?i)\s+DEFAULT\s+.*$', ''
+            $name = ''
+            if ($p -match '(?i)^(?:VALUE|REFERENCE)\(\s*([A-Za-z0-9_]+)\s*\)') { $name = $Matches[1] }
+            elseif ($p -match '^([A-Za-z0-9_]+)') { $name = $Matches[1] }
+            if ($name -eq '') { continue }
+            $rest = $p -replace '(?i)^(?:VALUE|REFERENCE)\(\s*[A-Za-z0-9_]+\s*\)', ''
+            $pat  = '(?i)^\s*' + [regex]::Escape($name) + '\b'
+            $rest = ($rest -replace $pat, '').Trim()
+            if ($section -eq 'TABLES') {
+                if     ($rest -match '(?i)^STRUCTURE\s+([A-Za-z0-9_/]+)') { [void]$decls.Add('  DATA ' + $name + ' TYPE STANDARD TABLE OF ' + $Matches[1] + '.') }
+                elseif ($rest -match '(?i)^TYPE\s+(.+)$')                 { [void]$decls.Add('  DATA ' + $name + ' TYPE STANDARD TABLE OF ' + ($Matches[1].Trim()) + '.') }
+                elseif ($rest -match '(?i)^LIKE\s+(.+)$')                 { [void]$decls.Add('  DATA ' + $name + ' LIKE STANDARD TABLE OF ' + ($Matches[1].Trim()) + '.') }
+                else { $r.reason = 'untyped TABLES parameter ' + $name; return $r }
+            } else {
+                if     ($rest -match '(?i)^TYPE\s+REF\s+TO\s+(.+)$') { [void]$decls.Add('  DATA ' + $name + ' TYPE REF TO ' + ($Matches[1].Trim()) + '.') }
+                elseif ($rest -match '(?i)^TYPE\s+(.+)$')            { [void]$decls.Add('  DATA ' + $name + ' TYPE ' + ($Matches[1].Trim()) + '.') }
+                elseif ($rest -match '(?i)^LIKE\s+(.+)$')            { [void]$decls.Add('  DATA ' + $name + ' LIKE ' + ($Matches[1].Trim()) + '.') }
+                else { $r.reason = 'untyped/generic parameter ' + $name + ' (cannot synthesize a local declaration)'; return $r }
+            }
+        }
+        $pre  = @('REPORT zsynwrap.') + @($decls.ToArray()) + @('START-OF-SELECTION.')
+        $body = @()
+        if (($endIdx - 1) -ge $bodyStart) { $body = @($orig[$bodyStart..($endIdx - 1)]) }
+        $lines = @($pre) + @($body)
+        $synth = @{}; for ($k = 1; $k -le $pre.Count; $k++) { $synth[$k] = $true }
+        $map = @{}
+        for ($j = 0; $j -lt $body.Count; $j++) { $map[$pre.Count + $j + 1] = ($bodyStart + $j) + 1 }
+        $r.ok = $true; $r.lines = $lines; $r.map = $map; $r.synth = $synth
+        return $r
+    }
+    $r.ok = $true; $r.lines = $orig; $r.map = @{}; $r.synth = @{}; $r.reason = 'noop'
+    return $r
+}
+
+function Write-CncTsv([string] $reason) {
+    if ($OutTsv -ne '') {
+        try {
+            $header = "Code`tSeverity`tLocation`tDetail`tFixAdvice"
+            $row = "SYNTAX_COULD_NOT_CHECK`tINFO`t`t" + ($reason -replace "`t", ' ') + "`tCheck in-context (Ctrl+F2) after inactive insert"
+            [System.IO.File]::WriteAllText($OutTsv, ($header + "`r`n" + $row + "`r`n"), (New-Object System.Text.UTF8Encoding($false)))
+        } catch {}
+    }
+}
+
+if ($Wrap -and ($Subc -eq 'K' -or $Subc -eq 'F')) {
+    $wrapRes = Build-AbapWrap $srcLines $Subc
+    if (-not $wrapRes.ok) {
+        Write-CncTsv $wrapRes.reason
+        Write-Output ("STATUS: COULD_NOT_CHECK " + $wrapRes.reason + " -- check in-context after inactive insert"); exit 0
+    }
+    $srcLines         = @($wrapRes.lines)
+    $script:wrapMap   = $wrapRes.map
+    $script:wrapSynth = $wrapRes.synth
+    $script:wrapping  = $true
+    $Subc             = '1'          # the wrapped unit is a self-contained report
+    $ProgramName      = 'ZSYNWRAP'
+}
 
 . (Join-Path $scriptDir 'sap_rfc_lib.ps1')
 
@@ -283,6 +415,35 @@ try {
     if ($errs.Count -eq 0 -and $subrc -ne '' -and $subrc -ne '0') {
         $errs = @(@{ LINE = (Get-OutScalar 'O_ERROR_LINE'); COL = (Get-OutScalar 'O_ERROR_OFFSET');
                      MESSAGE = (Get-OutScalar 'O_ERROR_MESSAGE'); INCNAME = (Get-OutScalar 'O_ERROR_INCLUDE'); KIND = '' })
+    }
+
+    # --- wrap: translate wrapped-line findings back to original + degrade ----
+    # An ERROR on a synthesized scaffold line = we mis-modelled the signature;
+    # degrade the WHOLE result to COULD_NOT_CHECK (never mask it as a body error,
+    # never let the scaffold false-fail). Warnings on scaffold lines (e.g. an
+    # unused synthesized EXPORTING decl) are artifacts -> drop them silently.
+    if ($script:wrapping) {
+        $scaffoldBad = $false
+        $mErrs = @()
+        foreach ($e in $errs) {
+            $L = 0; [void][int]::TryParse([string]$e.LINE, [ref]$L)
+            if ($script:wrapSynth.ContainsKey($L)) { $scaffoldBad = $true; continue }
+            if ($script:wrapMap.ContainsKey($L))   { $e.LINE = [string]$script:wrapMap[$L] }
+            $mErrs += $e
+        }
+        $mWarns = @()
+        foreach ($w in $warns) {
+            $L = 0; [void][int]::TryParse([string]$w.LINE, [ref]$L)
+            if ($script:wrapSynth.ContainsKey($L)) { continue }
+            if ($script:wrapMap.ContainsKey($L))   { $w.LINE = [string]$script:wrapMap[$L] }
+            $mWarns += $w
+        }
+        if ($scaffoldBad) {
+            $reason = 'wrap scaffold did not compile (signature too complex to model)'
+            Write-CncTsv $reason
+            Write-Output ("STATUS: COULD_NOT_CHECK " + $reason + " -- check in-context after inactive insert"); exit 0
+        }
+        $errs = @($mErrs); $warns = @($mWarns)
     }
 
     # --- emit findings ------------------------------------------------------

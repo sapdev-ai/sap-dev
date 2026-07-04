@@ -49,12 +49,16 @@ preset `--gate` (= `syntax,fm`).
   the one Step 3 VBS + the Step 3.5–3.7 sidecars (they share `<file>.check.tsv`).
   The new `fm` and `syntax` dimensions run their own steps and write their own
   result files; **Step 4 reads all three** and presents them together.
-- **`syntax` applicability:** only self-contained programs (`REPORT`/`PROGRAM`)
-  compile standalone. For an **include**, a **function-module `FUNCTION…ENDFUNCTION`
-  fragment**, or a **class pool**, the `syntax` dimension reports
-  `SYNTAX_COULD_NOT_CHECK` (a fragment is syntax-checked *in-context* by the deploy
-  skill after an inactive insert — `/sap-se37`, `/sap-se24`), and every other
-  dimension still runs.
+- **`syntax` applicability:** self-contained `REPORT`/`PROGRAM` sources compile
+  standalone (`-Subc 1`). A **function-module `FUNCTION…ENDFUNCTION` fragment** or a
+  **class / interface pool** is not standalone-compilable, so the dimension runs the
+  engine's **`-Wrap` mode** (Strategy A, proven live S4D 2026-07-04): the fragment is
+  re-presented as a self-contained program so its **body** is syntax-checked
+  **pre-insert** with zero writes to SAP, and findings are line-mapped back to the
+  original file. A signature too complex to model — or a bare **include** with no
+  compilation unit — degrades to `SYNTAX_COULD_NOT_CHECK` (never a false-fail),
+  deferring to the deploy skill's authoritative in-context Ctrl+F2 after an inactive
+  insert (`/sap-se37`, `/sap-se24`). Every other dimension still runs.
 - Any live dimension that cannot reach SAP reports `COULD_NOT_CHECK` (honest
   tri-state — never rendered as a pass).
 
@@ -186,7 +190,7 @@ Exit code `0` = OK (no row written). Exit code `2` = UNKNOWN_TYPE / RULES_NOT_FO
 | `<SKILL_DIR>/references/sap_check_fm.vbs` | *(helper, skill-local)* | Step 3.8 (`fm` dimension) — `CALL FUNCTION` signature checker, absorbed from the former sap-check-fm. Delegates RFC to the two lookup helpers below. |
 | `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_rfc_lookup_fm.ps1` | *(helper)* | Step 3.8 — FM signature fetch (`RPY_FUNCTIONMODULE_READ_NEW`, per-system disk cache). |
 | `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_rfc_lookup_ddic.ps1` | *(helper)* | Step 3 + 3.8 — DDIC type resolution (`DDIF_FIELDINFO_GET` / `DDIF_DTEL_GET`). |
-| `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_rfc_syntax_check.ps1` | *(helper)* | Step 3.9 (`syntax` dimension) — headless `EDITOR_SYNTAX_CHECK` via the dev-init wrapper `Z_GENERIC_RFC_WRAPPER_TBL`. Programs (`SUBC=1`) only; fragments/pools report COULD_NOT_CHECK. |
+| `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_rfc_syntax_check.ps1` | *(helper)* | Step 3.9 (`syntax` dimension) — headless `EDITOR_SYNTAX_CHECK` via the dev-init wrapper `Z_GENERIC_RFC_WRAPPER_TBL`. Programs (`-Subc 1`) check directly; FM (`-Subc F -Wrap`) and class/interface (`-Subc K -Wrap`) fragments get a pre-insert **body** check (Strategy A) with findings line-mapped to the original file; signatures too complex to model degrade to COULD_NOT_CHECK. |
 | `sap-dev-core/shared/rules/abap_code_quality_rules.md` | *(rule)* | **Mandatory** ABAP code-quality rules. The VBS engine emits the offline-checkable rules in two phases. **Phase 5f** (per-line): `LITERAL_MESSAGE` + `MESSAGE_NUM_UNDECLARED` (§20), `TEXT_NNN_ASSIGN` + `TEXT_SYMBOL_UNDECLARED` (§21), `CLASS_DEF_AFTER_EVENT` (§10), `LOOP_WHERE_EXIT` (§19), `SPLIT_INTO_NUMERIC` (§25), `SELECT_STAR` (§12), `LINE_TOO_LONG`/`LINE_HARD_LIMIT`, plus `SQL_STRICT_COMMA` (§9). **Phase 5g** (scope-tracked): `MESSAGE_E_IN_METHOD` (§11), `SELECT_IN_LOOP` + `FOR_ALL_ENTRIES_NO_GUARD` (§12), `METHOD_TOO_LONG` (§18). These mirror the CI gate `scripts/lint-abap-contract.mjs` (same contract, two engines). The remaining heuristic rules — `MISSING_AT_HOST_VAR`/`STRING_CONCAT_SQL` (§13), `MISSING_AUTHZ_CHECK` (§14) — carry a higher false-positive risk and are reviewed by the orchestrator against this rule file rather than emitted by the engine. |
 | `sap-dev-core/shared/templates/customer_brief.md` | *(config)* | Project Profile — used to set the quality bar (e.g. method length limit, modern-ABAP required, ATC priority gating) |
 
@@ -549,23 +553,34 @@ the Step 4 table.
 headless equivalent of Ctrl+F2 — it catches real ABAP syntax errors (undeclared
 fields, missing periods, typos) that the offline dimensions cannot.
 
-**Applicability gate.** Inspect the source's first non-comment statement:
-- `REPORT` / `PROGRAM` → self-contained → run with `-Subc 1`.
-- Anything else (include / `FUNCTION…ENDFUNCTION` fragment / `CLASS` pool) → do
-  **not** run; append one `SYNTAX_COULD_NOT_CHECK` INFO row to the report noting
-  the source is a fragment/pool checked in-context by the deploy skill
-  (`/sap-se37`, `/sap-se24`) after an inactive insert. Continue.
+**Applicability gate + mode.** Inspect the source's first non-comment statement and
+pick the engine mode:
+- `REPORT` / `PROGRAM` → self-contained → `-Subc 1` (no `-Wrap`).
+- `FUNCTION` … `ENDFUNCTION` fragment → `-Subc F -Wrap` — best-effort pre-insert
+  **body** check; the engine wraps it as a self-contained program and line-maps
+  findings back to the original file.
+- `CLASS` / `INTERFACE` pool → `-Subc K -Wrap`.
+- A bare **include** with no determinable compilation unit → do **not** run; append
+  one `SYNTAX_COULD_NOT_CHECK` INFO row (checked in-context by the deploy skill) and
+  continue.
 
-Run the shared engine (32-bit PS; writes `<abap-file>.syntax.tsv`):
+Run the shared engine (32-bit PS; writes `<abap-file>.syntax.tsv`). Set `-Subc` per
+the gate and add `-Wrap` for the `F`/`K` cases:
 
 ```bash
-C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_rfc_syntax_check.ps1" -SourceFile "THE_ABAP_FILE" -ProgramName "THE_PROGRAM_NAME" -Subc "1" -OutTsv "THE_ABAP_FILE.syntax.tsv"
+# REPORT/PROGRAM: -Subc 1  (omit -Wrap)  |  FM: -Subc F -Wrap  |  class/interface: -Subc K -Wrap
+C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_rfc_syntax_check.ps1" -SourceFile "THE_ABAP_FILE" -ProgramName "THE_PROGRAM_NAME" -Subc "<1|F|K>" -Wrap -OutTsv "THE_ABAP_FILE.syntax.tsv"
 ```
 
 Parse the `STATUS:` line:
 - `STATUS: CLEAN` → no syntax findings.
 - `STATUS: FINDINGS errors=<e> warnings=<w>` → each `SYNTAX: ERROR/WARN LINE=.. COL=.. MSG=..`
-  is a finding (`SYNTAX_ERROR` = ERROR, `SYNTAX_WARNING` = WARNING).
+  is a finding (`SYNTAX_ERROR` = ERROR, `SYNTAX_WARNING` = WARNING). Under `-Wrap` the
+  `LINE=` values are already mapped to the **original** file — pass them straight to the fix loop.
+- `STATUS: COULD_NOT_CHECK <reason>` → the fragment's signature was too complex to model
+  faithfully (e.g. a generic/untyped param, or a type the wrap scaffold couldn't compile).
+  Append one `SYNTAX_COULD_NOT_CHECK` INFO row with the reason and continue — the deploy
+  skill's in-context Ctrl+F2 after an inactive insert is the authoritative check, not a fail.
 - `STATUS: RFC_ERROR …` / wrapper not found → append one `SYNTAX_COULD_NOT_CHECK`
   WARNING row (RFC off or wrapper not deployed via `/sap-dev-init`) and continue.
 
@@ -634,7 +649,7 @@ The `.check.tsv` file has a header section (STATUS, ABAP_FILE, NAMING_RULES, TIM
 | `TYPE_MATCH` / `TYPE_COMPATIBLE` / `TYPE_WARNING` / `TYPE_INCOMPATIBLE` / `TYPE_UNKNOWN` | INFO / WARNING / ERROR | (Step 3.8 `fm`) Passed-variable type vs FM parameter type (exact / compatible / risky / incompatible / unresolved). |
 | `FM_NOT_FOUND` | ERROR | (Step 3.8 `fm`) The called FM does not exist / RFC read failed. |
 | `SYNTAX_ERROR` / `SYNTAX_WARNING` | ERROR / WARNING | (Step 3.9 `syntax`, in `.syntax.tsv`) A compiler syntax error / warning at `line:col` from `EDITOR_SYNTAX_CHECK`. |
-| `SYNTAX_COULD_NOT_CHECK` | INFO | (Step 3.9) Source is a fragment/pool (include / FM / class) — syntax-checked in-context by the deploy skill after an inactive insert, not standalone here. |
+| `SYNTAX_COULD_NOT_CHECK` | INFO | (Step 3.9) The `syntax` dimension could not produce a reliable verdict — a bare include (no compilation unit), or an FM/class fragment whose signature the `-Wrap` scaffold could not model (generic/untyped param, or a type that would not compile). Deferred to the deploy skill's in-context Ctrl+F2 after an inactive insert — **not** a pass, **not** a fail. |
 | `FM_COULD_NOT_CHECK` / `SYNTAX_COULD_NOT_CHECK` (RFC-off) | WARNING | (Step 3.8 / 3.9) The `fm` / `syntax` dimension could not reach SAP (RFC off, or the dev-init wrapper is absent). Honest COULD_NOT_CHECK — not a pass. |
 
 ### Detail — show all WARNING and ERROR findings:

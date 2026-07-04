@@ -38,12 +38,16 @@ using SAP GUI Scripting. The skill checks if the function module
 exists, then creates or updates it.
 
 > **Pre-deploy quality (recommended).** An FM's `FUNCTION…ENDFUNCTION` source is a
-> *fragment* — it only compiles inside its function group, so a standalone headless
-> syntax check is not possible. Run `/sap-check-abap <file>` first for the offline +
-> `fm` dimensions (naming, types, SQL, CALL FUNCTION signatures); its `syntax`
-> dimension reports `SYNTAX_COULD_NOT_CHECK` for the fragment. The **compiler syntax
+> *fragment* — it only fully compiles inside its function group. Run
+> `/sap-check-abap <file>` first for the offline + `fm` dimensions (naming, types,
+> SQL, CALL FUNCTION signatures); its `syntax` dimension now also gives a
+> **best-effort pre-insert body check** (Strategy A `-Wrap`: the fragment is wrapped
+> as a self-contained program so undeclared-field / typo errors are caught before
+> any GUI upload, findings line-mapped to the original file), degrading to
+> `SYNTAX_COULD_NOT_CHECK` only when the signature is too complex to model. That
+> pre-check does **not** replace the authoritative gate: the full **compiler syntax
 > check happens in-context** here, via the Ctrl+F2 that runs after the FM is saved
-> inactive into its function group (below) — that is the FM's syntax gate.
+> inactive into its function group (below).
 
 Task: $ARGUMENTS
 

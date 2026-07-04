@@ -38,12 +38,16 @@ using SAP GUI Scripting. The skill checks if the class
 exists, then creates or updates it.
 
 > **Pre-deploy quality (recommended).** A global class is a *class pool* — a raw
-> `CLASS…ENDCLASS` source does not compile standalone (it needs the generated pool
-> framework), so a headless standalone syntax check is not possible. Run
-> `/sap-check-abap <file>` first for the offline + `fm` dimensions; its `syntax`
-> dimension reports `SYNTAX_COULD_NOT_CHECK` for the class pool. The **compiler
-> syntax check happens in-context** here, via the Ctrl+F2 that runs after the class
-> source is uploaded and saved (below) — that is the class's syntax gate.
+> `CLASS…ENDCLASS` source does not fully compile standalone (it needs the generated
+> pool framework). Run `/sap-check-abap <file>` first for the offline + `fm`
+> dimensions; its `syntax` dimension now also gives a **best-effort pre-insert body
+> check** (Strategy A `-Wrap`: the class is checked as a local class in a dummy
+> program so method-body errors — undeclared fields, typos — are caught before any
+> GUI upload, findings line-mapped to the original file), degrading to
+> `SYNTAX_COULD_NOT_CHECK` only when it can't be modelled. That pre-check does **not**
+> replace the authoritative gate: the full **compiler syntax check happens
+> in-context** here, via the Ctrl+F2 that runs after the class source is uploaded
+> and saved (below).
 
 Task: $ARGUMENTS
 

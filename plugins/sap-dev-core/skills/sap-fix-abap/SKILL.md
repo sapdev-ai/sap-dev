@@ -340,18 +340,25 @@ Run when `<abap-file>.syntax.tsv` has `SYNTAX_ERROR` rows (or on `--syntax-loop`
 This is the **bounded AI-assisted** close of the check→fix→re-check loop — real
 syntax errors need judgement, so there is **no blind auto-fix**.
 
-Loop (default **max 4** iterations):
+Loop (default **max 4** iterations). **Match the engine mode to the source kind** —
+exactly as sap-check-abap Step 3.9: `REPORT`/`PROGRAM` → `-Subc 1` (no `-Wrap`); an
+`FUNCTION…ENDFUNCTION` fragment → `-Subc F -Wrap`; a `CLASS`/`INTERFACE` pool →
+`-Subc K -Wrap`. Under `-Wrap` the engine's `LINE=` values are already the **original**
+file's line numbers, so the Edits in step 1 land on the right lines.
+
 1. For each `SYNTAX_ERROR LINE=<n> COL=<c> MSG=<text>`, read the source around
    line `n` and apply a targeted Edit that addresses that specific compiler
    message (undeclared field → declare or correct the name; missing period → add
    it; etc.). Use judgement; do not rewrite unrelated code.
-2. Re-run the engine on the edited file:
+2. Re-run the engine on the edited file — **same `-Subc`/`-Wrap` as the check**:
    ```bash
-   C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_rfc_syntax_check.ps1" -SourceFile "THE_ABAP_FILE" -ProgramName "THE_PROGRAM_NAME" -Subc "1" -OutTsv "THE_ABAP_FILE.syntax.tsv"
+   # REPORT/PROGRAM: -Subc 1 (omit -Wrap) | FM: -Subc F -Wrap | class/interface: -Subc K -Wrap
+   C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_rfc_syntax_check.ps1" -SourceFile "THE_ABAP_FILE" -ProgramName "THE_PROGRAM_NAME" -Subc "<1|F|K>" -Wrap -OutTsv "THE_ABAP_FILE.syntax.tsv"
    ```
-3. **Stop** on `STATUS: CLEAN`, on **no progress** (the same finding set two rounds
-   running), or at the iteration cap. Report the final state; if errors remain,
-   list them for the user rather than guessing further.
+3. **Stop** on `STATUS: CLEAN`, on `STATUS: COULD_NOT_CHECK` (a fragment whose signature
+   the wrap cannot model — defer to the deploy skill's in-context Ctrl+F2, do not guess),
+   on **no progress** (the same finding set two rounds running), or at the iteration cap.
+   Report the final state; if errors remain, list them for the user rather than guessing further.
 
 The backup from Step 5 covers the source; every edit is local to the `.abap` file —
 nothing is written to SAP.
