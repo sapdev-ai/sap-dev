@@ -989,11 +989,11 @@ ENDFUNCTION.
    absent), emit `ZCX_<PROJ>_ERROR.abap` boilerplate alongside the program
    so deploy can pick it up.
 6. Offer next steps:
-   - "Validate CALL FUNCTION signatures: `/sap-check-fm <file>` (catches
-     type-incompatible actual parameters BEFORE deploy; mandatory when
-     the generated source contains any `CALL FUNCTION 'GUI_UPLOAD'`,
-     `'GUI_DOWNLOAD'`, BAPI calls, or any FM with a `STRING` parameter)."
-   - "Validate code quality: `/sap-check-abap <file>`"
+   - "Validate code quality (all dimensions — naming, types, SQL, CALL FUNCTION
+     signatures, and compiler syntax): `/sap-check-abap <file>`. The `fm` dimension
+     catches type-incompatible actual parameters BEFORE deploy — important when the
+     generated source contains any `CALL FUNCTION 'GUI_UPLOAD'`, `'GUI_DOWNLOAD'`,
+     BAPI calls, or any FM with a `STRING` parameter."
    - "Deploy DDIC + ABAP: `/sap-se11`, then `/sap-se38 <program-name> <file>`"
    - "Run ABAP Unit tests after deploy: `/sap-se38 <program-name>` then SE80 → Test"
    - "Hand `<NAME>.deps.txt` to basis team for TR scope + auth design."

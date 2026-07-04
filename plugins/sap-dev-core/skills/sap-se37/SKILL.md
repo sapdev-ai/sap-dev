@@ -37,6 +37,14 @@ You deploy ABAP function module source code to a live SAP system via SE37
 using SAP GUI Scripting. The skill checks if the function module
 exists, then creates or updates it.
 
+> **Pre-deploy quality (recommended).** An FM's `FUNCTION…ENDFUNCTION` source is a
+> *fragment* — it only compiles inside its function group, so a standalone headless
+> syntax check is not possible. Run `/sap-check-abap <file>` first for the offline +
+> `fm` dimensions (naming, types, SQL, CALL FUNCTION signatures); its `syntax`
+> dimension reports `SYNTAX_COULD_NOT_CHECK` for the fragment. The **compiler syntax
+> check happens in-context** here, via the Ctrl+F2 that runs after the FM is saved
+> inactive into its function group (below) — that is the FM's syntax gate.
+
 Task: $ARGUMENTS
 
 ## Shared Resources
@@ -46,7 +54,7 @@ Task: $ARGUMENTS
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/skill_operating_rules.md` | Mandatory operating rules |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/tr_resolution.md` | TR resolution flow — this skill delegates to `/sap-transport-request` (Step 1b) |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/language_independence_rules.md` | GUI-scripting language independence — identify by component ID + DDIC field name, status-bar checks via `MessageType` codes (S/W/E/I/A), VKey instead of menu-text, no branching on `.Text`/`.Tooltip`/window titles |
-| `<SAP_DEV_CORE_SHARED_DIR>/rules/abap_code_quality_rules.md` | ABAP code-quality rules — deployed FM source must follow modern syntax, OOP scaffolds, no literal MESSAGE strings, perf-band-appropriate SQL. Run `/sap-check-abap` and `/sap-check-fm` before deploy when the source isn't generator-emitted. |
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/abap_code_quality_rules.md` | ABAP code-quality rules — deployed FM source must follow modern syntax, OOP scaffolds, no literal MESSAGE strings, perf-band-appropriate SQL. Run `/sap-check-abap` (its `fm` dimension covers CALL FUNCTION signatures) before deploy when the source isn't generator-emitted. |
 | `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_error_hints.ps1` | frequently_errors recorder. The Final step feeds deploy syntax/activation errors (`-Action record -Source SE37 -RawOutputFile ...`) so FM/METHOD-related failures are captured to the team store. Best-effort; never changes the verdict. |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/sap_gui_security_handling.md` | SAP GUI Security dialog handling — the check-and-fix **FM source download** (Step A) is SAP-GUI-side file IO, so it can raise the modal "SAP GUI Security" dialog (which suspends the Scripting API and hangs cscript); pre-check + OS-level watcher wrap that download. (The source **upload** pastes via the Windows clipboard + SendKeys — SAP GUI reads no file — so it does NOT trip the dialog; it uses the OS-level foreground guard instead.) |
 | `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_gui_security_precheck.ps1` | Read-only allow-list pre-check (`saprules.xml`) — `ALLOWED` (exit 0) / `NOT_COVERED` (exit 1). Used by Step A before the source download. |
@@ -1184,7 +1192,7 @@ After success, proceed to Step 7 (cleanup). Skip Step 6.
 - **Invalidate the FM signature cache for this FM** (applies to create/update
   success here AND to a Step 5f delete success). The Z*/Y* cache TTL is 1 day
   (`fm_cache_ttl_z_days`), so without this a same-day `/sap-gen-abap` /
-  `/sap-check-fm` run silently generates against the PRE-deploy interface —
+  `/sap-check-abap` (`fm` dimension) run silently uses the PRE-deploy interface —
   e.g. a freshly added EXPORTING parameter never gets populated. Deleting
   across all system partitions is deliberate (over-invalidation costs one
   re-fetch). `{fm_cache_dir}` resolves via `Get-SapSettingValue 'fm_cache_dir'`

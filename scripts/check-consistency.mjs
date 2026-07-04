@@ -913,6 +913,7 @@ const SHARED_PLACEMENT_ALLOWLIST = new Map([
   ['sap_run_with_lock.ps1',             'machine-global paste mutex, foreground-guard sibling, designed for any future paste-based skill (clause 2)'],
   ['sap_se37_post_activate_verify.ps1', 'post-activate verify family is one maintained safety contract; the se11 member is multi-consumer via gui-skill-scaffold (clause 2)'],
   ['sap_se38_post_activate_verify.ps1', 'post-activate verify family is one maintained safety contract (clause 2)'],
+  ['sap_rfc_syntax_check.ps1',          'shared headless-syntax-check engine (EDITOR_SYNTAX_CHECK via wrapper) consumed by the se38 deploy gate now; se37/se24 gates + the merged sap-check-abap syntax dimension land next (clause 1 multi-consumer / clause 2 platform primitive)'],
 ]);
 const sharedPlacementWarnings = [];
 {

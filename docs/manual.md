@@ -82,7 +82,7 @@ The "happy path" for a new custom report or interface looks like this:
    │  /sap-docs-extract → (/sap-docs-convert) → /sap-docs-check-ddic    │
    │                    → /sap-docs-check-process → /sap-gen-abap        │
    │                    → /sap-check-abap (+/sap-fix-abap)               │
-   │                    → /sap-check-fm   (+/sap-fix-fm)                 │
+   │        (check-abap covers naming·types·SQL·fm·syntax dimensions)    │
    └───────────────────────────────────────────────────────────────────┘
                                             │   Z<PROG>.abap (+ sibling files)
                                             ▼
@@ -442,9 +442,7 @@ and hand-edit at any stage.
  /sap-docs-check-ddic     # recommended: validate domains/data elements/tables
  /sap-docs-check-process  # recommended: validate the process logic
  /sap-gen-abap            # REQUIRED: generate Z<PROG>.abap (+ sibling files)
- /sap-check-fm            # recommended: validate CALL FUNCTION calls vs live FMs
- /sap-fix-fm              # if check-fm found issues
- /sap-check-abap          # recommended: naming / types / SQL / contracts / coverage
+ /sap-check-abap          # recommended: naming / types / SQL / contracts / coverage / CALL FUNCTION / syntax
  /sap-fix-abap            # if check-abap found auto-fixable issues
 ```
 
@@ -529,34 +527,37 @@ The generator already enforces the rules that usually cause ATC findings — no
 fields carry their reference field, FM call parameters match live signatures, and so
 on — so the code is *born close to clean*.
 
-### 6.5 Validate the generated code — `/sap-check-fm`, `/sap-check-abap`
+### 6.5 Validate the generated code — `/sap-check-abap`
 
 ```text
-/sap-check-fm   <work-folder>\Z<PROGRAM_ID>.abap     # validates CALL FUNCTION calls
-/sap-check-abap <work-folder>\Z<PROGRAM_ID>.abap     # naming / types / SQL / contracts
+/sap-check-abap <work-folder>\Z<PROGRAM_ID>.abap     # all dimensions (see below)
 ```
 
-- **check-fm** validates every `CALL FUNCTION` against the **real** FM signature over
+One skill, several **dimensions** (the former `/sap-check-fm` is now the `fm`
+dimension; a new `syntax` dimension was added):
+- **naming / type / sql / unused / contract / spec / conv** — variable naming
+  (against your rules), data types, SQL field names, unused variables, the
+  generation contracts (line length, `SELECT *`, message routing, text symbols),
+  and **spec coverage**. Offline by default; add a connection for live type/SQL validation.
+- **fm** — validates every `CALL FUNCTION` against the **real** FM signature over
   RFC (parameter names, sections, mandatory flags, type compatibility, structure
-  fields). This is what catches a hallucinated parameter before it ever hits SE37.
-- **check-abap** validates variable naming (against your rules), data types, unused
-  variables, SQL field names, the generation contracts (line length, `SELECT *`,
-  message routing, text symbols), and **spec coverage** (did the code cover every
-  dependency / message / text element / selection field in the spec). Offline by
-  default; add a connection for live type/SQL validation.
+  fields). Catches a hallucinated parameter before it ever hits SE37.
+- **syntax** — a headless compiler-level check (`EDITOR_SYNTAX_CHECK` over RFC) that
+  catches real syntax errors offline, before any GUI upload. Runs for self-contained
+  programs; for an include / FM fragment / class pool it reports `SYNTAX_COULD_NOT_CHECK`
+  (those are syntax-checked in-context by the deploy skill's Ctrl+F2).
 
-If either finds something auto-fixable, run its fixer (a timestamped `.bak` is written
+If it finds something auto-fixable, run the fixer (a timestamped `.bak` is written
 first):
 
 ```text
-/sap-fix-fm   <work-folder>\Z<PROGRAM_ID>.abap
 /sap-fix-abap <work-folder>\Z<PROGRAM_ID>.abap
 ```
 
-`fix-abap` renames naming-violations and comments out unused variables; `fix-fm`
-renames unknown parameters, inserts missing mandatory ones, and moves parameters to
-the right section. Anything not safely auto-fixable (e.g. a `TYPE_NOT_FOUND`) is
-flagged for you to handle. Re-run the checker until it's clean.
+`fix-abap` renames naming-violations, comments out unused variables, applies
+syntax-safe rewrites, fixes `CALL FUNCTION` parameters (the former `fix-fm`, now folded
+in), and drives a bounded AI syntax-fix loop. Anything not safely auto-fixable (e.g. a
+`TYPE_NOT_FOUND`) is flagged for you to handle. Re-run the checker until it's clean.
 
 Each checker writes a tab-delimited result file next to the source
 (`Z<PROGRAM_ID>.check.tsv` for check-abap) — one row per finding with a **Code**,
@@ -788,7 +789,6 @@ a file of materials and creates them. Your brief sets sub-prefix `ZHK`, package
 /sap-docs-check-ddic    C:\sapdev\source_code\work\MaterialUpload_20260626\
 /sap-docs-check-process C:\sapdev\source_code\work\MaterialUpload_20260626\
 /sap-gen-abap C:\sapdev\source_code\work\MaterialUpload_20260626\MaterialUpload_process.txt
-/sap-check-fm   C:\sapdev\source_code\work\MaterialUpload_20260626\ZHKMM001R01.abap
 /sap-check-abap C:\sapdev\source_code\work\MaterialUpload_20260626\ZHKMM001R01.abap
 #   → if findings: /sap-fix-abap … then re-check until clean
 
@@ -840,7 +840,7 @@ The agent then runs, on its own:
 2. **Build** — `/sap-docs-extract` → `/sap-docs-check-process` + `/sap-docs-check-ddic`
    → deploys the spec's DDIC objects (`/sap-se11`) and message class (`/sap-se91`)
    → `/sap-transport-request` → `/sap-gen-abap` → `/sap-check-abap`
-   (+ `/sap-fix-abap`, up to 3 rounds; `/sap-check-fm` likewise).
+   (all dimensions, + `/sap-fix-abap`, up to 3 rounds).
 3. **Asks you** before the first write to SAP:
    > "Generated `ZHKMM001R01.abap` (320 lines). Tests: `ZHKMM001R01_TEST.abap`
    > (4 methods). Quality checks pass. Plan: deploy to package `ZHKA011` under TR
@@ -1054,8 +1054,7 @@ p50/p95 duration, top error classes).
 | `sap-docs-convert` | Apply customer normalisation rules |
 | `sap-docs-check-ddic` / `sap-docs-check-process` | Validate DDIC / process logic |
 | `sap-gen-abap` | Generate ABAP (report / dialog / FM) |
-| `sap-check-abap` / `sap-fix-abap` | Validate / auto-fix ABAP quality |
-| `sap-check-fm` / `sap-fix-fm` | Validate / auto-fix CALL FUNCTION calls |
+| `sap-check-abap` / `sap-fix-abap` | Validate / auto-fix ABAP quality — naming, types, SQL, CALL FUNCTION signatures, compiler syntax |
 
 ### sap-migrate (S/4HANA custom-code migration)
 

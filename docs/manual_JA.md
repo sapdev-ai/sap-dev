@@ -83,7 +83,7 @@
    │  /sap-docs-extract → (/sap-docs-convert) → /sap-docs-check-ddic    │
    │                    → /sap-docs-check-process → /sap-gen-abap        │
    │                    → /sap-check-abap (+/sap-fix-abap)               │
-   │                    → /sap-check-fm   (+/sap-fix-fm)                 │
+   │        (check-abap covers naming·types·SQL·fm·syntax dimensions)    │
    └───────────────────────────────────────────────────────────────────┘
                                             │   Z<PROG>.abap (+ sibling files)
                                             ▼
@@ -446,9 +446,7 @@ Brief は `/sap-docs-extract`、`/sap-gen-abap`（必須コンテキスト）、
  /sap-docs-check-ddic     # recommended: validate domains/data elements/tables
  /sap-docs-check-process  # recommended: validate the process logic
  /sap-gen-abap            # REQUIRED: generate Z<PROG>.abap (+ sibling files)
- /sap-check-fm            # recommended: validate CALL FUNCTION calls vs live FMs
- /sap-fix-fm              # if check-fm found issues
- /sap-check-abap          # recommended: naming / types / SQL / contracts / coverage
+ /sap-check-abap          # recommended: naming / types / SQL / contracts / coverage / CALL FUNCTION / syntax
  /sap-fix-abap            # if check-abap found auto-fixable issues
 ```
 
@@ -532,34 +530,37 @@ AUTHORITY-CHECK の配置、メッセージクラス、コメント言語。
 フィールドを伴う、FM 呼び出しパラメーターは実シグネチャと一致する、など — そのためコードは
 *最初からクリーンに近い* 状態で生まれます。
 
-### 6.5 生成されたコードを検証する — `/sap-check-fm`、`/sap-check-abap`
+### 6.5 生成されたコードを検証する — `/sap-check-abap`
 
 ```text
-/sap-check-fm   <work-folder>\Z<PROGRAM_ID>.abap     # validates CALL FUNCTION calls
-/sap-check-abap <work-folder>\Z<PROGRAM_ID>.abap     # naming / types / SQL / contracts
+/sap-check-abap <work-folder>\Z<PROGRAM_ID>.abap     # all dimensions (see below)
 ```
 
-- **check-fm** はすべての `CALL FUNCTION` を RFC 経由で **実際の** FM シグネチャに対して
-  検証します（パラメーター名、セクション、必須フラグ、型の互換性、構造フィールド）。
-  これが、幻覚で生成されたパラメーターを SE37 に到達する前に捕捉するものです。
-- **check-abap** は変数命名（あなたのルールに対して）、データ型、未使用変数、SQL フィールド名、
-  生成コントラクト（行長、`SELECT *`、メッセージルーティング、テキストシンボル）、そして
-  **仕様カバレッジ**（コードが仕様内のすべての依存関係/メッセージ/テキストエレメント/選択
-  フィールドをカバーしたか）を検証します。デフォルトはオフライン。接続を追加すると、
-  ライブの型/SQL 検証が可能です。
+1 つのスキルに複数の **ディメンション** があります（旧 `/sap-check-fm` は `fm`
+ディメンションになり、新たに `syntax` ディメンションが追加されました）:
+- **naming / type / sql / unused / contract / spec / conv** — 変数命名（あなたのルールに対して）、
+  データ型、SQL フィールド名、未使用変数、生成コントラクト（行長、`SELECT *`、メッセージ
+  ルーティング、テキストシンボル）、そして**仕様カバレッジ**。デフォルトはオフライン。
+  接続を追加するとライブの型/SQL 検証が可能です。
+- **fm** — すべての `CALL FUNCTION` を RFC 経由で **実際の** FM シグネチャに対して検証します
+  （パラメーター名、セクション、必須フラグ、型の互換性、構造フィールド）。幻覚パラメーターを
+  SE37 到達前に捕捉します。
+- **syntax** — ヘッドレスのコンパイラーレベル構文チェック（RFC 経由の `EDITOR_SYNTAX_CHECK`）。
+  GUI アップロード前にオフラインで実構文エラーを捕捉します。自己完結プログラムで実行され、
+  インクルード / FM フラグメント / クラスプールでは `SYNTAX_COULD_NOT_CHECK` を報告します
+  （それらはデプロイスキルの Ctrl+F2 でインコンテキスト検証されます）。
 
-いずれかが自動修正可能なものを見つけた場合、その修正ツールを実行します（最初に
-タイムスタンプ付きの `.bak` が書き込まれます）:
+自動修正可能なものが見つかった場合は修正ツールを実行します（最初にタイムスタンプ付きの
+`.bak` が書き込まれます）:
 
 ```text
-/sap-fix-fm   <work-folder>\Z<PROGRAM_ID>.abap
 /sap-fix-abap <work-folder>\Z<PROGRAM_ID>.abap
 ```
 
-`fix-abap` は命名違反をリネームし、未使用変数をコメントアウトします。`fix-fm` は不明な
-パラメーターをリネームし、欠けている必須のものを挿入し、パラメーターを正しいセクションに
-移動します。安全に自動修正できないもの（例: `TYPE_NOT_FOUND`）は、あなたが対処するよう
-フラグ付けされます。チェッカーがクリーンになるまで再実行してください。
+`fix-abap` は命名違反のリネーム、未使用変数のコメントアウト、構文安全な書き換え、
+`CALL FUNCTION` パラメーター修正（旧 `fix-fm`、統合済み）、および有界の AI 構文修正ループを
+行います。安全に自動修正できないもの（例: `TYPE_NOT_FOUND`）はフラグ付けされます。
+チェッカーがクリーンになるまで再実行してください。
 
 各チェッカーはソースの隣にタブ区切りの結果ファイルを書き出します（check-abap の場合は
 `Z<PROGRAM_ID>.check.tsv`） — 指摘ごとに 1 行で、Excel で開ける **Code**、**Severity**、
@@ -790,7 +791,6 @@ READINESS: tr=DEVK900123 verdict=GO_WITH_WARNINGS block=0 warn=2 info=1 objects=
 /sap-docs-check-ddic    C:\sapdev\source_code\work\MaterialUpload_20260626\
 /sap-docs-check-process C:\sapdev\source_code\work\MaterialUpload_20260626\
 /sap-gen-abap C:\sapdev\source_code\work\MaterialUpload_20260626\MaterialUpload_process.txt
-/sap-check-fm   C:\sapdev\source_code\work\MaterialUpload_20260626\ZHKMM001R01.abap
 /sap-check-abap C:\sapdev\source_code\work\MaterialUpload_20260626\ZHKMM001R01.abap
 #   → if findings: /sap-fix-abap … then re-check until clean
 
@@ -844,7 +844,7 @@ Customer Brief を読み、そこから `MODE_*` フラグを設定し、`/sap-*
 2. **ビルド** — `/sap-docs-extract` → `/sap-docs-check-process` + `/sap-docs-check-ddic`
    → 仕様の DDIC オブジェクト（`/sap-se11`）とメッセージクラス（`/sap-se91`）をデプロイ
    → `/sap-transport-request` → `/sap-gen-abap` → `/sap-check-abap`
-   （+ `/sap-fix-abap`、最大 3 ラウンド。`/sap-check-fm` も同様）。
+   （全ディメンション、+ `/sap-fix-abap`、最大 3 ラウンド）。
 3. SAP への最初の書き込みの前に **あなたに尋ねます**:
    > 「`ZHKMM001R01.abap`（320 行）を生成しました。テスト: `ZHKMM001R01_TEST.abap`
    > （4 メソッド）。品質チェックは合格。プラン: TR `DEVK900123` のもとでパッケージ
@@ -1062,8 +1062,7 @@ p50/p95 の所要時間、上位エラークラス）。
 | `sap-docs-convert` | 顧客正規化ルールを適用 |
 | `sap-docs-check-ddic` / `sap-docs-check-process` | DDIC / 処理ロジックを検証 |
 | `sap-gen-abap` | ABAP を生成（レポート / ダイアログ / FM） |
-| `sap-check-abap` / `sap-fix-abap` | ABAP 品質を検証 / 自動修正 |
-| `sap-check-fm` / `sap-fix-fm` | CALL FUNCTION 呼び出しを検証 / 自動修正 |
+| `sap-check-abap` / `sap-fix-abap` | ABAP 品質を検証 / 自動修正 — 命名・型・SQL・CALL FUNCTION シグネチャ・コンパイラー構文 |
 
 ### sap-migrate（S/4HANA カスタムコード移行）
 

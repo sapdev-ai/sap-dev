@@ -517,8 +517,9 @@ CLASS_DEF_AFTER_EVENT), never the Manual-classified codes. Manual findings
 that survive the loop go on the numbered STOP list. The operator's decision
 point remains Step 2g (pre-deploy confirmation).
 
-If FM signatures matter, `/sap-check-fm` runs in parallel — chain it the
-same way against `<Z<PROGRAM_ID>.abap>` and feed errors to `/sap-fix-fm`.
+If FM signatures matter, the `fm` dimension of `/sap-check-abap` covers it
+(`/sap-check-abap <Z<PROGRAM_ID>.abap> --dimensions fm`) — chain it the same
+way and feed errors to `/sap-fix-abap` (which absorbed the former sap-fix-fm).
 
 ### 2g. Confirm before deploying
 
@@ -727,8 +728,7 @@ Read the .abap file. Detect:
 For each FM / class / table the source references:
 
 ```
-/sap-check-abap <file>             # naming + technical check
-/sap-check-fm <file>               # FM signature check (if FMs referenced)
+/sap-check-abap <file>             # all dimensions: naming + technical + fm + syntax
 ```
 
 If anything is missing or the source is malformed, STOP. Tell the user
@@ -802,7 +802,7 @@ These are the only error-handling rules. Apply them deterministically;
 do not improvise.
 
 1. **Bounded retry on auto-fix loops.** `/sap-check-abap` → `/sap-fix-abap`
-   and `/sap-check-fm` → `/sap-fix-fm` may iterate up to **3 times each**
+   (all dimensions, including `fm` and `syntax`) may iterate up to **3 times**
    before stopping. After 3, surface to the user.
 2. **Recoverable errors → retry once.**
    - Skill returns `EXISTED` (object already there) → continue, don't
@@ -874,10 +874,8 @@ message-class create), invoke that skill directly via the Skill tool.
 | Spec | `/sap-docs-check-process` | Validate process logic |
 | Spec | `/sap-docs-check-ddic` | Validate DDIC field references against live SAP |
 | Generate | `/sap-gen-abap` | Process text → ABAP source (+ tests, deps, traceability) |
-| Quality | `/sap-check-abap` | Naming + technical validation |
-| Quality | `/sap-check-fm` | FM signature validation |
-| Quality | `/sap-fix-abap` | Auto-fix common ABAP issues |
-| Quality | `/sap-fix-fm` | Auto-fix FM call mismatches |
+| Quality | `/sap-check-abap` | All dimensions: naming, types, SQL, FM signatures, compiler syntax |
+| Quality | `/sap-fix-abap` | Auto-fix ABAP issues incl. FM call mismatches + the bounded syntax loop |
 | Quality | `/sap-check-fix` | Unified check + fix dispatcher (used in fix mode) |
 | DDIC | `/sap-se11` | Domains, data elements, tables, structures, views, search helps, lock objects, type groups, table types |
 | Deploy | `/sap-se38` | Programs (Executable / Include / Module Pool) |

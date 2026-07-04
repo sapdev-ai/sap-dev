@@ -82,7 +82,7 @@
    │  /sap-docs-extract → (/sap-docs-convert) → /sap-docs-check-ddic    │
    │                    → /sap-docs-check-process → /sap-gen-abap        │
    │                    → /sap-check-abap (+/sap-fix-abap)               │
-   │                    → /sap-check-fm   (+/sap-fix-fm)                 │
+   │        (check-abap covers naming·types·SQL·fm·syntax dimensions)    │
    └───────────────────────────────────────────────────────────────────┘
                                             │   Z<PROG>.abap (+ sibling files)
                                             ▼
@@ -428,9 +428,7 @@ setx SAPDEV_AI_WORK_DIR "D:\sapdev"
  /sap-docs-check-ddic     # recommended: validate domains/data elements/tables
  /sap-docs-check-process  # recommended: validate the process logic
  /sap-gen-abap            # REQUIRED: generate Z<PROG>.abap (+ sibling files)
- /sap-check-fm            # recommended: validate CALL FUNCTION calls vs live FMs
- /sap-fix-fm              # if check-fm found issues
- /sap-check-abap          # recommended: naming / types / SQL / contracts / coverage
+ /sap-check-abap          # recommended: naming / types / SQL / contracts / coverage / CALL FUNCTION / syntax
  /sap-fix-abap            # if check-abap found auto-fixable issues
 ```
 
@@ -508,31 +506,32 @@ AUTHORITY-CHECK 的放置位置、你的消息类，以及注释语言。
 `MESSAGE e…`、不用 `LOOP … WHERE … EXIT`、货币字段带上其参考字段、FM 调用参数与实时
 签名匹配，等等 —— 因此代码*一出生就接近干净*。
 
-### 6.5 校验生成的代码 —— `/sap-check-fm`、`/sap-check-abap`
+### 6.5 校验生成的代码 —— `/sap-check-abap`
 
 ```text
-/sap-check-fm   <work-folder>\Z<PROGRAM_ID>.abap     # validates CALL FUNCTION calls
-/sap-check-abap <work-folder>\Z<PROGRAM_ID>.abap     # naming / types / SQL / contracts
+/sap-check-abap <work-folder>\Z<PROGRAM_ID>.abap     # all dimensions (see below)
 ```
 
-- **check-fm** 通过 RFC 把每一个 `CALL FUNCTION` 与**真实**的 FM 签名对照校验
-  （参数名、所属节、必填标志、类型兼容性、结构字段）。这正是在一个臆造的参数撞到 SE37
-  之前就把它抓住的环节。
-- **check-abap** 校验变量命名（对照你的规则）、数据类型、未使用的变量、SQL 字段名、
-  生成契约（行长、`SELECT *`、消息路由、文本符号），以及**规格覆盖度**（代码是否覆盖了
-  规格中的每一个依赖 / 消息 / 文本元素 / 选择字段）。默认离线；加上连接即可做实时的
-  类型/SQL 校验。
+一个技能，多个**维度**（原 `/sap-check-fm` 现为 `fm` 维度；新增 `syntax` 维度）：
+- **naming / type / sql / unused / contract / spec / conv** —— 变量命名（对照你的规则）、
+  数据类型、SQL 字段名、未使用的变量、生成契约（行长、`SELECT *`、消息路由、文本符号），
+  以及**规格覆盖度**。默认离线；加上连接即可做实时的类型/SQL 校验。
+- **fm** —— 通过 RFC 把每一个 `CALL FUNCTION` 与**真实**的 FM 签名对照校验（参数名、所属节、
+  必填标志、类型兼容性、结构字段），在臆造参数撞到 SE37 之前抓住它。
+- **syntax** —— 无头的编译器级语法检查（通过 RFC 的 `EDITOR_SYNTAX_CHECK`），在任何 GUI
+  上传之前离线抓住真实语法错误。对自包含程序执行；对 include / FM 片段 / 类池会报告
+  `SYNTAX_COULD_NOT_CHECK`（它们由部署技能的 Ctrl+F2 在上下文中校验）。
 
-如果两者中任一发现了可自动修复的问题，运行其修复器（会先写一个带时间戳的 `.bak`）：
+如果发现可自动修复的问题，运行修复器（会先写一个带时间戳的 `.bak`）：
 
 ```text
-/sap-fix-fm   <work-folder>\Z<PROGRAM_ID>.abap
 /sap-fix-abap <work-folder>\Z<PROGRAM_ID>.abap
 ```
 
-`fix-abap` 重命名违反命名规则的变量，并把未使用的变量注释掉；`fix-fm` 重命名未知参数、
-插入缺失的必填参数，并把参数移到正确的节。任何无法安全自动修复的问题（例如一个
-`TYPE_NOT_FOUND`）会被标记出来交给你处理。反复运行检查器，直到它干净为止。
+`fix-abap` 重命名违反命名规则的变量、注释掉未使用的变量、应用语法安全的改写、修复
+`CALL FUNCTION` 参数（原 `fix-fm`，已并入），并驱动一个有界的 AI 语法修复循环。任何无法
+安全自动修复的问题（例如 `TYPE_NOT_FOUND`）会被标记出来交给你处理。反复运行检查器，
+直到它干净为止。
 
 每个检查器都会在源代码旁边写一个制表符分隔的结果文件（check-abap 是
 `Z<PROGRAM_ID>.check.tsv`）—— 每个发现项一行，带有 **Code**、**Severity**、**Line** 和
@@ -753,7 +752,6 @@ READINESS: tr=DEVK900123 verdict=GO_WITH_WARNINGS block=0 warn=2 info=1 objects=
 /sap-docs-check-ddic    C:\sapdev\source_code\work\MaterialUpload_20260626\
 /sap-docs-check-process C:\sapdev\source_code\work\MaterialUpload_20260626\
 /sap-gen-abap C:\sapdev\source_code\work\MaterialUpload_20260626\MaterialUpload_process.txt
-/sap-check-fm   C:\sapdev\source_code\work\MaterialUpload_20260626\ZHKMM001R01.abap
 /sap-check-abap C:\sapdev\source_code\work\MaterialUpload_20260626\ZHKMM001R01.abap
 #   → if findings: /sap-fix-abap … then re-check until clean
 
@@ -804,7 +802,7 @@ READINESS: tr=DEVK900123 verdict=GO_WITH_WARNINGS block=0 warn=2 info=1 objects=
 2. **构建** —— `/sap-docs-extract` → `/sap-docs-check-process` + `/sap-docs-check-ddic`
    → 部署规格的 DDIC 对象（`/sap-se11`）和消息类（`/sap-se91`）
    → `/sap-transport-request` → `/sap-gen-abap` → `/sap-check-abap`
-   （+ `/sap-fix-abap`，最多 3 轮；`/sap-check-fm` 同样）。
+   （全部维度，+ `/sap-fix-abap`，最多 3 轮）。
 3. **在第一次写入 SAP 之前问你**：
    > "已生成 `ZHKMM001R01.abap`（320 行）。测试：`ZHKMM001R01_TEST.abap`
    > （4 个方法）。质量检查通过。计划：部署到包 `ZHKA011`，使用 TR
@@ -1010,8 +1008,7 @@ top 错误类别）。
 | `sap-docs-convert` | 应用客户归一化规则 |
 | `sap-docs-check-ddic` / `sap-docs-check-process` | 校验 DDIC / 处理逻辑 |
 | `sap-gen-abap` | 生成 ABAP（报表 / 对话 / FM） |
-| `sap-check-abap` / `sap-fix-abap` | 校验 / 自动修复 ABAP 质量 |
-| `sap-check-fm` / `sap-fix-fm` | 校验 / 自动修复 CALL FUNCTION 调用 |
+| `sap-check-abap` / `sap-fix-abap` | 校验 / 自动修复 ABAP 质量 —— 命名、类型、SQL、CALL FUNCTION 签名、编译器语法 |
 
 ### sap-migrate（S/4HANA 自定义代码迁移）
 

@@ -1,14 +1,20 @@
 ---
 name: sap-fix-abap
 description: |
-  Fixes ABAP source code issues found by sap-check-abap.
-  Reads the check result TSV, builds a fix plan, and applies fixes:
+  Fixes ABAP source code issues found by sap-check-abap (all dimensions).
+  Reads the check result file(s), builds a fix plan, and applies fixes:
   - NAMING violations: renames variables throughout the file
   - UNUSED variables: comments out declarations
-  - TYPE_NOT_FOUND: flagged for manual review (not auto-fixable)
+  - SYNTAX-SAFE rewrites (SQL_STRICT_COMMA / line-length / DECL_ORDER)
+  - CALL FUNCTION param fixes (UNKNOWN_PARAM rename / MISSING_MANDATORY stub /
+    WRONG_SECTION move) from the `fm` dimension — absorbed from the former sap-fix-fm
+  - SYNTAX errors: a bounded AI-assisted check->patch->re-check loop that drives the
+    headless `sap_rfc_syntax_check.ps1` engine (no blind auto-fix)
+  - TYPE_NOT_FOUND and other semantic codes: flagged for manual review
   Creates a timestamped backup (.bak) before modifying the source file.
-  Prerequisites: Run sap-check-abap first to produce the result TSV.
-argument-hint: "<path-to-abap-source-file> [<path-to-check-result-tsv>]"
+  Prerequisites: Run sap-check-abap first to produce the result file(s). The `fm`
+  and `syntax` fix paths need SAP NCo 3.1 (32-bit) + the dev-init wrapper.
+argument-hint: "<path-to-abap-source-file> [<path-to-check-result-tsv>] [--syntax-loop]"
 ---
 
 # SAP Fix ABAP Skill
@@ -63,6 +69,11 @@ powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_
 Extract from `$ARGUMENTS`:
 - **ABAP source file path** — required. Ask if not provided.
 - **Check result TSV path** — optional; default is `<abap-file>.check.tsv`.
+
+Also look for the sibling result files the other `sap-check-abap` dimensions
+write (fix whichever are present):
+- `<abap-file>.check_fm.tsv` — `fm`-dimension findings (CALL FUNCTION params) → Step 6b.
+- `<abap-file>.syntax.tsv` — `syntax`-dimension findings → the Step 8 syntax loop.
 
 Verify both files exist:
 ```bash
@@ -131,6 +142,12 @@ even when a mechanical rewrite looks tempting — is **Manual** with guidance.
 | `SPEC_DEP_MISSING` / `SPEC_MESSAGE_MISSING` / `SPEC_TEXTSYM_MISSING` / `SPEC_SELECTION_COUNT` | Manual | Spec-coverage gaps — regenerate via `/sap-gen-abap` or add the missing artefact; do NOT hand-patch manifest files just to silence the gap |
 | `SPEC_TRACEABILITY_INFO` | No — INFO | Informational — skip |
 | `CONV_CURR_MISSING_REF` / `CONV_CURR_DISPLAY_TO_BAPI` | Manual | Map the currency (CUKY) / unit (UNIT) reference column alongside the amount, or fix the conversion path (§28) |
+| `UNKNOWN_PARAM` *(fm)* | Auto (RFC) | Rename the `CALL FUNCTION` parameter to the correct FM parameter name (re-fetched live) — Step 6b |
+| `WRONG_SECTION` *(fm)* | Auto (RFC) | Move the parameter assignment to the correct keyword section (EXPORTING/IMPORTING/CHANGING/TABLES) — Step 6b |
+| `MISSING_MANDATORY` *(fm)* | Auto (RFC) | Insert a stub line for the missing mandatory parameter (value left for the user to fill) — Step 6b |
+| `TYPE_INCOMPATIBLE` / `TYPE_WARNING` / `FM_NOT_FOUND` *(fm)* | Manual | Adjust the passed variable's type to the FM parameter, or fix the FM name — a semantic decision |
+| `SYNTAX_ERROR` *(syntax)* | Auto (AI loop) | Bounded check→patch→re-check loop (Step 8) — Claude edits the source per LINE/COL/MESSAGE; never a blind rewrite |
+| `SYNTAX_WARNING` / `SYNTAX_COULD_NOT_CHECK` / `FM_COULD_NOT_CHECK` | Manual / skip | Review the warning, or note the dimension could not run (RFC off / wrapper absent) |
 
 If there are no fixable issues, tell the user "No fixable issues found in result file." and stop.
 
@@ -290,6 +307,54 @@ Next steps:
   - Run /sap-check-abap <file> to verify remaining issues
   - Review TYPE_NOT_FOUND items manually in SE11
 ```
+
+---
+
+## Step 6b — Fix CALL FUNCTION parameters (`fm` findings)
+
+Run when `<abap-file>.check_fm.tsv` exists and has fixable rows. Absorbed from the
+former `sap-fix-fm`. The backup from Step 5 already covers this file.
+
+For the unique set of FMs with `UNKNOWN_PARAM` / `MISSING_MANDATORY` /
+`WRONG_SECTION` findings, **re-fetch the live signature** (authoritative — the
+result file may be stale) via the shared helper, then edit each `CALL FUNCTION`
+block:
+
+```bash
+C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File "<generated sap_rfc_lookup_fm.ps1 run script>"
+```
+
+Then apply per finding (Edit tool, within the correct `CALL FUNCTION 'X' … .` block only):
+- `UNKNOWN_PARAM` → rename the wrong parameter to the correct FM parameter name.
+- `WRONG_SECTION` → move the `param = value.` assignment under the correct keyword
+  (`EXPORTING` / `IMPORTING` / `CHANGING` / `TABLES`); create the keyword line if absent.
+- `MISSING_MANDATORY` → insert a stub `<param> = <value>.` line under its section
+  (leave a clearly-marked placeholder value for the user to fill; never invent data).
+- `TYPE_*` / `FM_NOT_FOUND` → list for manual review (semantic).
+
+---
+
+## Step 8 — Syntax fix loop (`syntax` findings)
+
+Run when `<abap-file>.syntax.tsv` has `SYNTAX_ERROR` rows (or on `--syntax-loop`).
+This is the **bounded AI-assisted** close of the check→fix→re-check loop — real
+syntax errors need judgement, so there is **no blind auto-fix**.
+
+Loop (default **max 4** iterations):
+1. For each `SYNTAX_ERROR LINE=<n> COL=<c> MSG=<text>`, read the source around
+   line `n` and apply a targeted Edit that addresses that specific compiler
+   message (undeclared field → declare or correct the name; missing period → add
+   it; etc.). Use judgement; do not rewrite unrelated code.
+2. Re-run the engine on the edited file:
+   ```bash
+   C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_rfc_syntax_check.ps1" -SourceFile "THE_ABAP_FILE" -ProgramName "THE_PROGRAM_NAME" -Subc "1" -OutTsv "THE_ABAP_FILE.syntax.tsv"
+   ```
+3. **Stop** on `STATUS: CLEAN`, on **no progress** (the same finding set two rounds
+   running), or at the iteration cap. Report the final state; if errors remain,
+   list them for the user rather than guessing further.
+
+The backup from Step 5 covers the source; every edit is local to the `.abap` file —
+nothing is written to SAP.
 
 ---
 

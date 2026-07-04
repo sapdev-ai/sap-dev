@@ -633,8 +633,8 @@ When in doubt, the test that always works: copy the TYPE_REF from
 
 ### Checker enforcement
 
-`/sap-check-fm` already emits `TYPE_INCOMPATIBLE` for this class
-(see its README). The generator should never produce a `.abap` that
+The `fm` dimension of `/sap-check-abap` already emits `TYPE_INCOMPATIBLE`
+for this class. The generator should never produce a `.abap` that
 the FM checker would reject — the customer brief workflow gates this
 via `MAX_PRIORITY=2` in `/sap-atc`, but P1 SLIN findings have caught
 real mismatches that ATC's parameter resolver flags as type incompatible.

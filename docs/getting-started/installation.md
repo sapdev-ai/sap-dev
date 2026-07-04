@@ -192,15 +192,13 @@ Claude: [Uses sap-se38]
 
 | Skill | Description |
 |-------|-------------|
-| `sap-check-abap` | Validates ABAP source code quality before deployment (naming, types, unused variables, SQL field validation) |
-| `sap-check-fm` | Validates ABAP `CALL FUNCTION` statements against actual FM parameter definitions retrieved via RFC |
+| `sap-check-abap` *(moved to sap-dev-core)* | Validates ABAP source quality across all dimensions — naming, types, unused, SQL fields, CALL FUNCTION signatures (RFC), and compiler-level syntax (RFC). Absorbed the former `sap-check-fm`. |
 | `sap-docs-check-ddic` | Validates DDIC objects extracted from a design document (naming, type validity, domain/DTEL/table cross-references) |
 | `sap-docs-check-process` | Validates the process logic text file before ABAP code generation; flags ambiguity and inconsistencies |
 | `sap-docs-convert` | Applies customer-specific normalisation rules (field rename, type rename, flag mapping, schema migration) to extracted spec files |
 | `sap-docs-extract` | Reads a SAP design document (Excel/Word/PDF) and extracts structured info into separate text files by section |
 | `sap-docs-layout` | Edits the structural layout of a SAP design spec template (.xlsx) via its `(Meta) Layout` sheet |
-| `sap-fix-abap` | Fixes ABAP source code issues found by `/sap-check-abap` (renames violations, comments out unused variables) |
-| `sap-fix-fm` | Fixes ABAP `CALL FUNCTION` parameter issues found by `/sap-check-fm` |
+| `sap-fix-abap` *(moved to sap-dev-core)* | Fixes issues found by `/sap-check-abap` — renames, unused-comment-out, syntax-safe rewrites, CALL FUNCTION param fixes (absorbed `sap-fix-fm`), and a bounded AI syntax-fix loop |
 | `sap-gen-abap` | Generates ABAP source code (dialog/module pool, report, function module/RFC) from a process text file |
 
 ### S/4HANA Custom-Code Migration (`sap-migrate`)

@@ -47,6 +47,7 @@ Task: $ARGUMENTS
 | `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_log_lib.ps1` | Structured logger. Driven via the shared `sap_log_helper.ps1` wrapper that persists `run_id` between skill steps. |
 | `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_log_helper.ps1` | Shared start/step/end wrapper around `sap_log_lib.ps1`. Persists run state to `{RUN_TEMP}\sap_se38_run.json` so this skill's discrete bash blocks share one logical run. Logging is best-effort and never breaks the skill. |
 | `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_error_hints.ps1` | frequently_errors recorder. Step 6b feeds deploy syntax/activation errors (`-Action record -Source SE38 -RawOutputFile ...`) so FM/METHOD-related failures are captured to the team store. Best-effort; never changes the verdict. |
+| `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_rfc_syntax_check.ps1` | Headless compiler syntax pre-check (Step 4.6) — runs `EDITOR_SYNTAX_CHECK` via the dev-init wrapper before the GUI deploy so a syntax error is caught pre-upload. Program type `1` only (self-contained); degrades to the Step 5 Ctrl+F2 when RFC/wrapper is unavailable. |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/sap_gui_security_handling.md` | SAP GUI Security dialog handling — the check-and-fix **source download** (Step A) is SAP-GUI-side file IO, so it can raise the modal "SAP GUI Security" dialog (which suspends the Scripting API and hangs cscript). Pre-check + OS-level watcher wrap that download. |
 | `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_gui_security_precheck.ps1` | Read-only allow-list pre-check (`saprules.xml`) — `ALLOWED` (exit 0) / `NOT_COVERED` (exit 1). Used by Step A before the source download. |
 | `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_gui_security_sidecar.ps1` | OS-level (Win32) watcher that auto-dismisses the SAP GUI Security dialog (ticks Remember + clicks Allow). Launched as a background process before the Step A download. |
@@ -130,7 +131,7 @@ Step 1b will log the resolved TR separately.)
 
 | Task | Source provided? | Flow |
 |---|---|---|
-| Deploy new or updated code | Yes (file path or pasted) | Steps 2 → 3 → 4 → 5a/5b → [5c] → 6 → 7 |
+| Deploy new or updated code | Yes (file path or pasted) | Steps 2 → 3 → 4 → 4.6 → 5a/5b → [5c] → 6 → 7 |
 | Fix / check existing program | No | Steps 3 → A → B → C → 6 → 7 |
 | Change program **attributes** (Title / Status / Type / …) | No | Steps 1b → 3 → 5d → 6 → 7 |
 | **Delete** program | No | Steps 1b → 3 → 5e → 6 → 7 |
@@ -276,6 +277,46 @@ Behaviour:
 - Exit `2` (`UNKNOWN_TYPE` / `RULES_NOT_FOUND`) → log a step note and continue.
 
 To customise the rule, the user edits `{custom_url}\sap_object_naming_rules.tsv`.
+
+---
+
+## Step 4.6 — Headless Syntax Pre-Check (RFC)
+
+**Deploy flow only** (source was provided). Skip for fix / change-attributes / delete modes.
+
+Run a headless, compiler-level ABAP syntax check on the source *before* the GUI
+deploy — the offline equivalent of Ctrl+F2, so a syntax error is caught before any
+upload round-trip. Uses the shared engine
+`<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_rfc_syntax_check.ps1` (calls
+`EDITOR_SYNTAX_CHECK` through the dev-init wrapper `Z_GENERIC_RFC_WRAPPER_TBL`;
+read-only, no writes).
+
+**Applicability — only self-contained programs check standalone.** Look at the
+first non-comment statement of the source:
+- `REPORT` / `PROGRAM` (program type `1`) → run the check with `-Subc 1`.
+- An **include** (`I`), **module pool** (`M`), or any other fragment/pool → **skip**
+  this step with an INFO note. Those are not standalone-compilable; they are
+  syntax-checked in-context by the Ctrl+F2 in Step 5 after upload.
+
+Let `SOURCE_FILE` = the source path from Step 2 (the user's file, or the staged
+`{RUN_TEMP}\<PROGRAM_NAME>.abap`). Run under **32-bit** PowerShell (NCo 3.1):
+
+```bash
+C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_rfc_syntax_check.ps1" -SourceFile "<SOURCE_FILE>" -ProgramName "<PROGRAM_NAME>" -Subc "1" -OutTsv "{RUN_TEMP}\<PROGRAM_NAME>.syntax.tsv"
+```
+
+Parse the `STATUS:` line:
+
+| Result | Action |
+|---|---|
+| `STATUS: CLEAN` | Silently continue to Step 5. |
+| `STATUS: FINDINGS errors=<e> …` with `e > 0` | **Gate.** Show each `SYNTAX: ERROR LINE=.. COL=.. MSG=..` line. Ask the user to fix the source and re-run, or to proceed anyway (the Step 5 Ctrl+F2 will re-check). Do **not** deploy known-broken source without explicit confirmation. Log `syntax_precheck errors=<e>`. |
+| `STATUS: FINDINGS` with `e = 0` (warnings only) | Show the `SYNTAX: WARN` lines and continue. |
+| `STATUS: RFC_ERROR …` / `INPUT_ERROR …` / wrapper not found | **Degrade — never block.** The headless pre-check is unavailable (RFC off, wrapper not deployed via `/sap-dev-init`, or bad source path). Log an INFO note `syntax_precheck unavailable: <reason>` and continue — the Step 5 Ctrl+F2 remains the syntax gate. |
+
+This is a *pre-flight*; it never replaces the in-editor Ctrl+F2 that Steps 5a/5b
+run after upload. On RFC-capable systems it just moves the catch earlier, before
+any GUI work.
 
 ---
 

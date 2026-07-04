@@ -557,7 +557,7 @@ powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_login_run.ps1"
 ## Step 4 — Verify RFC Connectivity (Optional)
 
 **Run this step only when the user explicitly requests RFC verification**, or when
-the calling skill needs RFC (e.g., sap-check-fm, sap-fix-fm, sap-check-abap).
+the calling skill needs RFC (e.g., sap-check-abap, sap-fix-abap).
 
 The RFC connection template is at `sap-dev-core/shared/scripts/sap_rfc_connect.ps1`.
 

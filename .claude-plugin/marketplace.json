@@ -12,7 +12,7 @@
     "version": "0.7.0",
     "last_updated": "2026-07-03",
     "total_plugins": 4,
-    "total_skills": 80,
+    "total_skills": 78,
     "categories": [
       "tooling"
     ]
@@ -20,13 +20,14 @@
   "plugins": [
     {
       "name": "sap-dev-core",
-      "description": "Core SAP development utilities and ABAP Workbench automation. Includes login, connection management, credential storage with Windows DPAPI encryption, BDC execution via RFC, add-on table maintenance, table data query / TSV download via SE16N, transport request creation via SE01, function group creation via SE37, the check-and-fix router, object activation, ATC quality gate, package reassignment, RFC wrapper generation, structured JSONL logging and log analysis, and SAP GUI Scripting for SE01, SE21, SE38, SE37, SE24, SE11, SE16N, SE19, SE41, SE51, SE54, SE91, CMOD, and GUI recording. /sap-document-object turns an existing object into a formal spec document (Markdown / Word / spec workbook). Keywords: SAP GUI, SAP Logon, stored credentials, DPAPI, BDC, ABAP4_CALL_TRANSACTION, RFC, add-on maintenance, check and fix, deploy, SAP GUI Scripting",
+      "description": "Core SAP development utilities and ABAP Workbench automation. Includes login, connection management, credential storage with Windows DPAPI encryption, BDC execution via RFC, add-on table maintenance, table data query / TSV download via SE16N, transport request creation via SE01, function group creation via SE37, the check-and-fix router, object activation, ATC quality gate, package reassignment, RFC wrapper generation, ABAP source validation + auto-fix across naming / types / SQL / CALL FUNCTION / compiler-syntax dimensions (/sap-check-abap, /sap-fix-abap), structured JSONL logging and log analysis, and SAP GUI Scripting for SE01, SE21, SE38, SE37, SE24, SE11, SE16N, SE19, SE41, SE51, SE54, SE91, CMOD, and GUI recording. /sap-document-object turns an existing object into a formal spec document (Markdown / Word / spec workbook). Keywords: SAP GUI, SAP Logon, stored credentials, DPAPI, BDC, ABAP4_CALL_TRANSACTION, RFC, add-on maintenance, check and fix, deploy, SAP GUI Scripting",
       "source": "./plugins/sap-dev-core/",
       "skills": [
         "./skills/sap-activate-object",
         "./skills/sap-atc",
         "./skills/sap-call-bdc",
         "./skills/sap-change-package",
+        "./skills/sap-check-abap",
         "./skills/sap-check-fix",
         "./skills/sap-cmod",
         "./skills/sap-compare",
@@ -40,6 +41,7 @@
         "./skills/sap-error-kb",
         "./skills/sap-evidence-pack",
         "./skills/sap-explain-object",
+        "./skills/sap-fix-abap",
         "./skills/sap-fix-incident",
         "./skills/sap-function-group",
         "./skills/sap-gui-diagnose",
@@ -132,18 +134,14 @@
     },
     {
       "name": "sap-gen-code",
-      "description": "ABAP code generation and validation. /sap-docs-layout customizes the spec template's structural layout via a self-describing (Meta) Layout sheet; /sap-docs-extract reads Excel/Word/PDF specs and produces structured artefacts; /sap-docs-convert applies customer-specific normalisation rules (field/type/flag remap, schema migration); /sap-gen-abap produces ABAP source per Customer Brief profile; /sap-check-abap and /sap-check-fm validate naming, types, SQL fields, and CALL FUNCTION parameters via live RFC; /sap-fix-abap and /sap-fix-fm auto-patch detected issues; /sap-review-abap runs an AI semantic + security code review (line-cited, gated via the customer brief); /sap-gen-abap-unit generates ABAP Unit tests for existing objects and runs them to green. Requires the sap-dev-core plugin (install it first — its shared scripts are resolved at runtime). Keywords: ABAP code generation, design document, spec template layout, naming conventions, type check, SQL validation, FM parameter check, auto-fix, spec conversion, rules-driven normalisation",
+      "description": "ABAP code generation and validation. /sap-docs-layout customizes the spec template's structural layout via a self-describing (Meta) Layout sheet; /sap-docs-extract reads Excel/Word/PDF specs and produces structured artefacts; /sap-docs-convert applies customer-specific normalisation rules (field/type/flag remap, schema migration); /sap-gen-abap produces ABAP source per Customer Brief profile; ABAP source validation and auto-fix (naming, types, SQL fields, CALL FUNCTION parameters via live RFC, and compiler-level syntax) now live in the sap-dev-core plugin as /sap-check-abap and /sap-fix-abap; /sap-review-abap runs an AI semantic + security code review (line-cited, gated via the customer brief); /sap-gen-abap-unit generates ABAP Unit tests for existing objects and runs them to green. Requires the sap-dev-core plugin (install it first — its shared scripts are resolved at runtime). Keywords: ABAP code generation, design document, spec template layout, naming conventions, type check, SQL validation, FM parameter check, auto-fix, spec conversion, rules-driven normalisation",
       "source": "./plugins/sap-gen-code/",
       "skills": [
-        "./skills/sap-check-abap",
-        "./skills/sap-check-fm",
         "./skills/sap-docs-check-ddic",
         "./skills/sap-docs-check-process",
         "./skills/sap-docs-convert",
         "./skills/sap-docs-extract",
         "./skills/sap-docs-layout",
-        "./skills/sap-fix-abap",
-        "./skills/sap-fix-fm",
         "./skills/sap-gen-abap",
         "./skills/sap-gen-abap-unit",
         "./skills/sap-gen-cds",

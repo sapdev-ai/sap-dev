@@ -58,7 +58,7 @@ write-capable companion to the read-only `/sap-diagnose`.
 **Skills this one orchestrates** (skills-first, per CLAUDE.md Rule 6 — invoke via
 the Skill tool, never re-implement): `/sap-st22` (`--deep`),
 `/sap-explain-object`, `/sap-gen-abap-unit`, `/sap-run-abap-unit`,
-`/sap-check-abap`, `/sap-check-fm`, `/sap-se38`, `/sap-se37`, `/sap-se24`,
+`/sap-check-abap`, `/sap-se38`, `/sap-se37`, `/sap-se24`,
 `/sap-activate-object`, `/sap-transport-request`, `/sap-transport-readiness`,
 `/sap-se01`, `/sap-stms` (when available — until then, hand off to manual STMS).
 
@@ -167,8 +167,8 @@ dump's exception). This proves the hypothesis before you touch the code.
 2. Apply the **minimal** edit to a working copy (+ `.bak`). Keep it scoped to the
    defect (e.g. guard the divisor, check `sy-subrc`, bound the index, handle the
    `CX_*`). Do not refactor opportunistically.
-3. Re-check offline: `/sap-check-abap {RUN}\src\<file>` (+ `/sap-check-fm` for an
-   FM call). Fix anything it flags. Build a unified diff `{RUN}\fix.diff`.
+3. Re-check offline: `/sap-check-abap {RUN}\src\<file>` (its `fm` dimension covers
+   CALL FUNCTION calls). Fix anything it flags. Build a unified diff `{RUN}\fix.diff`.
 
 ## Step 6 — Confirm (Rule 2 gate)
 

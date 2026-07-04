@@ -78,9 +78,8 @@ Conversational forms:
 
 After generation completes, chain into:
 
-- `/sap-check-abap` — validate naming, types, SQL fields against live SAP
-- `/sap-check-fm` — validate every CALL FUNCTION statement
-- `/sap-fix-abap` and `/sap-fix-fm` — auto-patch detected issues
+- `/sap-check-abap` — validate all dimensions (naming, types, SQL fields, CALL FUNCTION signatures, compiler syntax) against live SAP
+- `/sap-fix-abap` — auto-patch detected issues (incl. CALL FUNCTION fixes + a bounded syntax loop)
 - `/sap-se38` (or `/sap-se37` / `/sap-se24`) — deploy and activate
 - `/sap-atc` — final quality gate
 

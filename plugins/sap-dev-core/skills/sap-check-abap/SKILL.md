@@ -1,24 +1,62 @@
 ---
 name: sap-check-abap
 description: |
-  Validates ABAP source code quality before deployment. Checks:
+  Validates ABAP source code (report, program, function module, class, include)
+  before deployment. One skill, dimension-dispatched:
   (1) Variable naming conventions against shared rules file,
   (2) Data type validity via SAP Dictionary (DDIF_FIELDINFO_GET / DDIF_DTEL_GET),
   (3) Unused variable detection,
   (4) SQL field validation — checks SELECT/UPDATE/DELETE field names against table definitions,
   (5) Generation contract rules (offline) — literal MESSAGE, read-only TEXT-NNN, block order / DECL_ORDER, SELECT *, LOOP-WHERE-EXIT, SPLIT-into-numeric, line length, and TEXT/MESSAGE sibling-file sync,
-  (6) Spec-coverage (offline) — confirms the generated code covers every dependency, message, text element, and selection field in the design spec.
-  Writes a tab-delimited result file with fix advice for each issue.
-  SAP connection is optional — offline mode skips type and SQL field validation; the generation-contract and spec-coverage checks are always offline.
-  Prerequisites: SAP GUI installed (provides SAP.Functions 32-bit COM object).
-argument-hint: "<path-to-abap-source-file>"
+  (6) Spec-coverage (offline) — confirms the generated code covers every dependency, message, text element, and selection field in the design spec,
+  (7) CALL FUNCTION signature validation via RFC (parameter names / sections / types vs the live FM definition — the `fm` dimension, absorbed from the former sap-check-fm),
+  (8) Compiler-level ABAP syntax check via RFC (EDITOR_SYNTAX_CHECK through the dev-init wrapper — the `syntax` dimension; catches real syntax errors offline, before any GUI upload).
+  Writes tab-delimited result files with fix advice for each issue. Fix findings with `/sap-fix-abap`.
+  SAP connection is optional — offline mode skips the type / SQL-field / fm / syntax dimensions; the generation-contract and spec-coverage checks are always offline. Live dimensions that cannot run report COULD_NOT_CHECK, never a silent pass.
+  Prerequisites: SAP GUI installed (provides SAP.Functions 32-bit COM object); SAP NCo 3.1 (32-bit) + the dev-init wrapper `Z_GENERIC_RFC_WRAPPER_TBL` for the `syntax` dimension.
+argument-hint: "<path-to-abap-source-file> [--dimensions naming,type,sql,contract,spec,conv,fm,syntax] [--offline] [--gate]"
 ---
 
 # SAP Check ABAP Skill
 
-You validate ABAP source code quality before deployment. You check variable naming conventions against a shared rules file, validate data types against the SAP Dictionary, detect unused variables, and verify SQL field references against table definitions. Results are written to a tab-delimited file with fix advice.
+You validate ABAP source code quality before deployment across several **dimensions**, then write findings that `/sap-fix-abap` can consume. This one skill supersedes the former `sap-check-abap` + `sap-check-fm` (now merged here, in sap-dev-core).
 
 Task: $ARGUMENTS
+
+---
+
+## Dimensions — what to run
+
+The skill runs a set of **dimensions**. By default it runs every dimension that
+applies to the source and the connection state; narrow with
+`--dimensions a,b,…`, force offline with `--offline`, or use the fast pre-deploy
+preset `--gate` (= `syntax,fm`).
+
+| Dimension | What it checks | Live? | Step | Output file |
+|---|---|---|---|---|
+| `naming` | variable + top-level object names | offline | 1.5 + 3 (Phase 5b naming) | `<file>.check.tsv` |
+| `type` | data-type validity via DDIC | RFC | 3 | `<file>.check.tsv` |
+| `sql` | SELECT/UPDATE/DELETE field validity | RFC | 3 | `<file>.check.tsv` |
+| `unused` | declared-but-unused variables | offline | 3 | `<file>.check.tsv` |
+| `contract` | generation-contract rules (§ codes) | offline | 3 | `<file>.check.tsv` |
+| `spec` | spec-coverage (deps/messages/texts/selection) | offline | 3.5 / 3.6 / 3.7 | `<file>.check.tsv` |
+| `conv` | CONVEXIT + CURR/QUAN reference | offline | 3.7 | `<file>.check.tsv` |
+| **`fm`** | **CALL FUNCTION signatures vs live FM defs** | **RFC** | **3.8** | `<file>.check_fm.tsv` |
+| **`syntax`** | **compiler-level ABAP syntax (all errors + warnings)** | **RFC + wrapper** | **3.9** | `<file>.syntax.tsv` |
+
+**Rules:**
+- The `naming`/`type`/`sql`/`unused`/`contract`/`spec`/`conv` dimensions all run in
+  the one Step 3 VBS + the Step 3.5–3.7 sidecars (they share `<file>.check.tsv`).
+  The new `fm` and `syntax` dimensions run their own steps and write their own
+  result files; **Step 4 reads all three** and presents them together.
+- **`syntax` applicability:** only self-contained programs (`REPORT`/`PROGRAM`)
+  compile standalone. For an **include**, a **function-module `FUNCTION…ENDFUNCTION`
+  fragment**, or a **class pool**, the `syntax` dimension reports
+  `SYNTAX_COULD_NOT_CHECK` (a fragment is syntax-checked *in-context* by the deploy
+  skill after an inactive insert — `/sap-se37`, `/sap-se24`), and every other
+  dimension still runs.
+- Any live dimension that cannot reach SAP reports `COULD_NOT_CHECK` (honest
+  tri-state — never rendered as a pass).
 
 ---
 
@@ -145,6 +183,10 @@ Exit code `0` = OK (no row written). Exit code `2` = UNKNOWN_TYPE / RULES_NOT_FO
 | `<SKILL_DIR>/references/sap_check_signatures.ps1` | *(helper, skill-local)* | Step 3.5 signature validator — struct-field + AUTHORITY-CHECK shape vs the live-SAP caches |
 | `<SKILL_DIR>/references/sap_check_spec_coverage.ps1` | *(helper, skill-local)* | Step 3.6 spec-coverage validator — confirms the generated manifests cover the spec's deps / messages / text elements / selection fields |
 | `<SKILL_DIR>/references/sap_check_conversion.ps1` | *(helper, skill-local)* | Step 3.7 conversion validator — flags CURR/QUAN file columns mapped without their currency/unit reference, and `CURRENCY_AMOUNT_DISPLAY_TO_SAP` feeding a BAPI amount type (double-shift). Reads `*_file_mapping_*.txt` + `_struct_signatures.txt` (§28). |
+| `<SKILL_DIR>/references/sap_check_fm.vbs` | *(helper, skill-local)* | Step 3.8 (`fm` dimension) — `CALL FUNCTION` signature checker, absorbed from the former sap-check-fm. Delegates RFC to the two lookup helpers below. |
+| `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_rfc_lookup_fm.ps1` | *(helper)* | Step 3.8 — FM signature fetch (`RPY_FUNCTIONMODULE_READ_NEW`, per-system disk cache). |
+| `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_rfc_lookup_ddic.ps1` | *(helper)* | Step 3 + 3.8 — DDIC type resolution (`DDIF_FIELDINFO_GET` / `DDIF_DTEL_GET`). |
+| `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_rfc_syntax_check.ps1` | *(helper)* | Step 3.9 (`syntax` dimension) — headless `EDITOR_SYNTAX_CHECK` via the dev-init wrapper `Z_GENERIC_RFC_WRAPPER_TBL`. Programs (`SUBC=1`) only; fragments/pools report COULD_NOT_CHECK. |
 | `sap-dev-core/shared/rules/abap_code_quality_rules.md` | *(rule)* | **Mandatory** ABAP code-quality rules. The VBS engine emits the offline-checkable rules in two phases. **Phase 5f** (per-line): `LITERAL_MESSAGE` + `MESSAGE_NUM_UNDECLARED` (§20), `TEXT_NNN_ASSIGN` + `TEXT_SYMBOL_UNDECLARED` (§21), `CLASS_DEF_AFTER_EVENT` (§10), `LOOP_WHERE_EXIT` (§19), `SPLIT_INTO_NUMERIC` (§25), `SELECT_STAR` (§12), `LINE_TOO_LONG`/`LINE_HARD_LIMIT`, plus `SQL_STRICT_COMMA` (§9). **Phase 5g** (scope-tracked): `MESSAGE_E_IN_METHOD` (§11), `SELECT_IN_LOOP` + `FOR_ALL_ENTRIES_NO_GUARD` (§12), `METHOD_TOO_LONG` (§18). These mirror the CI gate `scripts/lint-abap-contract.mjs` (same contract, two engines). The remaining heuristic rules — `MISSING_AT_HOST_VAR`/`STRING_CONCAT_SQL` (§13), `MISSING_AUTHZ_CHECK` (§14) — carry a higher false-positive risk and are reviewed by the orchestrator against this rule file rather than emitted by the engine. |
 | `sap-dev-core/shared/templates/customer_brief.md` | *(config)* | Project Profile — used to set the quality bar (e.g. method length limit, modern-ABAP required, ATC priority gating) |
 
@@ -453,9 +495,91 @@ cmd /c del {RUN_TEMP}\sap_checkabap_conv.ps1
 
 ---
 
+## Step 3.8 — FM Call Validation (`fm` dimension)
+
+**Skip when** the `fm` dimension is disabled (`--dimensions` without `fm`, or
+`--offline`), or when SAP is unreachable → append one `FM_COULD_NOT_CHECK`
+WARNING row to the report and continue.
+
+Validates every `CALL FUNCTION` in the source against the live FM definition
+(parameter names / sections / mandatory / types). Absorbed verbatim from the
+former `sap-check-fm`; the checker VBS ships at
+`<SKILL_DIR>\references\sap_check_fm.vbs` and delegates RFC to the shared
+`sap_rfc_lookup_fm.ps1` (FM signatures, per-system cached) +
+`sap_rfc_lookup_ddic.ps1` (DDIC types). Writes findings to a **separate**
+`FM_RESULT_FILE` = `<abap-file>.check_fm.tsv` (kept distinct from `.check.tsv`
+so parallel runs never collide and Step 4 can present both).
+
+Resolve `{FM_CACHE_DIR}` (`userConfig.fm_cache_dir` or `{work_dir}\cache\fm_signatures`)
+and `{SYSTEM_ID}` (`{server}_{sysnr}_{client}`), then generate + run:
+
+```powershell
+# FM-signature helper
+$h = Get-Content '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_rfc_lookup_fm.ps1' -Raw
+$h = $h -replace '%%SAP_SERVER%%','' -replace '%%SAP_SYSNR%%','' -replace '%%SAP_CLIENT%%','' -replace '%%SAP_USER%%','' -replace '%%SAP_PASSWORD%%','' -replace '%%SAP_LANGUAGE%%',''
+$h = $h -replace '%%RFC_LIB_PS1%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_rfc_lib.ps1'
+$h = $h -replace '%%REQUEST_FILE%%','{RUN_TEMP}\sap_checkfm_fm_names.txt' -replace '%%RESULT_FILE%%','{RUN_TEMP}\sap_checkfm_fm_result.tsv'
+$h = $h -replace '%%CACHE_DIR%%','{FM_CACHE_DIR}' -replace '%%SYSTEM_ID%%','{SYSTEM_ID}' -replace '%%TTL_STD_DAYS%%','30' -replace '%%TTL_Z_DAYS%%','1' -replace '%%REFRESH_CACHE%%','false'
+Set-Content '{RUN_TEMP}\sap_checkfm_fm_helper.ps1' $h -Encoding UTF8
+# DDIC helper
+$d = Get-Content '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_rfc_lookup_ddic.ps1' -Raw
+$d = $d -replace '%%SAP_SERVER%%','' -replace '%%SAP_SYSNR%%','' -replace '%%SAP_CLIENT%%','' -replace '%%SAP_USER%%','' -replace '%%SAP_PASSWORD%%','' -replace '%%SAP_LANGUAGE%%',''
+$d = $d -replace '%%RFC_LIB_PS1%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_rfc_lib.ps1'
+$d = $d -replace '%%REQUEST_FILE%%','{RUN_TEMP}\sap_checkfm_ddic_request.txt' -replace '%%RESULT_FILE%%','{RUN_TEMP}\sap_checkfm_ddic_result.tsv'
+Set-Content '{RUN_TEMP}\sap_checkfm_ddic_helper.ps1' $d -Encoding UTF8
+# Checker VBS
+$content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_check_fm.vbs', [System.Text.Encoding]::UTF8)
+$content = $content -replace '%%SAP_SERVER%%','THE_SERVER' -replace '%%SAP_SYSNR%%','THE_SYSNR' -replace '%%SAP_CLIENT%%','THE_CLIENT' -replace '%%SAP_USER%%','THE_USER' -replace '%%SAP_PASSWORD%%','THE_PASSWORD' -replace '%%SAP_LANGUAGE%%','THE_LANGUAGE'
+$content = $content -replace '%%ABAP_FILE%%','THE_ABAP_FILE' -replace '%%RESULT_FILE%%','THE_FM_RESULT_FILE'
+$content = $content -replace '%%FM_HELPER_PS1%%','{RUN_TEMP}\sap_checkfm_fm_helper.ps1' -replace '%%FM_NAMES_FILE%%','{RUN_TEMP}\sap_checkfm_fm_names.txt' -replace '%%FM_RESULT_FILE%%','{RUN_TEMP}\sap_checkfm_fm_result.tsv'
+$content = $content -replace '%%DDIC_HELPER_PS1%%','{RUN_TEMP}\sap_checkfm_ddic_helper.ps1' -replace '%%DDIC_REQUEST_FILE%%','{RUN_TEMP}\sap_checkfm_ddic_request.txt' -replace '%%DDIC_RESULT_FILE%%','{RUN_TEMP}\sap_checkfm_ddic_result.tsv'
+[System.IO.File]::WriteAllText('{RUN_TEMP}\sap_checkfm_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
+```
+
+Run `C:\Windows\SysWOW64\cscript.exe //NoLogo {RUN_TEMP}\sap_checkfm_run.vbs`, then
+delete the credential-bearing generated scripts. Finding codes (`UNKNOWN_PARAM`,
+`WRONG_SECTION`, `MISSING_MANDATORY`, `TYPE_*`, `FM_NOT_FOUND`) are documented in
+the Step 4 table.
+
+---
+
+## Step 3.9 — Compiler Syntax Check (`syntax` dimension)
+
+**Skip when** the `syntax` dimension is disabled or `--offline`. This is the
+headless equivalent of Ctrl+F2 — it catches real ABAP syntax errors (undeclared
+fields, missing periods, typos) that the offline dimensions cannot.
+
+**Applicability gate.** Inspect the source's first non-comment statement:
+- `REPORT` / `PROGRAM` → self-contained → run with `-Subc 1`.
+- Anything else (include / `FUNCTION…ENDFUNCTION` fragment / `CLASS` pool) → do
+  **not** run; append one `SYNTAX_COULD_NOT_CHECK` INFO row to the report noting
+  the source is a fragment/pool checked in-context by the deploy skill
+  (`/sap-se37`, `/sap-se24`) after an inactive insert. Continue.
+
+Run the shared engine (32-bit PS; writes `<abap-file>.syntax.tsv`):
+
+```bash
+C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_rfc_syntax_check.ps1" -SourceFile "THE_ABAP_FILE" -ProgramName "THE_PROGRAM_NAME" -Subc "1" -OutTsv "THE_ABAP_FILE.syntax.tsv"
+```
+
+Parse the `STATUS:` line:
+- `STATUS: CLEAN` → no syntax findings.
+- `STATUS: FINDINGS errors=<e> warnings=<w>` → each `SYNTAX: ERROR/WARN LINE=.. COL=.. MSG=..`
+  is a finding (`SYNTAX_ERROR` = ERROR, `SYNTAX_WARNING` = WARNING).
+- `STATUS: RFC_ERROR …` / wrapper not found → append one `SYNTAX_COULD_NOT_CHECK`
+  WARNING row (RFC off or wrapper not deployed via `/sap-dev-init`) and continue.
+
+---
+
 ## Step 4 — Interpret and Report Results
 
-Read the result TSV file. The file has a header section (STATUS, ABAP_FILE, NAMING_RULES, TIMESTAMP, TOTAL_DECLARATIONS, TOTAL_SQL_STATEMENTS, TOTAL_ISSUES) followed by a column header row and tab-delimited findings.
+Read **all** result files produced by the dimensions that ran, and present them
+as one report:
+- `<abap-file>.check.tsv` — the naming/type/sql/unused/contract/spec/conv dimensions (below).
+- `<abap-file>.check_fm.tsv` — the `fm` dimension (Step 3.8), if it ran.
+- `<abap-file>.syntax.tsv` — the `syntax` dimension (Step 3.9), if it ran.
+
+The `.check.tsv` file has a header section (STATUS, ABAP_FILE, NAMING_RULES, TIMESTAMP, TOTAL_DECLARATIONS, TOTAL_SQL_STATEMENTS, TOTAL_ISSUES) followed by a column header row and tab-delimited findings.
 
 ### Summary table:
 
@@ -506,6 +630,12 @@ Read the result TSV file. The file has a header section (STATUS, ABAP_FILE, NAMI
 | `AUTHZ_FIELD_NAME` | ERROR | (Step 3.5) AUTHORITY-CHECK ID-clause names don't match SU21. Pre-empts SLIN P2 "Authorization field missing". |
 | `CONV_CURR_MISSING_REF` | WARNING | (Step 3.7) A CURR/QUAN file column is mapped without its currency (CUKY) / unit (UNIT) reference — decimal count undefined (TCURX-CURRDEC / T006-DECAN) (§28). |
 | `CONV_CURR_DISPLAY_TO_BAPI` | WARNING | (Step 3.7) `CURRENCY_AMOUNT_DISPLAY_TO_SAP` co-occurs with a BAPI amount type — double-shift smell; pass external amounts to BAPI fields (§28). |
+| `UNKNOWN_PARAM` / `WRONG_SECTION` / `MISSING_MANDATORY` | ERROR | (Step 3.8 `fm`, in `.check_fm.tsv`) `CALL FUNCTION` parameter name unknown / placed under the wrong keyword / mandatory parameter not passed, vs the live FM definition. |
+| `TYPE_MATCH` / `TYPE_COMPATIBLE` / `TYPE_WARNING` / `TYPE_INCOMPATIBLE` / `TYPE_UNKNOWN` | INFO / WARNING / ERROR | (Step 3.8 `fm`) Passed-variable type vs FM parameter type (exact / compatible / risky / incompatible / unresolved). |
+| `FM_NOT_FOUND` | ERROR | (Step 3.8 `fm`) The called FM does not exist / RFC read failed. |
+| `SYNTAX_ERROR` / `SYNTAX_WARNING` | ERROR / WARNING | (Step 3.9 `syntax`, in `.syntax.tsv`) A compiler syntax error / warning at `line:col` from `EDITOR_SYNTAX_CHECK`. |
+| `SYNTAX_COULD_NOT_CHECK` | INFO | (Step 3.9) Source is a fragment/pool (include / FM / class) — syntax-checked in-context by the deploy skill after an inactive insert, not standalone here. |
+| `FM_COULD_NOT_CHECK` / `SYNTAX_COULD_NOT_CHECK` (RFC-off) | WARNING | (Step 3.8 / 3.9) The `fm` / `syntax` dimension could not reach SAP (RFC off, or the dev-init wrapper is absent). Honest COULD_NOT_CHECK — not a pass. |
 
 ### Detail — show all WARNING and ERROR findings:
 

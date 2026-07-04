@@ -35,8 +35,9 @@ skills outside sap-dev-core are tagged with their plugin):
   `sap-activate-object`, `sap-change-package`, `sap-check-fix`
 - **Transport** — `sap-transport-request`, `sap-se01`, `sap-stms`,
   `sap-transport-readiness`
-- **Quality gates** — `sap-atc`, `sap-run-abap-unit`; plus `sap-check-abap`,
-  `sap-check-fm`, `sap-review-abap`, `sap-gen-abap-unit` (sap-gen-code)
+- **Quality gates** — `sap-atc`, `sap-run-abap-unit`, `sap-check-abap` /
+  `sap-fix-abap` (naming · types · SQL · CALL FUNCTION · compiler syntax);
+  plus `sap-review-abap`, `sap-gen-abap-unit` (sap-gen-code)
 - **Data & object insight** — `sap-se16n`, `sap-update-addon`,
   `sap-where-used-list`, `sap-compare`, `sap-explain-object`,
   `sap-document-object`, `sap-sp02` (spool)
@@ -51,8 +52,8 @@ skills outside sap-dev-core are tagged with their plugin):
   `sap-gui-object-details`, `sap-gui-skill-scaffold`, `sap-error-kb`
 - **Spec → ABAP pipeline (sap-gen-code)** — `sap-docs-layout`,
   `sap-docs-extract`, `sap-docs-convert`, `sap-docs-check-ddic`,
-  `sap-docs-check-process`, `sap-gen-abap`, `sap-check-abap`, `sap-check-fm`,
-  `sap-fix-abap`, `sap-fix-fm`, `sap-gen-abap-unit`, `sap-review-abap`
+  `sap-docs-check-process`, `sap-gen-abap`, `sap-gen-abap-unit`,
+  `sap-review-abap` (ABAP check/fix moved to sap-dev-core: `sap-check-abap`, `sap-fix-abap`)
 - **S/4HANA migration (sap-migrate)** — `sap-cc-campaign`, `sap-cc-inventory`,
   `sap-cc-usage`, `sap-cc-analyze`, `sap-cc-triage`, `sap-cc-remediate`,
   `sap-cc-learn`

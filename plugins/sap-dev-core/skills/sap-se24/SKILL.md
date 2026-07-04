@@ -37,6 +37,14 @@ You deploy ABAP class source code to a live SAP system via SE24
 using SAP GUI Scripting. The skill checks if the class
 exists, then creates or updates it.
 
+> **Pre-deploy quality (recommended).** A global class is a *class pool* — a raw
+> `CLASS…ENDCLASS` source does not compile standalone (it needs the generated pool
+> framework), so a headless standalone syntax check is not possible. Run
+> `/sap-check-abap <file>` first for the offline + `fm` dimensions; its `syntax`
+> dimension reports `SYNTAX_COULD_NOT_CHECK` for the class pool. The **compiler
+> syntax check happens in-context** here, via the Ctrl+F2 that runs after the class
+> source is uploaded and saved (below) — that is the class's syntax gate.
+
 Task: $ARGUMENTS
 
 ## Shared Resources

@@ -4,6 +4,32 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **Headless compiler-level ABAP syntax check** — new shared engine
+  `sap-dev-core/shared/scripts/sap_rfc_syntax_check.ps1` runs `EDITOR_SYNTAX_CHECK`
+  through the dev-init wrapper `Z_GENERIC_RFC_WRAPPER_TBL` (asXML, read-only). Passes
+  `I_TRDIR` (UCCHECK/FIXPT/SUBC) so a **non-existent** program checks in Unicode mode
+  (no existing-program dependency), and `ALL_ERRORS='X'` returns **every** error +
+  warning with line/column — the offline equivalent of Ctrl+F2. Live-validated on
+  S/4HANA (exact line/col, multi-error, clean-pass). Token `%%RFC_SYNTAX_CHECK_PS1%%`.
+- **`/sap-se38` pre-insert syntax gate** (Step 4.6) — runs the engine on the source
+  before the GUI deploy for self-contained programs (type `1`); degrades silently to
+  the existing Ctrl+F2 when RFC/the wrapper is unavailable.
+
+### Changed
+
+- **Merged the ABAP check/fix skills into sap-dev-core.** `sap-check-abap` +
+  `sap-check-fm` + the new syntax check are now **one dimension-dispatched
+  `/sap-check-abap`** (dimensions: naming/type/sql/unused/contract/spec/conv/**fm**/**syntax**);
+  `sap-fix-abap` + `sap-fix-fm` + a bounded AI syntax-fix loop are now **one
+  `/sap-fix-abap`**. Both moved from **sap-gen-code → sap-dev-core** (so the
+  se38/se37/se24 deploy skills can gate on them without violating the one-way plugin
+  dependency). The standalone `sap-check-fm` and `sap-fix-fm` skills were **removed**
+  (absorbed as the `fm` dimension / Step 6b); `/sap-check-abap` and `/sap-fix-abap`
+  keep their names. Skill count 80 → 78. `sap-se37`/`sap-se24` note that FM
+  fragments / class pools are syntax-checked **in-context** by their existing Ctrl+F2.
+
 ### Fixed
 
 - **`/sap-check-abap` false `TYPE_NOT_FOUND` on DDIC table types (DD40L) —
