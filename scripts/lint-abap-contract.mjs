@@ -388,12 +388,20 @@ function parseAuthz(content) {
   const byObj = new Map();
   const unavailable = new Set();
   const af = content.split(/\r?\n/);
-  for (let i = 1; i < af.length; i++) {          // row 0 is the header
+  // Tolerate an OPTIONAL header row. The FM producer (sap_rfc_lookup_fm.ps1)
+  // emits a "FM_NAME\t..." header row, but the authz producer
+  // (sap_rfc_lookup_authz.ps1) does NOT -- and its other consumer
+  // (sap-check-abap/references/sap_check_signatures.ps1) reads every row as
+  // data. So start at row 0 and skip only a *literal* header. The prior
+  // hardcoded row-0 skip silently ate the position-1 field (e.g. M_MATE_MAR
+  // ACTVT) of every headerless snapshot -> false AUTHZ_FIELD_UNKNOWN (2026-07-03).
+  for (let i = 0; i < af.length; i++) {
     const cols = af[i].split('\t');
     if (cols.length < 2) continue;
     const obj = (cols[0] || '').trim().toUpperCase();
     if (!obj) continue;
     const pos = (cols[1] || '').trim().toUpperCase();
+    if (pos === 'POSITION') continue;   // optional header row (POSITION marker)
     if (pos === 'NOT_FOUND' || pos === 'UNAVAILABLE') { unavailable.add(obj); continue; }
     const field = (cols[2] || '').trim().toUpperCase();
     if (!field) continue;
@@ -818,12 +826,58 @@ function selftestDirection() {
   return failures;
 }
 
+// Header-tolerance self-test: sap_rfc_lookup_authz.ps1 emits a HEADERLESS
+// _authz_signatures.txt (unlike the FM producer), and its other consumer
+// (sap-check-abap/references/sap_check_signatures.ps1) reads every row as data.
+// The authz parser must therefore read row 0 as data and skip only a literal
+// header -- else it eats the position-1 field (M_MATE_MAR ACTVT) and fires a
+// false AUTHZ_FIELD_UNKNOWN. Half (a) is the 2026-07-03 regression (headerless
+// snapshot -> ACTVT eaten). Half (b) keeps the parser tolerant of a header if a
+// producer ever adds one. Fails if the row-0 skip is reintroduced.
+function selftestAuthzHeaderless() {
+  const abap = [
+    'REPORT zauth.',
+    'START-OF-SELECTION.',
+    "  AUTHORITY-CHECK OBJECT 'M_MATE_MAR'",
+    "    ID 'ACTVT' FIELD '01'",
+    "    ID 'BEGRU' FIELD '02'.",
+  ].join('\n');
+  const headerless = ['M_MATE_MAR\t1\tACTVT', 'M_MATE_MAR\t2\tBEGRU'].join('\n');
+  const withHeader = ['OBJCT\tPOSITION\tFIELD', 'M_MATE_MAR\t1\tACTVT', 'M_MATE_MAR\t2\tBEGRU'].join('\n');
+  const runs = [
+    { name: 'authz: headerless snapshot -> clean (no field eaten)', authz: headerless },
+    { name: 'authz: with-header snapshot -> clean (header tolerated)', authz: withHeader },
+  ];
+  let failures = 0;
+  for (const r of runs) {
+    const dir = mkdtempSync(join(tmpdir(), 'lintauth-'));
+    try {
+      const abapPath = join(dir, 'ZAUTH.abap');
+      writeFileSync(abapPath, abap, 'utf8');
+      writeFileSync(join(dir, '_authz_signatures.txt'), r.authz, 'utf8');
+      const { findings } = lintFile(abapPath, dir, { fixture: true });
+      const authzErrs = findings.filter(f => f.rule.startsWith('AUTHZ_')).length;
+      if (authzErrs !== 0) {
+        failures++;
+        console.log(`SELFTEST FAIL: ${r.name}`);
+        for (const f of findings) console.log(`    ${f.severity} ${f.rule} @${f.line}: ${f.detail}`);
+      } else {
+        console.log(`SELFTEST ok: ${r.name}`);
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+  return failures;
+}
+
 function selftest() {
   const f1 = selftestSource();
   const f2 = selftestFixture();
   const f3 = selftestDirection();
-  const total = f1 + f2 + f3;
-  const cases = 9 + 3 + 2;
+  const f4 = selftestAuthzHeaderless();
+  const total = f1 + f2 + f3 + f4;
+  const cases = 9 + 3 + 2 + 2;
   console.log(`SELFTEST-SUMMARY: ${cases - total}/${cases} cases passed`);
   return total === 0 ? 0 : 1;
 }
