@@ -59,6 +59,7 @@ Task: $ARGUMENTS
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/tr_resolution.md` | TR resolution flow — this skill delegates to `/sap-transport-request` (Step 1b) |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/language_independence_rules.md` | GUI-scripting language independence — identify by component ID + DDIC field name, status-bar checks via `MessageType` codes (S/W/E/I/A), VKey instead of menu-text, no branching on `.Text`/`.Tooltip`/window titles |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/abap_code_quality_rules.md` | ABAP code-quality rules — deployed FM source must follow modern syntax, OOP scaffolds, no literal MESSAGE strings, perf-band-appropriate SQL. Run `/sap-check-abap` (its `fm` dimension covers CALL FUNCTION signatures) before deploy when the source isn't generator-emitted. |
+| `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_rfc_syntax_check.ps1` | Headless compiler syntax **pre-check** (Step 4.6) — runs `EDITOR_SYNTAX_CHECK` via the dev-init wrapper `Z_GENERIC_RFC_WRAPPER_TBL` before the GUI deploy. FM fragments use `-Subc F -Wrap` (Strategy A) for a best-effort **body** check pre-upload, findings line-mapped to the original file; degrades to COULD_NOT_CHECK (never blocks) when the signature is too complex or RFC/wrapper is unavailable. The in-context Ctrl+F2 (Step 5a/5b) stays authoritative. |
 | `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_error_hints.ps1` | frequently_errors recorder. The Final step feeds deploy syntax/activation errors (`-Action record -Source SE37 -RawOutputFile ...`) so FM/METHOD-related failures are captured to the team store. Best-effort; never changes the verdict. |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/sap_gui_security_handling.md` | SAP GUI Security dialog handling — the check-and-fix **FM source download** (Step A) is SAP-GUI-side file IO, so it can raise the modal "SAP GUI Security" dialog (which suspends the Scripting API and hangs cscript); pre-check + OS-level watcher wrap that download. (The source **upload** pastes via the Windows clipboard + SendKeys — SAP GUI reads no file — so it does NOT trip the dialog; it uses the OS-level foreground guard instead.) |
 | `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_gui_security_precheck.ps1` | Read-only allow-list pre-check (`saprules.xml`) — `ALLOWED` (exit 0) / `NOT_COVERED` (exit 1). Used by Step A before the source download. |
@@ -129,7 +130,7 @@ powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_
 
 | Task | Source provided? | Flow |
 |---|---|---|
-| Deploy new or updated code | Yes (file path or pasted) | Steps 1.5 → 2 → 3 → 4 → 5a/5b → 6 → 7 |
+| Deploy new or updated code | Yes (file path or pasted) | Steps 1.5 → 2 → 3 → 4 → 4.6 → 5a/5b → 6 → 7 |
 | Fix / check existing FM | No | Steps 3 → A → B → C → 6 → 7 |
 | Change FM **attributes** (Short Text / Processing Type / …) | No | Steps 1b → 3 → 5d → 6 → 7 |
 | **Reassign** FM to a different function group | No | Steps 1b → 3 → 5e → 6 → 7 |
@@ -298,6 +299,46 @@ Behaviour for each call:
 - Exit `2` → log a step note and continue.
 
 The user can customise the rule at `{custom_url}\sap_object_naming_rules.tsv`.
+
+---
+
+## Step 4.6 — Headless Syntax Pre-Check (RFC)
+
+**Deploy flow only** (source was provided — Step 5a/5b). Skip for fix / change-attributes
+/ reassign / delete modes.
+
+Run a headless, compiler-level ABAP syntax check on the FM source *before* the GUI deploy,
+so a syntax error is caught before any upload round-trip. Uses the shared engine
+`<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_rfc_syntax_check.ps1` (calls `EDITOR_SYNTAX_CHECK`
+through the dev-init wrapper `Z_GENERIC_RFC_WRAPPER_TBL`; read-only, no writes).
+
+An FM `FUNCTION…ENDFUNCTION` source is a **fragment** — not standalone-compilable — so this
+pre-check runs the engine's **`-Wrap` mode** (Strategy A): the fragment is re-presented as a
+self-contained program so its **body** (undeclared fields, typos, bad statements) is checked
+pre-insert, findings line-mapped back to the original file. It is a *best-effort body gate*,
+not the full compile — the authoritative check remains the in-context Ctrl+F2 that Step 5a/5b
+run after the FM is saved inactive into its function group.
+
+Let `SOURCE_FILE` = the FM source path from Step 2 (the user's file, or the staged
+`{RUN_TEMP}\<FM_NAME>.abap`). Run under **32-bit** PowerShell (NCo 3.1):
+
+```bash
+C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_rfc_syntax_check.ps1" -SourceFile "<SOURCE_FILE>" -ProgramName "<FM_NAME>" -Subc "F" -Wrap -OutTsv "{RUN_TEMP}\<FM_NAME>.syntax.tsv"
+```
+
+Parse the `STATUS:` line:
+
+| Result | Action |
+|---|---|
+| `STATUS: CLEAN` | Silently continue to Step 5a/5b. |
+| `STATUS: FINDINGS errors=<e> …` with `e > 0` | **Gate.** Show each `SYNTAX: ERROR LINE=.. COL=.. MSG=..` (line numbers are the original file's). Ask the user to fix the source and re-run, or to proceed anyway (the Step 5 Ctrl+F2 re-checks in-context). Do **not** deploy known-broken source without explicit confirmation. Log `syntax_precheck errors=<e>`. |
+| `STATUS: FINDINGS` with `e = 0` (warnings only) | Show the `SYNTAX: WARN` lines and continue. |
+| `STATUS: COULD_NOT_CHECK <reason>` | **Degrade — never block.** The FM signature was too complex for the wrap to model (generic/untyped param, or a type it could not compile). Log an INFO note `syntax_precheck could_not_check: <reason>` and continue — the Step 5 in-context Ctrl+F2 is the authoritative gate. |
+| `STATUS: RFC_ERROR …` / `INPUT_ERROR …` / wrapper not found | **Degrade — never block.** The headless pre-check is unavailable (RFC off, wrapper not deployed via `/sap-dev-init`, or bad source path). Log an INFO note `syntax_precheck unavailable: <reason>` and continue — the Step 5 Ctrl+F2 remains the syntax gate. |
+
+This is a *pre-flight*; it never replaces the in-editor Ctrl+F2 that Steps 5a/5b run after
+upload. On RFC-capable systems with the dev-init wrapper it just moves the catch earlier,
+before any GUI work.
 
 ---
 
