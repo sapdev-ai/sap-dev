@@ -48,8 +48,8 @@ skills outside sap-dev-core are tagged with their plugin):
   `sap-enhancement-advisor` (+ `sap-transport-readiness` above)
 - **RFC & batch input** — `sap-rfc-wrapper` (fm + class modes),
   `sap-call-bdc`
-- **Skill authoring & error KB** — `sap-gui-record`, `sap-gui-probe`,
-  `sap-gui-inspect`, `sap-gui-skill-scaffold`, `sap-error-kb`
+- **Skill authoring & error KB** — `sap-gui-probe` (`--record` captures a
+  flow by hand), `sap-gui-inspect`, `sap-gui-skill-scaffold`, `sap-error-kb`
 - **Spec → ABAP pipeline (sap-gen-code)** — `sap-docs-layout`,
   `sap-docs-extract`, `sap-docs-convert`, `sap-docs-check` (DDIC + process
   dimensions), `sap-gen-abap`, `sap-gen-abap-unit`,

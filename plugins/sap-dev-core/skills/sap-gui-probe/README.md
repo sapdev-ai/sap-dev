@@ -19,7 +19,7 @@ Compared to siblings:
 
 | Skill | Drives the GUI? | Captures properties? | Multi-screen? |
 |---|---|---|---|
-| `sap-gui-record` | no (user clicks) | no | yes |
+| `sap-gui-probe --record` | no (user clicks) | no | yes |
 | `sap-gui-inspect` | no | yes (structural + visual) | no (single screen) |
 | **`sap-gui-probe`** | **yes** | **yes** | **yes** |
 
