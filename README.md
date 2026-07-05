@@ -11,7 +11,7 @@ via SAP NCo); there is no macOS/Linux path.
 
 Project home: <https://sapdev.ai>
 
-## Available Plugins (4 plugins · 69 skills · 2 agents · v0.7.0)
+## Available Plugins (4 plugins · 67 skills · 2 agents · v0.7.1)
 
 | Plugin | Skills | Description |
 |--------|--------|-------------|
@@ -59,7 +59,7 @@ skills outside sap-dev-core are tagged with their plugin):
   `sap-cc-remediate`, `sap-cc-decommission`
 - **Test data (sap-tcd)** — `sap-bp`, `sap-mm01`, `sap-va01`
 
-## Current Limitations (v0.7.0)
+## Current Limitations (v0.7.1)
 
 Honest list of shipped-but-bounded functionality — these fail **loud**, not
 silent:

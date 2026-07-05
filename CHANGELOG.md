@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.7.1] — 2026-07-05
+
 ### Added
 
 - **Headless compiler-level ABAP syntax check** — new shared engine

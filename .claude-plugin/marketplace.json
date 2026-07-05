@@ -1,6 +1,6 @@
 {
   "name": "sap-dev",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "description": "SAP GUI automation plugins for AI coding assistants",
   "repository": "https://github.com/sapdev-ai/sap-dev",
   "owner": {
@@ -9,7 +9,7 @@
     "url": "https://sapdev.ai"
   },
   "metadata": {
-    "version": "0.7.0",
+    "version": "0.7.1",
     "last_updated": "2026-07-05",
     "total_plugins": 4,
     "total_skills": 67,
@@ -76,7 +76,7 @@
       "agents": [
         "./agents/abap-developer.md"
       ],
-      "version": "0.7.0",
+      "version": "0.7.1",
       "category": "tooling",
       "keywords": [
         "abap-developer-agent",
@@ -136,7 +136,7 @@
         "./skills/sap-gen-cds",
         "./skills/sap-review-abap"
       ],
-      "version": "0.7.0",
+      "version": "0.7.1",
       "category": "tooling",
       "keywords": [
         "abap",
@@ -171,7 +171,7 @@
         "./skills/sap-mm01",
         "./skills/sap-va01"
       ],
-      "version": "0.7.0",
+      "version": "0.7.1",
       "category": "tooling",
       "keywords": [
         "bp",
@@ -202,7 +202,7 @@
       "agents": [
         "./agents/cc-migration-engineer.md"
       ],
-      "version": "0.7.0",
+      "version": "0.7.1",
       "category": "tooling",
       "keywords": [
         "abap",
