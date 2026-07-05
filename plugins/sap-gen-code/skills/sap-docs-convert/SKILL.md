@@ -32,9 +32,9 @@ spec.xlsx ──[sap-docs-extract]──▶ raw _*.txt
                                      ▼
                   ──[sap-docs-convert]── (optional, rules-driven)
                                      │
-                ┌────────────────────┼─────────────────────┐
-                ▼                    ▼                     ▼
-       /sap-docs-check-ddic  /sap-docs-check-process   /sap-gen-abap
+                ┌────────────────────┴─────────────────────┐
+                ▼                                           ▼
+       /sap-docs-check (ddic + process dimensions)    /sap-gen-abap
 ```
 
 Task: $ARGUMENTS
@@ -229,8 +229,7 @@ Report to the user:
 - Per-file change counts (concise version of the log)
 - Snapshot location (so the user knows how to roll back)
 - Suggest next steps:
-  - `/sap-docs-check-process {work_folder}`
-  - `/sap-docs-check-ddic {work_folder}`
+  - `/sap-docs-check {work_folder}` (validates both the process and DDIC dimensions)
   - `/sap-gen-abap {work_folder}/{doc_name}_process.txt`
 
 If the user wants to roll back, they restore from `{work_folder}/.pre-convert/`:

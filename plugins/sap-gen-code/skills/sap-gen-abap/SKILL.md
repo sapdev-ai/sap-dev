@@ -494,7 +494,7 @@ De-duplicate, uppercase, filter:
 Write to `{RUN_TEMP}\struct_request.txt`, one TABNAME per line. Skip
 the rest of 1.5e when empty.
 
-When `/sap-docs-check-process` or `/sap-docs-check-ddic` ran earlier in
+When `/sap-docs-check` (process or DDIC dimension) ran earlier in
 the pipeline, `_struct_signatures.txt` may already be populated for some
 of these names — the per-system disk cache absorbs the duplicate work
 silently (Test-CacheHit). No extra logic needed; just include all the

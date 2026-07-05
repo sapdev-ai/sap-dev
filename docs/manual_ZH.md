@@ -47,9 +47,9 @@
 
 | 插件 | 技能 | 它为你提供什么 |
 |---|---|---|
-| **sap-dev-core** | 56 个 + `abap-developer` 代理 | 登录与连接库、传输处理、ABAP 工作台（SE38/SE37/SE24/SE11/SE91/SE16N/SE01/…）、ATC 质量门禁、ABAP-Unit 运行器、激活、诊断（ST22/SM13/SM12/SLG1/SM37）、交付保障，以及向 QAS/PRD 的 **STMS** 导入。 |
-| **sap-gen-code** | 12 个 | **规格 → ABAP** 流水线：读取设计文档（Excel/Word/PDF）、校验它、生成贴合你项目的 ABAP，并将结果与实时系统对照校验。 |
-| **sap-migrate** | 7 个 + `cc-migration-engineer` 代理 | 以受跟踪的"战役"（campaign）形式进行的 S/4HANA 自定义代码迁移。 |
+| **sap-dev-core** | 53 个 + `abap-developer` 代理 | 登录与连接库、传输处理、ABAP 工作台（SE38/SE37/SE24/SE11/SE91/SE16N/SE01/…）、ATC 质量门禁、ABAP-Unit 运行器、激活、诊断（ST22/SM13/SM12/SLG1/SM37）、交付保障，以及向 QAS/PRD 的 **STMS** 导入。 |
+| **sap-gen-code** | 8 个 | **规格 → ABAP** 流水线：读取设计文档（Excel/Word/PDF）、校验它、生成贴合你项目的 ABAP，并将结果与实时系统对照校验。 |
+| **sap-migrate** | 8 个 + `cc-migration-engineer` 代理 | 以受跟踪的"战役"（campaign）形式进行的 S/4HANA 自定义代码迁移。 |
 | **sap-tcd** | 3 个 | 业务事务自动化：BP、MM01/02/03、VA01/02/03。 |
 
 ### 它**不是**什么
@@ -79,10 +79,10 @@
         design doc (.xlsx/.docx/.pdf)       ▼
    ┌───────────────────────────────────────────────────────────────────┐
    │  GENERATE                                                          │
-   │  /sap-docs-extract → (/sap-docs-convert) → /sap-docs-check-ddic    │
-   │                    → /sap-docs-check-process → /sap-gen-abap        │
-   │                    → /sap-check-abap (+/sap-fix-abap)               │
-   │        (check-abap covers naming·types·SQL·fm·syntax dimensions)    │
+   │  /sap-docs-extract → (/sap-docs-convert) → /sap-docs-check         │
+   │        → /sap-gen-abap → /sap-check-abap (+/sap-fix-abap)           │
+   │  (docs-check runs ddic+process dimensions; check-abap covers        │
+   │   naming·types·SQL·fm·syntax dimensions)                            │
    └───────────────────────────────────────────────────────────────────┘
                                             │   Z<PROG>.abap (+ sibling files)
                                             ▼
@@ -425,8 +425,7 @@ setx SAPDEV_AI_WORK_DIR "D:\sapdev"
 (/sap-docs-layout)        # optional: customise the spec workbook layout
  /sap-docs-extract        # REQUIRED: document → structured *.txt files
 (/sap-docs-convert)       # optional: apply customer field/type/flag renames
- /sap-docs-check-ddic     # recommended: validate domains/data elements/tables
- /sap-docs-check-process  # recommended: validate the process logic
+ /sap-docs-check          # recommended: validate the spec (ddic + process dimensions)
  /sap-gen-abap            # REQUIRED: generate Z<PROG>.abap (+ sibling files)
  /sap-check-abap          # recommended: naming / types / SQL / contracts / coverage / CALL FUNCTION / syntax
  /sap-fix-abap            # if check-abap found auto-fixable issues
@@ -465,19 +464,22 @@ setx SAPDEV_AI_WORK_DIR "D:\sapdev"
 标志值 → 键/值）。如果你的规格已经是工具集预期的形态，就**跳过它**。会先拍一个
 `.pre-convert/` 快照，所以可逆。
 
-### 6.3 校验规格 —— `/sap-docs-check-ddic` 与 `/sap-docs-check-process`
+### 6.3 校验规格 —— `/sap-docs-check`
 
 ```text
-/sap-docs-check-ddic   <work-folder> [<sap-logon-description>]
-/sap-docs-check-process <work-folder>
+/sap-docs-check <work-folder> [<sap-logon-description>]   # 默认运行两个维度
+/sap-docs-check <work-folder> --dimension ddic            # 仅 DDIC 维度
+/sap-docs-check <work-folder> --dimension process         # 仅流程维度
 ```
 
-- **check-ddic** 校验域/数据元素/表：命名、有效的 DDIC 类型、CURR/QUAN 参考完整性、
+一个技能，两个维度（默认运行输入文件存在的两个维度）:
+
+- **ddic** 维度校验域/数据元素/表：命名、有效的 DDIC 类型、CURR/QUAN 参考完整性、
   域↔数据元素↔表的交叉引用。传入一个登录描述，还会通过 RFC 对照**实时**字典进行校验。
-- **check-process** 标记含糊/矛盾的逻辑、未定义的字段/表，以及类型不匹配；可选地把
+- **process** 维度标记含糊/矛盾的逻辑、未定义的字段/表，以及类型不匹配；可选地把
   table.field 引用与实时 SAP 对照校验。
 
-每个都会写出一个制表符分隔的 `check_result_*.txt`，你可以在 Excel 中打开。**只列出问题**
+每个维度都会写出一个制表符分隔的 `check_result_*.txt`（ddic / process），你可以在 Excel 中打开。**只列出问题**
 —— 空结果意味着干净。在规格文本文件中修复问题，重新运行，然后继续。
 
 ### 6.4 生成 —— `/sap-gen-abap`
@@ -749,8 +751,7 @@ READINESS: tr=DEVK900123 verdict=GO_WITH_WARNINGS block=0 warn=2 info=1 objects=
 
 # 1. Generate
 /sap-docs-extract C:\sapdev\design_docs\MaterialUpload.xlsx
-/sap-docs-check-ddic    C:\sapdev\source_code\work\MaterialUpload_20260626\
-/sap-docs-check-process C:\sapdev\source_code\work\MaterialUpload_20260626\
+/sap-docs-check         C:\sapdev\source_code\work\MaterialUpload_20260626\
 /sap-gen-abap C:\sapdev\source_code\work\MaterialUpload_20260626\MaterialUpload_process.txt
 /sap-check-abap C:\sapdev\source_code\work\MaterialUpload_20260626\ZHKMM001R01.abap
 #   → if findings: /sap-fix-abap … then re-check until clean
@@ -799,7 +800,7 @@ READINESS: tr=DEVK900123 verdict=GO_WITH_WARNINGS block=0 warn=2 info=1 objects=
    会话（必要时运行 `/sap-login`）；**检查它已固定到你点名的那个系统**（这样
    "在 S4H 上部署"就不会悄悄落到 S4D 上）；并运行 `/sap-dev-status` 来确认 dev-init 产物
    存在。
-2. **构建** —— `/sap-docs-extract` → `/sap-docs-check-process` + `/sap-docs-check-ddic`
+2. **构建** —— `/sap-docs-extract` → `/sap-docs-check`
    → 部署规格的 DDIC 对象（`/sap-se11`）和消息类（`/sap-se91`）
    → `/sap-transport-request` → `/sap-gen-abap` → `/sap-check-abap`
    （全部维度，+ `/sap-fix-abap`，最多 3 轮）。
@@ -878,7 +879,7 @@ READINESS: tr=DEVK900123 verdict=GO_WITH_WARNINGS block=0 warn=2 info=1 objects=
 /sap-where-used-list TABLE ZHKT_LOG            # cross-reference
 /sap-impact-analysis PROGRAM ZLEGACY_REPORT    # risk band before you change it
 /sap-compare PROGRAM ZHKMM001R01               # same object across two saved systems
-/sap-document-object PROGRAM ZHKMM001R01       # turn an object into a spec document
+/sap-explain-object ZHKMM001R01 --spec         # turn an object into a spec document
 ```
 
 **诊断与修复事故**
@@ -989,11 +990,11 @@ top 错误类别）。
 | `sap-atc` / `sap-run-abap-unit` | ATC 门禁 / ABAP Unit 运行器 |
 | `sap-transport-readiness` / `sap-impact-analysis` / `sap-enhancement-advisor` / `sap-evidence-pack` | 交付保障 |
 | `sap-stms` | 把一个已释放的 TR 沿系统格局导入（生产受门禁） |
-| `sap-diagnose` + `sap-st22`/`sap-sm13`/`sap-sm12`/`sap-slg1`/`sap-sm37` | 事故分诊 + 读取器 |
+| `sap-diagnose` + `sap-st22` | 事故分诊（内置 SM13/SM12/SLG1/SM37 RFC 读取器，`--reader <name>` 单独运行）+ ST22 转储读取器 |
 | `sap-sp02` | 显示 / 导出假脱机输出请求 |
 | `sap-fix-incident` / `sap-check-fix` | 测试优先的修复闭环 / 检查并修复的路由器 |
 | `sap-trace` | 分析一段已记录的性能追踪 |
-| `sap-explain-object` / `sap-compare` / `sap-document-object` | 理解 / 跨系统差异 / 从对象生成规格 |
+| `sap-explain-object` / `sap-compare` | 理解（`--spec` 输出正式规格文档）/ 跨系统差异 |
 | `sap-rfc-wrapper-fm` / `sap-rfc-wrapper-class` | 通过 RFC 调用非 RFC 的 FM / 方法 |
 | `sap-call-bdc` / `sap-update-addon` | BDC 重放 / 附加表维护 |
 | `sap-gui-record` / `sap-gui-probe` / `sap-gui-object-details` / `sap-gui-diagnose` / `sap-gui-screen-check` / `sap-gui-skill-scaffold` | 技能编写 & GUI 健壮性工具 |
@@ -1006,7 +1007,7 @@ top 错误类别）。
 | `sap-docs-layout` | 编辑规格工作簿布局 |
 | `sap-docs-extract` | 文档 → 结构化 `_*.txt` 文件 |
 | `sap-docs-convert` | 应用客户归一化规则 |
-| `sap-docs-check-ddic` / `sap-docs-check-process` | 校验 DDIC / 处理逻辑 |
+| `sap-docs-check` | 校验规格（DDIC + 处理逻辑维度） |
 | `sap-gen-abap` | 生成 ABAP（报表 / 对话 / FM） |
 | `sap-check-abap` / `sap-fix-abap` | 校验 / 自动修复 ABAP 质量 —— 命名、类型、SQL、CALL FUNCTION 签名、编译器语法 |
 

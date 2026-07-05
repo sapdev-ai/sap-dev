@@ -69,7 +69,7 @@ Conversational forms:
 ## Prerequisites
 
 - Run `/sap-docs-extract` first to produce `{doc_name}_process.txt`
-- Recommended: run `/sap-docs-check-process` to catch unclear parts before
+- Recommended: run `/sap-docs-check` to catch unclear parts / DDIC issues before
   generation
 - Customer Brief at `{custom_url}\customer_brief.md` (or shared default) —
   drives release / OOP / perf decisions

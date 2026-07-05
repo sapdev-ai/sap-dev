@@ -116,8 +116,8 @@ stop and route** (do not attempt a code fix):
 |---|---|
 | `config-missing` | name the IMG / config table; verify read-only via `/sap-se16n` |
 | `data-defect` | point at the offending record (read-only `/sap-se16n`) |
-| `lock-contention` | **manual** — open **SM12** (`/nSM12`), find the row, confirm with the lock owner, then **Lock Entry → Delete** by hand. `/sap-sm12` is read-only (no automated release). |
-| `stuck-update` | **manual** — open **SM13** (`/nSM13`), find the failed record, confirm with the update owner, then **Repeat Update / Delete** by hand. `/sap-sm13` is read-only (no automated reprocess). |
+| `lock-contention` | **manual** — open **SM12** (`/nSM12`), find the row, confirm with the lock owner, then **Lock Entry → Delete** by hand. The SM12 reader (`/sap-diagnose --reader sm12`) is read-only (no automated release). |
+| `stuck-update` | **manual** — open **SM13** (`/nSM13`), find the failed record, confirm with the update owner, then **Repeat Update / Delete** by hand. The SM13 reader (`/sap-diagnose --reader sm13`) is read-only (no automated reprocess). |
 
 Echo `TARGET: hypothesis=<rank> category=custom-code-defect confidence=<H|M|L>`.
 

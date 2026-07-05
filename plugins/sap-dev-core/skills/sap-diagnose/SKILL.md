@@ -3,11 +3,13 @@ name: sap-diagnose
 description: |
   Incident triage orchestrator for SAP support. From a single incident anchor
   (a time window, user, transaction, background job, business object key, or a
-  known short-dump) it fans out across the read-only Diagnose readers — /sap-st22
-  (dumps, GUI), /sap-sm13 (update-task failures), /sap-sm12 (locks), /sap-slg1
-  (application log), /sap-sm37 (jobs) — then correlates the collected evidence
-  into incident clusters and produces ranked root-cause hypotheses with a
-  recommended fix path.
+  known short-dump) it fans out across its read-only evidence readers — the
+  internal RFC reader set (SM13 update-task failures, SM12 locks, SLG1
+  application log, SM37 jobs) plus the GUI dump reader /sap-st22 — then
+  correlates the collected evidence into incident clusters and produces ranked
+  root-cause hypotheses with a recommended fix path. Pass --reader <name> to run
+  a single reader standalone (sm13 | sm12 | slg1 | sm37 | st22) and just print
+  its evidence, skipping correlation.
   PURE READ-ONLY: this skill never writes to SAP. When a fix implies a write
   (release a lock, reprocess an update) it only points the operator at the
   MANUAL SM12 / SM13 steps — the sm12/sm13 readers are read-only and have no
@@ -20,7 +22,7 @@ description: |
   ST22 is GUI (ADT not used). Safe to point at production.
   Prerequisites: a saved profile via /sap-login (RFC password); SAP NCo 3.1
   (32-bit, .NET 4.0) in GAC; active SAP GUI session for the ST22 leg.
-argument-hint: "[<natural-language incident>] [--user U] [--tcode T] [--program P] [--job J] [--dump KEY] [--object TYPE:KEY] [--date today|YYYYMMDD] [--time HH:MM] [--window MIN] [--sources a,b] [--depth quick|standard|deep] [--remediate] [--fix] [--connection PROFILE] [--report] [--out PATH]"
+argument-hint: "[<natural-language incident>] [--user U] [--tcode T] [--program P] [--job J] [--dump KEY] [--object TYPE:KEY] [--date today|YYYYMMDD] [--time HH:MM] [--window MIN] [--sources a,b] [--reader sm13|sm12|slg1|sm37|st22] [--depth quick|standard|deep] [--remediate] [--fix] [--connection PROFILE] [--report] [--out PATH]"
 ---
 
 # SAP Incident Diagnosis Orchestrator
@@ -51,9 +53,19 @@ Task: $ARGUMENTS
 | `<SKILL_DIR>/references/sap_diagnose_correlate.ps1` | *(helper)* | deterministic graph + clustering. |
 | `<SKILL_DIR>/references/diagnose_evidence_schema.json` | *(schema)* | evidence contract every reader emits. |
 | `<SKILL_DIR>/references/diagnose_source_matrix.tsv` | *(table)* | anchor-signal → reader set. |
+| `<SKILL_DIR>/references/sap_diagnose_reader_lib.ps1` | `%%DIAG_READER_LIB_PS1%%` | Reader helpers (anchor, read-table, evidence emit) — dot-sourced by the four RFC reader scripts below. |
+| `<SKILL_DIR>/references/sap_sm37_read.ps1` | *(reader)* | Background-job reader (TBTCO). |
+| `<SKILL_DIR>/references/sap_sm13_read.ps1` | *(reader)* | Update-task failure reader (VBHDR + VBERROR). |
+| `<SKILL_DIR>/references/sap_sm12_read.ps1` | *(reader)* | Lock-entry reader (ENQUEUE_READ). |
+| `<SKILL_DIR>/references/sap_slg1_read.ps1` | *(reader)* | Application-log reader (BALHDR). |
 
-**Reader skills** (called via the Skill tool in Step 4): `/sap-st22`,
-`/sap-sm13`, `/sap-sm12`, `/sap-slg1`, `/sap-sm37`.
+**Evidence readers.** The four RFC readers (SM13 / SM12 / SLG1 / SM37) are
+**internal to this skill** — the `references/sap_*_read.ps1` scripts above, run
+directly in Step 4 (they were formerly the standalone `/sap-sm13` … `/sap-sm37`
+skills, folded in here to shrink the catalogue). The **GUI dump reader stays a
+separate skill**, `/sap-st22` (called via the Skill tool), because it drives
+ST22 through GUI scripting. `/sap-trace` (performance) is likewise separate and
+is not auto-chained.
 
 **Fix hand-off** (Step 8.5, only with `--fix`): `/sap-fix-incident` — the
 write-capable companion. Diagnose stays read-only; it only invokes the fix skill
@@ -105,6 +117,14 @@ C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypas
 > `RESOLVED_WINDOW=` line. A skew here silently returns "no evidence" — the same
 > failure class as the SE01-create timezone bug.
 
+> **Standalone single-reader mode (`--reader <name>`).** When `--reader` names
+> one reader (`sm13` | `sm12` | `slg1` | `sm37` | `st22`), **skip source
+> selection (Step 3)**: resolve the anchor (Steps 1–2), run just that one reader
+> with the Step 4 mechanics, print its evidence summary, and STOP — no
+> correlation, clustering, or hypotheses (Steps 5–8 are not run). This replaces
+> the former standalone `/sap-sm13` … `/sap-sm37` skills one-for-one; e.g.
+> `/sap-diagnose --reader sm37 --job ZFOO --date today` == the old `/sap-sm37`.
+
 ## Step 3 — Select Sources
 
 Read `references/diagnose_source_matrix.tsv`, pick the reader set by the
@@ -117,18 +137,48 @@ all). Echo `SOURCES_SELECTED: ...`.
 > try to invoke them via the Skill tool. Instead, name the manual transaction in
 > the report's `next_actions` (e.g. "run **SM21** for the window", "check
 > **SMQ1/SMQ2** for stuck queues", "check **/IWFND/ERROR_LOG**") so the operator
-> collects that evidence by hand. Only `st22`, `sm13`, `sm12`, `slg1`, `sm37`
-> (and `trace`, a separate skill) are callable readers today.
+> collects that evidence by hand. Only the internal RFC readers (`sm13`, `sm12`,
+> `slg1`, `sm37`) and the `st22` GUI reader skill (plus `trace`, a separate
+> skill) are available today.
 
 ## Step 4 — Collect Evidence (fan-out)
 
-Invoke each selected reader **via the Skill tool**, passing
-`--anchor {RUN_DIR}\anchor.json --out {RUN_DIR}\evidence_<source>.json`. Each
-reader is read-only, time-boxed, top-N capped, and writes an evidence file
-(`diagnose_evidence_schema.json`). RFC readers (sm13/sm12/slg1/sm37) are
-independent — invoke them together; the GUI reader (st22) uses the pinned
-session, so run it on its own. A reader that errors or lacks authorization
-writes a `skipped` stub — record it and continue; never drop a source silently.
+Each reader is read-only, time-boxed, top-N capped, and writes an evidence file
+matching `diagnose_evidence_schema.json`. A reader that errors or lacks
+authorization writes a `skipped` stub — record it and continue; never drop a
+source silently.
+
+### Step 4a — Internal RFC readers (SM13 / SM12 / SLG1 / SM37)
+
+For each selected RFC source, materialize its reader script and run it under
+**32-bit PowerShell**. Substitute **only** the two library paths; leave the
+`%%SAP_*%%` credential tokens literal so `Connect-SapRfc` fills them from the
+pinned connection profile. The four readers share one signature
+(`-AnchorJson <path> -OutFile <path> [-TopN <n>]`), so the block below is
+identical per source — swap `<src>` ∈ { `sm13`, `sm12`, `slg1`, `sm37` }:
+
+```powershell
+$ps = [IO.File]::ReadAllText('<SKILL_DIR>\references\sap_<src>_read.ps1', [Text.Encoding]::UTF8)
+$ps = $ps.Replace('%%RFC_LIB_PS1%%',         '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_rfc_lib.ps1')
+$ps = $ps.Replace('%%DIAG_READER_LIB_PS1%%', '<SKILL_DIR>\references\sap_diagnose_reader_lib.ps1')
+[IO.File]::WriteAllText('{RUN_DIR}\<src>_run.ps1', $ps, (New-Object Text.UTF8Encoding($false)))
+```
+
+```bash
+C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File "{RUN_DIR}\<src>_run.ps1" -AnchorJson "{RUN_DIR}\anchor.json" -OutFile "{RUN_DIR}\evidence_<src>.json"
+```
+
+The RFC readers are independent — materialize and run the whole selected set
+before correlating. Honor `--top-n` by appending `-TopN <n>`. Each reader prints
+an `EVIDENCE: source=<SRC> …` summary line and writes `evidence_<src>.json`,
+which `sap_diagnose_correlate.ps1` consumes in Step 5.
+
+### Step 4b — GUI dump reader (ST22)
+
+If `st22` is in the selected set, invoke `/sap-st22` **via the Skill tool**,
+passing `--anchor {RUN_DIR}\anchor.json --out {RUN_DIR}\evidence_st22.json`. It
+uses the pinned GUI session, so run it on its own (do not interleave it with a
+second GUI skill).
 
 > **`--fix` (or `--depth deep`) → run ST22 deep.** When `--fix` is set, invoke
 > `/sap-st22` with `--deep` so the deliverable carries a `dump_detail` (failing
@@ -167,8 +217,8 @@ confirm_by, refute_by, recommended_action }`. Hard rules:
 | custom-code defect | *(closed loop)* `/sap-fix-incident --incident <out>` — auto-chained by `--fix` (Step 8.5); or manually `/sap-explain-object <type> <name>` → `/sap-se38\|37\|24` fix |
 | config-missing | name the IMG/config table; verify read-only via `/sap-se16n` |
 | data-defect | point at the record (read-only `/sap-se16n`) |
-| lock-contention | *(manual — operator-performed)* open **SM12** (`/nSM12`), find the reported row, confirm with the lock owner, then **Lock Entry → Delete** by hand. `/sap-sm12` is a **read-only reader** — there is no automated `--release`. |
-| stuck update | *(manual — operator-performed)* open **SM13** (`/nSM13`), find the failed record, confirm with the update owner, then **Repeat Update / Delete** by hand. `/sap-sm13` is a **read-only reader** — there is no automated `--reprocess`. |
+| lock-contention | *(manual — operator-performed)* open **SM12** (`/nSM12`), find the reported row, confirm with the lock owner, then **Lock Entry → Delete** by hand. The SM12 reader leg is **read-only** — there is no automated `--release`. |
+| stuck update | *(manual — operator-performed)* open **SM13** (`/nSM13`), find the failed record, confirm with the update owner, then **Repeat Update / Delete** by hand. The SM13 reader leg is **read-only** — there is no automated `--reprocess`. |
 
 The orchestrator performs no write itself. With `--fix` it delegates the
 custom-code path to `/sap-fix-incident`, which owns its own confirmation gate
@@ -257,7 +307,7 @@ powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_
 | Symptom | Cause | Recovery |
 |---|---|---|
 | `NO_EVIDENCE` for a real incident | server/workstation time-zone skew | re-check `RESOLVED_WINDOW`; widen `--window`; confirm server tz |
-| a reader returns `skipped` | no auth for that tcode/FM | run it standalone with a privileged user; triage continues |
+| a reader returns `skipped` | no auth for that tcode/FM | re-run that reader alone with a privileged user (`--reader <name>`); triage continues |
 | hundreds of events | anchor too broad | narrow `--user`/`--tcode`; read `truncation[]` |
 | one giant cluster | `TightSeconds` too loose on a busy system | lower `-TightSeconds` |
 

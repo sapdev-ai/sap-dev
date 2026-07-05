@@ -378,9 +378,11 @@ reports *errors* (not warnings), STOP and surface them to the user.
 Don't proceed to generation with a bad spec.
 
 ```
-/sap-docs-check-process <work_folder>
-/sap-docs-check-ddic <work_folder>
+/sap-docs-check <work_folder>
 ```
+
+(runs both the process and DDIC dimensions by default; add `--dimension
+ddic` / `--dimension process` to force one)
 
 ### 2c. Resolve DDIC + message-class dependencies
 
@@ -871,8 +873,7 @@ message-class create), invoke that skill directly via the Skill tool.
 | Setup | `/sap-transport-request` | TR resolution per `way_to_get_transport_request` policy |
 | Spec | `/sap-docs-extract` | Spec doc → structured `_*.txt` files |
 | Spec | `/sap-docs-convert` | Apply customer normalisation rules |
-| Spec | `/sap-docs-check-process` | Validate process logic |
-| Spec | `/sap-docs-check-ddic` | Validate DDIC field references against live SAP |
+| Spec | `/sap-docs-check` | Validate the extracted spec — process logic + DDIC field references (live SAP); runs both dimensions by default |
 | Generate | `/sap-gen-abap` | Process text → ABAP source (+ tests, deps, traceability) |
 | Quality | `/sap-check-abap` | All dimensions: naming, types, SQL, FM signatures, compiler syntax |
 | Quality | `/sap-fix-abap` | Auto-fix ABAP issues incl. FM call mismatches + the bounded syntax loop |

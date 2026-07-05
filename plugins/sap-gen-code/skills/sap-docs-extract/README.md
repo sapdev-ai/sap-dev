@@ -77,10 +77,8 @@ After extract completes, chain into:
 
 - `/sap-docs-convert {work_folder}` *(optional)* — apply customer-specific
   field/type/flag normalisation rules
-- `/sap-docs-check-process {work_folder}` — validate the process logic for
-  unclear parts before generation
-- `/sap-docs-check-ddic {work_folder}` — validate DDIC definitions before
-  deployment
+- `/sap-docs-check {work_folder}` — validate the extracted spec (process logic
+  + DDIC definitions; runs both dimensions by default) before generation
 - `/sap-gen-abap {work_folder}/{doc_name}_process.txt` — generate ABAP
 
 ## Limitations

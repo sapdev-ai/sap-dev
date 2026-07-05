@@ -147,7 +147,7 @@ Claude: [Uses sap-se38]
 | `sap-dev-clean` | Conservative cleanup of the artefacts `/sap-dev-init` created, in reverse dependency order with per-step confirmation |
 | `sap-dev-init` | Initializes the SAP development environment: transport request, package, function group, and utility program |
 | `sap-dev-status` | Read-only status report on the `/sap-dev-init` artefacts (TR, package, function group, wrapper FM, utility program) |
-| `sap-diagnose` | Incident-triage orchestrator: fans out across the read-only readers (ST22 / SM13 / SM12 / SLG1 / SM37), correlates the evidence into clusters, and ranks root-cause hypotheses — pure read-only |
+| `sap-diagnose` | Incident-triage orchestrator: fans out across the read-only readers (its built-in SM13 / SM12 / SLG1 / SM37 RFC readers + the `sap-st22` GUI dump reader), correlates the evidence into clusters, and ranks root-cause hypotheses — pure read-only. Run one reader standalone with `--reader <name>` |
 | `sap-enhancement-advisor` | Finds the safest extension point for a behavior change and recommends the enhancement mechanism (BAdI / SMOD / user-exit) with transparent scoring — read-only |
 | `sap-evidence-pack` | Collects the artifacts other delivery-assurance skills registered into one audit-ready pack with an executive summary and an honest "Missing evidence" section — pure-local |
 | `sap-explain-object` | Read-only comprehension aid for an existing object: acquires source, builds a structure + call map, optionally pulls callers, and emits an explanation dossier |
@@ -175,10 +175,6 @@ Claude: [Uses sap-se38]
 | `sap-se51` | Deploys screen (dynpro) flow logic via SE51 |
 | `sap-se54` | Generates a table maintenance dialog via SE54 |
 | `sap-se91` | Manages SAP message classes and entries via SE91 |
-| `sap-slg1` | `/sap-diagnose` reader: application-log (SLG1 / BALHDR) evidence over RFC — read-only |
-| `sap-sm12` | `/sap-diagnose` reader: lock-entry (SM12) evidence via `ENQUEUE_READ` — read-only |
-| `sap-sm13` | `/sap-diagnose` reader: update-task failure (SM13 / VBHDR + VBERROR) evidence over RFC — read-only |
-| `sap-sm37` | `/sap-diagnose` reader: background-job (SM37 / TBTCO) evidence over RFC, flagging aborted jobs — read-only |
 | `sap-snro` | Creates and maintains SAP Number Range Objects (NRO) via SNRO, including sub-object intervals |
 | `sap-sp02` | Downloads a SAP spool request to a local text file via SP02 |
 | `sap-st22` | `/sap-diagnose` reader: ABAP short-dump (ST22 / SNAP) evidence via GUI scripting — read-only |
@@ -193,8 +189,7 @@ Claude: [Uses sap-se38]
 | Skill | Description |
 |-------|-------------|
 | `sap-check-abap` *(moved to sap-dev-core)* | Validates ABAP source quality across all dimensions — naming, types, unused, SQL fields, CALL FUNCTION signatures (RFC), and compiler-level syntax (RFC). Absorbed the former `sap-check-fm`. |
-| `sap-docs-check-ddic` | Validates DDIC objects extracted from a design document (naming, type validity, domain/DTEL/table cross-references) |
-| `sap-docs-check-process` | Validates the process logic text file before ABAP code generation; flags ambiguity and inconsistencies |
+| `sap-docs-check` | Validates an extracted spec before ABAP generation across two dimensions: `ddic` (naming, type validity, domain/DTEL/table cross-references) and `process` (process-logic ambiguity + inconsistencies). Runs both by default; `--dimension ddic\|process` forces one. Absorbed the former `sap-docs-check-ddic` and `sap-docs-check-process`. |
 | `sap-docs-convert` | Applies customer-specific normalisation rules (field rename, type rename, flag mapping, schema migration) to extracted spec files |
 | `sap-docs-extract` | Reads a SAP design document (Excel/Word/PDF) and extracts structured info into separate text files by section |
 | `sap-docs-layout` | Edits the structural layout of a SAP design spec template (.xlsx) via its `(Meta) Layout` sheet |

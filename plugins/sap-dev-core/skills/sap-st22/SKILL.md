@@ -45,7 +45,7 @@ Task: $ARGUMENTS
 ```bash
 powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('WORK_DIR=' + (Get-SapWorkDir))"
 ```
-Set `{WORK_TEMP}` / `{RUN_DIR}` as in `/sap-sm37`.
+Set `{WORK_TEMP}` = `{work_dir}\temp`; `{RUN_DIR}` = a fresh `{WORK_TEMP}\diagnose\<run>` (or the orchestrator's run dir when `--anchor` points into it).
 
 Set `{RUN_TEMP}` = the per-run scratch dir (`Get-SapRunTemp` mints + creates `{work_dir}\temp\run_<id>`):
 ```bash

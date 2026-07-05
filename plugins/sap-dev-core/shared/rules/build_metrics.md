@@ -83,7 +83,7 @@ sub-fields are absent and roll up to `n/a`, never `0`.
 | Gate | Produced by | `verdict` source | Enrichment fields |
 |---|---|---|---|
 | `GEN` | `sap-gen-abap` | TEST_FILE marker / end status | `test_file`, `methods`, `hints_injected` |
-| `SPEC` | `sap-docs-check-ddic` + `-process` | end status | `ddic_errors`, `process_errors` |
+| `SPEC` | `sap-docs-check` (ddic + process dimensions) | end status | `ddic_errors`, `process_errors` |
 | `CHECK` | `sap-check-abap` (+`-fm`) | end status | `iterations`, `errors`, `warnings` |
 | `SYNTAX` | `sap-se38/37/24` | `SYNTAX_ERRORS:` marker | `syntax_errors` |
 | `ACTIVATE` | `sap-se38/37/24` | activation verify | `activated` |

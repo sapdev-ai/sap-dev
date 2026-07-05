@@ -116,8 +116,7 @@ function Get-GateForSkill([string]$skill) {
         'sap-gen-abap'           { return 'GEN' }
         'sap-check-abap'         { return 'CHECK' }
         'sap-check-fm'           { return 'CHECK' }
-        'sap-docs-check-ddic'    { return 'SPEC' }
-        'sap-docs-check-process' { return 'SPEC' }
+        'sap-docs-check'         { return 'SPEC' }
         'sap-se38'               { return 'DEPLOY' }
         'sap-se37'               { return 'DEPLOY' }
         'sap-se24'               { return 'DEPLOY' }

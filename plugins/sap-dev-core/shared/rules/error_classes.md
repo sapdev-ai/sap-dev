@@ -29,7 +29,7 @@ Contract:
 | `TR_RESOLUTION_FAILED` | deploy skills' Step 1b (`/sap-transport-request` delegation) | No modifiable transport request could be resolved under the active `way_to_get_transport_request` policy. |
 | `TR_NOT_MODIFIABLE` | reserved (canonical name; use for a supplied TR that exists but is released/foreign) | The named TR cannot take new objects. |
 | `GUI_TIMEOUT` | reserved (canonical name for GUI-scripting stalls) | A GUI-scripting wait loop exhausted its budget (screen never arrived, modal never closed). |
-| `OBJECT_NOT_FOUND` | sap-explain-object, sap-document-object, sap-impact-analysis, sap-review-abap | The named repository object does not resolve on the target system (TADIR/TFDIR probe empty). |
+| `OBJECT_NOT_FOUND` | sap-explain-object, sap-impact-analysis, sap-review-abap | The named repository object does not resolve on the target system (TADIR/TFDIR probe empty). |
 | `SCREEN_DRIFT` | sap-gui-screen-check | A golden-screen baseline checkpoint no longer matches the live screen (release/locale moved a control). |
 | `SE38_CHECK_FAILED` | sap-se38 | Program existence/syntax pre-check failed before deploy. |
 

@@ -46,9 +46,9 @@ two standard interfaces SAP already ships:
 
 | Plugin | Skills | What it gives you |
 |---|---|---|
-| **sap-dev-core** | 56 + `abap-developer` agent | Login & connection store, transport handling, the ABAP Workbench (SE38/SE37/SE24/SE11/SE91/SE16N/SE01/…), the ATC quality gate, ABAP-Unit runner, activation, diagnosis (ST22/SM13/SM12/SLG1/SM37), delivery assurance, and **STMS** import to QAS/PRD. |
-| **sap-gen-code** | 12 | The **spec → ABAP** pipeline: read a design doc (Excel/Word/PDF), validate it, generate ABAP tailored to your project, and validate the result against the live system. |
-| **sap-migrate** | 7 + `cc-migration-engineer` agent | S/4HANA custom-code migration as a tracked campaign. |
+| **sap-dev-core** | 53 + `abap-developer` agent | Login & connection store, transport handling, the ABAP Workbench (SE38/SE37/SE24/SE11/SE91/SE16N/SE01/…), the ATC quality gate, ABAP-Unit runner, activation, diagnosis (ST22/SM13/SM12/SLG1/SM37), delivery assurance, and **STMS** import to QAS/PRD. |
+| **sap-gen-code** | 8 | The **spec → ABAP** pipeline: read a design doc (Excel/Word/PDF), validate it, generate ABAP tailored to your project, and validate the result against the live system. |
+| **sap-migrate** | 8 + `cc-migration-engineer` agent | S/4HANA custom-code migration as a tracked campaign. |
 | **sap-tcd** | 3 | Business transaction automation: BP, MM01/02/03, VA01/02/03. |
 
 ### What it is **not**
@@ -79,10 +79,10 @@ The "happy path" for a new custom report or interface looks like this:
         design doc (.xlsx/.docx/.pdf)       ▼
    ┌───────────────────────────────────────────────────────────────────┐
    │  GENERATE                                                          │
-   │  /sap-docs-extract → (/sap-docs-convert) → /sap-docs-check-ddic    │
-   │                    → /sap-docs-check-process → /sap-gen-abap        │
-   │                    → /sap-check-abap (+/sap-fix-abap)               │
-   │        (check-abap covers naming·types·SQL·fm·syntax dimensions)    │
+   │  /sap-docs-extract → (/sap-docs-convert) → /sap-docs-check         │
+   │        → /sap-gen-abap → /sap-check-abap (+/sap-fix-abap)           │
+   │  (docs-check runs ddic+process dimensions; check-abap covers        │
+   │   naming·types·SQL·fm·syntax dimensions)                            │
    └───────────────────────────────────────────────────────────────────┘
                                             │   Z<PROG>.abap (+ sibling files)
                                             ▼
@@ -439,8 +439,7 @@ and hand-edit at any stage.
 (/sap-docs-layout)        # optional: customise the spec workbook layout
  /sap-docs-extract        # REQUIRED: document → structured *.txt files
 (/sap-docs-convert)       # optional: apply customer field/type/flag renames
- /sap-docs-check-ddic     # recommended: validate domains/data elements/tables
- /sap-docs-check-process  # recommended: validate the process logic
+ /sap-docs-check          # recommended: validate the spec (ddic + process dimensions)
  /sap-gen-abap            # REQUIRED: generate Z<PROG>.abap (+ sibling files)
  /sap-check-abap          # recommended: naming / types / SQL / contracts / coverage / CALL FUNCTION / syntax
  /sap-fix-abap            # if check-abap found auto-fixable issues
@@ -481,22 +480,25 @@ DDIC type → canonical, flag value → key/value) to the extracted files. **Ski
 your spec is already in the toolkit's expected shape. A `.pre-convert/` snapshot is
 taken first, so it's reversible.
 
-### 6.3 Validate the spec — `/sap-docs-check-ddic` and `/sap-docs-check-process`
+### 6.3 Validate the spec — `/sap-docs-check`
 
 ```text
-/sap-docs-check-ddic   <work-folder> [<sap-logon-description>]
-/sap-docs-check-process <work-folder>
+/sap-docs-check <work-folder> [<sap-logon-description>]   # runs both dimensions by default
+/sap-docs-check <work-folder> --dimension ddic            # force just the DDIC dimension
+/sap-docs-check <work-folder> --dimension process         # force just the process dimension
 ```
 
-- **check-ddic** validates domains/data elements/tables: naming, valid DDIC types,
+One skill, two dimensions (both run by default, whichever inputs are present):
+
+- The **ddic** dimension validates domains/data elements/tables: naming, valid DDIC types,
   CURR/QUAN reference completeness, domain↔data-element↔table cross-references. Pass a
   logon description to also verify against the **live** dictionary over RFC.
-- **check-process** flags vague/contradictory logic, undefined fields/tables, and
+- The **process** dimension flags vague/contradictory logic, undefined fields/tables, and
   type mismatches; optionally validates table.field references against live SAP.
 
-Each writes a tab-delimited `check_result_*.txt` you can open in Excel. **Only problems
-are listed** — an empty result means clean. Fix issues in the spec text files, re-run,
-then proceed.
+Each dimension writes a tab-delimited `check_result_*.txt` (ddic / process) you can open
+in Excel. **Only problems are listed** — an empty result means clean. Fix issues in the
+spec text files, re-run, then proceed.
 
 ### 6.4 Generate — `/sap-gen-abap`
 
@@ -786,8 +788,7 @@ a file of materials and creates them. Your brief sets sub-prefix `ZHK`, package
 
 # 1. Generate
 /sap-docs-extract C:\sapdev\design_docs\MaterialUpload.xlsx
-/sap-docs-check-ddic    C:\sapdev\source_code\work\MaterialUpload_20260626\
-/sap-docs-check-process C:\sapdev\source_code\work\MaterialUpload_20260626\
+/sap-docs-check         C:\sapdev\source_code\work\MaterialUpload_20260626\
 /sap-gen-abap C:\sapdev\source_code\work\MaterialUpload_20260626\MaterialUpload_process.txt
 /sap-check-abap C:\sapdev\source_code\work\MaterialUpload_20260626\ZHKMM001R01.abap
 #   → if findings: /sap-fix-abap … then re-check until clean
@@ -837,7 +838,7 @@ The agent then runs, on its own:
    session (runs `/sap-login` if needed); **checks it's pinned to the system you named**
    (so a "deploy on S4H" can't silently land on S4D); and runs `/sap-dev-status` to
    confirm the dev-init artefacts exist.
-2. **Build** — `/sap-docs-extract` → `/sap-docs-check-process` + `/sap-docs-check-ddic`
+2. **Build** — `/sap-docs-extract` → `/sap-docs-check`
    → deploys the spec's DDIC objects (`/sap-se11`) and message class (`/sap-se91`)
    → `/sap-transport-request` → `/sap-gen-abap` → `/sap-check-abap`
    (all dimensions, + `/sap-fix-abap`, up to 3 rounds).
@@ -919,7 +920,7 @@ spends most time on:
 /sap-where-used-list TABLE ZHKT_LOG            # cross-reference
 /sap-impact-analysis PROGRAM ZLEGACY_REPORT    # risk band before you change it
 /sap-compare PROGRAM ZHKMM001R01               # same object across two saved systems
-/sap-document-object PROGRAM ZHKMM001R01       # turn an object into a spec document
+/sap-explain-object ZHKMM001R01 --spec         # turn an object into a spec document
 ```
 
 **Diagnose & fix incidents**
@@ -1035,11 +1036,11 @@ p50/p95 duration, top error classes).
 | `sap-atc` / `sap-run-abap-unit` | ATC gate / ABAP Unit runner |
 | `sap-transport-readiness` / `sap-impact-analysis` / `sap-enhancement-advisor` / `sap-evidence-pack` | Delivery assurance |
 | `sap-stms` | Import a released TR through the landscape (gated PROD) |
-| `sap-diagnose` + `sap-st22`/`sap-sm13`/`sap-sm12`/`sap-slg1`/`sap-sm37` | Incident triage + readers |
+| `sap-diagnose` + `sap-st22` | Incident triage (SM13/SM12/SLG1/SM37 RFC readers built in — `--reader <name>` runs one standalone) + ST22 dump reader |
 | `sap-sp02` | Display / export spool output requests |
 | `sap-fix-incident` / `sap-check-fix` | Test-first fix loop / check-and-fix router |
 | `sap-trace` | Analyse a recorded performance trace |
-| `sap-explain-object` / `sap-compare` / `sap-document-object` | Comprehension / cross-system diff / spec from object |
+| `sap-explain-object` / `sap-compare` | Comprehension (`--spec` emits a formal spec document) / cross-system diff |
 | `sap-rfc-wrapper-fm` / `sap-rfc-wrapper-class` | Call non-RFC FMs / methods over RFC |
 | `sap-call-bdc` / `sap-update-addon` | BDC replay / add-on table maintenance |
 | `sap-gui-record` / `sap-gui-probe` / `sap-gui-object-details` / `sap-gui-diagnose` / `sap-gui-screen-check` / `sap-gui-skill-scaffold` | Skill-authoring & GUI robustness tooling |
@@ -1052,7 +1053,7 @@ p50/p95 duration, top error classes).
 | `sap-docs-layout` | Edit the spec-workbook layout |
 | `sap-docs-extract` | Document → structured `_*.txt` files |
 | `sap-docs-convert` | Apply customer normalisation rules |
-| `sap-docs-check-ddic` / `sap-docs-check-process` | Validate DDIC / process logic |
+| `sap-docs-check` | Validate the spec (DDIC + process dimensions) |
 | `sap-gen-abap` | Generate ABAP (report / dialog / FM) |
 | `sap-check-abap` / `sap-fix-abap` | Validate / auto-fix ABAP quality — naming, types, SQL, CALL FUNCTION signatures, compiler syntax |
 

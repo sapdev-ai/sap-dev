@@ -3,7 +3,7 @@
 Based on real bugs found in customer specs (see
 [`check_result_ddic.txt`](#) examples). Apply these rules to **any DDIC
 spec sheet** (Excel, Word, or otherwise) so `/sap-docs-extract` →
-`/sap-docs-check-ddic` → `/sap-se11` runs without manual fixes.
+`/sap-docs-check` → `/sap-se11` runs without manual fixes.
 
 ---
 
@@ -91,7 +91,7 @@ Same pattern for **QUAN** fields (reference to a UNIT field — both
 columns required).
 
 Rule inverted on 2026-05-09 after a real deployment surfaced the
-contradiction; aligned with `sap-docs-check-ddic` SKILL.md Step 4b-2.
+contradiction; aligned with `sap-docs-check` SKILL.md (DDIC dimension) rule D3b-2.
 
 ---
 
@@ -244,11 +244,11 @@ Print this list on a single A4 page and attach to the
 
 After fixing per this checklist:
 ```
-/sap-docs-extract     <work_folder>
-/sap-docs-check-ddic  <work_folder>          ← catches the rules above
+/sap-docs-extract              <work_folder>
+/sap-docs-check --dimension ddic  <work_folder>   ← catches the rules above
 /sap-se11 STRUCTURE   <name> <def_file>
 /sap-se11 TABLE       <name> <def_file>
 ```
 
-Errors found by `/sap-docs-check-ddic` block deployment by default —
+Errors found by `/sap-docs-check` (DDIC dimension) block deployment by default —
 fix in the spec, re-run extract + check, then deploy.

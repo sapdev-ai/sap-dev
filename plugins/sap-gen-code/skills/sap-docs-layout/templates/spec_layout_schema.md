@@ -111,7 +111,7 @@ Header row (exact spellings):
 |---|---|---|
 | `section_key` | **stable English** | FK to `SECTIONS.key`. |
 | `output_position` | int | 1-based position of the column in the emitted TSV. Contiguous within a section; `add-column` renumbers on insert. |
-| `output_column` | **stable English** | The TSV header name (`DOMAIN_NAME`, `MSG_TEXT`, ...). Downstream skills (`/sap-docs-check-ddic`, `/sap-gen-abap`) key on these — never localize. |
+| `output_column` | **stable English** | The TSV header name (`DOMAIN_NAME`, `MSG_TEXT`, ...). Downstream skills (`/sap-docs-check`, `/sap-gen-abap`) key on these — never localize. |
 | `source_column_header` | localized | Header text on the actual worksheet. Fallback lookup when the letter is stale. For `kv` sections it is a meta-comment (e.g. `(col A labels)`) — `kv` has no on-sheet header row. |
 | `source_column_letter` | per-workbook | Worksheet column letter (`A`, `B`, ...). Primary lookup. Shared-sheet caveat: an `add-column` on one section shifts the letters of every later column of **all** sections on that sheet — `edit_meta_layout.py` keeps them (and the anchors' named ranges) in sync. |
 | `transform` | fixed enum | Applied by `/sap-docs-extract` per cell: `trim` (default), `upper`, `lower`, `int`, `bool_X` (truthy input becomes `X`, else empty). `add-column` offers `trim` / `upper` / `int` / `bool_X`. |

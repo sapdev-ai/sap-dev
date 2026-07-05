@@ -19,6 +19,32 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **Discoverability consolidation (Wave 1): merged 8 skills into 3, dropping the
+  catalogue 78 → 72.** Three merges, each following an established consolidation
+  pattern; no behaviour change to the surviving skills beyond the new flags.
+  - **Diagnose readers folded into `/sap-diagnose`.** The four RFC evidence readers
+    `sap-sm37` / `sap-sm13` / `sap-sm12` / `sap-slg1` (thin wrappers over
+    `sap_diagnose_reader_lib.ps1`) are now internal reader scripts under
+    `sap-diagnose/references/`, materialized and run directly in its Step 4. A new
+    `/sap-diagnose --reader sm13|sm12|slg1|sm37|st22` runs a single reader standalone
+    (one-for-one replacement of the removed skills). The GUI dump reader `/sap-st22`
+    stays a separate skill (it drives ST22 via GUI scripting). `sap_diagnose_reader_lib.ps1`
+    relocated from `shared/scripts/` into `sap-diagnose/references/` (single consumer
+    now — per the CLAUDE.md placement rule). −4 skills.
+  - **`sap-docs-check-ddic` + `sap-docs-check-process` → `/sap-docs-check`** — a
+    dimension-dispatched skill (`--dimension ddic|process|all`; default runs both by
+    input-file presence), mirroring the earlier `check-fm → check-abap` merge. Both
+    the `check_result_ddic.txt` and `check_result_process.txt` outputs are preserved.
+    −1 skill.
+  - **`sap-document-object` → `/sap-explain-object --spec`** — the spec-document
+    generator becomes a mode of the comprehension skill it already built on
+    (`--spec [--format md|docx|xlsx] [--audience functional|technical]`, Step 7.5:
+    RFC enrichment → synthesize spec → render). −1 skill.
+  - Rewired all consumers: the `abap-developer` agent, the marketplace manifest
+    (skills arrays + `total_skills` 78 → 72 + core/gen-code descriptions), CLAUDE.md
+    shared-resource tables, `build_metrics.md` + `sap_build_kpi.ps1` gate map,
+    `error_classes.md`, `ddic_excel_layout_rules.md`, and the manual (EN/JA/ZH) +
+    README + installation catalogue.
 - **Merged the ABAP check/fix skills into sap-dev-core.** `sap-check-abap` +
   `sap-check-fm` + the new syntax check are now **one dimension-dispatched
   `/sap-check-abap`** (dimensions: naming/type/sql/unused/contract/spec/conv/**fm**/**syntax**);

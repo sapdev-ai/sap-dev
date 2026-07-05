@@ -210,8 +210,8 @@ fresh work folder and dump the document to plain text first:
    > every `_*.txt` derived from it) **1 row = 1 line and 1 cell = 1 field** —
    > an embedded TAB becomes a single space, an embedded newline becomes
    > `"; "`, always applied BEFORE joining cells with TAB and rows with
-   > newline. Downstream consumers (`/sap-docs-convert`, `/sap-docs-check-ddic`,
-   > `/sap-docs-check-process`, `/sap-gen-abap`) rely on this invariant when
+   > newline. Downstream consumers (`/sap-docs-convert`, `/sap-docs-check`,
+   > `/sap-gen-abap`) rely on this invariant when
    > splitting rows and cells.
 
 After 1c completes you have a populated `{work_folder}/{doc_name}_raw.txt`.
@@ -304,7 +304,7 @@ For xlsx inputs, walk the `(Meta) Layout` SECTIONS rows. For each row:
    TABLE value, forward-fill is a no-op (nothing is blank to fill). If
    ALL upstream sections produce zero rows AND the current section has
    blank first column, the first row stays blank — a downstream
-   `/sap-docs-check-ddic` finding surfaces the authoring issue.
+   `/sap-docs-check` (DDIC dimension) finding surfaces the authoring issue.
 
 For non-xlsx inputs (no Meta sheet), apply hardcoded heuristics: scan the
 raw text for the standard sections (Cover, DDIC, Process, Validation,
@@ -468,8 +468,8 @@ Report to the user:
 - Suggest next steps:
   - `/sap-docs-convert {work_folder}` *(optional)* to apply customer-specific
     field/type/flag rules from `spec_conversion_rules.tsv` before validation
-  - `/sap-docs-check-process {work_folder}` to validate process logic
-  - `/sap-docs-check-ddic {work_folder}` to validate DDIC definitions
+  - `/sap-docs-check {work_folder}` to validate the spec (process logic + DDIC
+    definitions; runs both dimensions by default)
   - `/sap-gen-abap {work_folder}/{doc_name}_process.txt` to generate ABAP code
 
 End the log run. Use `EXISTED` if the work folder already contained the
