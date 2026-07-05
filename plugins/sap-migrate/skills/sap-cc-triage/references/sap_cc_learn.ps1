@@ -1,4 +1,4 @@
-# sap-cc-learn helper -- knowledge-pack flywheel (OFFLINE)
+# /sap-cc-triage --learn helper -- knowledge-pack flywheel (OFFLINE)
 #
 # Learns real ATC message ids from a triaged campaign and feeds them back into
 # catalog.tsv's detect_message_ids, so future triage matches by message id (the

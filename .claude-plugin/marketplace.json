@@ -12,7 +12,7 @@
     "version": "0.7.0",
     "last_updated": "2026-07-05",
     "total_plugins": 4,
-    "total_skills": 69,
+    "total_skills": 68,
     "categories": [
       "tooling"
     ]
@@ -198,8 +198,7 @@
         "./skills/sap-cc-analyze",
         "./skills/sap-cc-triage",
         "./skills/sap-cc-remediate",
-        "./skills/sap-cc-decommission",
-        "./skills/sap-cc-learn"
+        "./skills/sap-cc-decommission"
       ],
       "agents": [
         "./agents/cc-migration-engineer.md"

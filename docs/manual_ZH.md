@@ -1014,7 +1014,7 @@ top 错误类别）。
 ### sap-migrate（S/4HANA 自定义代码迁移）
 
 `sap-cc-campaign`、`sap-cc-inventory`、`sap-cc-usage`、`sap-cc-analyze`、
-`sap-cc-triage`、`sap-cc-remediate`、`sap-cc-learn`。
+`sap-cc-triage`（含 `--learn` 飞轮）、`sap-cc-remediate`、`sap-cc-decommission`。
 
 ### sap-tcd（业务事务）
 

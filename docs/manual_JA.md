@@ -1068,7 +1068,7 @@ p50/p95 の所要時間、上位エラークラス）。
 ### sap-migrate（S/4HANA カスタムコード移行）
 
 `sap-cc-campaign`、`sap-cc-inventory`、`sap-cc-usage`、`sap-cc-analyze`、
-`sap-cc-triage`、`sap-cc-remediate`、`sap-cc-learn`。
+`sap-cc-triage`（`--learn` フライホイール含む）、`sap-cc-remediate`、`sap-cc-decommission`。
 
 ### sap-tcd（業務トランザクション）
 

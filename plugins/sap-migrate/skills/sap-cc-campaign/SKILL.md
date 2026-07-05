@@ -236,7 +236,7 @@ Same aggregation as `status`, but **also** folds in three more ledgers and
 - per-pattern counts from `findings\findings_triaged.tsv` (column `pattern`);
 - **unresolved findings** = rows with `pattern=UNMATCHED` (the human-triage
   backlog) → an `unmatched_findings_pct` metric + the top UNMATCHED
-  `message_id`s (the feed for `/sap-cc-learn`);
+  `message_id`s (the feed for `/sap-cc-triage --learn`);
 - **auto-fix rate** from `remediation\fixlog.tsv` = share of **R1 auto-apply
   attempt rows** the R1 mechanical rules actually rewrote (`auto_changes>0`).
   The denominator counts only rows for ledger-tier-R1 objects with a real apply
@@ -324,8 +324,8 @@ Sandbox <sandbox_profile>   Remote-ATC <check_system_profile>   Phase: <phase>
 | Auto-fix rate (R1 mechanical) | <n>% (<auto>/<total> objects rewritten by rule) |
 | Unresolved findings (need human triage) | <n>% (<unmatched>/<total> findings UNMATCHED) |
 
-## Unresolved findings (feed for /sap-cc-learn)
-| Message id | Findings |   (top UNMATCHED message ids; classify via /sap-cc-learn)
+## Unresolved findings (feed for /sap-cc-triage --learn)
+| Message id | Findings |   (top UNMATCHED message ids; classify via /sap-cc-triage --learn)
 |------------|----------|
 
 ## Business-owner sign-offs

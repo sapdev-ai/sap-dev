@@ -19,6 +19,18 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **`sap-cc-learn` → `/sap-cc-triage --learn` (69 → 68 skills).** The
+  knowledge-pack flywheel (learns real ATC message ids from a triaged campaign and
+  feeds them back into the pack's `detect_message_ids`) is now an opt-in mode of the
+  skill that owns the triaged findings it reads. Default `/sap-cc-triage` still
+  classifies; `--learn <propose|apply>` runs the flywheel. The `sap_cc_learn.ps1`
+  engine moved into `sap-cc-triage/references/`; the `CC_LEARN_*` error classes are
+  retained (now emitted by the `--learn` mode). Rewired the `/sap-cc-campaign`
+  dashboard (SKILL.md + `sap_cc_campaign.ps1` output strings), CLAUDE.md
+  knowledge-pack row, marketplace (`total_skills` 68), and the manual (EN/JA/ZH) +
+  README + installation catalogue (also restoring `sap-cc-decommission`, which the
+  README/manual migration lists had omitted). Not a campaign-pipeline step — the
+  `next` state machine never sequenced it — so no ledger/gate change.
 - **Slimmed 29 over-length skill descriptions to fix skill-list truncation.**
   Frontmatter `description` blocks over ~1024 chars were being cut mid-sentence in
   the skill list the model sees at session start — hiding secondary modes (e.g.

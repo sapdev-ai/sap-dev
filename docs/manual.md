@@ -1060,7 +1060,7 @@ p50/p95 duration, top error classes).
 ### sap-migrate (S/4HANA custom-code migration)
 
 `sap-cc-campaign`, `sap-cc-inventory`, `sap-cc-usage`, `sap-cc-analyze`,
-`sap-cc-triage`, `sap-cc-remediate`, `sap-cc-learn`.
+`sap-cc-triage` (incl. `--learn` flywheel), `sap-cc-remediate`, `sap-cc-decommission`.
 
 ### sap-tcd (business transactions)
 

@@ -204,9 +204,8 @@ Companion to `sap-dev-core` (install that first). Ships the `cc-migration-engine
 | `sap-cc-inventory` | Enumerates and classifies the custom (Z/Y) repository objects in scope from TADIR/TRDIR over read-only RFC — pure analysis |
 | `sap-cc-usage` | Overlays runtime usage data onto the inventory to split objects into REMEDIATE / DECOMMISSION / REVIEW (the "% retired" number) |
 | `sap-cc-analyze` | Runs the S/4HANA-readiness ATC over the REMEDIATE objects (delegates to `/sap-atc`) and captures per-finding results |
-| `sap-cc-triage` | Classifies each ATC finding into a remediation pattern + tier (R1 mechanical … R4 redesign) via the Simplification Knowledge Pack |
+| `sap-cc-triage` | Classifies each ATC finding into a remediation pattern + tier (R1 mechanical … R4 redesign) via the Simplification Knowledge Pack. `--learn` runs the knowledge-pack flywheel: learns real ATC message ids from a triaged campaign and feeds them back so future triage matches more (absorbed the former `sap-cc-learn`) |
 | `sap-cc-remediate` | Remediates triaged R1 objects on the sandbox only, after a mandatory dry-run review — the one sap-migrate skill that writes to SAP |
-| `sap-cc-learn` | Knowledge-pack flywheel: learns real ATC message ids from a triaged campaign and feeds them back so future triage matches more |
 
 ### Business Process Automation (`sap-tcd`)
 

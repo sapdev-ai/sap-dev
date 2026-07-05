@@ -206,7 +206,7 @@ function Get-AutoFix([string]$dir){
 
 # Unresolved findings from findings\findings_triaged.tsv: rows the triage could
 # not classify (pattern = UNMATCHED) -> the human-triage backlog and the feed for
-# /sap-cc-learn. -1 => n/a (no triaged findings yet).
+# /sap-cc-triage --learn. -1 => n/a (no triaged findings yet).
 function Get-Unmatched([string]$dir){
     $res = [ordered]@{ pct = -1; unmatched = 0; total = 0; topIds = @() }
     $p = Join-Path $dir 'findings\findings_triaged.tsv'
@@ -463,9 +463,9 @@ function Build-Dashboard([string]$dir,$rows,[string]$phase,$patCounts){
     $L.Add("| Auto-fix rate (R1 mechanical) | $(Pct $af.rate) ($($af.auto)/$($af.total) R1 attempt rows rewritten by rule; $($af.excluded) excluded: assist/missing-source/non-R1) |")
     $L.Add("| Unresolved findings (need human triage) | $(Pct $um.pct) ($($um.unmatched)/$($um.total) findings UNMATCHED) |")
     $L.Add("")
-    $L.Add("## Unresolved findings (feed for /sap-cc-learn)")
+    $L.Add("## Unresolved findings (feed for /sap-cc-triage --learn)")
     if(@($um.topIds).Count -gt 0){
-        $L.Add("Top UNMATCHED message ids -- classify via ``/sap-cc-learn`` to lift the match rate:")
+        $L.Add("Top UNMATCHED message ids -- classify via ``/sap-cc-triage --learn`` to lift the match rate:")
         $L.Add("")
         $L.Add("| Message id | Findings |")
         $L.Add("|------------|----------|")

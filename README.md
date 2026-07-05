@@ -55,8 +55,8 @@ skills outside sap-dev-core are tagged with their plugin):
   dimensions), `sap-gen-abap`, `sap-gen-abap-unit`,
   `sap-review-abap` (ABAP check/fix moved to sap-dev-core: `sap-check-abap`, `sap-fix-abap`)
 - **S/4HANA migration (sap-migrate)** — `sap-cc-campaign`, `sap-cc-inventory`,
-  `sap-cc-usage`, `sap-cc-analyze`, `sap-cc-triage`, `sap-cc-remediate`,
-  `sap-cc-learn`
+  `sap-cc-usage`, `sap-cc-analyze`, `sap-cc-triage` (incl. `--learn` flywheel),
+  `sap-cc-remediate`, `sap-cc-decommission`
 - **Test data (sap-tcd)** — `sap-bp`, `sap-mm01`, `sap-va01`
 
 ## Current Limitations (v0.7.0)
@@ -77,7 +77,7 @@ silent:
   popups need a re-record for ECC6 (`sap-mm01` already probes both layouts).
 - sap-migrate's knowledge pack ships 13 patterns (3 ACTIVE + 10 DRAFT;
   ~20–30% of typical ECC6 findings auto-classify today); DRAFT patterns are
-  advisory-only by design, and the pack grows via `/sap-cc-learn` from real
+  advisory-only by design, and the pack grows via `/sap-cc-triage --learn` from real
   campaign runs — no pattern carries harvested ATC message ids yet (regex +
   simplification-item matching until the flywheel fills them).
 - Central/remote ATC (`--object-provider`) is implemented fail-loud but the
