@@ -22,6 +22,8 @@
 #   %%WRAPPER_STRUCT%% default "ZCMST_RFC_PARAM"
 #   %%WRAPPER_TT%%   default "ZCMCT_RFC_PARAM"
 #   %%UTIL_PROGRAM%% default "ZCMRUPDATE_ADDON_TABLE"
+#   %%CLASS_INSTALLER_FM%% default "Z_CLASS_SOURCE_INSTALL" (OPTIONAL -- SE24 Step 4.7;
+#                   absence is informational, never a gap)
 #
 # Output format (one line per artefact):
 #   ARTEFACT: <NAME> | KIND: <TR|PKG|FG|FM|DOMA|DTEL|STRUCT|TT|PGM> | STATE: <state> | DETAIL: <free text>
@@ -313,6 +315,31 @@ if ($null -eq $rows) {
     $gaps++
 } else {
     Emit $utilPgm "PGM" "ACTIVE" "PROGDIR.STATE=A"
+}
+
+# ---------------------------------------------------------------------------
+# 7b. SE24 RFC class-source installer -- Z_CLASS_SOURCE_INSTALL (OPTIONAL)
+# ---------------------------------------------------------------------------
+# Backs /sap-se24's Step 4.7 RFC deploy fallback (headless class-source install).
+# It is OPTIONAL, unlike everything above: the /sap-se24 caller self-heals it on
+# first RFC use, and it needs the OO source API (CL_OO_FACTORY, NW 7.31 EhP6+) so
+# it legitimately does not exist on genuinely old stacks. Therefore its absence is
+# reported informationally and NEVER increments $gaps (must not flip a healthy env
+# to STATUS: GAPS). Token falls back to the default when left unsubstituted.
+$classInstallerFm = if ("%%CLASS_INSTALLER_FM%%" -like "*CLASS_INSTALLER_FM*" -or [string]::IsNullOrWhiteSpace("%%CLASS_INSTALLER_FM%%")) { "Z_CLASS_SOURCE_INSTALL" } else { "%%CLASS_INSTALLER_FM%%" }
+$rows = Q-RfcReadTable "TFDIR" "FUNCNAME = '$classInstallerFm'" @("FUNCNAME","FMODE")
+if ($null -eq $rows) {
+    Emit $classInstallerFm "FM" "ERROR" "RFC_READ_TABLE on TFDIR failed (optional artefact)"
+} elseif ($rows.Count -eq 0) {
+    Emit $classInstallerFm "FM" "MISSING" "OPTIONAL -- /sap-se24 Step 4.7 self-heals it on first RFC use (not a gap)"
+} else {
+    $ciFmodeOk = $false
+    foreach ($r in $rows) { $parts = $r -split '\|'; if ($parts.Count -ge 2 -and $parts[1].Trim() -eq 'R') { $ciFmodeOk = $true; break } }
+    if ($ciFmodeOk) {
+        Emit $classInstallerFm "FM" "ACTIVE" "TFDIR ok, FMODE=R (SE24 RFC installer ready)"
+    } else {
+        Emit $classInstallerFm "FM" "INACTIVE" "OPTIONAL -- TFDIR ok but FMODE != 'R'; re-deploy Remote-Enabled if you want the SE24 RFC fallback"
+    }
 }
 
 # ---------------------------------------------------------------------------

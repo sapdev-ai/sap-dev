@@ -64,6 +64,8 @@ Task: $ARGUMENTS
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/sap_gui_security_handling.md` | SAP GUI Security dialog handling — the **source upload** (Step 5a, via Utilities > Upload), the **test-class upload** (Step 5f), and the check-and-fix **class source download** (Step A) are all SAP-GUI-side file IO, so any of them can raise the modal "SAP GUI Security" dialog (which suspends the Scripting API and hangs cscript). Pre-check + OS-level watcher wrap each of those file-IO steps. |
 | `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_gui_security_precheck.ps1` | Read-only allow-list pre-check (`saprules.xml`) — `ALLOWED` (exit 0) / `NOT_COVERED` (exit 1). Used by Step A before the source download. |
 | `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_gui_security_sidecar.ps1` | OS-level (Win32) watcher that auto-dismisses the SAP GUI Security dialog (ticks Remember + clicks Allow). Launched as a background process before the Step A download. |
+| `<SKILL_DIR>/references/sap_se24_rfc_install.ps1` | **RFC deploy fallback (Step 4.7)** — installs class source headlessly via the installer FM `Z_CLASS_SOURCE_INSTALL` (create/update, idempotent), preferred over the GUI upload. Self-healing (deploys the installer into `ZFGDEVAI` via `sap-se37/references/sap_rfc_fm_insert.ps1` when absent) + capability-gated on `CL_OO_FACTORY` (present on NW 7.31 EhP6+, incl. ECC6 EhP6 — verified EC2/ERP). Exit 3 = degrade to GUI. Sets every `IV_*` explicitly (ABAP DEFAULTs don't apply over RFC). 32-bit PS. |
+| `<SKILL_DIR>/references/Z_CLASS_SOURCE_INSTALL.abap` | Installer FM source (KEEPER in `ZFGDEVAI`) deployed on-demand by the caller above: headless global-class SOURCE install — `SEO_CLASS_CREATE_COMPLETE` shell → `CL_OO_FACTORY`→`IF_OO_CLIF_SOURCE` set-source → `RS_WORKING_OBJECTS_ACTIVATE` (DWINACTIV worklist) → verify `SEOCLASSDF version='1'`; MODE `CREATE`/`DELETE`. Smoke-verified **S4D 7.54 AND EC2/ERP 7.31 EhP6 (ECC6)** — the factory API works on 7.31 EhP6, so no `CL_OO_SOURCE` fallback is needed; the capability gate only excludes genuinely pre-7.31 stacks. |
 
 ---
 
@@ -323,6 +325,59 @@ Parse the `STATUS:` line:
 This is a *pre-flight*; it never replaces the in-editor Ctrl+F2 that Steps 5a/5b run after
 upload. On RFC-capable systems with the dev-init wrapper it just moves the catch earlier,
 before any GUI work.
+
+---
+
+## Step 4.7 — RFC Class-Source Install (preferred deploy path)
+
+**Deploy flow only** (source was provided — new *or* existing class). Skip for
+fix / change-properties / delete modes. Runs **after** the Step 4.6 syntax
+pre-check and **before** the GUI Step 5a/5b.
+
+When RFC is available **and** the release supports the OO source API, installing
+the class source headlessly via the installer FM `Z_CLASS_SOURCE_INSTALL` is
+**preferred** over the SE24 GUI upload — it sidesteps the SAP GUI Security
+file-IO dialog (Step 5a) and the inactive-objects **worklist stall** that
+dead-ends the GUI activate on a shared DEV. It handles **both** create and
+update (idempotent via `IV_OVERWRITE`), so on success it replaces Step 5a *and*
+Step 5b.
+
+**Self-healing + capability-gated.** If `Z_CLASS_SOURCE_INSTALL` is absent, the
+caller deploys it into `ZFGDEVAI` via `sap-se37/references/sap_rfc_fm_insert.ps1`
+— but only when `CL_OO_FACTORY` exists. That OO source API ships on **NW 7.31
+EhP6+ (incl. ECC6 EhP6 — verified live on EC2/ERP: create/update/delete all
+green)**, so this covers ECC6 too; only genuinely pre-7.31 stacks lack it. On any
+unsupported / unavailable condition the caller exits **3 = degrade to GUI**, so the flow falls
+through to Step 5a/5b and never blocks. (First RFC use records the installer on
+the Step 1b transport; pre-provision it once on releases where you want zero
+first-use cost.)
+
+Resolve the deploy target up front (the RFC call needs these before any GUI
+dialog): `CLASS_NAME`, `SOURCE_FILE` (the user's file / staged
+`{RUN_TEMP}\<CLASS_NAME>.abap`), `PACKAGE`, and the transport from Step 1b. Run
+under **32-bit** PowerShell (NCo 3.1):
+
+```bash
+C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File "<SKILL_DIR>\references\sap_se24_rfc_install.ps1" -ClassName "<CLASS_NAME>" -Mode CREATE -SourceFile "<SOURCE_FILE>" -Description "<SHORT_TEXT>" -Package "<PACKAGE>" -Transport "<TRANSPORT>" -Activate X -Overwrite X
+```
+
+Parse the `STATUS:` line:
+
+| Result | Action |
+|---|---|
+| `STATUS: DEPLOYED CREATE <cls> state=ACTIVATED` (exit 0) | **Deployed + active via RFC.** Skip Step 5a/5b/5c and go to **Step 6** — the FM RFC-verified `SEOCLASSDF version='1'`. Log `rfc_deploy activated`. |
+| `STATUS: SAVED_INACTIVE <cls> …` (exit 1) | Source was installed but **activation failed** — the class source has a defect (the FM's verify is authoritative, not a mechanism failure). Show `EV_MESSAGE`. Treat like the Step 4.6 error gate: surface it, do **not** claim success. Fix the source and re-run, or fall through to Step 5a/5b so the in-context Ctrl+F2 shows the exact activation error. |
+| `STATUS: RELEASE_UNSUPPORTED …` / `INSTALLER_ABSENT …` / `INSTALLER_DEPLOY_FAILED …` (exit 3) | **Degrade — never block.** RFC deploy isn't available here (pre-7.31 stack without the OO source API, installer couldn't self-heal, or `-NoAutoDeploy`). Log an INFO note `rfc_deploy degraded: <reason>` and **fall through to the GUI Step 5a/5b**. |
+| `STATUS: RFC_ERROR …` / `INPUT_ERROR …` (exit 2) | **Degrade — never block.** RFC unavailable / no pinned profile / bad input. Log INFO and fall through to Step 5a/5b. |
+| `STATUS: FAILED CREATE <cls> …` (exit 1) | The installer FM returned an error (`EV_RC<>0`). Show `msg`; fall through to Step 5a/5b (GUI) as a fallback. |
+
+On success this is a complete deploy and the GUI steps are skipped; any
+non-success **degrades** to Step 5a/5b, so the GUI path is always the safety net.
+
+> The installer FM also supports `-Mode DELETE` (headless class delete via
+> `SEO_CLASS_DELETE_COMPLETE` — clean on an *active* class, no TADIR orphan). The
+> skill's delete flow stays on the GUI **Step 5e** for now; the RFC delete is
+> available for a future headless-delete increment.
 
 ---
 

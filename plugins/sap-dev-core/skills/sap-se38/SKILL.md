@@ -131,7 +131,7 @@ Step 1b will log the resolved TR separately.)
 
 | Task | Source provided? | Flow |
 |---|---|---|
-| Deploy new or updated code | Yes (file path or pasted) | Steps 2 → 3 → 4 → 4.6 → 5a/5b → [5c] → 6 → 7 |
+| Deploy new or updated code | Yes (file path or pasted) | Steps 2 → 3 → 4 → 4.6 → 4.7 → 5a/5b → [5c] → 6 → 7 (Step 4.7 RFC-inserts a NEW text-element-free program and **skips 5a/5b** on success; otherwise falls through to the GUI upload) |
 | Fix / check existing program | No | Steps 3 → A → B → C → 6 → 7 |
 | Change program **attributes** (Title / Status / Type / …) | No | Steps 1b → 3 → 5d → 6 → 7 |
 | **Delete** program | No | Steps 1b → 3 → 5e → 6 → 7 |
@@ -317,6 +317,54 @@ Parse the `STATUS:` line:
 This is a *pre-flight*; it never replaces the in-editor Ctrl+F2 that Steps 5a/5b
 run after upload. On RFC-capable systems it just moves the catch earlier, before
 any GUI work.
+
+---
+
+## Step 4.7 — RFC Source Insert (preferred deploy path for a NEW program)
+
+**Deploy flow only.** Skip for fix / change-attributes / delete modes.
+
+When RFC is available, deploying a **new** program via `RPY_PROGRAM_INSERT` is preferred over the
+GUI upload: it inserts the source and **generates it active in one headless call**, sidestepping
+the clipboard-paste focus fragility and the GUI inactive-objects worklist (the dead end on a user
+with a big inactive backlog). It is **create-only** and deploys **source only** — so it applies
+to a subset; every other case falls through to the GUI Step 5.
+
+**Applicability gate — use the RFC path only when ALL hold** (else go straight to Step 5a/5b):
+1. Step 4 returned **`NOT_EXIST`** (a NEW program). An existing program updates via the GUI Step 5a
+   (`RPY_PROGRAM_UPDATE` is not remote-enabled — user-confirmed create=RFC / update=GUI split).
+2. The user did **not** force GUI (`--gui` argument absent, and `sap_dev_mode` is not explicitly `GUI`).
+3. The source has **no text elements** — scan it: NO `PARAMETERS`, NO `SELECT-OPTIONS`, NO `TEXT-NNN`.
+   A text-bearing report needs the Step 5c selection/text-element handling that the RFC insert does
+   not do, so it deploys via the GUI Step 5b instead (avoids a source-active-but-texts-missing state).
+
+If any gate fails → proceed to Step 5a/5b (GUI) as today.
+
+**Resolve the deploy target** (the RFC insert needs these up front, unlike the interactive GUI dialogs):
+- **Package** — the user-specified package, else the `sap_dev_package` dev default; a local object uses `$TMP`.
+- **Transport** — for a transportable package, resolve a modifiable TR via `/sap-transport-request`
+  (per `shared/rules/tr_resolution.md`); for `$TMP`, none.
+
+Run the shared helper (32-bit PS; NCo 3.1):
+
+```bash
+C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File "<SKILL_DIR>\references\sap_rfc_program_insert.ps1" -SourceFile "<SOURCE_FILE>" -ProgramName "<PROGRAM_NAME>" -Package "<PACKAGE>" -Transport "<TR>"
+```
+
+Parse the `STATUS:` line:
+
+| Result | Action |
+|---|---|
+| `STATUS: INSERTED_ACTIVE …` | **Deployed via RFC.** Source is inserted + active. **Skip Step 5a/5b/5c** and go to **Step 6** — its post-activate verify (`sap_se38_post_activate_verify.ps1`) confirms PROGDIR STATE=A / DWINACTIV empty. Log `rfc_deploy inserted_active`. |
+| `STATUS: EXISTS …` | The program actually exists → **fall through to Step 5a (GUI update)**. |
+| `STATUS: NOT_ACTIVE …` | Inserted but did not generate active (e.g. a syntax error the precheck missed). **Fall through to Step 5b (GUI)** so the in-editor Ctrl+F2 surfaces it; log the reason. |
+| `STATUS: RFC_ERROR …` / `STATUS: INSERT_FAILED …` | **Degrade — never block.** RFC unavailable / FMODE≠R / insert exception. Log `rfc_deploy unavailable: <reason>` and **fall through to Step 5b (GUI)**. |
+
+The helper's first line `INFO: HAS_TEXTPOOL=1` is a safety backstop for gate 3 — if you see it after the
+insert, the program has text-bearing constructs; ensure Step 5c still runs (or prefer the GUI path).
+
+This never replaces the GUI path — it is a headless fast-path that, when it succeeds, removes the GUI
+round-trip entirely; on any gap it silently hands back to Step 5.
 
 ---
 

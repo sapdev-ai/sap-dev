@@ -69,6 +69,17 @@ try {
     $fnIns.SetValue("SHORT_TEXT",    $sShortText)
     $fnIns.SetValue("DEVCLASS",      $sDevclass)
     $fnIns.SetValue("CORRNUM",       $sCorrnum)
+    # Transport registration: SUPPRESS_CORR_CHECK defaults to 'X' (suppress), which
+    # creates the FG with a TADIR/package but leaves it OFF-transport (no E071 lock -
+    # the reason RFC-created dev FGs like ZFGDEVAI were off the TR). With a real TR
+    # (CORRNUM) and a transportable (non-$TMP) package, set it blank so the correction
+    # check records R3TR FUGR in the request; for a local/$TMP FG keep 'X' (and never
+    # leave it blank without a CORRNUM, which would prompt -> hang over RFC).
+    if ((-not [string]::IsNullOrWhiteSpace($sCorrnum)) -and ($sDevclass -ne '$TMP')) {
+        $fnIns.SetValue("SUPPRESS_CORR_CHECK", " ")
+    } else {
+        $fnIns.SetValue("SUPPRESS_CORR_CHECK", "X")
+    }
     $fnIns.Invoke($g_dest)
     Write-Host "INFO: Function group $sFuncGroup created successfully."
     Write-Host "RESULT_FG: $sFuncGroup"

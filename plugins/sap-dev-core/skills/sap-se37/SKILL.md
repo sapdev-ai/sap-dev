@@ -130,7 +130,7 @@ powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_
 
 | Task | Source provided? | Flow |
 |---|---|---|
-| Deploy new or updated code | Yes (file path or pasted) | Steps 1.5 → 2 → 3 → 4 → 4.6 → 5a/5b → 6 → 7 |
+| Deploy new or updated code | Yes (file path or pasted) | Steps 1.5 → 2 → 3 → 4 → 4.6 → 4.7 → 5a/5b → 6 → 7 (Step 4.7 RFC-inserts a NEW FM and **skips 5a/5b** on success; otherwise falls through to the GUI upload) |
 | Fix / check existing FM | No | Steps 3 → A → B → C → 6 → 7 |
 | Change FM **attributes** (Short Text / Processing Type / …) | No | Steps 1b → 3 → 5d → 6 → 7 |
 | **Reassign** FM to a different function group | No | Steps 1b → 3 → 5e → 6 → 7 |
@@ -339,6 +339,48 @@ Parse the `STATUS:` line:
 This is a *pre-flight*; it never replaces the in-editor Ctrl+F2 that Steps 5a/5b run after
 upload. On RFC-capable systems with the dev-init wrapper it just moves the catch earlier,
 before any GUI work.
+
+---
+
+## Step 4.7 — RFC Source Insert (preferred deploy path for a NEW function module)
+
+**Deploy flow only.** Skip for fix / change-attributes / reassign / delete modes.
+
+When RFC is available, deploying a **new** FM via `RPY_FUNCTIONMODULE_INSERT` is preferred over the GUI
+upload: it inserts the FM (body + interface) into its function group and — on current releases —
+**activates it in one headless call**, sidestepping the clipboard-paste focus fragility and the GUI
+inactive-objects worklist. It is **create-only** (raises `FUNCTION_ALREADY_EXISTS` on an existing FM), so
+an existing FM updates via the GUI Step 5a.
+
+**Applicability gate — use the RFC path only when ALL hold** (else go to Step 5a/5b):
+1. Step 4 returned **`NOT_EXIST`** (a NEW FM). An existing FM updates via the GUI Step 5a.
+2. The user did **not** force GUI (`--gui` argument absent, and `sap_dev_mode` is not explicitly `GUI`).
+3. The target **function group already exists** (`RPY_FUNCTIONMODULE_INSERT` does not create the pool — the
+   helper returns `FG_MISSING` otherwise; create it first via `/sap-function-group`).
+
+**Resolve the deploy target:**
+- **Function group** — the target FG for the new FM (Step 1's parameter, else `sap_dev_function_group`).
+- **Transport** — resolve a modifiable TR via `/sap-transport-request` (skip for a `$TMP`/local FG).
+
+Run the shared helper (32-bit PS; NCo 3.1). It parses the `FUNCTION…ENDFUNCTION` fragment itself (interface
+→ `RSIMP/RSEXP/RSCHA/RSTBL/RSEXC`, body → `NEW_SOURCE`, untruncated); pass `-Remote` for an RFC-enabled FM:
+
+```bash
+C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File "<SKILL_DIR>\references\sap_rfc_fm_insert.ps1" -SourceFile "<SOURCE_FILE>" -FmName "<FM_NAME>" -FunctionGroup "<FUNCTION_GROUP>" -Transport "<TR>"
+```
+
+Parse the `STATUS:` line:
+
+| Result | Action |
+|---|---|
+| `STATUS: INSERTED_ACTIVE …` | **Deployed + active via RFC.** Skip Step 5a/5b → **Step 6** (its verify confirms no `DWINACTIV` row + `SAPL<FG>` active). Log `rfc_deploy inserted_active`. |
+| `STATUS: INSERTED_INACTIVE …` | Inserted but a `DWINACTIV` row remains (older release). **Activate** via `/sap-activate-object FM <FM_NAME>`, then Step 6. If activation fails, fall through to the GUI Step 5. |
+| `STATUS: EXISTS …` | The FM exists → **fall through to Step 5a (GUI update)**. |
+| `STATUS: FG_MISSING …` | The function group does not exist. Offer to create it via `/sap-function-group`, then retry Step 4.7; or fall through to the GUI Step 5b. |
+| `STATUS: RFC_ERROR …` / `STATUS: INSERT_FAILED …` | **Degrade — never block.** Log `rfc_deploy unavailable: <reason>` and **fall through to Step 5b (GUI)**. |
+
+This never replaces the GUI path — it is a headless fast-path that, when it succeeds, removes the GUI
+round-trip entirely; on any gap it silently hands back to Step 5.
 
 ---
 

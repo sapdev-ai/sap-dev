@@ -293,7 +293,7 @@ then resolve reactively with the same `/sap-se01 remove-objects` call.
    gone (a genuine stale lock), never for a live object:
 
    ```bash
-   C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_tr_object_entries.ps1" -OnlyOrphaned -Objects "ZCMD_RFCVAL,ZCMDE_RFCVAL,ZCMST_RFC_PARAM,ZCMCT_RFC_PARAM,Z_GENERIC_RFC_WRAPPER_TBL,ZCMRUPDATE_ADDON_TABLE"
+   C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_tr_object_entries.ps1" -OnlyOrphaned -Objects "ZCMD_RFCVAL,ZCMDE_RFCVAL,ZCMST_RFC_PARAM,ZCMCT_RFC_PARAM,Z_GENERIC_RFC_WRAPPER_TBL,ZCMRUPDATE_ADDON_TABLE,Z_CLASS_SOURCE_INSTALL"
    ```
 
    **Use the 32-bit `SysWOW64` PowerShell** as shown — the helper loads SAP NCo
@@ -905,6 +905,38 @@ If it reports an error, show the error to the user and suggest manual deployment
 
 ---
 
+## Step 8b — Deploy Z_CLASS_SOURCE_INSTALL (SE24 RFC class-source installer) — OPTIONAL, best-effort
+
+This installer FM backs `/sap-se24`'s **Step 4.7 RFC deploy fallback** — it lets
+`/sap-se24` install a global class's source **headlessly** (no GUI Upload dialog,
+no inactive-objects worklist stall). It is a KEEPER in `{sap_dev_function_group}`
+alongside the wrapper, but **OPTIONAL** (a nice-to-have, not core to the toolset),
+so this step is **BEST-EFFORT and MUST NEVER fail `/sap-dev-init`**. `/sap-se24`
+Step 4.7 also self-heals it on first RFC use, so skipping here is harmless.
+
+It needs RFC **and** the OO source API (`CL_OO_FACTORY` / `IF_OO_CLIF_SOURCE`,
+present on NW **7.31 EhP6+** incl. ECC6 EhP6 — verified live S4D 7.54 + EC2/ERP
+7.31 EhP6). Deploy it **Remote-Enabled in one call** via the maintained RFC helper
+(the same one `/sap-se24` Step 4.7 uses — no separate change_attrs step, unlike the
+wrapper's Step 7b). Run under **32-bit** PowerShell (NCo 3.1):
+
+```bash
+C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File "<SKILL_DIR>\..\sap-se37\references\sap_rfc_fm_insert.ps1" -SourceFile "<SKILL_DIR>\..\sap-se24\references\Z_CLASS_SOURCE_INSTALL.abap" -FunctionGroup "{sap_dev_function_group}" -Transport "{RESOLVED_TR}" -Remote -ShortText "RFC installer: headless class source deploy (SE24 fallback)"
+```
+
+Interpret the `STATUS:` line — **all outcomes are non-fatal**:
+
+| Result | Action |
+|---|---|
+| `STATUS: INSERTED_ACTIVE …` | Deployed + active, Remote-Enabled ✓. |
+| `STATUS: EXISTS …` | Already present (idempotent re-run) ✓. |
+| `STATUS: INSERTED_INACTIVE …` | Inserted but could not activate → this release lacks the full OO source API. Remove the inactive shell with `/sap-se37 delete Z_CLASS_SOURCE_INSTALL`, then SKIP — `/sap-se24` uses the GUI path on this release. |
+| `STATUS: FG_MISSING …` / `RFC_ERROR …` / `INSERT_FAILED …` | Log an INFO `class_installer skipped: <reason>` and continue. Optional — `/sap-se24` Step 4.7 self-heals it later on a supported, RFC-capable system. |
+
+Do **not** treat any of these as an init failure; record the outcome for the Step 9 summary.
+
+---
+
 ## Step 9 — Summary
 
 Report the initialization results:
@@ -921,6 +953,7 @@ ZCMST_RFC_PARAM            : Created/Updated ✓
 ZCMCT_RFC_PARAM            : Created/Updated ✓
 Z_GENERIC_RFC_WRAPPER_TBL  : Deployed ✓
 ZCMRUPDATE_ADDON_TABLE      : Deployed ✓
+Z_CLASS_SOURCE_INSTALL     : Deployed ✓   (optional — SE24 RFC fallback; "Skipped" on RFC-off / pre-7.31)
 
 All sap-dev plugins are ready to use.
 ```
