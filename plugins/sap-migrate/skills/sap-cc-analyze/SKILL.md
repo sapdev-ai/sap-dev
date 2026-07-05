@@ -1,24 +1,18 @@
 ---
 name: sap-cc-analyze
 description: |
-  Runs the S/4HANA-readiness ATC over a migration campaign's REMEDIATE objects
-  and captures per-finding results into `findings/findings_raw.tsv`, advancing
-  each analyzed object to ANALYZED.
-  The actual ATC run is delegated to the existing `/sap-atc` skill (so this
-  skill ships no new GUI scripting). It invokes `/sap-atc --variant=S4HANA_READINESS`
-  so the run executes the S/4HANA readiness check variant (NOT the system
-  default) -- see Step 2. `/sap-atc` fails loud if that variant's config field
-  cannot be located on the connected release, so a non-readiness run can never
-  be silently passed off as readiness;
-  this skill owns the deterministic spine: `prepare` builds the worklist from
-  `scope.tsv`, and `ingest` parses ATC result exports into the campaign's
-  findings ledger and advances state. The `ingest` parser is header-tolerant —
-  it accepts `/sap-atc` output or a manual ATC "Manage Results" export.
-  Run after `/sap-cc-usage` (which marks REMEDIATE/SCOPED), before
-  `/sap-cc-triage`.
-  Prerequisites: the connected system must offer the `S4HANA_READINESS` check
-  variant with the Simplification Database loaded, and `/sap-atc` must be
-  working (it needs a one-time Scripting Recorder session per SAP release).
+  Runs the S/4HANA-readiness ATC over a migration campaign's REMEDIATE objects and
+  captures per-finding results into findings/findings_raw.tsv, advancing each
+  object to ANALYZED. The ATC run is delegated to /sap-atc
+  --variant=S4HANA_READINESS (so this skill ships no new GUI scripting; /sap-atc
+  fails loud if that variant can't be located on the release, so a non-readiness
+  run is never passed off as readiness). Two actions: `prepare` builds the
+  worklist from scope.tsv; `ingest` parses ATC result exports (from /sap-atc or a
+  manual "Manage Results" export — header-tolerant) into the findings ledger and
+  advances state. Run after /sap-cc-usage, before /sap-cc-triage.
+  Prerequisites: the connected system offers the S4HANA_READINESS variant with the
+  Simplification Database loaded; /sap-atc working (one-time Scripting Recorder
+  session per release).
 argument-hint: "<prepare|ingest> --campaign <id> [--results <file|dir>] [--limit <n>] [--batch-size <n>] [--variant <NAME>]"
 ---
 

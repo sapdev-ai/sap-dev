@@ -377,11 +377,11 @@ Suggested `ErrorClass`: `SE19_FAILED`, `BADI_AMBIGUOUS_UNRESOLVED`,
 | Symptom (script `ERROR:` …) | Cause | Recovery |
 |---|---|---|
 | `Create Enhancement Implementation popup did not appear` | Enhancement spot not found / not implementable | Verify the spot name; re-run `classify`; the create input must be a definition/spot |
-| `Create BAdI Implementations popup did not appear` | Enh-impl created but element popup differs by release | `/sap-gui-object-details` on the live screen; update `tblSAPLENH_BADI_POPUPSG_BADI_TABLE` ids |
-| combo BAdI definition stays empty | wrong `.Key` (spot has multiple defs) | enumerate combo `.Entries` (object-details) and pass the exact key |
-| `Did not reach the enhancement implementation editor` | class-creation chain diverged (e.g. existing class) | `/sap-gui-diagnose` for a screenshot; the implementing class may already exist — pick a new name |
+| `Create BAdI Implementations popup did not appear` | Enh-impl created but element popup differs by release | `/sap-gui-inspect` on the live screen; update `tblSAPLENH_BADI_POPUPSG_BADI_TABLE` ids |
+| combo BAdI definition stays empty | wrong `.Key` (spot has multiple defs) | enumerate combo `.Entries` (via /sap-gui-inspect) and pass the exact key |
+| `Did not reach the enhancement implementation editor` | class-creation chain diverged (e.g. existing class) | `/sap-gui-inspect screenshot` for a screenshot; the implementing class may already exist — pick a new name |
 | `Could not open … in change mode` | object locked (SM12) or no authorization | release the lock / check authorization |
-| `'Implementation is active' checkbox not found` | no BAdI implementation node selected in the tree | ensure a single impl; for multi-impl, select the node first (object-details) |
+| `'Implementation is active' checkbox not found` | no BAdI implementation node selected in the tree | ensure a single impl; for multi-impl, select the node first (via /sap-gui-inspect) |
 | Activation shows unrelated objects in the worklist | SAP groups all inactive objects of the user | the VBS presses Continue (activates the worklist) — acceptable on dev; if undesired, activate the impl alone via SE19 manually |
 | New BAdI stays INACTIVE after activate/deactivate (`DWINACTIV` ROWS>0) despite `SUCCESS:` | S/4HANA 2022+ routes re-activation through the conflict/adjustment tool (`SAPLSEEF_ADJ_TOOL`); worklist Continue doesn't complete it | run the Step 7 `DWINACTIV` check (don't trust sbar); resolve the adjustment manually in SE19 or re-record the activate flow on 2022 (`/sap-gui-probe`) |
 | Delete `refused … safety rule` | target not created this session | intended — only override with explicit user confirmation |
@@ -422,7 +422,7 @@ Deactivate (Ctrl+F4)**. Create-impl popup `ctxtRSEXSCRN-IMP_NAME` +
 `wnd[1]/usr/btnBUTTON_1` (Yes). Delete confirm chain `SAPLSPO1(500)`:
 `btnBUTTON_1` Yes (impl), then `btnBUTTON_1`/`btnBUTTON_2` (delete class? Yes/No).
 
-> IDs were captured by `/sap-gui-probe` + `/sap-gui-object-details`. Re-record
+> IDs were captured by `/sap-gui-probe` + `/sap-gui-inspect`. Re-record
 > with `/sap-gui-record` if a different release renumbers a tree/menu node.
 
 ---

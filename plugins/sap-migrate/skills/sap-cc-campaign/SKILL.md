@@ -1,35 +1,21 @@
 ---
 name: sap-cc-campaign
 description: |
-  Owns the S/4HANA custom-code migration *campaign workspace* and is the
-  orchestration entry point for the migration engine (sap-migrate plugin).
-  Five subcommands:
-    (a) init   — create a campaign workspace under {work_dir}\migrations\<id>
-                 from the migration Customer Brief (source release, target
-                 S/4 release, in-scope packages, decommission policy, the
-                 source / sandbox / remote-ATC connection profiles, human
-                 gates), seed campaign.json + the empty state ledger.
-    (b) status — print per-state / per-tier counts + the headline metrics.
-    (c) report — render reports/dashboard.md: the migration dashboard. State +
-                 tier + pattern rollup plus five KPIs — decommission savings,
-                 ATC-clean rate, auto-fix rate (R1 mechanical, from fixlog.tsv),
-                 unresolved/UNMATCHED findings (the human-triage backlog + the
-                 /sap-cc-learn feed), and business-owner sign-off status. Every
-                 percentage is honest: "n/a" (not 0%) when the underlying ledger
-                 hasn't been produced yet.
-    (d) next   — recommend the next pipeline skill to run for this campaign,
-                 honouring the human-approval gates (scope sign-off, dry-run
-                 review).
-    (e) signoff— record/update one business-owner sign-off (gate, owner,
-                 status, date, note) in campaign.json so the dashboard can show
-                 governance status. Offline; the only writer of signoffs[].
-  Pure workspace/state/reporting skill — OFFLINE: it never opens a SAP GUI
-  session, makes no RFC call, and needs no SAP NCo. It only reads/writes the
-  campaign workspace files that the other sap-cc-* skills produce and consume.
-  This SKILL.md is the canonical definition of the workspace contract.
-  Prerequisites: none (no SAP connection). The downstream skills it sequences
-  (/sap-cc-inventory, /sap-cc-usage, /sap-cc-analyze, /sap-cc-triage,
-  /sap-cc-remediate) do require SAP access.
+  Owns the S/4HANA custom-code migration campaign workspace and is the
+  orchestration entry point for the sap-migrate engine. Five subcommands:
+    init   — create a campaign workspace from the migration Customer Brief
+             (source/target release, in-scope packages, decommission policy,
+             connection profiles, human gates) + the empty state ledger.
+    status — per-state / per-tier counts + headline metrics.
+    report — render reports/dashboard.md: state/tier/pattern rollup + five KPIs
+             (decommission savings, ATC-clean rate, auto-fix rate, unmatched-finding
+             backlog, business sign-off); every percentage honest ("n/a", not 0%,
+             when the ledger isn't produced yet).
+    next   — recommend the next pipeline skill, honouring the human-approval gates.
+    signoff— record a business-owner sign-off in campaign.json.
+  Pure workspace/state/reporting skill — OFFLINE (no SAP GUI, no RFC, no NCo); it
+  only reads/writes the campaign files the other sap-cc-* skills produce.
+  Prerequisites: none (the downstream skills it sequences do need SAP access).
 argument-hint: "<init|status|report|next|signoff> --campaign <id> [--brief <path>] [--source <profile>] [--sandbox <profile>] [--check-system <profile>] [--target-release <rel>] [--gate <gate>] [--owner <name>] [--signoff-status APPROVED|PENDING|REJECTED] [--note <text>]"
 ---
 

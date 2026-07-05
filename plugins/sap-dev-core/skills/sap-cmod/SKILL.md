@@ -412,16 +412,16 @@ On failure: show the full output and diagnose:
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `Did not reach the Attributes screen` | Project already exists (create) or Create button id differs | Run Step 3 first; re-pin `btn%#AUTOTEXT001` via `/sap-gui-object-details` |
+| `Did not reach the Attributes screen` | Project already exists (create) or Create button id differs | Run Step 3 first; re-pin `btn%#AUTOTEXT001` via `/sap-gui-inspect` |
 | `Did not reach the enhancement-assignment screen` | Project does not exist, or `radMODF-CHAK`/`btnPAEND` differs | Verify with Step 3; re-record initial-screen ids |
 | `No empty row … grid full` | >17 enhancements (needs scroll) | Edit assignments manually, or extend the VBS to page down |
 | `SAP prompted for a transport request but TRANSPORT is empty` | Transportable project, no TR resolved | Run Step T (`/sap-transport-request`) and re-run |
-| `Could not send Activate` / `btn[28]` not found | Activate/Deactivate id differs by release | Re-pin via `/sap-gui-object-details` |
+| `Could not send Activate` / `btn[28]` not found | Activate/Deactivate id differs by release | Re-pin via `/sap-gui-inspect` |
 | Enhancement validation `[E]` | Invalid enhancement name | Verify it exists in SMOD |
 
 When a screen flow does not match (unexpected popup, control not found), use
-`/sap-gui-object-details` (structural) and `/sap-gui-diagnose` (visual) on the
-live session to discover the actual ids, then update the template.
+`/sap-gui-inspect` (structural `tree` or visual `screenshot`) on the live
+session to discover the actual ids, then update the template.
 
 ---
 
@@ -514,7 +514,7 @@ package field `ctxtTADIR-DEVCLASS`; TR popup field `ctxtKO008-TRKORR`.
   retry. (Shared session infrastructure — affects all GUI skills, not just CMOD.)
 - **Create button id** `btn%#AUTOTEXT001` is auto-generated and can differ by
   release; the VBS errors clearly if it's not found — re-pin with
-  `/sap-gui-object-details`.
+  `/sap-gui-inspect`.
 - **Adding/removing assignments deactivates the project** — re-run Step 8 to
   re-activate if the enhancement should be live.
 - **>17 assigned enhancements** would need grid scrolling; the position-aware

@@ -1,31 +1,17 @@
 ---
 name: sap-se38
 description: |
-  Deploys ABAP source code to a SAP system via SE38 using SAP GUI Scripting.
-  Creates new programs or updates existing ones. Includes program
-  existence check (SE16N on TRDIR), source upload, syntax check, save, and
-  activation. For Report programs (type 1), also updates selection text
-  elements after activation. Source can be a file path or pasted ABAP code.
-  Also supports check-and-fix mode: when no source file is provided and the
-  task is "fix PGM" or "check and fix PGM", opens the program in SE38, runs
-  a syntax check (Ctrl+F2), downloads the source, fixes all errors,
-  re-uploads, and activates the program (Ctrl+F3).
-  Also supports change-attributes mode: when the user asks to change a
-  program's Title, Status, Type, or other header attributes (no source
-  involved), opens the program in the SE38 editor (change mode), edits the
-  supplied fields via Goto -> Attributes, then Saves and Activates so the
-  change actually persists (the attributes dialog's Continue alone does NOT
-  write to the DB). Handles the SAPLSETX original-language popup (only shown
-  when logon language differs from MASTERLANG) and the post-save / post-
-  activate Workbench request popup per `/sap-transport-request`.
-  Also supports delete mode: when the user asks to delete a program
-  (e.g. "delete program <X>", "drop report <X>", "remove pgm <X>"),
-  navigates to SE38, fills the program-name field, presses Shift+F2
-  (sendVKey 14) from the initial screen, confirms the deletion popup,
-  handles the optional post-delete TR popup, and verifies removal via
-  Display. Deletion is irreversible — the skill asks for explicit
-  confirmation before running the VBS.
-  Prerequisites: Active SAP GUI session (use /sap-login first).
+  Deploys ABAP source to a SAP system via SE38 (SAP GUI Scripting) — creates or
+  updates programs: existence check, source upload (file path or pasted code),
+  syntax check, save, activate, and (for Report type 1) selection-text update.
+  Also three secondary modes on an existing program: check-and-fix ("fix PGM" /
+  "check and fix PGM" with no source file — syntax-check, download, fix errors,
+  re-upload, activate); change-attributes (Title / Status / Type / header fields
+  via Goto → Attributes, then Save + Activate so it persists); delete ("delete
+  program <X>" — irreversible, asks for explicit confirmation, verifies removal).
+  Handles the SAPLSETX original-language popup and the Workbench-request popup per
+  /sap-transport-request.
+  Prerequisites: active SAP GUI session (/sap-login first).
 argument-hint: "<program-name> [path-to-source]"
 ---
 
@@ -1384,20 +1370,19 @@ The VBS templates automatically handle ABAP source file encoding:
 
 ## Troubleshooting Component IDs / Stuck Screen
 
-**FIRST RESORT — invoke `/sap-gui-diagnose full`.** Captures every visible
-window as one annotated PNG via the SAP GUI Scripting `HardCopy` API, plus
-`/sap-gui-object-details` for the topmost window. Read the PNG with the
-Read tool to see what's on screen, then act based on both the visual and
-the structural dump.
+**FIRST RESORT — invoke `/sap-gui-inspect screenshot full`.** Captures every
+visible window as one annotated PNG via the SAP GUI Scripting `HardCopy` API,
+plus a structural dump of the topmost window. Read the PNG with the Read tool
+to see what's on screen, then act based on both the visual and the structural
+dump.
 
-**SECOND RESORT — `/sap-gui-object-details` alone.** Use this when
-`/sap-gui-diagnose` itself fails (SAP GUI minimised, HardCopy blocked) or
-when you only need a quick structural confirmation. When a VBS step fails
-with `The control could not be found by id`, an unexpected popup appears,
-or the script hangs because the screen flow diverged from what was
-expected, do NOT guess. Call the `sap-gui-object-details` skill
-immediately to discover the actual component layout in the current SAP
-GUI session, then fix the VBS or dismiss the popup based on the dump.
+**SECOND RESORT — `/sap-gui-inspect tree` (structural only).** Use this when
+the screenshot fails (SAP GUI minimised, HardCopy blocked) or when you only
+need a quick structural confirmation. When a VBS step fails with `The control
+could not be found by id`, an unexpected popup appears, or the script hangs
+because the screen flow diverged from what was expected, do NOT guess. Call
+`/sap-gui-inspect` immediately to discover the actual component layout in the
+current SAP GUI session, then fix the VBS or dismiss the popup based on the dump.
 
 Recommended diagnostic sequence:
 
@@ -1414,7 +1399,7 @@ After the dump, decide:
 - Component ID changed between SAP releases → update the VBS template with the discovered ID.
 - AbapEditor stuck silent → use the syntax-check error grid pattern documented below.
 
-**Last resort (only if `sap-gui-object-details` cannot help):**
+**Last resort (only if `/sap-gui-inspect` cannot help):**
 1. SAP Logon > Help > Scripting Recorder and Playback
 2. Click Record, perform the failing step manually, stop recording
 3. The recorded script shows the correct component IDs

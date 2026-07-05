@@ -2,25 +2,17 @@
 name: sap-cc-inventory
 description: |
   Enumerates and classifies the custom (Z/Y / customer-namespace) repository
-  objects in scope for an S/4HANA migration campaign. Reads TADIR (object
-  directory) and TRDIR (program sub-type) over **read-only RFC** against the
-  campaign's SOURCE system, writes `inventory.tsv`, and upserts every object
-  into the campaign state ledger (`state.tsv`) as INVENTORIED — never altering
-  objects already further along, so it is safe to re-run as new custom code
-  appears.
-  No SAP GUI, no writes, no transport request: pure read-only analysis. This is
-  the first SAP-touching step of the sap-migrate pipeline; run it after
-  `/sap-cc-campaign init` and before `/sap-cc-usage`.
-  When RFC to the source is blocked, a GUI fallback (`--source-mode GUI`)
-  ingests `/sap-se16n` exports of TADIR (+ optional TRDIR) instead -- identical
-  output, no NCo.
-  Scope defaults to the campaign brief's `in_scope_packages` (object-name
-  prefixes such as `Z*`, `Y*`, `/MYCO/`); override with `--namespace`,
-  `--packages` (DEVCLASS patterns), `--types`, and `--exclude`.
-  Prerequisites (RFC mode): SAP NCo 3.1 (32-bit, .NET 4.0) in GAC; a saved
-  source connection profile (the campaign's `source_profile`) or a pinned
-  `/sap-login` connection. GUI mode needs no NCo -- only a SAP GUI session for
-  the `/sap-se16n` export step.
+  objects in scope for an S/4HANA migration campaign. Reads TADIR + TRDIR over
+  read-only RFC against the campaign's SOURCE system, writes inventory.tsv, and
+  upserts every object into the state ledger as INVENTORIED (never touching
+  objects further along, so it is safe to re-run as new custom code appears). No
+  SAP GUI, no writes, no TR — pure read-only. First SAP-touching step of the
+  sap-migrate pipeline; run after /sap-cc-campaign init, before /sap-cc-usage.
+  When RFC is blocked, --source-mode GUI ingests /sap-se16n exports of TADIR
+  (+ TRDIR) instead (identical output, no NCo). Scope defaults to the brief's
+  in_scope_packages; override with --namespace / --packages / --types / --exclude.
+  Prerequisites (RFC): SAP NCo 3.1 (32-bit) + a saved source_profile (or pinned
+  /sap-login). GUI mode needs only a SAP GUI session for the /sap-se16n export.
 argument-hint: "--campaign <id> [--source <profile>] [--source-mode RFC|GUI] [--tadir-file <path>] [--trdir-file <path>] [--namespace Z,Y] [--packages <pat,...>] [--types PROG,CLAS,...] [--exclude <pat,...>]"
 ---
 

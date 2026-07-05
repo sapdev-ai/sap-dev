@@ -5,7 +5,7 @@
     "release": "S/4HANA 1909 + ECC6 EhP6 (NW 7.31)",
     "kernel": "",
     "date": "2026-06-26",
-    "method": "static dependency-set seed; identity captured on first /sap-gui-screen-check run"
+    "method": "static dependency-set seed; identity captured on first /sap-doctor --screens run"
   },
   "checkpoints": [
     {

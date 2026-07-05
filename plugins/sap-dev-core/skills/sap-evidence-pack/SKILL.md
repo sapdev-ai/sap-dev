@@ -3,20 +3,15 @@ name: sap-evidence-pack
 description: |
   Generates a reviewer / customer / audit-ready delivery evidence pack from the
   artifact index — answers "what did we change, how was it checked, and why is it
-  safe?". It does NOT run checks itself; it COLLECTS what the other
-  delivery-assurance skills already registered (transport-readiness,
-  impact-analysis, ATC, check-abap, ABAP Unit, ...) for a scope (a TR, an object,
-  a package), a ticket, or a date range, copies them into one categorized pack
-  folder (reports / validations / impact / inventory), and writes a human-readable
-  index.md with an executive summary, a contents table with verdicts, and — most
-  importantly — a **Missing evidence** section that states honestly what was NOT
-  produced instead of pretending everything was checked. Artifacts whose files
-  are gone are flagged too. Pure-local (reads the manifest + copies files); no SAP
-  needed unless an object scope must be resolved to its canonical scope key.
-  Read-only with respect to SAP.
-  Prerequisites: the other skills must have been run first to register artifacts
-  (otherwise the pack honestly reports "no evidence found"). SAP NCo 3.1 (32-bit)
-  only needed when resolving an object name to a scope key.
+  safe?". It does NOT run checks; it COLLECTS what the other delivery-assurance
+  skills already registered (transport-readiness, impact-analysis, ATC, check-abap,
+  ABAP Unit, …) for a scope (TR / object / package), a ticket, or a date range,
+  into one categorized pack folder + a human-readable index.md with an executive
+  summary, a verdicts table, and — crucially — an honest "Missing evidence" section
+  that states what was NOT produced instead of pretending everything was checked.
+  Pure-local (reads the manifest + copies files); read-only w.r.t. SAP.
+  Prerequisites: the other skills must have run first to register artifacts; SAP
+  NCo 3.1 (32-bit) only when resolving an object name to a scope key.
 argument-hint: "<TR> | <TYPE> <NAME> | PACKAGE <pkg> | --ticket <id> | --since <date>  [--output <dir>] [--include-logs]"
 ---
 

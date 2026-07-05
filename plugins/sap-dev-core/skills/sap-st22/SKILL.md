@@ -1,21 +1,18 @@
 ---
 name: sap-st22
 description: |
-  /sap-diagnose reader: ABAP runtime-error (short dump) evidence from ST22 in
-  GUI mode (ADT is NOT used). SNAP is a cluster table, so dumps are read by
-  driving ST22 via SAP GUI Scripting. Read-only: sets the date/user selection,
-  displays the dump list, and scrapes it into the shared diagnose evidence
-  contract. With --deep it additionally opens each in-scope dump and scrapes the
-  failing source line + snippet into the event's include/line + a dump_detail
-  object (this is what /sap-fix-incident consumes to root-cause a dump). Deep is
-  strictly additive — every deep failure degrades to detail_status=partial|skipped
-  and never loses the list-level evidence. Usually invoked by /sap-diagnose; runs
-  standalone.
-  Component IDs for the ST22 selection/grid + the dump detail view vary by
-  release — the reader tries candidates and degrades to a clean 'skipped' (list)
-  or 'partial' (detail) with a /sap-gui-record hint if it cannot locate them
-  (same policy as /sap-atc).
-  Prerequisites: active SAP GUI session (use /sap-login first); RZ11
+  /sap-diagnose reader: ABAP runtime-error (short dump) evidence from ST22 in GUI
+  mode (ADT not used; SNAP is a cluster table, so dumps are read by driving ST22
+  via SAP GUI Scripting). Read-only: sets the date/user selection, displays the
+  dump list, and scrapes it into the shared diagnose evidence contract. With --deep
+  it also opens each in-scope dump and scrapes the failing source line + snippet
+  into the event's include/line + a dump_detail object (what /sap-fix-incident
+  consumes to root-cause a dump); deep is strictly additive — a deep failure
+  degrades to partial/skipped and never loses the list-level evidence. Component
+  IDs vary by release: the reader tries candidates and degrades to a clean
+  skipped/partial with a /sap-gui-record hint. Usually invoked by /sap-diagnose;
+  runs standalone.
+  Prerequisites: active SAP GUI session (/sap-login first); RZ11
   sapgui/user_scripting = TRUE.
 argument-hint: "[--anchor PATH] [--user U] [--date today|YYYYMMDD] [--window MIN] [--session PATH] [--out PATH] [--top-n N] [--deep] [--dump-key KEY] [--max-deep N]"
 ---

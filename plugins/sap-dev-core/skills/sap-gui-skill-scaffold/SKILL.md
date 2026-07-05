@@ -856,9 +856,9 @@ C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypas
 | `auth_error` | the authz message reproduced | clean success (test user has too many rights — note it) |
 | `popup_recovery` | popup dismissed (`exit_code=0`) + (create) `ACTIVE` | popup left open / exit 3 |
 
-On a stuck screen or popup-left-open, invoke `/sap-gui-object-details` FIRST
+On a stuck screen or popup-left-open, invoke `/sap-gui-inspect tree` FIRST
 (structural — gives the wnd[1] program/screen + field ids a fix needs);
-`/sap-gui-diagnose` (visual PNG) only when the structural tree is inconclusive.
+`/sap-gui-inspect screenshot` (visual PNG) only when the structural tree is inconclusive.
 
 ### 5.5d — Auto-fix (DRAFT files only)
 

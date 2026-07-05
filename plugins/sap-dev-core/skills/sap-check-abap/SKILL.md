@@ -1,19 +1,19 @@
 ---
 name: sap-check-abap
 description: |
-  Validates ABAP source code (report, program, function module, class, include)
-  before deployment. One skill, dimension-dispatched:
-  (1) Variable naming conventions against shared rules file,
-  (2) Data type validity via SAP Dictionary (DDIF_FIELDINFO_GET / DDIF_DTEL_GET),
-  (3) Unused variable detection,
-  (4) SQL field validation — checks SELECT/UPDATE/DELETE field names against table definitions,
-  (5) Generation contract rules (offline) — literal MESSAGE, read-only TEXT-NNN, block order / DECL_ORDER, SELECT *, LOOP-WHERE-EXIT, SPLIT-into-numeric, line length, and TEXT/MESSAGE sibling-file sync,
-  (6) Spec-coverage (offline) — confirms the generated code covers every dependency, message, text element, and selection field in the design spec,
-  (7) CALL FUNCTION signature validation via RFC (parameter names / sections / types vs the live FM definition — the `fm` dimension, absorbed from the former sap-check-fm),
-  (8) Compiler-level ABAP syntax check via RFC (EDITOR_SYNTAX_CHECK through the dev-init wrapper — the `syntax` dimension; catches real syntax errors offline, before any GUI upload).
-  Writes tab-delimited result files with fix advice for each issue. Fix findings with `/sap-fix-abap`.
-  SAP connection is optional — offline mode skips the type / SQL-field / fm / syntax dimensions; the generation-contract and spec-coverage checks are always offline. Live dimensions that cannot run report COULD_NOT_CHECK, never a silent pass.
-  Prerequisites: SAP GUI installed (provides SAP.Functions 32-bit COM object); SAP NCo 3.1 (32-bit) + the dev-init wrapper `Z_GENERIC_RFC_WRAPPER_TBL` for the `syntax` dimension.
+  Validates ABAP source (report / program / FM / class / include) before
+  deployment — one skill, dimension-dispatched: naming (variable conventions),
+  type (DDIC type validity), unused (dead variables), sql (SELECT/UPDATE/DELETE
+  fields vs table defs), contract (offline generation rules), spec (offline: code
+  covers every dependency / message / text / selection field in the design spec),
+  fm (CALL FUNCTION params / sections / types vs the live FM over RFC — absorbed
+  from the former sap-check-fm), syntax (compiler-level EDITOR_SYNTAX_CHECK via
+  RFC, catching real errors offline before any GUI upload). Writes tab-delimited
+  result files with fix advice; feed findings to /sap-fix-abap. SAP connection
+  optional — offline skips type/sql/fm/syntax; live dimensions that can't run
+  report COULD_NOT_CHECK, never a silent pass.
+  Prerequisites: SAP GUI (SAP.Functions COM); SAP NCo 3.1 (32-bit) + the dev-init
+  wrapper Z_GENERIC_RFC_WRAPPER_TBL for the syntax dimension.
 argument-hint: "<path-to-abap-source-file> [--dimensions naming,type,sql,contract,spec,conv,fm,syntax] [--offline] [--gate]"
 ---
 

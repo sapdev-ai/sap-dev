@@ -19,6 +19,43 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **Slimmed 29 over-length skill descriptions to fix skill-list truncation.**
+  Frontmatter `description` blocks over ~1024 chars were being cut mid-sentence in
+  the skill list the model sees at session start — hiding secondary modes (e.g.
+  the se01/se24/se38 delete + remove-objects modes) from auto-invocation. Rewrote
+  each to a trigger-focused form that keeps *what it does* + *when to invoke* +
+  prerequisites while moving mechanics (FM/table names, VKey codes, popup handling,
+  release caveats) into the body where they already live. Result: 0 descriptions
+  over 1024 (was 29 of 69); total description payload ~70,000 → ~55,000 chars
+  (~3,800 fewer tokens injected per session). No body/behaviour changes.
+- **Discoverability consolidation (Wave 2): merged 6 skills into 3 (one a rename),
+  dropping the catalogue 72 → 69.** No behaviour change to the surviving skills
+  beyond the new mode/flag dispatch.
+  - **`sap-gui-object-details` + `sap-gui-diagnose` → `/sap-gui-inspect`** (rename +
+    merge). The structural component/property dump and the visual HardCopy-screenshot
+    triage are now one inspection skill with two mode families: structural
+    (`tree`/`menu`/`type`/`id`/`wnd`) and visual (`screenshot [topmost|composite|full]`).
+    The diagnose capture/compose scripts moved into `sap-gui-inspect/references/`; helper
+    VBS filenames kept unchanged so the CI attach-exempt list + moved screen baseline
+    resolve by basename. Rewired the ~15 GUI-driving skills that carried a
+    "FIRST/SECOND RESORT" troubleshooting block, plus the gui-probe/scaffold engine
+    references (incl. the load-bearing `sap_gui_probe_dump.ps1` path).
+  - **`sap-rfc-wrapper-fm` + `sap-rfc-wrapper-class` → `/sap-rfc-wrapper`** —
+    mode-dispatched (`fm` calls a non-RFC FM via the generic wrapper;
+    `class` generates + deploys a dedicated wrapper FM for a class method). The fm
+    skill's references (incl. `Z_GENERIC_RFC_WRAPPER_TBL.abap` + the `.def` DDIC types
+    that `/sap-dev-init` deploys) stayed under the renamed dir; dev-init's 10
+    load-bearing reference paths were retargeted.
+  - **`sap-gui-screen-check` → `/sap-doctor --screens`** — the live half of the
+    golden-screen harness became an **opt-in** doctor group (orchestrator + probe moved
+    into `sap-doctor/references/`). It is NOT part of doctor's default read-only,
+    safe-to-chain run — it navigates the live GUI (guards against unsaved-data loss) and,
+    with `--update-baseline`, writes baseline files. Updated the CI coverage-gate message,
+    `error_classes.md` (SCREEN_DRIFT emitter), `contributing/golden_screen_baselines.md`,
+    and the seeded baseline metadata.
+  - Rewired all consumers + the marketplace (`total_skills` 72 → 69), CLAUDE.md (incl. the
+    naming-convention examples that cited the retired `sap-rfc-wrapper-*` family), the
+    manual (EN/JA/ZH) + README + installation catalogue.
 - **Discoverability consolidation (Wave 1): merged 8 skills into 3, dropping the
   catalogue 78 → 72.** Three merges, each following an established consolidation
   pattern; no behaviour change to the surviving skills beyond the new flags.

@@ -149,7 +149,8 @@ Local File" on create/update), `sap-sp02` (spool download), `sap-atc` (Stage-4
 result-TXT download + Stage-4b findings-TSV export). `/sap-dev-init`
 Step 1b already uses the watcher as a warmup.
 
-`sap-gui-diagnose` uses `GuiFrameWindow.Hardcopy`, which was **observed NOT to
-prompt** on SAP GUI 7.70 / S/4HANA 1909 (Hardcopy is governed by SAP/Admin
-built-in rules, not the user file rules) — so it is intentionally left unwired.
+`/sap-gui-inspect`'s `screenshot` mode uses `GuiFrameWindow.Hardcopy`, which was
+**observed NOT to prompt** on SAP GUI 7.70 / S/4HANA 1909 (Hardcopy is governed
+by SAP/Admin built-in rules, not the user file rules) — so it is intentionally
+left unwired.
 Wire it only if Hardcopy prompts on your release.

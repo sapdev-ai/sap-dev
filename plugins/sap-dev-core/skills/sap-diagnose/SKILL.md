@@ -1,27 +1,19 @@
 ---
 name: sap-diagnose
 description: |
-  Incident triage orchestrator for SAP support. From a single incident anchor
-  (a time window, user, transaction, background job, business object key, or a
-  known short-dump) it fans out across its read-only evidence readers — the
-  internal RFC reader set (SM13 update-task failures, SM12 locks, SLG1
-  application log, SM37 jobs) plus the GUI dump reader /sap-st22 — then
-  correlates the collected evidence into incident clusters and produces ranked
-  root-cause hypotheses with a recommended fix path. Pass --reader <name> to run
-  a single reader standalone (sm13 | sm12 | slg1 | sm37 | st22) and just print
-  its evidence, skipping correlation.
-  PURE READ-ONLY: this skill never writes to SAP. When a fix implies a write
-  (release a lock, reprocess an update) it only points the operator at the
-  MANUAL SM12 / SM13 steps — the sm12/sm13 readers are read-only and have no
-  automated release/reprocess. With --fix, after
-  presenting the hypotheses it hands a CUSTOM-CODE-DEFECT top hypothesis to
-  /sap-fix-incident (the write-capable companion, which keeps its own
-  confirmation gate + DEV-only / Z-Y-only guard rails) — /sap-diagnose itself
-  still writes nothing.
-  Mostly RFC-driven (SM13/SM12/SLG1/SM37) and therefore robust across releases;
-  ST22 is GUI (ADT not used). Safe to point at production.
-  Prerequisites: a saved profile via /sap-login (RFC password); SAP NCo 3.1
-  (32-bit, .NET 4.0) in GAC; active SAP GUI session for the ST22 leg.
+  Incident triage orchestrator for SAP support. From a single anchor (time window,
+  user, transaction, background job, business-object key, or a known short-dump)
+  it fans out across its read-only evidence readers — the internal RFC set (SM13
+  update-task failures, SM12 locks, SLG1 application log, SM37 jobs) plus the GUI
+  dump reader /sap-st22 — correlates the evidence into incident clusters, and
+  produces ranked root-cause hypotheses with a recommended fix path. Pass --reader
+  <name> (sm13 | sm12 | slg1 | sm37 | st22) to run one reader standalone and just
+  print its evidence. PURE READ-ONLY: never writes to SAP; lock/update remediation
+  is surfaced as manual SM12 / SM13 steps. With --fix it hands a custom-code-defect
+  top hypothesis to /sap-fix-incident (the gated, write-capable companion) —
+  diagnose itself still writes nothing. Safe to point at production.
+  Prerequisites: a saved /sap-login profile (RFC password); SAP NCo 3.1 (32-bit);
+  an active SAP GUI session for the ST22 leg.
 argument-hint: "[<natural-language incident>] [--user U] [--tcode T] [--program P] [--job J] [--dump KEY] [--object TYPE:KEY] [--date today|YYYYMMDD] [--time HH:MM] [--window MIN] [--sources a,b] [--reader sm13|sm12|slg1|sm37|st22] [--depth quick|standard|deep] [--remediate] [--fix] [--connection PROFILE] [--report] [--out PATH]"
 ---
 

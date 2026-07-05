@@ -147,7 +147,7 @@ Next
 Set oPop = oSession.findById("wnd[1]", False)
 If Not (oPop Is Nothing) Then
     WScript.Echo "ERROR: A modal popup is still open after the delete chain (unhandled dialog)."
-    WScript.Echo "       Inspect via /sap-gui-object-details and re-record if a control id changed."
+    WScript.Echo "       Inspect via /sap-gui-inspect and re-record if a control id changed."
     ReleaseSession oSession, wasLocked
     WScript.Quit 1
 End If

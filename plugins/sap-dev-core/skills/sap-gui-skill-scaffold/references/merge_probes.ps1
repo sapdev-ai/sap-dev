@@ -42,7 +42,7 @@ if ($ProbeFolders.Count -ne $ModeNames.Count) {
 # ------------------------------------------------------------------------------
 function Get-ProbeHeader {
     param([string] $DumpPath)
-    # First ~10 lines of a sap-gui-object-details dump carry Program / Transaction
+    # First ~10 lines of a sap-gui-inspect dump carry Program / Transaction
     # / Screen / Title. We only need them to populate popups_observed.
     if (-not (Test-Path $DumpPath)) { return @{} }
     $lines = Get-Content -Path $DumpPath -Encoding Unicode -TotalCount 14

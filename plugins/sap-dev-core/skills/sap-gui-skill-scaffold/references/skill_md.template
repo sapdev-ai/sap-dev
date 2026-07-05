@@ -136,7 +136,7 @@ Shipping additional variants is the supported path:
 
 ## Step 3 — Verify the outcome
 
-After the VBS exits, dump the resulting screen with `/sap-gui-object-details`
+After the VBS exits, dump the resulting screen with `/sap-gui-inspect`
 and confirm the expected end state (title / transaction / screen number).
 The probe folder for the mode you ran (under `_source_probes/`) contains the
 reference end-state in its final `step_NN_after.txt`.

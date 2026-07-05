@@ -1,21 +1,18 @@
 ---
 name: sap-transport-readiness
 description: |
-  Release gate for an ABAP transport request — answers "is this transport safe
-  to release?" before it moves to QA / production. Resolves the TR (explicit
-  number, or --current from the dev defaults), builds its object inventory from
-  E071, and runs read-only RFC structural checks: unreleased child tasks (E070),
-  inactive objects (DWINACTIV), local / $TMP objects inside a transportable
-  request (TADIR), and a multi-package note. Optionally chains /sap-atc and
-  /sap-run-abap-unit and folds their verdicts in. Evaluates everything into the
-  reconciled finding model, gates each finding via the customer brief's Quality
-  bar (§6, --strict promotes warnings), and rolls up to GO / GO_WITH_WARNINGS /
-  NO-GO. Writes a reviewer report + findings TSV/JSON + object inventory and
-  registers them all in the artifact index for /sap-evidence-pack. Read-only;
-  never releases the TR — release stays a deliberate /sap-se01 step.
-  Prerequisites: SAP profile saved via /sap-login (RFC); SAP NCo 3.1 (32-bit,
-  .NET 4.0) in GAC. Z_GENERIC_RFC_WRAPPER_TBL is NOT required (all checks use
-  RFC_READ_TABLE).
+  Release gate for an ABAP transport request — answers "is this transport safe to
+  release?" before it moves to QA / production. Resolves the TR (explicit number,
+  or --current from the dev defaults), builds its object inventory from E071, and
+  runs read-only RFC structural checks: unreleased child tasks, inactive objects,
+  local / $TMP objects inside a transportable request, and a multi-package note.
+  Optionally chains /sap-atc and /sap-run-abap-unit and folds their verdicts in.
+  Gates every finding via the customer brief's Quality bar (--strict promotes
+  warnings) and rolls up to GO / GO_WITH_WARNINGS / NO-GO. Writes a reviewer report
+  + findings TSV/JSON + object inventory, registered for /sap-evidence-pack.
+  Read-only; never releases the TR — release stays a deliberate /sap-se01 step.
+  Prerequisites: SAP profile via /sap-login (RFC); SAP NCo 3.1 (32-bit) in GAC
+  (Z_GENERIC_RFC_WRAPPER_TBL not required — all checks use RFC_READ_TABLE).
 argument-hint: "<TR> | --current  [--strict] [--run-atc] [--include-unit-tests] [--brief <path>]"
 ---
 

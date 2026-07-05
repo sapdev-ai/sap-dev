@@ -1,30 +1,19 @@
 ---
 name: sap-check-fix
 description: |
-  Routes "check and fix" / "check" / "fix" requests for an existing SAP object to
-  the correct workbench skill (sap-se38, sap-se37, sap-se24, or sap-se11) based
-  on an explicit object-type keyword in the user's request. When no keyword is
-  given, probes SE38 → SE37 → SE24 → SE11 (table → data type → domain) via the
-  Display button to auto-detect the object type, then dispatches.
-
-  If the object name matches an SAP-enhancement-component pattern (function-exit
-  FM EXIT_SAP*, exit include ZX*, table-enhancement structure CI_*, or a SAPLX*
-  screen exit), it is confirmed via MODSAP and routed to /sap-cmod instead —
-  which edits the correct underlying object (for a function exit that is the
-  ZX* customer include, never the standard EXIT_SAP* FM) and re-activates the
-  enclosing CMOD project.
-
-  Invoke when the user says any of:
-    - "check and fix <kind> <name>"
-    - "check <kind> <name>"
-    - "fix <kind> <name>"
-  where <kind> is one of: report / program / pgm, function module / fm,
-  class / interface / method, dictionary / ddic / table / structure / view /
-  data element / domain / table type / type group / search help / lock object,
-  or omitted entirely.
-
-  Prerequisites: Active SAP GUI session (use /sap-login first). Does not deploy
-  new objects — the target object must already exist in the SAP system.
+  Routes "check and fix" / "check" / "fix" requests for an EXISTING SAP object to
+  the correct workbench skill (sap-se38 / sap-se37 / sap-se24 / sap-se11) by an
+  explicit object-type keyword, or — when no keyword is given — auto-detects the
+  type by probing SE38 → SE37 → SE24 → SE11 (Display), then dispatches in
+  check-and-fix mode. If the object matches an SAP-enhancement-component pattern
+  (function-exit FM EXIT_SAP*, exit include ZX*, table-enhancement CI_*, SAPLX*
+  screen exit), it is confirmed via MODSAP and routed to /sap-cmod instead (which
+  edits the correct underlying object — for a function exit the ZX* customer
+  include, never the standard FM — and re-activates the CMOD project). Invoke on
+  "check and fix / check / fix <kind> <name>" where <kind> is report/program, FM,
+  class/interface, a DDIC type, or omitted.
+  Prerequisites: active SAP GUI session (/sap-login first). Does not deploy new
+  objects — the target must already exist.
 argument-hint: "[<kind>] <object-name>"
 ---
 

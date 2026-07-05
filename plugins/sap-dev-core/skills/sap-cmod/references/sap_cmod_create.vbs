@@ -60,7 +60,7 @@ oSession.findById("wnd[0]/usr/btn%#AUTOTEXT001").press   ' Create
 WScript.Sleep 1500
 If Err.Number <> 0 Then
     WScript.Echo "ERROR: Could not press Create (btn%#AUTOTEXT001): " & Err.Description
-    WScript.Echo "       The Create button id is generated and can differ by release -- re-check with /sap-gui-object-details."
+    WScript.Echo "       The Create button id is generated and can differ by release -- re-check with /sap-gui-inspect."
     WScript.Quit 1
 End If
 Err.Clear

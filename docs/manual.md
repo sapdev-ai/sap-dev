@@ -46,7 +46,7 @@ two standard interfaces SAP already ships:
 
 | Plugin | Skills | What it gives you |
 |---|---|---|
-| **sap-dev-core** | 53 + `abap-developer` agent | Login & connection store, transport handling, the ABAP Workbench (SE38/SE37/SE24/SE11/SE91/SE16N/SE01/…), the ATC quality gate, ABAP-Unit runner, activation, diagnosis (ST22/SM13/SM12/SLG1/SM37), delivery assurance, and **STMS** import to QAS/PRD. |
+| **sap-dev-core** | 50 + `abap-developer` agent | Login & connection store, transport handling, the ABAP Workbench (SE38/SE37/SE24/SE11/SE91/SE16N/SE01/…), the ATC quality gate, ABAP-Unit runner, activation, diagnosis (ST22/SM13/SM12/SLG1/SM37), delivery assurance, and **STMS** import to QAS/PRD. |
 | **sap-gen-code** | 8 | The **spec → ABAP** pipeline: read a design doc (Excel/Word/PDF), validate it, generate ABAP tailored to your project, and validate the result against the live system. |
 | **sap-migrate** | 8 + `cc-migration-engineer` agent | S/4HANA custom-code migration as a tracked campaign. |
 | **sap-tcd** | 3 | Business transaction automation: BP, MM01/02/03, VA01/02/03. |
@@ -1041,9 +1041,9 @@ p50/p95 duration, top error classes).
 | `sap-fix-incident` / `sap-check-fix` | Test-first fix loop / check-and-fix router |
 | `sap-trace` | Analyse a recorded performance trace |
 | `sap-explain-object` / `sap-compare` | Comprehension (`--spec` emits a formal spec document) / cross-system diff |
-| `sap-rfc-wrapper-fm` / `sap-rfc-wrapper-class` | Call non-RFC FMs / methods over RFC |
+| `sap-rfc-wrapper` | Call non-RFC FMs (`fm`) / wrap class methods (`class`) over RFC |
 | `sap-call-bdc` / `sap-update-addon` | BDC replay / add-on table maintenance |
-| `sap-gui-record` / `sap-gui-probe` / `sap-gui-object-details` / `sap-gui-diagnose` / `sap-gui-screen-check` / `sap-gui-skill-scaffold` | Skill-authoring & GUI robustness tooling |
+| `sap-gui-record` / `sap-gui-probe` / `sap-gui-inspect` / `sap-gui-skill-scaffold` | Skill-authoring & GUI robustness tooling (golden-screen drift → `/sap-doctor --screens`) |
 | `sap-log-analyze` / `sap-error-kb` | Log summary / frequently-errors knowledge base |
 
 ### sap-gen-code (spec → ABAP)

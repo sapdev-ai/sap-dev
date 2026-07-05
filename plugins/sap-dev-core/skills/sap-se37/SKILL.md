@@ -1,33 +1,16 @@
 ---
 name: sap-se37
 description: |
-  Deploys ABAP function module source code to a SAP system via SE37 using
-  SAP GUI Scripting. Creates new function modules or updates existing ones.
-  Existence check (SE37 Display), source upload to the
-  Source code tab, save, and activation. Source is the full function include
-  (FUNCTION <name>. through ENDFUNCTION.).
-  Also supports check-and-fix mode: when no source file is provided and the
-  task is "fix FM" or "check and fix FM", opens the FM in SE37, runs a syntax
-  check (Ctrl+F2), downloads the source, fixes all errors, re-uploads, and
-  activates the FM.
-  Also supports change-attributes mode: when the user asks to change a
-  function module's Short Text or Processing Type (Regular / Remote-Enabled
-  / Update Module + update kind), opens SE37 in change mode, selects the
-  Attributes tab, updates the supplied fields and saves. Handles the
-  conditional original-language popup and the post-save Workbench-request
-  popup per `/sap-transport-request`.
-  Also supports reassign-function-group mode: when the user asks to move a
-  function module to a different function group (e.g. "reassign FM <X> to
-  function group <FG>"), opens SE37, presses Reassign (toolbar btn[31]),
-  fills the new function group, handles the post-reassign TR popup, then
-  re-activates the FM (reassign leaves it inactive).
-  Also supports delete mode: when the user asks to delete an FM (e.g.
-  "delete <FM>", "remove FM <FM>"), opens SE37, presses Delete
-  (Shift+F2 / tbar[1]/btn[14]), confirms via btnSPOP-OPTION1 (Yes),
-  handles the post-delete TR popup if the FM was transportable, and
-  verifies removal via Display. Deletion is irreversible — the skill
-  asks for explicit confirmation before running the VBS.
-  Prerequisites: Active SAP GUI session (use /sap-login first).
+  Deploys ABAP function module source to a SAP system via SE37 (SAP GUI Scripting)
+  — creates or updates FMs: existence check, source upload (full FUNCTION …
+  ENDFUNCTION include), save, activate. Also four secondary modes on an existing
+  FM: check-and-fix ("fix FM" / "check and fix FM" with no source — syntax-check,
+  download, fix, re-upload, activate); change-attributes (Short Text / Processing
+  Type: Regular / Remote-Enabled / Update Module); reassign-function-group
+  ("reassign FM <X> to <FG>" — moves it, then re-activates); delete ("delete <FM>"
+  — irreversible, asks for explicit confirmation, verifies removal). Handles the
+  original-language + Workbench-request popups per /sap-transport-request.
+  Prerequisites: active SAP GUI session (/sap-login first).
 argument-hint: "<function-module-name> [path-to-source]"
 ---
 
@@ -1724,21 +1707,21 @@ Parameter row column indices (zero-based):
 
 ## Troubleshooting Component IDs / Stuck Screen
 
-**FIRST RESORT — invoke `/sap-gui-diagnose full`.**
+**FIRST RESORT — invoke `/sap-gui-inspect screenshot full`.**
 
-`sap-gui-diagnose` screenshots every visible window via the SAP GUI
-Scripting `HardCopy` API, composes them into one annotated PNG, and
-chains to `/sap-gui-object-details` for the topmost window. Read the
-PNG with the Read tool to see what's on screen, then decide what to
-do based on both the visual and the structural dump.
+The `screenshot` mode captures every visible window via the SAP GUI
+Scripting `HardCopy` API, composes them into one annotated PNG, and also
+dumps the topmost window's component tree. Read the PNG with the Read
+tool to see what's on screen, then decide what to do based on both the
+visual and the structural dump.
 
-**SECOND RESORT — `/sap-gui-object-details` alone.** Use this when
-`/sap-gui-diagnose` itself fails (GUI minimised, HardCopy blocked) or
-when you only need a quick structural confirmation.
+**SECOND RESORT — `/sap-gui-inspect tree` (structural only).** Use this when
+the screenshot fails (GUI minimised, HardCopy blocked) or when you only
+need a quick structural confirmation.
 
 When a VBS step fails with `The control could not be found by id`, an unexpected
 popup appears, or the script hangs because the screen flow diverged from what was
-expected, do NOT guess. Call the `sap-gui-object-details` skill immediately to
+expected, do NOT guess. Call `/sap-gui-inspect` immediately to
 discover the actual component layout in the current SAP GUI session, then fix the
 VBS or dismiss the popup based on the dump.
 
@@ -1757,7 +1740,7 @@ After the dump, decide:
 - Component ID changed between SAP releases → update the VBS template with the discovered ID.
 - Source-code editor not accepting input → check `SubType` (AbapEditor vs TextEdit) via `id` mode.
 
-**Last resort (only if `sap-gui-object-details` cannot help):**
+**Last resort (only if `/sap-gui-inspect` cannot help):**
 1. SAP Logon > Help > Scripting Recorder and Playback
 2. Click Record, perform the failing step manually, stop recording
 3. The recorded script shows the correct component IDs

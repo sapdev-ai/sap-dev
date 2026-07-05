@@ -1,22 +1,18 @@
 ---
 name: sap-gen-abap-unit
 description: |
-  Generates ABAP Unit tests for an EXISTING object (global class / function
-  module / report) and then closes the loop on a live system: pre-check the
-  generated test source, deploy it, activate, run it with coverage, read the
-  failures, fix, and repeat until green (bounded). Reads the active source
-  (RFC RPY for program/FM; SE24 GUI download for class), builds a call/data map,
-  runs a SEAM ANALYSIS that classifies every DB read and external call into a
-  doubling strategy (CL_OSQL_TEST_ENVIRONMENT for SELECTs, CL_ABAP_TESTDOUBLE for
-  injected dependencies, or flags untestable-without-refactor), then emits an
-  ABAP Unit test class honest about what it could and could not cover.
-  Pairs with /sap-run-abap-unit (runs the tests) — same "abap-unit" vocabulary.
-  Deploy path is GUI: /sap-se24 --test-source (CCAU local test classes) for a
-  global class, /sap-se38 for a report test program; activation via
-  /sap-activate-object; TR via /sap-transport-request. Deploy is gated — it
-  asks before writing anything (skill_operating_rules Rule 2).
-  Prerequisites: pinned connection (/sap-login); active SAP GUI session for
-  class download + deploy + run; SAP NCo 3.1 for RFC source read.
+  Generates ABAP Unit tests for an EXISTING object (global class / function module
+  / report) and closes the loop on a live system: pre-check the generated test,
+  deploy, activate, run with coverage, read failures, fix, repeat until green
+  (bounded). Reads the active source, builds a call/data map, and runs a SEAM
+  ANALYSIS that classifies every DB read and external call into a doubling strategy
+  (OSQL test double for SELECTs, ABAP test double for injected dependencies, or
+  flags untestable-without-refactor), then emits a test class honest about what it
+  could and could not cover. Pairs with /sap-run-abap-unit (which runs the tests).
+  Deploy is GUI (/sap-se24 --test-source CCAU for a class, /sap-se38 for a report
+  test) and gated — asks before writing anything (Rule 2).
+  Prerequisites: pinned /sap-login connection; active GUI session for class download
+  + deploy + run; SAP NCo 3.1 for RFC source read.
 argument-hint: "<OBJECT_NAME | path-to.abap> [--type class|fm|program|auto] [--target-coverage <n>] [--max-rounds 3] [--doubles auto|osql|none] [--deploy ask|yes|no] [--risk-level harmless|dangerous|critical] [--no-gui]"
 ---
 

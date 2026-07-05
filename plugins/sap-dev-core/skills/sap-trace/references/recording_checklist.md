@@ -15,10 +15,10 @@ complete (reused from `/sap-se16n`) — you only need the transaction-specific I
 | Tool | Use for |
 |---|---|
 | `/sap-gui-record` | Capture the **click order** + the exact `findById` paths/actions as you click through. |
-| `/sap-gui-object-details` | On a given screen, dump **all controls of a type** (filter `GuiButton`, `GuiShell`, `GuiTab`, `GuiToolbar`) with their IDs + tooltips — the fastest way to nail the grid and toolbar IDs without guessing. |
+| `/sap-gui-inspect` | On a given screen, dump **all controls of a type** (filter `GuiButton`, `GuiShell`, `GuiTab`, `GuiToolbar`) with their IDs + tooltips — the fastest way to nail the grid and toolbar IDs without guessing. |
 | `/sap-gui-probe` | Optional all-in-one: drives the txn step-by-step and dumps the property tree (IDs, types, Changeable, popup transitions) at every screen. |
 
-Recommended: one `/sap-gui-record` pass for the *sequence* + a `/sap-gui-object-details`
+Recommended: one `/sap-gui-record` pass for the *sequence* + a `/sap-gui-inspect`
 dump on each screen for the *grid + button IDs*.
 
 ## 2. ST05 capture sequence
@@ -29,7 +29,7 @@ dump on each screen for the *grid + button IDs*.
 | 3 | Click **Display Trace** | `PH_DISPLAY_TRACE_BTN` | `wnd[0]/tbar[1]/btn[N]` (GuiButton); may instead be a menu `wnd[0]/mbar/...` | record reveals btn index |
 | 4 | On the **restriction screen**, set User / From / To, press **Execute (F8)** | `PH_USER_FIELD`, `PH_FROM_FIELD`, `PH_TO_FIELD` | `ctxt...` (GuiCTextField) | **window index caveat ↓** |
 | 5 | On the basic trace list, click **Summarize SQL Statements** (a.k.a. "Summarize Trace" / "Compress") | `PH_SUMMARIZE_BTN` | `wnd[0]/tbar[1]/btn[N]` or a menu select | |
-| 6 | With the summarized grid shown, dump `GuiShell` via `/sap-gui-object-details` | `RESULT_GRID` | `wnd[0]/usr/cntl<NAME>/shellcont/shell` (GuiGridView) | **classic-list caveat ↓** |
+| 6 | With the summarized grid shown, dump `GuiShell` via `/sap-gui-inspect` | `RESULT_GRID` | `wnd[0]/usr/cntl<NAME>/shellcont/shell` (GuiGridView) | **classic-list caveat ↓** |
 
 ### ST05 caveats
 - **Restriction window index.** On modern ST05 (likely on 1909) step 4 is a
@@ -62,7 +62,7 @@ dump on each screen for the *grid + button IDs*.
   (`oTree.doubleClickNode "<nodeKey>"`), not a button. Capture the node key; for
   "latest", capture the first/top node key (e.g. via `getNodeKeyByPath`).
 - The **Hit List** is one tool inside the SAT evaluation desktop; its button ID
-  is release-specific — `/sap-gui-object-details` (GuiButton/GuiToolbar) on that
+  is release-specific — `/sap-gui-inspect` (GuiButton/GuiToolbar) on that
   screen lists it.
 
 ## 4. ID worksheet (fill, then paste back)
@@ -89,6 +89,6 @@ SAT
 3. Dry-run the GUI path on a recorded trace → expect `EXPORTED=<path> rows=<n>`.
 4. Run `/sap-trace --source st05` end to end (the analyzer half is already proven).
 
-> Fastest route: paste the recorded `.vbs` (or the `/sap-gui-object-details`
+> Fastest route: paste the recorded `.vbs` (or the `/sap-gui-inspect`
 > dumps) back and I'll fill every `PH_*` constant and apply the window-index /
 > tab-select / menu / double-click adaptations in both templates for you.

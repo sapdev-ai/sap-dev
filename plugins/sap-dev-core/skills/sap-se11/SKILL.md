@@ -1136,7 +1136,7 @@ move is sbar-confirmed only. For an authoritative check, re-query `TADIR`
 | Error | Cause | Fix |
 |---|---|---|
 | `SAP refused the package change: <msg>` | Object locked in a modifiable TR (E071), authorization, or package does not exist | Release the blocking TR via `/sap-se01 release <TR>`, or fix the target package, then re-run. Message text is echoed for diagnostics. |
-| `A modal popup is still open after the change` | Unexpected dialog the flow did not anticipate | Re-run; if it persists capture the screen with `/sap-gui-object-details` |
+| `A modal popup is still open after the change` | Unexpected dialog the flow did not anticipate | Re-run; if it persists capture the screen with `/sap-gui-inspect` |
 | `Object Directory Entry dialog did not appear` | Object doesn't exist or wrong type | Check object name and type |
 | `Cannot find package field` | Dialog layout mismatch | Check component IDs on this SAP version |
 | `Unsupported object type` | Invalid type code | Use one of: TABL, VIEW, DTEL, TTYP, DOMA, SHLP, ENQU |
@@ -1368,12 +1368,11 @@ and logon language. If any step fails:
 
 ## Troubleshooting Component IDs / Stuck Screen
 
-**FIRST RESORT — invoke `/sap-gui-diagnose full`.**
+**FIRST RESORT — invoke `/sap-gui-inspect screenshot full`.**
 
-`sap-gui-diagnose` captures a screenshot of every visible window via the
-SAP GUI Scripting `HardCopy` API, composes them into one annotated PNG
-that mimics the operator's actual screen, and chains to
-`/sap-gui-object-details` for the topmost window so you also get the
+The `screenshot` mode captures every visible window via the SAP GUI
+Scripting `HardCopy` API, composes them into one annotated PNG that
+mimics the operator's actual screen, and also dumps the topmost window's
 component tree. Read the resulting PNG with the Read tool, then decide:
 
 - Unexpected popup → identify the dismiss button visually + the correct
@@ -1383,10 +1382,10 @@ component tree. Read the resulting PNG with the Read tool, then decide:
 - Field is `Changeable=False` → take a different SAP path (e.g. SE16N's
   AS4TEXT pattern).
 
-**SECOND RESORT — `/sap-gui-object-details` alone.** Use this if
-`/sap-gui-diagnose` itself fails (SAP GUI minimised, HardCopy blocked,
-or you only need the structural view to confirm one ID). Recommended
-diagnostic sequence:
+**SECOND RESORT — `/sap-gui-inspect tree` (structural only).** Use this if
+the screenshot fails (SAP GUI minimised, HardCopy blocked, or you only
+need the structural view to confirm one ID). Recommended diagnostic
+sequence:
 
 | Step | Mode | Filter | Purpose |
 |---|---|---|---|
@@ -1396,7 +1395,7 @@ diagnostic sequence:
 | 4 | `type` | `GuiButton` | When you don't know which button to press to dismiss a popup, list every button with text + tooltip |
 | 5 | `id` | the failing component path | Inspect `Changeable`, `Required`, `Value` to understand why an assignment fails (e.g. greyed-out field) |
 
-**Last resort (only if both diagnostic skills cannot help):**
+**Last resort (only if `/sap-gui-inspect` cannot help):**
 1. SAP Logon > Help > Scripting Recorder and Playback
 2. Click Record, perform the failing step manually, stop recording
 3. The recorded script shows the correct component IDs
@@ -1412,7 +1411,7 @@ and **LENGTH** (`txtDD03P-LENG`) columns in the field grid (`tblSAPLSD41TC0`)
 have `Changeable=False`. This means you **cannot set field types directly**
 (e.g., CHAR, NUMC) via SAP GUI Scripting.
 
-Verified live with `/sap-gui-object-details` on S/4HANA 1909:
+Verified live with `/sap-gui-inspect` on S/4HANA 1909:
 
 - The `cmbDD03P_D-F_REFTYPE[1,row]` combobox accepts `2` (Predefined Type)
   but DD03P-DATATYPE remains `Changeable=False`.

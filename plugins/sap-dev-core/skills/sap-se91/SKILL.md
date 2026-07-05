@@ -525,19 +525,19 @@ After success, proceed to Step 7 (cleanup). Skip Step 6.
 ---
 ## Troubleshooting Component IDs / Stuck Screen
 
-**FIRST RESORT — invoke `/sap-gui-diagnose full`.** Captures every visible
-window as one annotated PNG via the SAP GUI Scripting `HardCopy` API, plus
-`/sap-gui-object-details` for the topmost window. Read the PNG with the
-Read tool to see what's on screen, then decide based on both the visual
-and the structural dump.
+**FIRST RESORT — invoke `/sap-gui-inspect screenshot full`.** Captures every
+visible window as one annotated PNG via the SAP GUI Scripting `HardCopy` API,
+plus a structural dump of the topmost window. Read the PNG with the Read tool
+to see what's on screen, then decide based on both the visual and the
+structural dump.
 
-**SECOND RESORT — `/sap-gui-object-details` alone.** Use this when
-`/sap-gui-diagnose` itself fails (SAP GUI minimised, HardCopy blocked) or
-when you only need a quick structural confirmation.
+**SECOND RESORT — `/sap-gui-inspect tree` (structural only).** Use this when
+the screenshot fails (SAP GUI minimised, HardCopy blocked) or when you only
+need a quick structural confirmation.
 
 When a VBS step fails with `The control could not be found by id`, an unexpected
 popup appears, or the script hangs because the screen flow diverged from what was
-expected, do NOT guess. Call the `sap-gui-object-details` skill immediately to
+expected, do NOT guess. Call `/sap-gui-inspect` immediately to
 discover the actual component layout in the current SAP GUI session, then fix the
 VBS or dismiss the popup based on the dump.
 
@@ -555,7 +555,7 @@ After the dump, decide:
 - Unexpected popup (e.g. "Language mismatch", "Package assignment") → press its dismiss button (`wnd[N]/tbar[0]/btn[0]` or `btn[12]`) and retry.
 - Component ID changed between SAP releases → update the VBS template with the discovered ID.
 
-**Last resort (only if `sap-gui-object-details` cannot help):**
+**Last resort (only if `/sap-gui-inspect` cannot help):**
 1. SAP Logon > Help > Scripting Recorder and Playback
 2. Click Record, perform the failing step manually, stop recording
 3. The recorded script shows the correct component IDs

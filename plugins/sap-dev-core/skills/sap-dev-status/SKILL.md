@@ -242,7 +242,7 @@ powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_
 
 Other sap-dev skills MAY call `/sap-dev-status` as a pre-flight when
 their flow assumes the dev env is set up — for example,
-`/sap-rfc-wrapper-fm` could fail fast with a clear "wrapper FM not
+`/sap-rfc-wrapper fm` could fail fast with a clear "wrapper FM not
 deployed; run /sap-dev-init" message instead of running the wrapper
 script and getting a vague `FM_NOT_FOUND` from RFC. Status is RFC-only
 and read-only, so this is safe to chain liberally.

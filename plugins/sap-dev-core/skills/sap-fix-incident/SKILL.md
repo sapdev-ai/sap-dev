@@ -1,23 +1,19 @@
 ---
 name: sap-fix-incident
 description: |
-  Closes the loop from a /sap-diagnose root cause to a deployed, test-verified
-  fix — conservatively and test-first. Takes a diagnose deliverable (or a dump
-  key) whose top hypothesis is a CUSTOM-CODE DEFECT, acquires the failing source
-  (via /sap-st22 --deep + the RFC source reader / SE24 download), reasons a
-  minimal patch, reproduces the defect in an ABAP Unit test (RED) via
-  /sap-gen-abap-unit, applies the patch, re-checks with /sap-check-abap, deploys
-  to a modifiable DEV system behind a transport (/sap-se38|37|24 +
-  /sap-activate-object), and proves the test GREEN with /sap-run-abap-unit.
-  HARD GUARD RAILS: only custom-code-defect hypotheses on Z*/Y* objects; never
-  patches SAP standard code (-> Note/enhancement, analysis only); never writes to
-  the incident's own system when that is non-modifiable / production — the fix is
-  made in DEV and handed to /sap-transport-readiness -> /sap-se01 release ->
-  /sap-stms. Deploy is gated (skill_operating_rules Rule 2): default is to
-  PROPOSE a diff and wait for confirmation. Findings flow through the reconciled
-  finding model and register for /sap-evidence-pack.
-  Prerequisites: a /sap-diagnose deliverable or a dump; pinned DEV profile
-  (/sap-login) + active SAP GUI session; SAP NCo 3.1 (32-bit) for RFC.
+  Closes the loop from a /sap-diagnose root cause to a deployed, test-verified fix
+  — conservatively and test-first. Takes a diagnose deliverable (or a dump key)
+  whose top hypothesis is a CUSTOM-CODE DEFECT, acquires the failing source,
+  reasons a minimal patch, reproduces the defect as a RED ABAP Unit test (via
+  /sap-gen-abap-unit), applies the patch, re-checks with /sap-check-abap, deploys
+  to a modifiable DEV system behind a transport, and proves the test GREEN with
+  /sap-run-abap-unit. HARD GUARD RAILS: only custom-code-defect hypotheses on Z*/Y*
+  objects; never patches SAP standard (→ Note/enhancement, analysis only); never
+  writes to a non-modifiable / production system — the fix is made in DEV and handed
+  to /sap-transport-readiness → /sap-se01 release → /sap-stms. Deploy is gated (Rule
+  2): default is to PROPOSE a diff and wait for confirmation.
+  Prerequisites: a /sap-diagnose deliverable or a dump; pinned DEV /sap-login profile
+  + active GUI session; SAP NCo 3.1 (32-bit) for RFC.
 argument-hint: "--incident <diagnose.json> | --dump <KEY> | <type> <name>  [--hypothesis N] [--apply] [--max-rounds 2] [--dev-connection PROFILE] [--no-test] [--report] [--out PATH]"
 ---
 

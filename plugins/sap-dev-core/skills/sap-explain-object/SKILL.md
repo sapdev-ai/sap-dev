@@ -1,26 +1,19 @@
 ---
 name: sap-explain-object
 description: |
-  Read-only comprehension aid for an EXISTING ABAP object. Auto-detects the
-  object type (program / include / function module / class) via RFC, acquires
-  its active source (RFC RPY for programs/includes/FMs; SE24 GUI download for
-  classes), resolves the include tree, builds a structure + call map
-  (FORM/METHOD/FUNCTION units; PERFORM / CALL FUNCTION / CALL METHOD edges;
-  SELECT/UPDATE/MODIFY/DELETE targets; SUBMIT / CALL TRANSACTION; selection
-  screen), optionally pulls callers via /sap-where-used-list, then emits an
-  explanation dossier (dossier.md) plus a machine-readable map.json. Never
-  modifies the SAP system.
-  With --spec it goes further: enriches the map over RFC (DDIC table short texts
-  + key fields via DD02T/DD03L, message texts via T100, authorization objects)
-  and renders a formal, review-ready specification document — Markdown by default,
-  Word (--format docx) for sign-off, or a filled spec_template.xlsx workbook
-  (--format xlsx) that round-trips back through /sap-docs-extract. Every spec
-  section is marked CONFIRMED (read from the system) vs INFERRED (reasoned), with
-  an honest "Assumptions & open questions" section. --spec folds in the former
-  /sap-document-object skill (the inverse of /sap-gen-abap's spec-to-code flow).
-  Prerequisites: pinned connection (/sap-login). Class source download, --callers,
-  and --format docx/xlsx need an active SAP GUI session / the anthropic-skills
-  docx|xlsx skills; programs/includes/FMs read over RFC (no GUI).
+  Read-only comprehension aid for an EXISTING ABAP object. Auto-detects the type
+  (program / include / function module / class) via RFC, acquires the active
+  source, resolves the include tree, and builds a structure + call/data map (units,
+  PERFORM / CALL FUNCTION / CALL METHOD edges, DB read/write targets, SUBMIT / CALL
+  TRANSACTION, selection screen); optionally pulls callers via /sap-where-used-list.
+  Emits an explanation dossier + machine-readable map.json. Never modifies SAP.
+  With --spec it enriches the map over RFC (DDIC table texts + keys, message texts,
+  auth objects) and renders a formal, review-ready spec document — Markdown, Word
+  (--format docx), or a filled spec_template.xlsx (--format xlsx) that round-trips
+  through /sap-docs-extract; each section marked CONFIRMED vs INFERRED. --spec folds
+  in the former /sap-document-object.
+  Prerequisites: pinned /sap-login connection. Class download, --callers, and
+  --format docx/xlsx need a GUI session / the anthropic-skills docx|xlsx.
 argument-hint: "<OBJECT_NAME> [--type program|include|fm|class|auto] [--callers] [--no-gui] [--depth N] [--spec] [--format md|docx|xlsx] [--audience functional|technical]"
 ---
 

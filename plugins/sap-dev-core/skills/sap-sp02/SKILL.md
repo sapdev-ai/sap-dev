@@ -234,19 +234,19 @@ Suggested `<CLASS>`: `SP02_NOT_FOUND`, `SP02_DOWNLOAD_FAILED`, `GUI_TIMEOUT`.
 ## Step 7 — Troubleshooting
 
 When the auto-scan fails, the right next move is almost always
-`/sap-gui-diagnose full` followed by `/sap-gui-object-details` to
+`/sap-gui-inspect screenshot full` (visual PNG + structural dump) to
 inspect the live SP02 list:
 
 | Symptom | Diagnose with | Fix |
 |---|---|---|
-| `Spool <NUM> not found` but the operator sees it on screen | `/sap-gui-object-details` mode `type` filter `GuiLabel` — find the row index where the spool number appears, and the column index | Re-run with `--row=<N>` and/or `--col=<C>` |
+| `Spool <NUM> not found` but the operator sees it on screen | `/sap-gui-inspect` mode `type` filter `GuiLabel` — find the row index where the spool number appears, and the column index | Re-run with `--row=<N>` and/or `--col=<C>` |
 | Spool belongs to a different user | Check SP02's selection screen | Either change `User` filter on the SP02 selection screen (Settings…) or run as the spool's owner |
 | F2 (Display) opens an empty window | Spool is binary (PDF/postscript) — Unconverted format won't help | Use `--format=html` or `--format=csv` if the report supports those, or download via SP01 binary path |
 | Save toolbar button doesn't exist | SAP GUI version differs | Record `tbar[1]/btn[48]` vs `tbar[0]/btn[11]` with /sap-gui-record and patch the VBS |
-| File-save dialog doesn't appear | A "List has been completely displayed" popup may be on top | Add an Enter dismiss in the popup-handling block; this can also be handled by running `/sap-gui-diagnose full` between steps |
+| File-save dialog doesn't appear | A "List has been completely displayed" popup may be on top | Add an Enter dismiss in the popup-handling block; this can also be handled by running `/sap-gui-inspect screenshot full` between steps |
 
 If any GUI step fails with "control could not be found by id", invoke
-`/sap-gui-diagnose full` first — it captures the live screen as a PNG
+`/sap-gui-inspect screenshot full` first — it captures the live screen as a PNG
 plus the structural component dump for the topmost window.
 
 ---

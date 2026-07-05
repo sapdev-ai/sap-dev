@@ -170,7 +170,7 @@ End If
 ' SAP GUI Scripting cannot drive DD03P-DATATYPE / -LENG / -DECIMALS in the
 ' structure components grid: those columns are Changeable=False regardless
 ' of the row's REFTYPE combobox or the "Component Type" toolbar button.
-' Verified live with /sap-gui-object-details on S/4HANA 1909.
+' Verified live with /sap-gui-inspect on S/4HANA 1909.
 '
 ' If we let the row through, the GUI silently drops the type, the structure
 ' is saved with a typeless component, and activation later fails with a

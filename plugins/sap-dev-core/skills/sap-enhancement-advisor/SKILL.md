@@ -2,23 +2,18 @@
 name: sap-enhancement-advisor
 description: |
   Finds the safest extension point for a requested SAP behavior change and
-  recommends which enhancement mechanism to use - so a project does not fail by
-  modifying the wrong place (copying standard, editing a fragile exit, or missing
-  the right BAdI). Complements /sap-se19 (which IMPLEMENTS a BAdI): this skill
-  DECIDES. Three modes, auto-detected: inspect one BAdI / enhancement spot
-  (classify classic/new/migrated + list implementations via SXS_ATTR / SXC_* /
-  BADI_IMPL); inspect one SMOD enhancement (components via MODSAP + the CMOD
-  projects using it via MODACT/MODATTR); or enumerate candidates for a program /
-  tcode (enhancement spots + implementations in its package, BAdIs it references
-  via the cross-reference index, and user-exit includes). Classifies and scores
-  candidates with a TRANSPARENT heuristic (released enhancement interface > BAdI
-  > exit > implicit; avoid standard modification), flags risks (multiple active
-  implementations, migrated/obsolete BAdIs, no clean enhancement point), and
-  emits candidates.tsv + existing_implementations.tsv + a recommended plan,
-  registered in the artifact index. The optional business-intent string is
-  ADVISORY only - the ranking is structural, not semantic; program-level
-  enumeration is non-exhaustive (SE84 is). Read-only; never modifies SAP.
-  Prerequisites: SAP profile saved via /sap-login (RFC); SAP NCo 3.1 (32-bit) in GAC.
+  recommends which enhancement mechanism to use — so a project doesn't fail by
+  modifying the wrong place (copying standard, editing a fragile exit, missing the
+  right BAdI). Complements /sap-se19 (which IMPLEMENTS a BAdI): this skill DECIDES.
+  Three auto-detected modes: inspect one BAdI / enhancement spot (classify
+  classic/new/migrated + list implementations); inspect one SMOD enhancement
+  (components + the CMOD projects using it); or enumerate candidates for a program
+  / tcode (enhancement spots, referenced BAdIs, user-exit includes). Scores
+  candidates with a transparent heuristic (released enhancement interface > BAdI >
+  exit > implicit; avoid standard modification), flags risks, and emits
+  candidates.tsv + a recommended plan. The optional business-intent string is
+  advisory only (the ranking is structural). Read-only; never modifies SAP.
+  Prerequisites: SAP profile via /sap-login (RFC); SAP NCo 3.1 (32-bit) in GAC.
 argument-hint: "BADI <name> | ENHANCEMENT <smod> | PROGRAM <p> | TCODE <t>  [\"<intent>\"]"
 ---
 

@@ -122,7 +122,7 @@ End If
 ' fall through to a false SUCCESS.
 If TopWin() <> "wnd[0]" And TopWin() <> "" Then
     WScript.Echo "ERROR: A modal popup is still open after transport handling (unhandled dialog)."
-    WScript.Echo "       Inspect via /sap-gui-object-details and re-record if a control id changed."
+    WScript.Echo "       Inspect via /sap-gui-inspect and re-record if a control id changed."
     WScript.Quit 1
 End If
 

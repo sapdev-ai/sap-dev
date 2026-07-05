@@ -1,28 +1,15 @@
 ---
 name: sap-docs-extract
 description: |
-  Reads a SAP design document (Excel .xlsx, Word .docx, PDF), or an existing
-  work folder, and extracts structured information into separate text files by
-  information type: program summary, domains, data elements, tables, error
-  messages, text elements, and process logic.
-
-  Input — any of:
-    * Path to a design document (.xlsx / .docx / .pdf) — extract creates
-      a fresh work folder, dumps the document to {doc_name}_raw.txt, then
-      proceeds with structuring.
-    * Path to an existing work folder containing {doc_name}_raw.txt.
-    * Path to a {doc_name}_raw.txt file directly.
-
-  Output: Multiple {doc_name}_*.txt files written to the work folder. Existing
-  files with the same names are silently overwritten without any user
-  confirmation or logging. Optionally chain /sap-docs-convert afterwards to
-  apply customer-specific normalisation rules.
-
-  Legacy binary .doc files are NOT supported (no working extraction path) —
-  abort with guidance to save the file as .docx in Word first. If the input
-  file format is not one of .xlsx, .docx, or .pdf (and is not an existing
-  work folder or `_raw.txt` file), abort with the error:
-  "ERROR: Unsupported file format."
+  Reads a SAP design document (Excel .xlsx, Word .docx, PDF) — or an existing work
+  folder / a _raw.txt file — and extracts structured information into separate text
+  files by type: program summary, domains, data elements, tables, error messages,
+  text elements, and process logic. From a document it creates a fresh work folder,
+  dumps {doc_name}_raw.txt, then structures; existing {doc_name}_*.txt files are
+  silently overwritten. Optionally chain /sap-docs-convert afterwards for
+  customer-specific normalisation, then /sap-docs-check and /sap-gen-abap. Legacy
+  binary .doc is not supported (save as .docx first); an unsupported format aborts
+  with "ERROR: Unsupported file format."
 argument-hint: "<path-to-document  OR  work-folder  OR  _raw.txt>"
 ---
 

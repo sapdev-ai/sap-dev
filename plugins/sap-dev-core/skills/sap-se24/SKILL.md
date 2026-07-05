@@ -1,33 +1,17 @@
 ---
 name: sap-se24
 description: |
-  Deploys ABAP class source code to a SAP system via SE24 using
-  SAP GUI Scripting. Creates new classes or updates existing ones.
-  Existence check (SE24 Display), source upload via
-  source-code-based view, save, and activation. Source is the complete
-  class definition and implementation (CLASS ... DEFINITION through
-  CLASS ... IMPLEMENTATION ... ENDCLASS).
-  Also supports check-and-fix mode: when no source file is provided and the
-  task is "fix Class" or "check and fix Class", opens the class in SE24,
-  runs a syntax check (Ctrl+F2), downloads the source, fixes all errors,
-  re-uploads, and activates the class (Ctrl+F3).
-  Also supports change-properties mode: when the user asks to change a
-  class's Description, Program Status, or Category, opens the class in SE24
-  CHANGE mode, opens the Properties dialog (Goto > Properties), toggles the
-  dialog to change, updates the supplied fields, Continues, then Saves and
-  Activates so the change persists. If the class opens in the form-based
-  Class Builder it normalises the view to source-based for the edit and
-  restores the prior setting afterward. Handles the conditional original-
-  language popup and the post-save/activate Workbench-request popup per
-  `/sap-transport-request`.
-  Also supports delete mode: when the user asks to delete a class or
-  interface (e.g. "delete class <X>", "drop class <X>", "remove
-  interface <X>"), navigates to SE24, fills the class-name field,
-  presses Shift+F2 (sendVKey 14) from the initial screen, confirms via
-  btnSPOP-OPTION1 (Yes), handles dependent-object and post-delete TR
-  popups, and verifies removal via Display. Deletion is irreversible —
-  the skill asks for explicit confirmation before running the VBS.
-  Prerequisites: Active SAP GUI session (use /sap-login first).
+  Deploys ABAP class/interface source to a SAP system via SE24 (SAP GUI Scripting)
+  — creates or updates classes: existence check, source upload (full CLASS
+  DEFINITION … IMPLEMENTATION … ENDCLASS via the source-code view), save, activate.
+  Also three secondary modes on an existing class: check-and-fix ("fix Class" /
+  "check and fix Class" with no source — syntax-check, download, fix, re-upload,
+  activate); change-properties (Description / Program Status / Category via Goto →
+  Properties, then Save + Activate; normalises a form-based Class Builder to
+  source-based for the edit); delete ("delete class/interface <X>" — irreversible,
+  asks for explicit confirmation, verifies removal). Handles the original-language
+  + Workbench-request popups per /sap-transport-request.
+  Prerequisites: active SAP GUI session (/sap-login first).
 argument-hint: "<class-name> [path-to-source]"
 ---
 
@@ -1349,19 +1333,19 @@ source-code-based view. In that case, the upload may need to be done differently
 
 ## Troubleshooting Component IDs / Stuck Screen
 
-**FIRST RESORT — invoke `/sap-gui-diagnose full`.** Captures every visible
-window as one annotated PNG via the SAP GUI Scripting `HardCopy` API, plus
-`/sap-gui-object-details` for the topmost window. Read the PNG with the
-Read tool to see what's on screen, then decide based on both the visual
-and the structural dump.
+**FIRST RESORT — invoke `/sap-gui-inspect screenshot full`.** Captures every
+visible window as one annotated PNG via the SAP GUI Scripting `HardCopy` API,
+plus a structural dump of the topmost window. Read the PNG with the Read tool
+to see what's on screen, then decide based on both the visual and the
+structural dump.
 
-**SECOND RESORT — `/sap-gui-object-details` alone.** Use this when
-`/sap-gui-diagnose` itself fails (SAP GUI minimised, HardCopy blocked) or
-when you only need a quick structural confirmation.
+**SECOND RESORT — `/sap-gui-inspect tree` (structural only).** Use this when
+the screenshot fails (SAP GUI minimised, HardCopy blocked) or when you only
+need a quick structural confirmation.
 
 When a VBS step fails with `The control could not be found by id`, an unexpected
 popup appears, or the script hangs because the screen flow diverged from what was
-expected, do NOT guess. Call the `sap-gui-object-details` skill immediately to
+expected, do NOT guess. Call `/sap-gui-inspect` immediately to
 discover the actual component layout in the current SAP GUI session, then fix the
 VBS or dismiss the popup based on the dump.
 
@@ -1380,7 +1364,7 @@ After the dump, decide:
 - Component ID changed between SAP releases → update the VBS template with the discovered ID.
 - AbapEditor stuck → use SE24's grid-based syntax-check workaround (see Limitations).
 
-**Last resort (only if `sap-gui-object-details` cannot help):**
+**Last resort (only if `/sap-gui-inspect` cannot help):**
 1. SAP GUI > More > Script Recording and Playback
 2. Click Record, perform the failing step manually, stop recording
 3. The recorded script shows the correct component IDs

@@ -1,30 +1,20 @@
 ---
 name: sap-cc-decommission
 description: |
-  EXECUTES the retirement of unused custom objects a campaign has flagged for
-  decommission — turning "40-60% of custom code is unused" from a spreadsheet
-  into a realized, audited deletion. /sap-cc-usage only FLAGS
-  (decision=DECOMMISSION); this skill physically deletes, behind a hard signed
-  gate and a per-object safety chain, and records an auditable ledger.
-  Two actions:
-    plan   — behind the decommission_signoff gate (BLOCKED until APPROVED),
-             select the retirement worklist from scope.tsv (decision=DECOMMISSION
-             plus any operator-promoted REVIEW objects), ordered consumers-before-
-             providers, with a per-object delete route. Nothing is deleted.
-    record — after the delegated deletes, advance state and append the
-             decommissioned.tsv audit ledger (object, source-backup artifact, TR,
-             verified-gone timestamp, sign-off owner).
-  Per object the skill re-verifies the object is still safe to delete (no inbound
-  callers via /sap-where-used-list, still resolves, not locked in another user's
-  TR), BACKS UP its source to the artifact store, resolves a Workbench TR, deletes
-  via the routed workbench skill (/sap-se38 | /sap-se24 | /sap-function-group |
-  /sap-se11), and CONFIRMS it is physically gone (resolver re-read = NOT_FOUND)
-  before ledgering it. Deletion is irreversible and transported to QA/PROD —
-  the skill never deletes without the sign-off and never ledgers an object it did
-  not confirm gone.
-  Run after /sap-cc-usage (+ its where-used reference-safety gate). Prerequisites:
-  a populated scope.tsv with DECOMMISSION rows; SAP NCo 3.1 (32-bit); the source
-  system connection.
+  EXECUTES the retirement of unused custom objects a campaign flagged for
+  decommission — turning "40-60% of custom code is unused" into a realized,
+  audited deletion. /sap-cc-usage only FLAGS; this skill physically deletes,
+  behind a hard signed gate and a per-object safety chain. Two actions: `plan`
+  (behind the decommission_signoff gate — build the retirement worklist from
+  scope.tsv, consumers before providers; nothing deleted) and `record` (after the
+  delegated deletes, advance state + append the decommissioned.tsv audit ledger).
+  Per object it re-verifies safety (no inbound callers, still resolves, not locked
+  in another TR), backs up the source, resolves a TR, deletes via the routed
+  workbench skill, and CONFIRMS it is physically gone before ledgering. Irreversible
+  and transported to QA/PROD — never deletes without the sign-off, never ledgers an
+  object it didn't confirm gone. Run after /sap-cc-usage.
+  Prerequisites: scope.tsv with DECOMMISSION rows; SAP NCo 3.1 (32-bit); the
+  source connection.
 argument-hint: "<plan|record> --campaign <id> [--objects <a,b>] [--include-review] [--results <path>] [--force]"
 ---
 

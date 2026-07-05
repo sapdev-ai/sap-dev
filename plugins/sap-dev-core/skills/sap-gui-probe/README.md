@@ -1,7 +1,7 @@
 # sap-gui-probe
 
 Drive a SAP transaction step by step against a natural-language scenario,
-dump every screen via the sap-gui-object-details engine, and emit a single
+dump every screen via the sap-gui-inspect engine, and emit a single
 replayable VBS at the end.
 
 ## When to reach for it
@@ -20,8 +20,7 @@ Compared to siblings:
 | Skill | Drives the GUI? | Captures properties? | Multi-screen? |
 |---|---|---|---|
 | `sap-gui-record` | no (user clicks) | no | yes |
-| `sap-gui-object-details` | no | yes | no (single screen) |
-| `sap-gui-diagnose` | no | partial (visual) | no |
+| `sap-gui-inspect` | no | yes (structural + visual) | no (single screen) |
 | **`sap-gui-probe`** | **yes** | **yes** | **yes** |
 
 ## Quick start
@@ -63,6 +62,5 @@ SAPLSETX master-language popups).
 
 ## See also
 
-- `/sap-gui-object-details` -- the underlying dump engine (reused verbatim)
+- `/sap-gui-inspect` -- the underlying dump/screenshot engine (reused verbatim)
 - `/sap-gui-record` -- if you'd rather record by hand
-- `/sap-gui-diagnose` -- if you're already mid-script and stuck

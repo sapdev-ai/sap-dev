@@ -19,7 +19,7 @@ control IDs and screen identity each VBS depends on, and failing loudly at the
 first missing control instead of accepting a drifted screen.
 
 This is the **static half** of the GUI-robustness harness. The **live half**,
-`/sap-gui-screen-check`, replays these baselines against a target release and
+`/sap-doctor --screens`, replays these baselines against a target release and
 reports drift as BLOCKER findings.
 
 ## The two halves
@@ -35,7 +35,7 @@ reports drift as BLOCKER findings.
      coverage reaches 100%.
    - **malformed** baseline → **hard error** (fails CI). Safe, because it only
      fires on a baseline that was actually authored.
-2. **Live validation skill** — `/sap-gui-screen-check` (built). A PowerShell
+2. **Live validation skill** — `/sap-doctor --screens` (built). A PowerShell
    orchestrator (`references/sap_screen_check.ps1`) reads the baselines and, per
    checkpoint, drives the read-only probe (`references/sap_screen_check_probe.vbs`)
    to navigate via `reach.okcode`, read the live screen identity (program +
@@ -86,10 +86,10 @@ One baseline per driving VBS, named `<vbs-stem>.screens.json`, beside the VBS in
 | `captured_on` | yes | Object. `release` / `kernel` / `date` / `method`. **Load-bearing**: fingerprints are release-bound — drift is reported *relative to this release*. `method` ∈ `live` (captured from a system) \| `static` (dependency set extracted from the VBS source, identity not yet captured). |
 | `checkpoints[]` | yes | Non-empty. One entry per distinct screen the VBS depends on. Start shallow (just `initial`), deepen over time. |
 | `checkpoints[].id` | yes | Stable short name (`initial`, `attributes`, `editor`, `tr_popup`, …). |
-| `checkpoints[].reach` | recommended | How `/sap-gui-screen-check` navigates to this state (`{ "okcode": "/nSE38" }`, or a step recipe). Cheapest checkpoints (initial screens) need no data. |
+| `checkpoints[].reach` | recommended | How `/sap-doctor --screens` navigates to this state (`{ "okcode": "/nSE38" }`, or a step recipe). Cheapest checkpoints (initial screens) need no data. |
 | `checkpoints[].identity` | yes | `{ program, dynpro }` of the screen. May be empty strings **only** when `status` is `pending_live`. |
 | `checkpoints[].required_ids[]` | yes | The `findById` control paths the VBS depends on at this checkpoint. Language-stable (IDs + DDIC field names, never `.Text`) per `shared/rules/language_independence_rules.md`. Non-empty unless `status` is `pending_live`. |
-| `checkpoints[].status` | yes | `captured` (identity + ids verified on a live system) \| `pending_live` (static seed — identity to be captured on first `/sap-gui-screen-check` run). |
+| `checkpoints[].status` | yes | `captured` (identity + ids verified on a live system) \| `pending_live` (static seed — identity to be captured on first `/sap-doctor --screens` run). |
 
 ## Authoring a baseline
 
@@ -118,7 +118,7 @@ text). Every driving VBS now ships a multi-checkpoint seed: `method: static`,
 `status: pending_live`, the required-control set extracted per checkpoint from
 the VBS's literal `findById` paths (dynamic/concatenated IDs excluded — capture
 live), popups as their own checkpoints. Live `identity` is captured and
-promoted per checkpoint by `/sap-gui-screen-check --update-baseline`
+promoted per checkpoint by `/sap-doctor --screens --update-baseline`
 (v1 captures OK-code-reachable checkpoints; deeper `note`-reach checkpoints
 stay `pending_live` until the probe learns step recipes).
 

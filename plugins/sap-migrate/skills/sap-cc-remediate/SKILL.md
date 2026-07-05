@@ -1,42 +1,20 @@
 ---
 name: sap-cc-remediate
 description: |
-  Remediates the campaign's TRIAGED R1 objects and records the outcome. This is
-  the only sap-migrate skill that changes SAP — and it does so ONLY on the
-  sandbox, ONLY for tier-R1 objects, and ONLY after a mandatory dry-run review.
-  Four actions:
-    apply  — DRY-RUN (R1): for each TRIAGED R1 object, apply the deterministic R1
-             rule pack (migration_rules_r1.tsv) to the downloaded source and write
-             <obj>.after.abap + <obj>.diff + a fixlog row. AUTO rules rewrite;
-             FLAG rules only report (no change). Nothing is deployed; state is
-             unchanged. The operator reviews the diffs — that is the gate.
-    assist — R2/R3: assemble a per-object context bundle (<obj>.context.md) from
-             the matched recipe + object/field/API maps + the findings + source,
-             for the AI to produce a recipe-faithful rewrite. No rewrite, no SAP;
-             DRAFT patterns are flagged advisory-only.
-    revert — ROLLBACK a deployed fix: stage the retained <obj>.before.abap as
-             <obj>.revert.abap (+ <obj>.revert.diff for review), operator
-             confirms, the file is redeployed via the workbench skills on the
-             sandbox, and record (outcome REVERTED) returns the object to
-             TRIAGED. Without --objects only recheck-FAILED fixes are staged;
-             name DEPLOYED/VERIFIED objects explicitly to roll those back.
-    record — after the operator deploys the approved <obj>.after.abap (via
-             /sap-se38|37|24 -> /sap-activate-object -> /sap-atc re-check) and
-             passes an outcomes file, advance state TRIAGED -> REMEDIATED
-             (deployed) / TRIAGED|REMEDIATED -> VERIFIED (ATC clean; a deployed
-             object reaches VERIFIED on a later recheck record) / REMEDIATED ->
-             TRIAGED on a FAILED recheck / REMEDIATED|VERIFIED -> TRIAGED on
-             REVERTED (rollback recorded), and stamp the fixlog. When the brief's
-             ABAP-Unit bar is mandatory, VERIFIED also requires a passing
-             /sap-run-abap-unit result or the object is held at REMEDIATED (the
-             unit-test gate).
-  R1 is deterministic (apply). R2/R3 (data-model / HANA) are AI-reasoned: assist
-  prepares the context, the AI rewrites per the recipe, and a human reviews
-  before deploy — never auto-applied. Objects with tier '?' (unclassified) and
-  DRAFT-pattern findings are advisory-only per the pack rules. Run after
-  `/sap-cc-triage`.
-  Prerequisites: downloaded source for each R1 object; deploy/activate happen via
-  the delegated workbench skills on the sandbox system.
+  Remediates a migration campaign's TRIAGED R1 (mechanical) objects on the
+  SANDBOX — the only sap-migrate skill that changes SAP, and only after a
+  mandatory dry-run review. Four actions:
+    apply  — dry-run the deterministic R1 rule pack over each object's source →
+             <obj>.after.abap + diff for the operator to review (this is the gate).
+    assist — R2/R3: assemble a per-object AI context bundle for a recipe-faithful
+             rewrite (never auto-applied; DRAFT patterns advisory-only).
+    revert — roll a deployed fix back to its retained before-image (confirmed).
+    record — after the operator deploys the approved fix + ATC re-check, advance
+             campaign state (TRIAGED → REMEDIATED → VERIFIED).
+  R1 is deterministic; R2/R3 and unclassified '?' objects are AI-assisted / human
+  work, never auto-applied. Run after /sap-cc-triage.
+  Prerequisites: downloaded source per R1 object; deploy via the workbench skills
+  on the sandbox.
 argument-hint: "<apply|assist|revert|record> --campaign <id> [--rules <path>] [--knowledge <dir>] [--source-dir <dir>] [--limit <n>] [--results <path>] [--objects <a,b>] [--brief <path>]"
 ---
 

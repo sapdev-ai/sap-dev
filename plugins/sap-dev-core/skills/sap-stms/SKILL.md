@@ -1,25 +1,19 @@
 ---
 name: sap-stms
 description: |
-  Moves a released transport request through the landscape (DEV -> QAS -> PRD)
-  and reads its import status / return code via STMS. Four modes:
-    (a) status (default, READ-ONLY) - show a target system's import queue, or
-        where a given TR sits on the route.
-    (b) logs (READ-ONLY) - the import log + step return code (RC 0/4/8/12) for a
-        TR in a system, mapped to OK / OK_WITH_WARNINGS / ERROR / FATAL.
-    (c) import (WRITE, gated) - import one released TR into a target system.
-        Tiered confirmation; a PRODUCTION target requires a typed SID echo + a
-        second confirmation (most outward-facing, least-reversible action in the
-        toolset). Never imports an unreleased or NO-GO TR without --force.
-    (d) import-all (WRITE, double-gated) - import a whole queue; off without --all.
-  Honesty contract: missing import authorization -> COULD_NOT_IMPORT (never a
-  faked success); RC 8/12 = failure even if the queue row looks "done." GUI for
-  the action, RFC (E070) for the released-status read. The import VBS ships as a
-  recording-gated scaffold (PLACEHOLDER destructive control IDs + strict
-  pre-flight TR/target verification) so an uncalibrated run fails SAFE, never
-  mis-imports - run /sap-gui-record on STMS_IMPORT once per release first.
-  Prerequisites: active SAP GUI session (/sap-login); for QA/PROD imports, TMS
-  import authorization (often Basis-gated - status/logs work without it).
+  Moves a released transport request through the landscape (DEV → QAS → PRD) and
+  reads its import status / return code via STMS. Four modes: status (default,
+  READ-ONLY — a target's import queue, or where a TR sits on the route); logs
+  (READ-ONLY — import log + step RC mapped to OK / WARN / ERROR / FATAL); import
+  (WRITE, gated — import one released TR; a PRODUCTION target needs a typed-SID
+  echo + second confirmation, the most outward-facing action in the toolset; never
+  imports an unreleased/NO-GO TR without --force); import-all (WRITE, double-gated,
+  off without --all). Missing import authorization → COULD_NOT_IMPORT (never a
+  faked success); RC 8/12 = failure even if the queue row looks "done". The import
+  VBS is a recording-gated scaffold that fails SAFE — run /sap-gui-record on
+  STMS_IMPORT once per release first.
+  Prerequisites: active /sap-login GUI session; QA/PROD imports need TMS import
+  authorization (status/logs work without it).
 argument-hint: "[status] [<TR>] [--system SID] [--route] | logs <TR> --system SID | import <TR> --to SID [--client NNN] [--immediate] [--leave-in-queue] [--force] | import-all --to SID --all  [--connection PROFILE] [--report] [--out PATH]"
 ---
 

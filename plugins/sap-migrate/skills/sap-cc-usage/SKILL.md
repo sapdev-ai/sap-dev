@@ -2,36 +2,19 @@
 name: sap-cc-usage
 description: |
   Overlays runtime usage data onto the campaign inventory to decide what to
-  remediate vs. retire. Joins a usage export onto `inventory.tsv`, applies the
-  campaign's decommission policy, writes `usage.tsv` + `scope.tsv`
-  (REMEDIATE / DECOMMISSION / REVIEW), and advances `state.tsv`. This is the
-  step that produces the headline "X% retired without remediation" number.
-  Usage sources: (FILE) a hand-supplied export; (SCMON/UPL) a DIRECT RFC read of
-  the source system's ABAP Call Monitor (tx SCMON) / SUSG aggregation —
-  `sap_cc_scmon_read.ps1` reads `SUSG_V_DATA` (aggregated) or `SCMON_VDATA`
-  (raw); and (WORKLOAD) a coarse fallback for systems where SCMON was never
-  activated — `sap_cc_workload_read.ps1` reads the ST03N workload monitor
-  (`SWNC_GET_WORKLOAD_STATISTIC` → TCDET) as a POSITIVE-ONLY, LOW-confidence
-  proxy. All three write the same export the FILE path ingests. The FILE/NONE
-  paths are offline; SCMON/UPL/WORKLOAD open an RFC connection to the campaign's
-  `source_profile`.
-  SAFETY: if SCMON/SUSG/WORKLOAD has NO data (monitoring not active), the read
-  returns NO_DATA and every object defaults to REMEDIATE — "no monitoring data"
-  is never read as "everything unused". WORKLOAD is positive-only: it can confirm
-  a custom report/tcode-program RAN but never that one is unused (it never lists
-  classes/FMs/tables), so an object absent from a WORKLOAD read is UNKNOWN
-  (→ REMEDIATE) and an unseen PROG is REVIEW at most — never auto-DECOMMISSION,
-  even under `aggressive`. A join-rate guard (`USAGE_JOIN:`) rejects a usage
-  file that matches zero inventory objects (and, without `--force-low-join`, one
-  matching < 10%) before anything is written — a wrong-system/wrong-format
-  export can never flag the estate unused. The `conservative` policy never auto-decommissions;
-  it parks unused objects as REVIEW pending the `/sap-where-used-list`
-  reference-safety check. `aggressive` flags all unused objects DECOMMISSION (no
-  reference check — use with care). A short observation window emits a WINDOW_WARN
-  (short windows miss period-end / year-end jobs and over-flag objects as unused).
-  Run after `/sap-cc-inventory`, before `/sap-cc-analyze`.
-  Prerequisites: FILE/NONE need no SAP connection; SCMON/UPL need SAP NCo 3.1
-  (32-bit) + a saved `source_profile` (or a pinned `/sap-login` connection).
+  remediate vs. retire — the step that produces the headline "X% retired without
+  remediation" number. Joins a usage export onto inventory.tsv, applies the
+  decommission policy, writes usage.tsv + scope.tsv (REMEDIATE / DECOMMISSION /
+  REVIEW). Usage sources: FILE (hand-supplied export), SCMON/UPL (RFC read of the
+  ABAP Call Monitor / SUSG), WORKLOAD (coarse ST03N fallback, positive-only,
+  low-confidence), NONE. FILE/NONE are offline; the others open an RFC connection.
+  SAFETY: no monitoring data → NO_DATA → every object defaults to REMEDIATE (never
+  "everything unused"); a join-rate guard rejects a wrong-system export;
+  conservative parks unused as REVIEW pending the /sap-where-used-list check,
+  aggressive flags DECOMMISSION without it (use with care). Run after
+  /sap-cc-inventory, before /sap-cc-analyze.
+  Prerequisites: FILE/NONE offline; SCMON/UPL/WORKLOAD need SAP NCo 3.1 (32-bit)
+  + a saved source_profile.
 argument-hint: "--campaign <id> [--usage-source FILE|SCMON|UPL|WORKLOAD|NONE] [--usage-file <path>] [--source-profile <ref>] [--namespaces Z,Y] [--policy none|conservative|aggressive] [--min-exec 0] [--force-low-join] [--workload-months 12]"
 ---
 

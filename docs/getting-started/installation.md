@@ -152,16 +152,14 @@ Claude: [Uses sap-se38]
 | `sap-evidence-pack` | Collects the artifacts other delivery-assurance skills registered into one audit-ready pack with an executive summary and an honest "Missing evidence" section — pure-local |
 | `sap-explain-object` | Read-only comprehension aid for an existing object: acquires source, builds a structure + call map, optionally pulls callers, and emits an explanation dossier |
 | `sap-function-group` | Full lifecycle for SAP function groups: check, create, activate, query, and delete |
-| `sap-gui-diagnose` | Visual triage for stuck SAP GUI scripts — composes a screenshot of every visible window into an annotated PNG |
-| `sap-gui-object-details` | Inspects components in the active SAP GUI session and dumps their IDs and properties |
+| `sap-gui-inspect` | Inspects the active SAP GUI session structurally (dumps component IDs + properties: `tree`/`menu`/`type`/`id`/`wnd` modes) and/or visually (`screenshot` — composes every visible window into an annotated PNG). Absorbed the former `sap-gui-object-details` and `sap-gui-diagnose`. |
 | `sap-gui-probe` | Drives a SAP transaction step by step against a natural-language scenario and emits a synthesized recording-style VBS |
 | `sap-gui-record` | Guides recording of SAP GUI interactions and extracts component IDs, actions, and field names from the VBS |
 | `sap-gui-skill-scaffold` | Authors a new mode-aware transaction skill from N natural-language scenarios — runs `/sap-gui-probe` per scenario, merges probe folders via cross-probe diff, emits a ready-to-test draft |
 | `sap-impact-analysis` | Pre-change impact analysis from SAP's cross-reference index (where-used + forward deps + entry points + transport history) with a transparent LOW/MEDIUM/HIGH risk band — read-only |
 | `sap-log-analyze` | Summarizes sap-dev JSONL log files: per-skill counts, success/fail rates, p50/p95 duration, top error classes |
 | `sap-login` | Opens a SAP GUI connection and logs in via SAP GUI Scripting; also verifies SAP NCo 3.1 RFC connectivity |
-| `sap-rfc-wrapper-class` | Generates an RFC wrapper function module for a non-RFC-callable ABAP class method |
-| `sap-rfc-wrapper-fm` | Calls a non-RFC-enabled SAP function module via the generic `Z_GENERIC_RFC_WRAPPER_TBL` wrapper |
+| `sap-rfc-wrapper` | Reaches non-RFC-callable ABAP code in two modes: `fm` calls a non-RFC-enabled function module via the generic `Z_GENERIC_RFC_WRAPPER_TBL` wrapper; `class` generates + deploys a dedicated RFC wrapper FM for a class method. Absorbed the former `sap-rfc-wrapper-fm` and `sap-rfc-wrapper-class`. |
 | `sap-run-abap-unit` | Runs ABAP Unit tests on a deployed program or class via SE38/SE24 and reports per-method pass/fail with a verdict gate (optional code coverage) |
 | `sap-se01` | Manages SAP transport requests via SE01 (create / release) with description rendering and confirmation prompts |
 | `sap-se11` | Creates, updates, and deletes Dictionary objects (tables, views, data elements, structures, table types, type groups, domains, search helps, lock objects) |

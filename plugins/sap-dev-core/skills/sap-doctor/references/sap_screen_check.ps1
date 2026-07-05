@@ -1,7 +1,7 @@
 # =============================================================================
 # sap_screen_check.ps1
 # -----------------------------------------------------------------------------
-# Deterministic orchestrator for /sap-gui-screen-check (live half of the
+# Deterministic orchestrator for /sap-doctor --screens (live half of the
 # golden-screen regression harness; contract: contributing/golden_screen_baselines.md,
 # schema sapdev.screenbaseline/1).
 #

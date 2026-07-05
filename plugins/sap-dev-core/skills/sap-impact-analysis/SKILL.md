@@ -1,22 +1,19 @@
 ---
 name: sap-impact-analysis
 description: |
-  Pre-change / pre-release impact analysis — answers "if I change this object,
-  what else might break?" from SAP's system-maintained CROSS-REFERENCE INDEX
-  (D010TAB, D010INC, WBCROSSGT, CROSS, DD04L), NOT by parsing source (REPOSRC is
-  blocked) and NOT by driving the slow GUI where-used. Resolves the object,
-  then gathers: reverse dependencies (where-used — programs/objects that use it),
-  forward dependencies (what a program uses), runtime entry points (tcodes, jobs,
-  variants, RFC-enabled flag), and transport history (E071/E070). Computes a
-  transparent LOW/MEDIUM/HIGH risk band from where-used fan-out + standard-object
-  flag, writes a markdown report + per-dimension TSVs + risk findings, and
-  registers them in the artifact index for /sap-evidence-pack. Always discloses
-  the dynamic-dispatch blind spot (CALL FUNCTION lv_name, dynamic SELECT,
-  SUBMIT (rep)) and reports COULD_NOT_CHECK rather than guessing on read
-  failures. Inputs: program / class / FM / table / data element / domain / tcode
-  (and TR / package by expansion). Read-only.
-  Prerequisites: SAP profile saved via /sap-login (RFC); SAP NCo 3.1 (32-bit,
-  .NET 4.0) in GAC.
+  Pre-change / pre-release impact analysis — answers "if I change this object, what
+  else might break?" from SAP's system-maintained cross-reference index (not by
+  parsing source, which is blocked, nor by driving the slow GUI where-used).
+  Resolves the object, then gathers reverse dependencies (where-used), forward
+  dependencies (what it uses), runtime entry points (tcodes, jobs, variants,
+  RFC-enabled flag), and transport history. Computes a transparent LOW/MEDIUM/HIGH
+  risk band from where-used fan-out + standard-object flag, writes a markdown
+  report + per-dimension TSVs + risk findings, and registers them for
+  /sap-evidence-pack. Discloses the dynamic-dispatch blind spot and reports
+  COULD_NOT_CHECK rather than guessing on read failures. Inputs: program / class /
+  FM / table / data element / domain / tcode (and TR / package by expansion).
+  Read-only.
+  Prerequisites: SAP profile via /sap-login (RFC); SAP NCo 3.1 (32-bit) in GAC.
 argument-hint: "<TYPE> <NAME> | <NAME> | TCODE <t> | TABLE <t>  [--depth 1] [--output <dir>] [--high-fanout 50]"
 ---
 

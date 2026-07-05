@@ -49,7 +49,7 @@
 '
 ' Verified evidence (S/4HANA 1909, SAP_BASIS 7.55, EN + JA logon, 2026-05-11)
 ' --------------------------------------------------------------------------
-' Tree dumps captured by /sap-gui-object-details during create + update
+' Tree dumps captured by /sap-gui-inspect during create + update
 ' flows on ZCMST_RFC_PARAM. Both modes expose IDENTICAL paths:
 '
 '   wnd[0]/mbar/menu[4]                 = "Extras"

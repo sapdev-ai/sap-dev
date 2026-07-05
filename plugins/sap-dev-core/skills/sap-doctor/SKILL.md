@@ -1,27 +1,19 @@
 ---
 name: sap-doctor
 description: |
-  Read-only environment preflight ("doctor") for the sap-dev toolchain.
-  Diagnoses why skills fail BEFORE they run, across six groups:
-    * gui    — SAP GUI installed + SAP GUI Scripting reachable (client + server)
-    * cfg    — 32-bit PowerShell, SAP NCo 3.1 in GAC_32, work_dir env var +
-               writability, connections.json present + valid
-    * rfc    — RFC connectivity to the AI-session's pinned connection profile
-    * srv    — client Repository modifiability (T000 change option)
-    * auth   — the logged-in user's SAP authorizations vs the required set
-               (SUSR_USER_AUTH_FOR_OBJ_GET; mirror of docs/security.md §1)
-    * devenv — TR / package / function group / wrapper artefacts (delegated to
-               /sap-dev-status)
-  Emits one parseable CHECK line per probe and an overall verdict
-  (READY / DEGRADED / BLOCKED). DEGRADES GRACEFULLY: a probe that cannot run
-  reports SKIP, never a false PASS. Every failure carries a copy-pasteable FIX.
-  Pure read-only; never modifies the SAP system (only writes/deletes a tiny
-  temp probe file under work_dir to test writability).
-  Auto-invokable as a pre-flight from any sap-dev skill — exit 0 = ready,
-  1 = blocked.
-  Prerequisites: SAP GUI installed; SAP NCo 3.1 (32-bit, .NET 4.0) in GAC for
-  the rfc/srv groups; an active SAP GUI session for the gui group.
-argument-hint: "[--quiet] [--no-devenv]"
+  Read-only environment preflight ("doctor") for the sap-dev toolchain —
+  diagnoses why skills fail BEFORE they run, across six default groups: gui (GUI +
+  scripting reachable), cfg (32-bit PowerShell, NCo 3.1, work_dir, connections.json),
+  rfc (pinned-profile connectivity), srv (client modifiability), auth (user
+  authorizations vs the required set), devenv (dev-init artefacts). Emits one CHECK
+  line per probe + a verdict (READY / DEGRADED / BLOCKED); a probe that can't run
+  reports SKIP, never a false PASS, each with a copy-pasteable FIX. The default run
+  is pure read-only and safe to chain (exit 0 = ready, 1 = blocked). OPT-IN group
+  --screens replays the golden-screen baselines against the live system to catch
+  control-ID drift before a GUI skill mis-steps (navigates the live session, off by
+  default; --update-baseline writes baselines). Absorbed /sap-gui-screen-check.
+  Prerequisites: SAP GUI; NCo 3.1 (32-bit) for rfc/srv; an active session for gui.
+argument-hint: "[--quiet] [--no-devenv] [--screens [<vbs-stem>|--all]] [--update-baseline]"
 ---
 
 # SAP Environment Doctor Skill
@@ -48,6 +40,9 @@ Task: $ARGUMENTS
 | `<SKILL_DIR>/references/sap_doctor_authz_probe.ps1` | *(32-bit PS)* | auth group — probes the pinned user's authorizations via `SUSR_USER_AUTH_FOR_OBJ_GET` (Step 3b) |
 | `<SAP_DEV_CORE_SHARED_DIR>/tables/required_authorizations.tsv` | *(read)* | auth group — required-authorization set read by the probe above (machine-readable mirror of `docs/security.md §1`) |
 | `<SKILL_DIR>/references/sap_doctor_checks.ps1` | *(template)* | cfg + rfc + srv checks (filled + run in 32-bit PowerShell) |
+| `<SKILL_DIR>/references/sap_screen_check.ps1` | *(orchestrator)* | screens group (`--screens`) — reads baselines, runs the probe per checkpoint, compares, emits CHECK + SCREENCHECK lines |
+| `<SKILL_DIR>/references/sap_screen_check_probe.vbs` | *(probe template)* | screens group — read-only navigate + identity + ID-presence probe (self-resolves SESSION_PATH; Tier-3 + baseline exempt) |
+| `contributing/golden_screen_baselines.md` | *(contract)* | screens group — baseline schema (`sapdev.screenbaseline/1`) + authoring rules |
 | `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_log_helper.ps1` | *(logging)* | Step 0.5 / Final logging |
 
 ---
@@ -200,10 +195,73 @@ Exit code (probe): `0` all pass · `1` ≥1 FAIL · `2` NOT_PROBED.
 
 ---
 
+## Step 3c — screens group (OPT-IN, only with `--screens`)
+
+**Skip this entire group unless `--screens` was passed.** It is the live half of
+the golden-screen harness — it replays the screen fingerprint baselines
+(`references/<stem>.screens.json` across all skills) against the CURRENT system to
+catch control-ID / screen-identity drift before a GUI skill silently mis-steps.
+Unlike the other groups it **navigates the live session** (OK-code), so it is
+opt-in and never part of the default pre-flight run.
+
+**Data-loss guard.** The orchestrator navigates via OK-code (`/nSE38` …), which
+discards the current transaction's unsaved data. First read the **current** screen
+by running the probe once with an empty OK-code (assess-only, no navigation):
+
+```powershell
+$skill = '<SKILL_DIR>'
+$vbs = ([System.IO.File]::ReadAllText("$skill\references\sap_screen_check_probe.vbs", [System.Text.Encoding]::UTF8)) `
+       -replace '%%SESSION_PATH%%','' -replace '%%OKCODE%%','' -replace '%%REQUIRED_IDS%%',''
+$run = '{RUN_TEMP}\sap_screen_check_guard.vbs'
+[System.IO.File]::WriteAllText($run, $vbs, [System.Text.UnicodeEncoding]::new($false, $true))
+& C:\Windows\SysWOW64\cscript.exe //NoLogo $run
+Remove-Item $run -ErrorAction SilentlyContinue
+```
+
+If the `IDENTITY:` program is **not** an idle screen (`SAPLSMTR_NAVIGATION` /
+`SAPMSYST`), **stop and ask the user to confirm** before proceeding (unsaved-work
+risk). Once confirmed (or already idle), continue.
+
+**Run the orchestrator.** Pick the scope from `$ARGUMENTS`: `--screens` with no stem
+(or `--all`) → `-All`; `--screens <vbs-stem>` → resolve its baseline path and pass
+`-BaselinePath "<...>.screens.json"` (or `-Skill <skill-name>` to sweep one skill).
+Add `-Capture` **only** when the user also passed `--update-baseline`.
+
+```bash
+powershell -NoProfile -ExecutionPolicy Bypass -File "<SKILL_DIR>\references\sap_screen_check.ps1" -All -ProbeVbs "<SKILL_DIR>\references\sap_screen_check_probe.vbs" -WorkTemp "{WORK_TEMP}"
+```
+
+The orchestrator (plain PowerShell; it shells 32-bit cscript itself) emits:
+
+```
+CHECK: <stem>/<cp> | RESULT: PASS|DRIFT|PENDING|COULD_NOT_CHECK | IDS: <n>/<m> | IDENTITY: <pgm>/<scr> [| BASELINE: <pgm>/<scr> | SEVERITY: BLOCKER] | DETAIL: <text>
+  MISSING_ID: <path>            (per missing/absent control)
+CAPTURE: <baseline-path> | <cp.id> | program=<pgm> | dynpro=<scr>   (only with -Capture, for pending_live)
+SCREENCHECK: <OK|DRIFT|DEGRADED> baselines=<N> checkpoints=<M> PASS=.. DRIFT=.. CNC=.. PENDING=..
+```
+
+Map the `SCREENCHECK:` verdict into the **screens** doctor group: `OK` → PASS;
+`DRIFT` → **FAIL** (a `captured` checkpoint drifted — the named VBS will mis-step on
+this release; this BLOCKS, consistent with any-FAIL below); `DEGRADED` → SKIP (only
+`pending_live` / `COULD_NOT_CHECK` — nothing gated). Keep each drifted checkpoint's
+`MISSING_ID` / identity for the report, and for every DRIFT recommend re-recording
+that VBS (`/sap-gui-record` / `/sap-gui-probe`) for this release + updating its baseline.
+
+**Promote pending_live baselines (only with `--update-baseline`).** If `-Capture` was
+passed, apply each `CAPTURE: <path> | <cp.id> | program=<pgm> | dynpro=<scr>` line to
+its baseline (Edit tool — the orchestrator never writes a baseline itself; manual +
+reviewable per CLAUDE.md Directive 2): set `identity.program`/`identity.dynpro`,
+`status`=`captured`, `captured_on.method`=`live`, `captured_on.date`=today, `release`=the
+session release if known. Then re-run `node scripts/check-consistency.mjs` to confirm
+the now-`captured` baseline still validates.
+
+---
+
 ## Step 4 — Compose and report
 
-Combine the three sources (Step 1 gui, Step 2 cfg/rfc/srv, Step 3 devenv) into
-one table, then compute the **overall verdict**:
+Combine the sources (Step 1 gui, Step 2 cfg/rfc/srv, Step 3 devenv, Step 3b auth,
+and Step 3c screens when `--screens` was passed) into one table, then compute the
+**overall verdict**:
 
 - **BLOCKED** — any check is `FAIL`.
 - **DEGRADED** — no FAIL, but at least one `WARN` or `SKIP`.
@@ -258,7 +316,8 @@ cmd /c del "{RUN_TEMP}\sap_doctor_checks_run.ps1"
 powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_doctor_run.json" -Status SUCCESS -ExitCode 0
 ```
 
-(For a `BLOCKED` verdict set `-Status FAILED -ExitCode 1 -ErrorClass DOCTOR_BLOCKED`.)
+(For a `BLOCKED` verdict set `-Status FAILED -ExitCode 1 -ErrorClass DOCTOR_BLOCKED`;
+when the block is a `--screens` DRIFT specifically, use `-ErrorClass SCREEN_DRIFT`.)
 
 ---
 

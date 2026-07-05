@@ -1,10 +1,10 @@
 # =============================================================================
 # sap_gui_probe_dump.ps1
 # -----------------------------------------------------------------------------
-# Token-substitutes the sap-gui-object-details VBS template and runs it via
+# Token-substitutes the sap-gui-inspect VBS template and runs it via
 # 32-bit cscript to dump the currently visible SAP GUI screen.
 #
-# This is a thin wrapper -- the dump engine lives in sap-gui-object-details.
+# This is a thin wrapper -- the dump engine lives in sap-gui-inspect.
 # The probe skill reuses it verbatim rather than forking a copy.
 #
 # Usage:
@@ -39,13 +39,13 @@ param(
     [string] $SessionPath = '/app/con[0]/ses[0]'
 )
 
-# Locate the sap-gui-object-details VBS template (sibling skill in the same plugin).
+# Locate the sap-gui-inspect VBS template (sibling skill in the same plugin).
 $thisDir   = Split-Path -Parent $MyInvocation.MyCommand.Path        # ...\sap-gui-probe\references
 $skillsDir = Split-Path -Parent (Split-Path -Parent $thisDir)        # ...\skills
-$templateVbs = Join-Path $skillsDir 'sap-gui-object-details\references\sap_gui_object_details.vbs'
+$templateVbs = Join-Path $skillsDir 'sap-gui-inspect\references\sap_gui_object_details.vbs'
 
 if (-not (Test-Path $templateVbs)) {
-    Write-Error "sap-gui-object-details VBS template not found at: $templateVbs"
+    Write-Error "sap-gui-inspect VBS template not found at: $templateVbs"
     exit 1
 }
 

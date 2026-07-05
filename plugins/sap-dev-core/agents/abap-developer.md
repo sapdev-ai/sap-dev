@@ -190,7 +190,7 @@ Cross-check against the user's invocation:
 
 ### 0.4 Confirm `sap-dev-init` artefacts are present (RFC pre-flight)
 
-Several skills downstream (`/sap-rfc-wrapper-fm`, `/sap-update-addon`,
+Several skills downstream (`/sap-rfc-wrapper`, `/sap-update-addon`,
 the universal `ZCMRUPDATE_ADDON_TABLE` table-maintenance path, the
 `Z_GENERIC_RFC_WRAPPER_TBL` wrapper used by other RFC skills) assume the
 `sap-dev-init` artefacts are already deployed: a transport request, a

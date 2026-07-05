@@ -13,7 +13,7 @@
 #
 # TR_READ_REQUEST is NOT a remote-enabled FM, so the verify branch routes
 # the call through Z_GENERIC_RFC_WRAPPER_TBL (deployed by /sap-dev-init).
-# The wrapper FM is invoked exactly the way /sap-rfc-wrapper-fm does it:
+# The wrapper FM is invoked exactly the way /sap-rfc-wrapper (fm mode) does it:
 # build a CT_PARAMS table with IV_TRKORR (IMPORTING) + CS_REQUEST (CHANGING),
 # call the wrapper, then parse the returned asXML to extract H/TRSTATUS.
 # Direct RFC invocation of TR_READ_REQUEST fails on NCo 3.1 with

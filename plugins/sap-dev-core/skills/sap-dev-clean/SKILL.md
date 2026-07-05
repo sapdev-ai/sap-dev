@@ -1,31 +1,19 @@
 ---
 name: sap-dev-clean
 description: |
-  Conservative cleanup of the artefacts /sap-dev-init created. Walks
-  reverse dependency order — wrapper FM, then DDIC structure +
-  table type, then utility program, then function group, then
-  package — and deletes only what the operator confirms. Skips any
-  artefact whose dependents were extended by the operator (e.g.
-  function group that contains user-added FMs, package that contains
-  user-added Z* tables) unless --force is set.
-  The deleted dev-init OBJECTS are unassigned from their transport
-  request (their lingering E071 entries are removed via /sap-se01
-  remove-objects) so a later /sap-dev-init can re-create them — without
-  this, a deleted object's name-lock in an old unreleased request blocks
-  re-creation ("object is in request ..."). The request is then DELETED
-  if it ends up empty (default path, via /sap-se01 delete) so no husk
-  lingers; a request that still holds the operator's other objects is
-  kept. Settings.json keys are preserved unless --settings is passed,
-  so a follow-up /sap-dev-init re-creates the same names.
-  The canonical "blow away and rebuild" sequence is:
-  /sap-dev-clean ; /sap-dev-init.
-  Pass --reset for a full, truly-clean reset: it implies --force + --settings,
-  additionally clears the dev-default settings keys and deletes the dev
-  transport request (delegating to /sap-se01) so nothing is left behind for
-  the next /sap-dev-init to choke on.
-  Prerequisites: Active SAP GUI session (use /sap-login first); SAP NCo 3.1
-  (32-bit, .NET 4.0) in GAC. Clean delegates to GUI-driven delete skills
-  like /sap-se37, /sap-se11, /sap-se38, /sap-function-group, /sap-se21.
+  Conservative cleanup of the artefacts /sap-dev-init created. Walks reverse
+  dependency order — wrapper FM, DDIC structure + table type, utility program,
+  function group, package — and deletes only what the operator confirms, skipping
+  any artefact the operator extended (a function group with user-added FMs, a
+  package with user-added Z* tables) unless --force. Deleted objects are unassigned
+  from their transport request (via /sap-se01 remove-objects) and the request is
+  deleted if it ends up empty, so a later /sap-dev-init can re-create the same names
+  cleanly (no lingering name-lock). settings.json keys are preserved unless
+  --settings. The canonical "blow away and rebuild" sequence is
+  /sap-dev-clean ; /sap-dev-init. Pass --reset for a full reset (implies --force +
+  --settings, clears the dev-default keys and deletes the dev TR).
+  Prerequisites: active SAP GUI session (/sap-login first); SAP NCo 3.1 (32-bit).
+  Delegates deletes to /sap-se37, /sap-se11, /sap-se38, /sap-function-group, /sap-se21.
 argument-hint: "[--reset] [--settings] [--force] [--dry-run]"
 ---
 

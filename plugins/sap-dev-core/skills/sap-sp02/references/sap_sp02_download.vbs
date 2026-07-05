@@ -26,7 +26,7 @@
 '                       row number on the user-area). When non-empty / non-
 '                       zero, the row scan is skipped. Useful when you
 '                       already know the row from a recording or from a
-'                       prior /sap-gui-object-details probe.
+'                       prior /sap-gui-inspect probe.
 '   %%SPOOL_NUM_COL%%  Column index that carries the spool number on the
 '                       SP02 list. Default 4 (S/4HANA 1909). Override if
 '                       the list layout was customised.
@@ -128,7 +128,7 @@ If rowIdx < 0 Then
         WScript.Echo "       The spool may not belong to the current user, may be older than the default selection,"
         WScript.Echo "       or the spool-number column may differ on this system. Try widening SP02 selection"
         WScript.Echo "       criteria, or pass an explicit ROW_INDEX after probing the list with"
-        WScript.Echo "       /sap-gui-object-details (mode=type filter=GuiLabel)."
+        WScript.Echo "       /sap-gui-inspect (mode=type filter=GuiLabel)."
         WScript.Quit 1
     End If
     WScript.Echo "INFO: Spool " & SPOOL_NUMBER & " located on row " & rowIdx & "."

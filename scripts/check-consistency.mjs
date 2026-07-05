@@ -492,7 +492,7 @@ for (const plugin of mp.plugins) {
       validateScreenBaseline(plugin.name, skill, file, jsonAbs);
     } else {
       const want = file.replace(/\.vbs$/i, '.screens.json');
-      baselineWarnings.push(`${plugin.name}: ${skill}/${file} has no screen baseline (${want}); /sap-gui-screen-check cannot detect release/locale drift for it — capture one per contributing/golden_screen_baselines.md`);
+      baselineWarnings.push(`${plugin.name}: ${skill}/${file} has no screen baseline (${want}); /sap-doctor --screens cannot detect release/locale drift for it — capture one per contributing/golden_screen_baselines.md`);
     }
   }
 }
@@ -628,7 +628,7 @@ for (const plugin of mp.plugins) {
 //
 // The 2026-07-02 full-repo review found two SHIPPED skills whose SKILL.md
 // routes operations through references/ files that were never committed
-// ("ghost implementations"): sap-gui-screen-check (sap_screen_check.ps1 +
+// ("ghost implementations"): sap-doctor (sap_screen_check.ps1 +
 // sap_screen_check_probe.vbs) and sap-docs-layout (edit_meta_layout.py +
 // shared/templates/spec_layout_schema.md). CI verified token substitution but
 // never that a referenced file EXISTS, so the ghosts shipped silently. This
@@ -654,7 +654,7 @@ for (const plugin of mp.plugins) {
 //
 // Missing file => HARD ERROR, except the KNOWN_MISSING allowlist below, which
 // emits WARN. Empty since wave W11 re-implemented both 2026-07-02 ghosts
-// (sap-gui-screen-check sap_screen_check.ps1 + sap_screen_check_probe.vbs;
+// (sap-doctor sap_screen_check.ps1 + sap_screen_check_probe.vbs;
 // sap-docs-layout edit_meta_layout.py + the schema doc, relocated to
 // <SKILL_DIR>/templates/spec_layout_schema.md). The mechanism stays for
 // future review-verified ghosts -- do NOT add entries without a

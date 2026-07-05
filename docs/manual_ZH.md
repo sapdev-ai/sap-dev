@@ -47,7 +47,7 @@
 
 | 插件 | 技能 | 它为你提供什么 |
 |---|---|---|
-| **sap-dev-core** | 53 个 + `abap-developer` 代理 | 登录与连接库、传输处理、ABAP 工作台（SE38/SE37/SE24/SE11/SE91/SE16N/SE01/…）、ATC 质量门禁、ABAP-Unit 运行器、激活、诊断（ST22/SM13/SM12/SLG1/SM37）、交付保障，以及向 QAS/PRD 的 **STMS** 导入。 |
+| **sap-dev-core** | 50 个 + `abap-developer` 代理 | 登录与连接库、传输处理、ABAP 工作台（SE38/SE37/SE24/SE11/SE91/SE16N/SE01/…）、ATC 质量门禁、ABAP-Unit 运行器、激活、诊断（ST22/SM13/SM12/SLG1/SM37）、交付保障，以及向 QAS/PRD 的 **STMS** 导入。 |
 | **sap-gen-code** | 8 个 | **规格 → ABAP** 流水线：读取设计文档（Excel/Word/PDF）、校验它、生成贴合你项目的 ABAP，并将结果与实时系统对照校验。 |
 | **sap-migrate** | 8 个 + `cc-migration-engineer` 代理 | 以受跟踪的"战役"（campaign）形式进行的 S/4HANA 自定义代码迁移。 |
 | **sap-tcd** | 3 个 | 业务事务自动化：BP、MM01/02/03、VA01/02/03。 |
@@ -995,9 +995,9 @@ top 错误类别）。
 | `sap-fix-incident` / `sap-check-fix` | 测试优先的修复闭环 / 检查并修复的路由器 |
 | `sap-trace` | 分析一段已记录的性能追踪 |
 | `sap-explain-object` / `sap-compare` | 理解（`--spec` 输出正式规格文档）/ 跨系统差异 |
-| `sap-rfc-wrapper-fm` / `sap-rfc-wrapper-class` | 通过 RFC 调用非 RFC 的 FM / 方法 |
+| `sap-rfc-wrapper` | 通过 RFC 调用非 RFC 的 FM（`fm`）/ 封装类方法（`class`）|
 | `sap-call-bdc` / `sap-update-addon` | BDC 重放 / 附加表维护 |
-| `sap-gui-record` / `sap-gui-probe` / `sap-gui-object-details` / `sap-gui-diagnose` / `sap-gui-screen-check` / `sap-gui-skill-scaffold` | 技能编写 & GUI 健壮性工具 |
+| `sap-gui-record` / `sap-gui-probe` / `sap-gui-inspect` / `sap-gui-skill-scaffold` | 技能编写 & GUI 健壮性工具（黄金屏幕漂移 → `/sap-doctor --screens`）|
 | `sap-log-analyze` / `sap-error-kb` | 日志汇总 / 常见错误知识库 |
 
 ### sap-gen-code（规格 → ABAP）

@@ -16,8 +16,7 @@ Compared to siblings in the `sap-gui-*` family:
 | Skill | Drives the GUI? | Output |
 |---|---|---|
 | `sap-gui-record` | no (user clicks) | one .vbs from one recording |
-| `sap-gui-object-details` | no | dump of one screen |
-| `sap-gui-diagnose` | no | screenshot of stuck screen |
+| `sap-gui-inspect` | no | dump or screenshot of one screen |
 | `sap-gui-probe` | yes | one probe folder (per-step dumps + synthesized.vbs) |
 | **`sap-gui-skill-scaffold`** | **yes, multiple times** | **a complete skill folder** merged from N probes |
 
@@ -114,4 +113,4 @@ alignment.
 ## See also
 
 - `/sap-gui-probe` -- the per-scenario driver this skill orchestrates
-- `/sap-gui-object-details` -- the dump engine probe uses
+- `/sap-gui-inspect` -- the dump engine probe uses

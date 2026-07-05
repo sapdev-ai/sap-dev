@@ -1,48 +1,59 @@
-# SAP GUI Object Details Skill
+# SAP GUI Inspect Skill
 
-Inspects components in the currently active SAP GUI session and dumps their
-IDs and properties. Useful when SAP GUI scripts get stuck because the screen
-flow did not go as expected — an unexpected popup appeared, a control ID
-changed between releases, or a field is greyed-out for unclear reasons.
+Inspects the currently active SAP GUI session — **structurally** (dumps component
+IDs + properties) and/or **visually** (screenshots) — so a stuck GUI script can be
+understood: an unexpected popup appeared, a control ID changed between releases, a
+field is greyed-out, or a screen transition hung.
 
-Other skills can call this skill mid-flow to discover the actual current
-screen state.
+Other skills call this mid-flow to discover the actual current screen state.
+
+> Replaces the former `/sap-gui-object-details` (structural) and
+> `/sap-gui-diagnose` (visual) skills, folded into one inspection skill.
 
 ## Skill Overview
 
-Five inspection modes:
+**Structural modes** (via `sap_gui_object_details.vbs`):
 
 | Mode | What it dumps |
 |---|---|
 | `tree` | Full component tree of all open windows |
-| `wnd=<n>` | Component tree of one specific window (e.g. `wnd=1` for a popup) |
+| `wnd <n>` | Component tree of one specific window (e.g. `wnd 1` for a popup) |
 | `menu` | Menu-bar tree (mbar children, recursive) |
 | `type` | All components of a chosen type (`GuiButton`, `GuiShell`, `GuiStatusbar`, `GuiTableControl`, `GuiMenu`, `GuiToolbar`, …) |
 | `id` | Full property dump of a single component by its `findById` path |
 
+**Visual mode** (`screenshot`, via HardCopy + compose):
+
+| Sub-mode | What it produces |
+|---|---|
+| `topmost` | Just the highest-numbered window's PNG (cheapest for the vision call) |
+| `composite` (default) | Composite PNG of all windows + topmost PNG |
+| `full` | composite + topmost + the structural `wnd` dump of the topmost window |
+
 ## Auto-Trigger Keywords
 
-- `dump screen`, `dump window`, `inspect screen`
-- `what's on the current screen`, `show all buttons on this popup`
-- `gui object details`, `inspect sap gui`
+- `dump screen`, `inspect screen`, `inspect sap gui`, `what's on the current screen`
+- `show all buttons on this popup`, `gui object details`
+- `screenshot the sap gui`, `visual diagnose`, `capture the stuck screen`
 
 ## Usage
 
 ```text
-/sap-gui-object-details tree
-/sap-gui-object-details wnd 1
-/sap-gui-object-details menu
-/sap-gui-object-details type GuiButton
-/sap-gui-object-details type GuiStatusbar
-/sap-gui-object-details id wnd[1]/usr/ctxtKO008-TRKORR
+/sap-gui-inspect tree
+/sap-gui-inspect wnd 1
+/sap-gui-inspect menu
+/sap-gui-inspect type GuiButton
+/sap-gui-inspect id wnd[1]/usr/ctxtKO008-TRKORR
+/sap-gui-inspect screenshot            # composite + topmost PNG
+/sap-gui-inspect screenshot full       # + structural dump of the topmost window
+/sap-gui-inspect screenshot topmost    # cheapest visual
 ```
 
 Conversational forms:
 
 - "Dump the current screen — I want to see every component"
 - "Show all GuiButton elements on the active window"
-- "What does the field `wnd[1]/usr/ctxtKO008-TRKORR` contain?"
-- "List the menu items of the application toolbar"
+- "Screenshot the stuck SAP GUI so you can see what popup is open"
 
 ## Prerequisites
 
@@ -51,19 +62,23 @@ Conversational forms:
 
 ## Output
 
-Writes the dump to `{WORK_TEMP}\sap_gui_dump_<timestamp>.txt`. Designed to be
-read by Claude (compact, structured) — not by humans (terse, no prose).
+- Structural modes write a compact, structured dump to `{RUN_TEMP}\sap_gui_objects_<mode>.txt`.
+- `screenshot` writes `composite.png` / `topmost.png` (+ optional `object_details.txt`)
+  into a per-run `{WORK_TEMP}\sap_inspect_<timestamp>\` directory; the orchestrator
+  reads the PNG with the Read tool.
 
 ## Limitations
 
-- Read-only — never modifies the screen state
-- Dumps the **current** screen only; cannot navigate forward to inspect future
-  screens. Run after each step in your manual repro.
+- Read-only — never modifies the screen state.
+- Dumps the **current** screen only; cannot navigate forward. Run after each step.
+- `HardCopy` (visual) is best-effort — fails on minimised windows, and omits
+  tooltips / dropdowns / context menus. Fall back to `/sap-gui-record` if the
+  diagnosis hinges on one of those.
 
 ## Version
 
-- Skill Version: 1.0.0
-- Last Updated: 2026-05-03
+- Skill Version: 2.0.0
+- Last Updated: 2026-07-05
 
 ## License
 

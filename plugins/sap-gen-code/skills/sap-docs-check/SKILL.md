@@ -2,23 +2,16 @@
 name: sap-docs-check
 description: |
   Validates an extracted design spec before ABAP code generation, across two
-  dimensions:
-    - ddic    — DDIC objects (domains, data elements, tables): naming conventions,
-                data-type validity, domain/DTEL/table cross-references, currency-
-                reference completeness, and the primitive-type-as-data-element
-                trap. Optionally verifies existence in SAP via RFC_READ_TABLE on
-                DD01L/DD04L and validates live ReferenceTable.field refs when a
-                SAP logon is provided.
-    - process — process-logic text ({doc_name}_process.txt): unclear/ambiguous
-                steps, missing information, and logic / data-type / cross-reference
-                inconsistencies. Optionally validates SAP TABLE.FIELD references
-                against the live system (RFC) when a SAP logon is provided.
-  Runs BOTH dimensions by default (whichever dimension's input files exist in the
-  work folder); pass --dimension ddic|process to force just one. Writes a TAB-
-  separated result file per dimension (check_result_ddic.txt / check_result_process.txt)
-  for Excel review.
-  Input: work folder path. Optional SAP Logon description enables the RFC checks.
-  Replaces the former /sap-docs-check-ddic and /sap-docs-check-process skills.
+  dimensions: `ddic` checks DDIC objects (domains / data elements / tables) —
+  naming, data-type validity, domain/DTEL/table cross-references, currency-ref
+  completeness, the primitive-as-data-element trap; `process` checks the
+  process-logic text for unclear/ambiguous steps, missing info, and logic /
+  type / cross-reference inconsistencies. Both optionally verify references
+  against the live system over RFC when a SAP logon is given. Runs BOTH by default
+  (whichever inputs exist); --dimension ddic|process forces one. Writes a
+  TAB-separated result file per dimension for Excel review. Replaces the former
+  /sap-docs-check-ddic and /sap-docs-check-process.
+  Input: work folder path; optional SAP Logon description enables the RFC checks.
 argument-hint: "<work-folder-path> [--dimension ddic|process|all] [<sap-logon-description>]"
 ---
 

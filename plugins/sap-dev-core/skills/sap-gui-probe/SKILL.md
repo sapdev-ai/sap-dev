@@ -2,7 +2,7 @@
 name: sap-gui-probe
 description: |
   Drive a SAP transaction step by step against a natural-language scenario,
-  dumping each screen's full property tree via /sap-gui-object-details and
+  dumping each screen's full property tree via /sap-gui-inspect and
   emitting a synthesized recording-style VBS at the end. Designed as a
   skill-authoring aid: probe SE37 before writing a new /sap-se37 flow.
   Captures more than the SAP recorder -- not just findById paths and
@@ -24,7 +24,7 @@ argument-hint: "<TXN>: <scenario>   e.g. 'SE37: display FM RFC_READ_TABLE then e
 
 You drive a SAP transaction step by step against a natural-language
 scenario the user supplied. At every screen transition you call the
-sap-gui-object-details VBS to capture a full property dump, you emit one
+sap-gui-inspect VBS to capture a full property dump, you emit one
 small action JSON describing the next move, you classify that action as
 READ or WRITE, you (optionally) confirm with the user, and you execute it.
 

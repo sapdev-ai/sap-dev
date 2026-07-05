@@ -1,24 +1,19 @@
 ---
 name: sap-review-abap
 description: |
-  AI semantic + security code review for an EXISTING ABAP object or a local
-  .abap file. Reads the active source (RFC RPY for program/include/FM; SE24 GUI
-  download for classes), builds a structure + call/data map, then reasons over
-  the code across a fixed dimension checklist — security (dynamic-SQL injection,
-  missing/incorrect AUTHORITY-CHECK, client handling), correctness (unchecked
-  SY-SUBRC, READ TABLE guards, off-by-one), performance (SELECT-in-LOOP, nested
-  loops, FOR ALL ENTRIES guard, SELECT *), robustness/LUW (MESSAGE e in method,
-  unhandled exceptions, COMMIT in loop), and maintainability. This is the
-  SEMANTIC review that complements — does NOT replace — the deterministic
-  /sap-check-abap parser and the in-system /sap-atc rule engine.
-  Every finding cites a line + code excerpt and is adversarially re-verified
-  before it is emitted, so false positives are dropped rather than shipped.
-  Findings are written through the shared finding model (severity + gate +
-  verdict) to <NAME>.review.tsv / .review.json and registered for
-  /sap-evidence-pack. Read-only: never deploys, activates, or edits.
-  Prerequisites: pinned connection (/sap-login) for object-name input; class
-  source download and --callers additionally need an active SAP GUI session.
-  File input (a .abap path) needs no SAP connection.
+  AI semantic + security code review for an EXISTING ABAP object or a local .abap
+  file. Reads the active source, builds a structure + call/data map, then reasons
+  over the code across a fixed dimension checklist — security (dynamic-SQL
+  injection, missing/wrong AUTHORITY-CHECK, client handling), correctness (unchecked
+  SY-SUBRC, READ TABLE guards), performance (SELECT-in-LOOP, nested loops, SELECT *),
+  robustness/LUW (unhandled exceptions, COMMIT in loop), and maintainability. This
+  is the SEMANTIC review that complements — does NOT replace — the deterministic
+  /sap-check-abap parser and the in-system /sap-atc rule engine. Every finding cites
+  a line + excerpt and is adversarially re-verified before emission (false positives
+  dropped), written through the shared finding model to <NAME>.review.tsv/.json for
+  /sap-evidence-pack. Read-only.
+  Prerequisites: pinned /sap-login connection for object-name input; class download
+  and --callers need a GUI session; a .abap file needs no SAP connection.
 argument-hint: "<OBJECT_NAME | path-to.abap> [--type program|include|fm|class|auto] [--dimensions all|security,perf,correctness,robustness,maintainability] [--callers] [--gate advisory|block] [--no-gui]"
 ---
 

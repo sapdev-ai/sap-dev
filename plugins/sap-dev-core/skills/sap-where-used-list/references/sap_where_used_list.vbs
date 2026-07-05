@@ -291,7 +291,7 @@ If InStr(sActive, "wnd[1]") > 0 Then
         ' A popup with OPTION1 but ALSO the scope toolbar (or another unexpected
         ' modal) is not a confirmed "no usages" -- do NOT emit a delete-safe verdict.
         WScript.Echo "ERROR: Unexpected popup after scope selection (OPTION1 present with scope toolbar)."
-        WScript.Echo "       Cannot confirm 'no usages' safely; re-run or inspect via /sap-gui-object-details."
+        WScript.Echo "       Cannot confirm 'no usages' safely; re-run or inspect via /sap-gui-inspect."
         ReleaseSession oSess, wasLocked
         WScript.Quit 1
     End If

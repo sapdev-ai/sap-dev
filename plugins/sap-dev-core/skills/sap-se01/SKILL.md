@@ -1,23 +1,17 @@
 ---
 name: sap-se01
 description: |
-  Manages SAP transport requests via transaction SE01 using SAP GUI Scripting.
-  Four modes:
-    CREATE (default) — new Workbench TR (Customizing only when explicitly
-    asked); description rendered per userConfig.rule_of_tr_description
-    (60-char limit); the new TRKORR is resolved locale-independently
-    (statusbar shape, then SE16N E07T/E070 fallback) and echoed as
-    `RESULT_TR: <...>` — unresolvable is a hard ERROR, never a guessed TR.
-    RELEASE (`release <TR>`) — pre-checks E070 status + E071 object
-    inventory, shows the object list, asks explicit confirmation
-    (irreversible), releases request + open tasks.
-    DELETE (`delete <TR>`) — empties then deletes an UNRELEASED request
-    bottom-up (each task, then the request), confirms with the user first,
-    verifies removal via E070; refuses released / non-dev TRs.
-    REMOVE-OBJECTS (`remove-objects <TR> [OBJECTS=a,b]`) — unassigns E071
-    entries but KEEPS the request; clears the name-lock so deleted objects
-    can be re-created. Full mode details are in the body sections.
-  Prerequisites: Active SAP GUI session (use /sap-login first).
+  Manages SAP transport requests via transaction SE01 (SAP GUI Scripting). Four
+  modes: CREATE (default — a new Workbench TR, Customizing only when explicitly
+  asked; description per userConfig.rule_of_tr_description; the new TRKORR is
+  resolved locale-independently and echoed as RESULT_TR, unresolvable = hard ERROR,
+  never a guess); RELEASE (`release <TR>` — pre-checks status + object inventory,
+  asks explicit confirmation, releases the request + open tasks — irreversible);
+  DELETE (`delete <TR>` — empties then deletes an UNRELEASED request bottom-up,
+  confirms first, verifies removal; refuses released / non-dev TRs); REMOVE-OBJECTS
+  (`remove-objects <TR> [OBJECTS=a,b]` — unassigns E071 entries but KEEPS the
+  request, clearing the name-lock so deleted objects can be re-created).
+  Prerequisites: active SAP GUI session (/sap-login first).
 argument-hint: "[create [W|C] [\"<desc>\"]] | [release <TR>] | [delete <TR>] | [remove-objects <TR> [OBJECTS=a,b]]"
 ---
 

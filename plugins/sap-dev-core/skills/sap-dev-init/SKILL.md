@@ -681,11 +681,11 @@ standard wide data element — the stock `GENE_KEY_VALUES` exists on S/4HANA but
 domain + data element, so the DDIC is single-source across every release.
 
 The definition file is at:
-`<SKILL_DIR>/../sap-rfc-wrapper-fm/references/ZCMD_RFCVAL.def`
+`<SKILL_DIR>/../sap-rfc-wrapper/references/ZCMD_RFCVAL.def`
 
 Copy and re-encode as Unicode (UTF-16 LE — required by sap-se11 templates):
 ```powershell
-Copy-Item '<SKILL_DIR>\..\sap-rfc-wrapper-fm\references\ZCMD_RFCVAL.def' '{WORK_TEMP}\ZCMD_RFCVAL.def'
+Copy-Item '<SKILL_DIR>\..\sap-rfc-wrapper\references\ZCMD_RFCVAL.def' '{WORK_TEMP}\ZCMD_RFCVAL.def'
 $c = [System.IO.File]::ReadAllText('{WORK_TEMP}\ZCMD_RFCVAL.def', [System.Text.Encoding]::UTF8)
 [System.IO.File]::WriteAllText('{WORK_TEMP}\ZCMD_RFCVAL.def', $c, [System.Text.UnicodeEncoding]::new($false, $true))
 ```
@@ -709,11 +709,11 @@ If sap-se11 reports an error, show it to the user and suggest manual creation in
 **ZCMD_RFCVAL must be active** before this step — the data element references it.
 
 The definition file is at:
-`<SKILL_DIR>/../sap-rfc-wrapper-fm/references/ZCMDE_RFCVAL.def`
+`<SKILL_DIR>/../sap-rfc-wrapper/references/ZCMDE_RFCVAL.def`
 
 Copy and re-encode:
 ```powershell
-Copy-Item '<SKILL_DIR>\..\sap-rfc-wrapper-fm\references\ZCMDE_RFCVAL.def' '{WORK_TEMP}\ZCMDE_RFCVAL.def'
+Copy-Item '<SKILL_DIR>\..\sap-rfc-wrapper\references\ZCMDE_RFCVAL.def' '{WORK_TEMP}\ZCMDE_RFCVAL.def'
 $c = [System.IO.File]::ReadAllText('{WORK_TEMP}\ZCMDE_RFCVAL.def', [System.Text.Encoding]::UTF8)
 [System.IO.File]::WriteAllText('{WORK_TEMP}\ZCMDE_RFCVAL.def', $c, [System.Text.UnicodeEncoding]::new($false, $true))
 ```
@@ -745,11 +745,11 @@ field references it (single-source DDIC; no dependency on the S/4-only
 > are unaffected.
 
 The definition file is at:
-`<SKILL_DIR>/../sap-rfc-wrapper-fm/references/ZCMST_RFC_PARAM.def`
+`<SKILL_DIR>/../sap-rfc-wrapper/references/ZCMST_RFC_PARAM.def`
 
 Copy and re-encode as Unicode (UTF-16 LE — required by sap-se11 templates):
 ```powershell
-Copy-Item '<SKILL_DIR>\..\sap-rfc-wrapper-fm\references\ZCMST_RFC_PARAM.def' '{WORK_TEMP}\ZCMST_RFC_PARAM.def'
+Copy-Item '<SKILL_DIR>\..\sap-rfc-wrapper\references\ZCMST_RFC_PARAM.def' '{WORK_TEMP}\ZCMST_RFC_PARAM.def'
 $c = [System.IO.File]::ReadAllText('{WORK_TEMP}\ZCMST_RFC_PARAM.def', [System.Text.Encoding]::UTF8)
 [System.IO.File]::WriteAllText('{WORK_TEMP}\ZCMST_RFC_PARAM.def', $c, [System.Text.UnicodeEncoding]::new($false, $true))
 ```
@@ -778,11 +778,11 @@ If sap-se11 reports an error, show it to the user and suggest manual creation in
 **ZCMST_RFC_PARAM must be active** before this step.
 
 The definition file is at:
-`<SKILL_DIR>/../sap-rfc-wrapper-fm/references/ZCMCT_RFC_PARAM.def`
+`<SKILL_DIR>/../sap-rfc-wrapper/references/ZCMCT_RFC_PARAM.def`
 
 Copy and re-encode:
 ```powershell
-Copy-Item '<SKILL_DIR>\..\sap-rfc-wrapper-fm\references\ZCMCT_RFC_PARAM.def' '{WORK_TEMP}\ZCMCT_RFC_PARAM.def'
+Copy-Item '<SKILL_DIR>\..\sap-rfc-wrapper\references\ZCMCT_RFC_PARAM.def' '{WORK_TEMP}\ZCMCT_RFC_PARAM.def'
 $c = [System.IO.File]::ReadAllText('{WORK_TEMP}\ZCMCT_RFC_PARAM.def', [System.Text.Encoding]::UTF8)
 [System.IO.File]::WriteAllText('{WORK_TEMP}\ZCMCT_RFC_PARAM.def', $c, [System.Text.UnicodeEncoding]::new($false, $true))
 ```
@@ -804,11 +804,11 @@ If sap-se11 reports an error, show it to the user and suggest manual creation in
 **ZCMCT_RFC_PARAM must be active** before this step.
 
 The ABAP source file is at:
-`<SKILL_DIR>/../sap-rfc-wrapper-fm/references/Z_GENERIC_RFC_WRAPPER_TBL.abap`
+`<SKILL_DIR>/../sap-rfc-wrapper/references/Z_GENERIC_RFC_WRAPPER_TBL.abap`
 
 Copy the source to `{WORK_TEMP}\Z_GENERIC_RFC_WRAPPER_TBL.abap`:
 ```bash
-powershell -Command "Copy-Item '<SKILL_DIR>\..\sap-rfc-wrapper-fm\references\Z_GENERIC_RFC_WRAPPER_TBL.abap' '{WORK_TEMP}\Z_GENERIC_RFC_WRAPPER_TBL.abap'"
+powershell -Command "Copy-Item '<SKILL_DIR>\..\sap-rfc-wrapper\references\Z_GENERIC_RFC_WRAPPER_TBL.abap' '{WORK_TEMP}\Z_GENERIC_RFC_WRAPPER_TBL.abap'"
 ```
 
 Run:

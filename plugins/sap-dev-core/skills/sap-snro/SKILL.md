@@ -369,7 +369,7 @@ Proceed to Step 6.
 | `Percentage out of range` | Warning % not in 0.0–99.9 | Use a valid percentage |
 | `Interval overlaps existing` | FROMNUMBER/TONUMBER conflicts with existing range | Pick non-overlapping ranges |
 | `Number length exceeds domain` | Interval number > domain length | Shorten numbers or widen domain |
-| `ERROR: Insert popup field ids not found -- release layout differs` | SAPMSNUM insert-interval popup ids differ on this release (pre-fix this was a per-row WARNING skip that still ended `SUCCESS: Intervals saved`) | Re-record the popup ids per "Troubleshooting Component IDs" below (`/sap-gui-object-details` / `/sap-gui-record`) and update the ids in `sap_snro_intervals.vbs` |
+| `ERROR: Insert popup field ids not found -- release layout differs` | SAPMSNUM insert-interval popup ids differ on this release (pre-fix this was a per-row WARNING skip that still ended `SUCCESS: Intervals saved`) | Re-record the popup ids per "Troubleshooting Component IDs" below (`/sap-gui-inspect` / `/sap-gui-record`) and update the ids in `sap_snro_intervals.vbs` |
 | `ERROR: <n> of <m> interval row(s) were NOT applied: <NR list>` | A row's popup stayed open after confirm (overlap, invalid range, ...) -- partial apply; the VBS exits 1 instead of SUCCESS | Fix the listed rows and re-run; verify applied rows via the NRIV read above |
 | `Package/transport dialog` | Needs transport assignment | Provide package + transport, or accept `$TMP` |
 | `No SAP GUI session found` | Not logged in | Run `/sap-login` first |
@@ -378,19 +378,19 @@ Proceed to Step 6.
 
 ## Troubleshooting Component IDs / Stuck Screen
 
-**FIRST RESORT — invoke `/sap-gui-diagnose full`.** Captures every visible
-window as one annotated PNG via the SAP GUI Scripting `HardCopy` API, plus
-`/sap-gui-object-details` for the topmost window. Read the PNG with the
-Read tool to see what's on screen, then decide based on both the visual
-and the structural dump.
+**FIRST RESORT — invoke `/sap-gui-inspect screenshot full`.** Captures every
+visible window as one annotated PNG via the SAP GUI Scripting `HardCopy` API,
+plus a structural dump of the topmost window. Read the PNG with the Read tool
+to see what's on screen, then decide based on both the visual and the
+structural dump.
 
-**SECOND RESORT — `/sap-gui-object-details` alone.** Use this when
-`/sap-gui-diagnose` itself fails (SAP GUI minimised, HardCopy blocked) or
-when you only need a quick structural confirmation.
+**SECOND RESORT — `/sap-gui-inspect tree` (structural only).** Use this when
+the screenshot fails (SAP GUI minimised, HardCopy blocked) or when you only
+need a quick structural confirmation.
 
 When a VBS step fails with `The control could not be found by id`, an unexpected
 popup appears, or the script hangs because the screen flow diverged from what was
-expected, do NOT guess. Call the `sap-gui-object-details` skill immediately to
+expected, do NOT guess. Call `/sap-gui-inspect` immediately to
 discover the actual component layout in the current SAP GUI session, then fix the
 VBS or dismiss the popup based on the dump.
 

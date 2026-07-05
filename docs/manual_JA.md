@@ -47,7 +47,7 @@
 
 | プラグイン | スキル | 提供するもの |
 |---|---|---|
-| **sap-dev-core** | 53 + `abap-developer` エージェント | ログイン & 接続ストア、移送処理、ABAP ワークベンチ（SE38/SE37/SE24/SE11/SE91/SE16N/SE01/…）、ATC 品質ゲート、ABAP Unit ランナー、有効化、診断（ST22/SM13/SM12/SLG1/SM37）、デリバリーアシュアランス、QAS/PRD への **STMS** インポート。 |
+| **sap-dev-core** | 50 + `abap-developer` エージェント | ログイン & 接続ストア、移送処理、ABAP ワークベンチ（SE38/SE37/SE24/SE11/SE91/SE16N/SE01/…）、ATC 品質ゲート、ABAP Unit ランナー、有効化、診断（ST22/SM13/SM12/SLG1/SM37）、デリバリーアシュアランス、QAS/PRD への **STMS** インポート。 |
 | **sap-gen-code** | 8 | **仕様 → ABAP** パイプライン: 設計書（Excel/Word/PDF）の読み込み、検証、プロジェクトに合わせた ABAP 生成、実システムに対する生成結果の検証。 |
 | **sap-migrate** | 8 + `cc-migration-engineer` エージェント | S/4HANA カスタムコード移行を追跡可能なキャンペーンとして実施。 |
 | **sap-tcd** | 3 | 業務トランザクションの自動化: BP、MM01/02/03、VA01/02/03。 |
@@ -1049,9 +1049,9 @@ p50/p95 の所要時間、上位エラークラス）。
 | `sap-fix-incident` / `sap-check-fix` | テストファースト修正ループ / check-and-fix ルーター |
 | `sap-trace` | 記録されたパフォーマンストレースを分析 |
 | `sap-explain-object` / `sap-compare` | 理解（`--spec` で正式な仕様書を出力）/ クロスシステム差分 |
-| `sap-rfc-wrapper-fm` / `sap-rfc-wrapper-class` | RFC 非対応 FM / メソッドを RFC 経由で呼び出し |
+| `sap-rfc-wrapper` | RFC 非対応 FM（`fm`）/ クラスメソッド（`class`）を RFC 経由で呼び出し |
 | `sap-call-bdc` / `sap-update-addon` | BDC 再生 / アドオンテーブルメンテナンス |
-| `sap-gui-record` / `sap-gui-probe` / `sap-gui-object-details` / `sap-gui-diagnose` / `sap-gui-screen-check` / `sap-gui-skill-scaffold` | スキル作成 & GUI 堅牢性ツール |
+| `sap-gui-record` / `sap-gui-probe` / `sap-gui-inspect` / `sap-gui-skill-scaffold` | スキル作成 & GUI 堅牢性ツール（ゴールデンスクリーン差分 → `/sap-doctor --screens`）|
 | `sap-log-analyze` / `sap-error-kb` | ログ要約 / 頻出エラーナレッジベース |
 
 ### sap-gen-code（仕様 → ABAP）

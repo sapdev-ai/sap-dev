@@ -1,7 +1,7 @@
 ' =============================================================================
 ' sap_screen_check_probe.vbs
 ' -----------------------------------------------------------------------------
-' Read-only, single-checkpoint golden-screen probe for /sap-gui-screen-check.
+' Read-only, single-checkpoint golden-screen probe for /sap-doctor --screens.
 ' Driven per checkpoint by the orchestrator references/sap_screen_check.ps1
 ' (or once, with all tokens empty, by the SKILL.md Step-1 data-loss guard).
 '
