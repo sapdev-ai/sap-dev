@@ -47,7 +47,7 @@
 '   [optional wnd[1] SAPLSETX original-language popup -> btnPUSH1]
 '   Goto -> Attributes : wnd[0]/mbar/menu[2]/menu[0]   (Goto is the 3rd top-level
 '                        menu, Attributes its 1st item - positional + language-
-'                        neutral; re-record with /sap-gui-record if it moves)
+'                        neutral; re-record with /sap-gui-probe --record if it moves)
 '   wnd[1]/usr/txtRS38M-REPTI = title ; cmbTRDIR-RSTAT.key ; cmbTRDIR-SUBC.key
 '   wnd[1]/tbar[0]/btn[0]      (Continue -> back to editor)
 '   wnd[0] sendVKey 11         (Save)     [optional TR popup -> ctxtKO008-TRKORR]

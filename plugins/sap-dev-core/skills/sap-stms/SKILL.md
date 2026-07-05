@@ -10,7 +10,7 @@ description: |
   imports an unreleased/NO-GO TR without --force); import-all (WRITE, double-gated,
   off without --all). Missing import authorization → COULD_NOT_IMPORT (never a
   faked success); RC 8/12 = failure even if the queue row looks "done". The import
-  VBS is a recording-gated scaffold that fails SAFE — run /sap-gui-record on
+  VBS is a recording-gated scaffold that fails SAFE — run /sap-gui-probe --record on
   STMS_IMPORT once per release first.
   Prerequisites: active /sap-login GUI session; QA/PROD imports need TMS import
   authorization (status/logs work without it).
@@ -154,7 +154,7 @@ failure even if the queue row shows "done"** — say so plainly. A
 `%%TARGET_SID%%` queue (system not in the overview, or the queue view differs on
 this release) — it deliberately did **not** read another queue's RC and did not
 stamp the SID as verified. Re-record `OpenTargetQueue` candidate IDs via
-`/sap-gui-record` on STMS_IMPORT; do not treat it as a successful import.
+`/sap-gui-probe --record` on STMS_IMPORT; do not treat it as a successful import.
 
 ---
 
@@ -193,7 +193,7 @@ Never skip W3. There is no `--apply`-style bypass for a production import.
 > **Calibration gate.** `sap_stms_import.vbs` ships with PLACEHOLDER control IDs
 > for the destructive Import-Request + import-options dialog (the STMS queue/tree
 > + dialog IDs vary by release and were NOT recorded against a live system). On
-> first use per release, run `/sap-gui-record` on the `STMS_IMPORT` import flow
+> first use per release, run `/sap-gui-probe --record` on the `STMS_IMPORT` import flow
 > and replace the `PLACEHOLDER_*` constants. Until then the VBS **fails loud**
 > (`ERROR: import controls not calibrated`) rather than clicking anything — a
 > safe no-op, never a mis-import.
@@ -210,7 +210,7 @@ without importing (exit 1).
 > If either `%%IMMEDIATE%%` or `%%LEAVE_IN_QUEUE%%` is passed as a truthy value
 > (`1`/`X`/`true`), the VBS **fails loud** with `ERROR: STMS_OPTION_UNSUPPORTED`
 > (exit 1) rather than silently importing with the queue default. Leave both `0`
-> (the example below) until you record the checkbox IDs via `/sap-gui-record` on
+> (the example below) until you record the checkbox IDs via `/sap-gui-probe --record` on
 > the STMS_IMPORT options dialog and wire them in. **All abort/error paths now
 > exit 1** (were exit 0) so the caller never reads a failed import as success.
 
@@ -305,10 +305,10 @@ powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_
 
 | Symptom | Cause | Recovery |
 |---|---|---|
-| `COULD_NOT_IMPORT not-calibrated` | the import VBS PLACEHOLDER IDs are not yet recorded for this release | `/sap-gui-record` the STMS_IMPORT flow; replace `PLACEHOLDER_*` in `sap_stms_import.vbs` |
+| `COULD_NOT_IMPORT not-calibrated` | the import VBS PLACEHOLDER IDs are not yet recorded for this release | `/sap-gui-probe --record` the STMS_IMPORT flow; replace `PLACEHOLDER_*` in `sap_stms_import.vbs` |
 | `COULD_NOT_IMPORT no-auth` | dialog user lacks TMS import authorization (often Basis-gated) | run status/logs only, or have Basis import; this is expected in many shops |
 | `BLOCKED tr-not-released` | TR is still modifiable (`E070-TRSTATUS != R`) | `/sap-se01 release <TR>` first |
-| queue grid not found | STMS queue control ID drift | `/sap-gui-record` STMS_IMPORT; update the candidate in `sap_stms_queue_read.vbs` |
+| queue grid not found | STMS queue control ID drift | `/sap-gui-probe --record` STMS_IMPORT; update the candidate in `sap_stms_queue_read.vbs` |
 | row "done" but failures | RC 8/12 not surfaced in the row | always confirm via Logs Mode RC, never the row |
 
 ## Limitations
@@ -317,7 +317,7 @@ powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_
   modes; import requires TMS auth that is frequently Basis-only.
 - **Import VBS is recording-gated.** It ships as a fail-safe scaffold (PLACEHOLDER
   destructive IDs + mandatory row==TR verification); it does nothing until
-  `/sap-gui-record`-calibrated. By design it cannot mis-import on an uncalibrated
+  `/sap-gui-probe --record`-calibrated. By design it cannot mis-import on an uncalibrated
   system.
 - **Production import** is the most outward-facing action in the toolset — typed
   SID echo + second confirmation, always; no bypass flag.

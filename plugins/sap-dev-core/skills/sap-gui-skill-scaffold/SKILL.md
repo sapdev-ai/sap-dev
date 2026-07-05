@@ -877,7 +877,7 @@ language-independence grep on the edited VBS:
 **Do NOT auto-fix** (flag for the human, keep looping other modes): genuine SAP
 authorization gaps, ambiguous business-logic popups (Yes/No/data-loss with no
 catalog entry — leave the existing TODO), object already exists / locked (SM12),
-SAP-release layout drift (needs `/sap-gui-record`).
+SAP-release layout drift (needs `/sap-gui-probe --record`).
 
 ### 5.5e — Iteration control
 

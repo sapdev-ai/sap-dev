@@ -70,7 +70,7 @@ silent:
   `NEEDS_RECORDING` with instructions instead of guessing.
 - `/sap-stms` import ships with two uncalibrated checkbox IDs
   (immediate / leave-in-queue) — it refuses (`STMS_NOT_CALIBRATED`) until one
-  `/sap-gui-record` pass on your release wires them.
+  `/sap-gui-probe --record` pass on your release wires them.
 - Golden-screen baseline coverage is 8/121 driving scripts — drift detection
   protects only those until the live capture pass lands.
 - sap-tcd control IDs were recorded on S/4HANA 1909; `sap-bp` / `sap-va01`

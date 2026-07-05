@@ -201,7 +201,7 @@ Next
 
 If Not bFoundSelBase Then
     WScript.Echo "ERROR: Cannot find selection-text table on any candidate sub-screen path (tried " & (UBound(selBaseCands)+1) & ")."
-    WScript.Echo "       Re-record via /sap-gui-record on SE38 -> Text Elements -> Selection Texts to capture the SAPLSETXP screen number for this release, then add it to selBaseCands."
+    WScript.Echo "       Re-record via /sap-gui-probe --record on SE38 -> Text Elements -> Selection Texts to capture the SAPLSETXP screen number for this release, then add it to selBaseCands."
     WScript.Echo "TEXT_ELEMENTS: FAILED:TABLE_BASE_UNKNOWN"
     WScript.Quit 1
 End If
@@ -466,7 +466,7 @@ If nSymbolCount > 0 Then
             ' Pre-fix (2026-07-02): this path only WARNed and the run still
             ' ended "TEXT_ELEMENTS: APPLIED" + SUCCESS with zero symbols written.
             WScript.Echo "ERROR: Could not locate Text Symbols table on any candidate path. Symbols not applied."
-            WScript.Echo "       Re-record via /sap-gui-record on SE38 Text Elements -> Text Symbols, then add the table path to symBaseCands above."
+            WScript.Echo "       Re-record via /sap-gui-probe --record on SE38 Text Elements -> Text Symbols, then add the table path to symBaseCands above."
             WScript.Echo "TEXT_ELEMENTS: FAILED:SYMBOL_TABLE_BASE_UNKNOWN"
             WScript.Quit 1
         End If
@@ -474,7 +474,7 @@ If nSymbolCount > 0 Then
         ' Pre-fix (2026-07-02): this path only WARNed and the run still
         ' ended "TEXT_ELEMENTS: APPLIED" + SUCCESS with zero symbols written.
         WScript.Echo "ERROR: Could not navigate to Text Symbols tab on this SAP build. Symbols not applied."
-        WScript.Echo "       Re-record via /sap-gui-record on SE38 Text Elements -> Text Symbols, then add the tab id to symTabCands above."
+        WScript.Echo "       Re-record via /sap-gui-probe --record on SE38 Text Elements -> Text Symbols, then add the tab id to symTabCands above."
         WScript.Echo "TEXT_ELEMENTS: FAILED:SYMBOL_TAB_UNKNOWN"
         WScript.Quit 1
     End If

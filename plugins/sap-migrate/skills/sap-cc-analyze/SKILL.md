@@ -223,7 +223,7 @@ Notes:
   **Simplification Database** loaded. If your source ECC lacks it, run against a
   prepared sandbox/check system (the campaign's `sandbox`/`check_system`).
 - `/sap-atc` requires a one-time **Scripting Recorder** session per release to
-  capture its SCI/ATC node + grid IDs — see `/sap-atc` and `/sap-gui-record`.
+  capture its SCI/ATC node + grid IDs — see `/sap-atc` and `/sap-gui-probe --record`.
 
 ### Central / remote check system
 

@@ -9,7 +9,16 @@ description: |
   actions, but also Changeable, Tooltip, IconName, popup transitions, and
   the program/transaction/screen identity at every step.
 
-  Two safety modes:
+  Capture modes:
+    * drive (default) -- Claude drives the transaction live (Steps 0-4).
+    * --record [<vbs>] -- fallback when Claude can't reliably drive the flow
+      (unfamiliar or write-heavy transaction, or when a real operator's exact
+      clicks are wanted as ground truth): guides you to record it with SAP
+      GUI's built-in Script Recording and Playback, then parses the saved VBS
+      into the same findById/action map. Replaces the former /sap-gui-record
+      skill; parsing an already-saved recording needs no live session.
+
+  Two safety modes (drive only):
     * mode=confirm (default) -- read-only actions auto-proceed; write
       actions (Save / Activate / Delete and the matching VKey codes 11, 14,
       27, 28, 33) pause for explicit user confirmation.
@@ -17,7 +26,7 @@ description: |
       every action proceeds without prompting.
 
   Prerequisites: Active SAP GUI session (use /sap-login first).
-argument-hint: "<TXN>: <scenario>   e.g. 'SE37: display FM RFC_READ_TABLE then exit'   append --auto to skip confirmations"
+argument-hint: "<TXN>: <scenario>   |   <TXN>: <scenario> --record [<vbs-path>]   e.g. 'SE37: display FM RFC_READ_TABLE then exit'   (append --auto to skip confirmations)"
 ---
 
 # SAP GUI Probe Skill
@@ -43,6 +52,7 @@ Task: $ARGUMENTS
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/skill_operating_rules.md` | Mandatory operating rules |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/settings_lookup.md` | Settings model — merge per-key on `.value` (env var → `settings.local.json` → `userconfig.json` → `settings.json`); non-per-connection writes go to `userconfig.json` |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/language_independence_rules.md` | GUI-scripting language independence — identify by component ID + DDIC field name, status-bar checks via `MessageType` codes (S/W/E/I/A), VKey instead of menu-text, no branching on `.Text`/`.Tooltip`/window titles |
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/sap_gui_scripting_reference.md` | Component-ID grammar + type-prefix / VKey / toolbar tables + runtime gotchas. Used by `--record` mode (Mode R) to decode a recorded VBS into findById paths. Promoted from the retired `sap-gui-record` skill. |
 
 ---
 
@@ -161,6 +171,13 @@ The argument is opaque free text. You (Claude) parse it. Extract:
     Stored in `sap_gui_probe_run.json` (state file) and exported as env var
     `SAPDEV_PROBE_SCENARIO_TYPE` so any sub-process (action.vbs, dump.ps1)
     can read it. Logged via `sap_log_helper -ParamsJson '{... "scenario_type":"<type>" ...}'`.
+
+2d. **Record flag** -- if `--record` appears (optionally followed by a path to
+    an already-saved `.vbs`), set `CAPTURE = record` and strip the flag + path.
+    Otherwise `CAPTURE = drive`. **When `CAPTURE = record`, skip Steps 1.5–4
+    entirely and go to the _Mode R — Manual Record_ section below** — record
+    mode does not drive the session, so session-claim, the drive loop,
+    synthesize, and cleanup do not apply. Steps 0 / 0.5 / Final still run.
 
 3. **Flow summary** -- a one-line plan in your own words. Echo it to the
    user before Step 2 so they can correct course early. Example:
@@ -476,6 +493,90 @@ Report to the user:
 - A short markdown table of every step: `# | screen-identity | verb | target/value | note`
 - Any notable edge cases discovered (NOOP steps, unexpected popups, write
   actions that were skipped after user abort)
+
+---
+
+## Mode R — Manual Record (fallback capture)
+
+Reached only when `$ARGUMENTS` contains `--record` (Step 1, item 2d). Use this
+when Claude cannot reliably drive the flow itself — an unfamiliar or write-heavy
+transaction, a screen the drive loop can't navigate — or when a real operator's
+exact clicks are wanted as ground truth. The operator records the flow with SAP
+GUI's built-in recorder; Claude parses the saved VBS into the same
+findById/action map the drive loop produces.
+
+This mode does **not** drive the session (Steps 1.5–4 are skipped). It runs
+Step 0 (work dir) and Step 0.5 (logging), then R1–R3 below, then **Final**.
+
+**Session requirement:** guiding a *fresh* recording needs a live SAP GUI (the
+operator records in their own session). Parsing an *already-saved* `.vbs`
+(`--record <path>`) needs no session — if Step 0.7 aborted for `NO_SESSION` and
+a valid path was supplied, ignore that abort and go straight to R2.
+
+### R1 — Have a recording already?
+
+If `--record` was followed by a path, verify it and skip to **R2**:
+
+```bash
+powershell -Command "if (Test-Path '<VBS_PATH>') { 'EXISTS' } else { 'NOT FOUND' }"
+```
+
+Otherwise guide the operator (R1a), wait for the saved path, then parse.
+
+### R1a — Guide the operator to record
+
+Present these steps, then WAIT for the operator to reply with the saved path:
+
+1. In SAP GUI, navigate to the screen where the target flow begins.
+2. Open the recorder: **Customize Local Layout (Alt+F12) → Script Recording
+   and Playback…** (or "More" ▸ *SAP GUI settings and actions*).
+3. In the dialog, set **Save To:** `{RUN_FOLDER}\recording.vbs`, set
+   **Encoding: Unicode**, and press the red **Record** button.
+4. Perform the flow — every field, button, tab, menu, and key is captured.
+5. Press the orange **Stop** button.
+6. Reply with the path (or confirm `{RUN_FOLDER}\recording.vbs`).
+
+### R2 — Parse the recorded VBS
+
+Read the saved `.vbs`. Skip the boilerplate header (the first ~14 lines of
+`GetObject("SAPGUI")` / `application.Children(0)` / `WScript.ConnectObject`
+setup) down to the first `session.findById(...)` line. For every
+`session.findById("…")` line capture:
+
+- **Component ID** — the string inside `findById("…")`
+- **Action** — the method/property after the `)` (`.text = "…"`, `.press`,
+  `.select`, `.sendVKey N`, `.doubleClick`, …)
+- **Value** — the assigned text, or the VKey number
+
+Decode each ID's type and each VKey using
+`<SAP_DEV_CORE_SHARED_DIR>/rules/sap_gui_scripting_reference.md` (component-type
+prefix table + VKey table). Ignore `.caretPosition` and `.setFocus` lines —
+cursor positioning, not meaningful actions.
+
+**Language-independence scan (REQUIRED).** While parsing, flag every
+`.Text = "…"` read-branch, `.Tooltip`, window-title, or menu-label comparison
+as a defect per `language_independence_rules.md` — a recorded VBS captured under
+EN logon must identify controls by ID + DDIC field name and check the status bar
+via `MessageType`, or it silently breaks on JA/DE/ZH logons. Report these so the
+skill author fixes them before shipping.
+
+### R3 — Emit the deliverables
+
+The recorded `.vbs` already IS a replayable script, so no synthesize step is
+needed. Instead:
+
+1. Copy/normalize the recording to `{RUN_FOLDER}\synthesized.vbs` — the same
+   deliverable name the drive loop produces, so `/sap-gui-skill-scaffold`
+   consumes either capture mode uniformly.
+2. Write the run-state summary via the Step 4b aggregator contract — at minimum
+   `{ "skill":"sap-gui-probe", "capture":"record", "completed_steps":<n>,
+   "observed":{…} }` — so downstream tooling sees a record-mode run identically
+   to a drive-mode run.
+3. Present the findById/action summary table
+   (`# | Component ID | Type | Action | Value`) plus any language-independence
+   defects found in R2.
+
+Then continue to **Final** (log end + report).
 
 ---
 

@@ -7,7 +7,7 @@
 '
 ' READ-ONLY: opens lists and reads cells; never imports, never presses a write
 ' button. The STMS overview + queue control IDs vary by release -- this reader
-' tries candidates and degrades to status=skipped with a /sap-gui-record hint
+' tries candidates and degrades to status=skipped with a /sap-gui-probe --record hint
 ' (same policy as /sap-atc and /sap-st22).
 '
 ' Language independence: controls by ID; status via MessageType; navigation via
@@ -54,7 +54,7 @@ OpenTargetQueue TARGET_SID
 ' ---- locate + read the queue grid -----------------------------------------
 Dim grid : Set grid = FindGridShell()
 If grid Is Nothing Then
-    WriteSkipped "STMS import-queue grid not found at known IDs for this release. Run /sap-gui-record on STMS_IMPORT and update the candidate IDs in sap_stms_queue_read.vbs."
+    WriteSkipped "STMS import-queue grid not found at known IDs for this release. Run /sap-gui-probe --record on STMS_IMPORT and update the candidate IDs in sap_stms_queue_read.vbs."
     WScript.Quit 0
 End If
 

@@ -277,7 +277,7 @@ For iDb = 0 To UBound(deliveryBases)
 Next
 If Not bDeliverySet Then
     WScript.Echo "WARNING: Could not set delivery class -- none of the " & (UBound(deliveryBases) + 1) & " candidate subscreen paths matched."
-    WScript.Echo "         Table will activate with SAP default class (likely 'A'). Re-record the Delivery and Maintenance tab via /sap-gui-record."
+    WScript.Echo "         Table will activate with SAP default class (likely 'A'). Re-record the Delivery and Maintenance tab via /sap-gui-probe --record."
 End If
 Err.Clear
 On Error GoTo 0

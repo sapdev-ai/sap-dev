@@ -245,7 +245,7 @@ Map the `SCREENCHECK:` verdict into the **screens** doctor group: `OK` → PASS;
 this release; this BLOCKS, consistent with any-FAIL below); `DEGRADED` → SKIP (only
 `pending_live` / `COULD_NOT_CHECK` — nothing gated). Keep each drifted checkpoint's
 `MISSING_ID` / identity for the report, and for every DRIFT recommend re-recording
-that VBS (`/sap-gui-record` / `/sap-gui-probe`) for this release + updating its baseline.
+that VBS (`/sap-gui-probe --record`) for this release + updating its baseline.
 
 **Promote pending_live baselines (only with `--update-baseline`).** If `-Capture` was
 passed, apply each `CAPTURE: <path> | <cp.id> | program=<pgm> | dynpro=<scr>` line to

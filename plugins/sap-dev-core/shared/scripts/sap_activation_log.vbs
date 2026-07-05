@@ -39,7 +39,7 @@
 ' RECORDING REFERENCE: C:\Temp\Record_SE11_ActivateErrorLog_01.vbs (S/4HANA
 ' 1909). The recording captured Utilities > Activation Log -> Log > Save
 ' Local File -> DY_PATH / DY_FILENAME -> Enter -> Back twice. Menu indices
-' below are derived from that recording and from /sap-gui-record probes.
+' below are derived from that recording and from /sap-gui-probe --record probes.
 '
 ' MENU INDICES (SE11/SE38/SE37/SE24 main screen, S/4HANA 1909):
 '   wnd[0]/mbar/menu[3]            = Utilities (Dienstprogramme)

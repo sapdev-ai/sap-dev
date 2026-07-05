@@ -997,7 +997,7 @@ top 错误类别）。
 | `sap-explain-object` / `sap-compare` | 理解（`--spec` 输出正式规格文档）/ 跨系统差异 |
 | `sap-rfc-wrapper` | 通过 RFC 调用非 RFC 的 FM（`fm`）/ 封装类方法（`class`）|
 | `sap-call-bdc` / `sap-update-addon` | BDC 重放 / 附加表维护 |
-| `sap-gui-record` / `sap-gui-probe` / `sap-gui-inspect` / `sap-gui-skill-scaffold` | 技能编写 & GUI 健壮性工具（黄金屏幕漂移 → `/sap-doctor --screens`）|
+| `sap-gui-probe` / `sap-gui-inspect` / `sap-gui-skill-scaffold` | 技能编写 & GUI 健壮性工具（`--record` 为手动捕获；黄金屏幕漂移 → `/sap-doctor --screens`）|
 | `sap-log-analyze` / `sap-error-kb` | 日志汇总 / 常见错误知识库 |
 
 ### sap-gen-code（规格 → ABAP）

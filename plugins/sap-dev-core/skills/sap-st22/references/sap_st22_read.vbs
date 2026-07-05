@@ -21,7 +21,7 @@
 ' Component IDs for the ST22 selection screen + result grid + the dump detail
 ' view vary across releases. This reader tries known candidates and then scans
 ' for the result grid / detail text controls; if it cannot locate the list it
-' emits status=skipped with a hint to run /sap-gui-record on ST22 for this
+' emits status=skipped with a hint to run /sap-gui-probe --record on ST22 for this
 ' release (same policy as /sap-atc). The detail scrape relies on the dump body
 ' being a GuiTextedit control; releases that render the dump as an HTML viewer
 ' yield detail_status=partial until the detail container ID is recorded.
@@ -108,7 +108,7 @@ Dim grid
 Set grid = FindGridShell()
 
 If grid Is Nothing Then
-    WriteSkipped "ST22 dump-list grid not found at known IDs for this release. Run /sap-gui-record on ST22 and update the candidate IDs in sap_st22_read.vbs."
+    WriteSkipped "ST22 dump-list grid not found at known IDs for this release. Run /sap-gui-probe --record on ST22 and update the candidate IDs in sap_st22_read.vbs."
     WScript.Quit 0
 End If
 

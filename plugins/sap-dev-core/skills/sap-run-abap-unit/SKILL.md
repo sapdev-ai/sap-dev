@@ -12,7 +12,7 @@ description: |
   running the suite twice (counts + coverage) since the coverage display has no
   status-bar summary. The RFC backend (Z_AUNIT_RUN, Phase 2) does both in one
   headless call. Result/coverage component IDs are release-specific; if the skill
-  emits NEEDS_RECORDING, record them once with /sap-gui-record (see "Result
+  emits NEEDS_RECORDING, record them once with /sap-gui-probe --record (see "Result
   parsing" below).
   Prerequisites: Active SAP GUI session (use /sap-login first); developer
   authorization to run ABAP Unit (S_DEVELOP on the object).
@@ -77,7 +77,7 @@ The trigger and result parse were verified end-to-end on S4D (2026-06-03):
 These are program-name / message-type / row-count signals — all language-neutral.
 On a **different release**, if the alert-grid path shifts, the VBS prints
 `UNIT_TEST_RUN: NEEDS_RECORDING program=<P> screen=<S>` instead of a false green;
-record the new path via `/sap-gui-record` and prepend it to the `gcands` array in
+record the new path via `/sap-gui-probe --record` and prepend it to the `gcands` array in
 both `sap_se38_run_aunit.vbs` and `sap_se24_run_aunit.vbs` (same one-time-per-
 release model as `/sap-atc`).
 

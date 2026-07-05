@@ -106,7 +106,7 @@ oTree.doubleClickNode "         12"
 WScript.Sleep 2000
 If Err.Number <> 0 Then
     WScript.Echo "ERROR: Could not navigate ATC tree to node 12: " & Err.Description
-    WScript.Echo "       Tree node IDs vary by ATC version. Re-record via /sap-gui-record."
+    WScript.Echo "       Tree node IDs vary by ATC version. Re-record via /sap-gui-probe --record."
     WScript.Quit 1
 End If
 Err.Clear
@@ -230,7 +230,7 @@ If WANT_VARIANT Then
     If Not variantApplied Then
         WScript.Echo "ERROR: --variant=" & UCase(CHECK_VARIANT) & " was requested but the run-series check-variant input field could not be located on this release."
         WScript.Echo "       Candidates tried: " & Join(chkvCands, ", ")
-        WScript.Echo "       Re-record the ATC run-series config screen via /sap-gui-probe (or /sap-gui-record), then add the real field id to chkvCands in sap_atc_create_run_series.vbs."
+        WScript.Echo "       Re-record the ATC run-series config screen via /sap-gui-probe (or /sap-gui-probe --record), then add the real field id to chkvCands in sap_atc_create_run_series.vbs."
         WScript.Echo "       Refusing to fall back to the system DEFAULT variant under a named-variant request (that would misreport non-readiness findings as readiness)."
         ReleaseSession oSess, wasLocked
         WScript.Quit 1
@@ -470,7 +470,7 @@ Else
     If totalRows > 0 Then
         WScript.Echo "ERROR: RUN_SERIES_NOT_FOUND - series " & UCase(RUN_SERIES_NAME) & " not matched by any known column id (" & Join(seriesCols, ", ") & ") across " & totalRows & " grid rows."
         WScript.Echo "       Refusing to execute a fallback row (that could EXECUTE_SERIE another team's series)."
-        WScript.Echo "       Re-record the node-12 grid via /sap-gui-record and prepend the real name-column id to seriesCols in sap_atc_create_run_series.vbs."
+        WScript.Echo "       Re-record the node-12 grid via /sap-gui-probe --record and prepend the real name-column id to seriesCols in sap_atc_create_run_series.vbs."
     Else
         WScript.Echo "ERROR: RUN_SERIES_NOT_FOUND - Run Series grid is empty or unreadable; cannot select for EXECUTE_SERIE."
     End If

@@ -60,7 +60,7 @@ Monitor → Manage Results — across four VBS references
 (`sap_sci_create_object_set.vbs`, `sap_atc_create_run_series.vbs`,
 `sap_atc_check_run_status.vbs`, `sap_atc_get_results.vbs`), with default tree
 node + grid IDs observed on S/4HANA 1909. On a different release, re-record the
-affected stage via `/sap-gui-record` and patch that VBS — see SKILL.md
+affected stage via `/sap-gui-probe --record` and patch that VBS — see SKILL.md
 "Recording references".
 
 **Check-variant field:** when you first use `--variant=` on a live system, the

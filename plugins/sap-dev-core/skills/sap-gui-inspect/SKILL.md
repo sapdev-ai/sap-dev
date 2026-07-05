@@ -60,7 +60,7 @@ falling back to manual scripting-recorder probes — when their VBS hits any of:
    SE11's RFC verifier) reports `MISSING` / `INACTIVE` when the GUI claimed success.
 
 The dispatch is **visual first** (`/sap-gui-inspect screenshot full`) → **structural**
-(`/sap-gui-inspect tree` or `wnd <N>`) → recorded fallback (`/sap-gui-record`).
+(`/sap-gui-inspect tree` or `wnd <N>`) → recorded fallback (`/sap-gui-probe --record`).
 `screenshot full` does both in one call (composite PNG + a structural dump of the
 topmost window), so it is the recommended first move for a stuck flow.
 
@@ -404,7 +404,7 @@ Skills that drive SAP GUI should carry this first-resort troubleshooting block:
 >
 > If `/sap-gui-inspect screenshot` itself fails (`SAP GUI minimised`, HardCopy
 > blocked), fall back to `/sap-gui-inspect tree` (structural only), then to
-> `/sap-gui-record` (Scripting Recorder).
+> `/sap-gui-probe --record` (Scripting Recorder).
 
 Skills that should carry this block: sap-se11, sap-se24, sap-se37, sap-se38,
 sap-se91, sap-transport-request, sap-cmod, sap-se19, sap-se21, sap-se41, sap-se51,
@@ -440,7 +440,7 @@ it's cheap to repeat.
   treat it as best-effort and accept partial captures. It **fails on minimised
   windows** (the capture VBS records a WARN and continues). Tooltips, dropdown
   lists, balloon dialogs, and right-click context menus are NOT in the bitmap — if
-  the diagnosis hinges on one, fall through to `/sap-gui-record`. Screen
+  the diagnosis hinges on one, fall through to `/sap-gui-probe --record`. Screen
   coordinates are pixels on modern SAP GUI builds; on older (dialog-unit) builds
   the composite layout may look stacked, but the topmost PNG is unaffected.
 - **Cost.** A composite PNG of a 1920x1080 session is ~200–400 KB (~O(1k) vision

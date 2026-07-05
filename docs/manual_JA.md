@@ -1051,7 +1051,7 @@ p50/p95 の所要時間、上位エラークラス）。
 | `sap-explain-object` / `sap-compare` | 理解（`--spec` で正式な仕様書を出力）/ クロスシステム差分 |
 | `sap-rfc-wrapper` | RFC 非対応 FM（`fm`）/ クラスメソッド（`class`）を RFC 経由で呼び出し |
 | `sap-call-bdc` / `sap-update-addon` | BDC 再生 / アドオンテーブルメンテナンス |
-| `sap-gui-record` / `sap-gui-probe` / `sap-gui-inspect` / `sap-gui-skill-scaffold` | スキル作成 & GUI 堅牢性ツール（ゴールデンスクリーン差分 → `/sap-doctor --screens`）|
+| `sap-gui-probe` / `sap-gui-inspect` / `sap-gui-skill-scaffold` | スキル作成 & GUI 堅牢性ツール（`--record` は手動キャプチャ、ゴールデンスクリーン差分 → `/sap-doctor --screens`）|
 | `sap-log-analyze` / `sap-error-kb` | ログ要約 / 頻出エラーナレッジベース |
 
 ### sap-gen-code（仕様 → ABAP）

@@ -1,4 +1,4 @@
-# /sap-trace — `/sap-gui-record` capture checklist for the `PH_*` IDs
+# /sap-trace — `/sap-gui-probe --record` capture checklist for the `PH_*` IDs
 
 The two GUI templates (`sap_trace_st05.vbs`, `sap_trace_sat.vbs`) ship with
 `PH_*` placeholder control IDs. This checklist captures the real IDs on your SAP
@@ -14,11 +14,11 @@ complete (reused from `/sap-se16n`) — you only need the transaction-specific I
 ## 1. Three tools — use them together
 | Tool | Use for |
 |---|---|
-| `/sap-gui-record` | Capture the **click order** + the exact `findById` paths/actions as you click through. |
+| `/sap-gui-probe --record` | Capture the **click order** + the exact `findById` paths/actions as you click through. |
 | `/sap-gui-inspect` | On a given screen, dump **all controls of a type** (filter `GuiButton`, `GuiShell`, `GuiTab`, `GuiToolbar`) with their IDs + tooltips — the fastest way to nail the grid and toolbar IDs without guessing. |
 | `/sap-gui-probe` | Optional all-in-one: drives the txn step-by-step and dumps the property tree (IDs, types, Changeable, popup transitions) at every screen. |
 
-Recommended: one `/sap-gui-record` pass for the *sequence* + a `/sap-gui-inspect`
+Recommended: one `/sap-gui-probe --record` pass for the *sequence* + a `/sap-gui-inspect`
 dump on each screen for the *grid + button IDs*.
 
 ## 2. ST05 capture sequence

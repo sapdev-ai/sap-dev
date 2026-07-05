@@ -12,7 +12,7 @@
     "version": "0.7.0",
     "last_updated": "2026-07-05",
     "total_plugins": 4,
-    "total_skills": 68,
+    "total_skills": 67,
     "categories": [
       "tooling"
     ]
@@ -45,7 +45,6 @@
         "./skills/sap-function-group",
         "./skills/sap-gui-inspect",
         "./skills/sap-gui-probe",
-        "./skills/sap-gui-record",
         "./skills/sap-gui-skill-scaffold",
         "./skills/sap-impact-analysis",
         "./skills/sap-log-analyze",

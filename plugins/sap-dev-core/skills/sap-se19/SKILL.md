@@ -423,7 +423,7 @@ Deactivate (Ctrl+F4)**. Create-impl popup `ctxtRSEXSCRN-IMP_NAME` +
 `btnBUTTON_1` Yes (impl), then `btnBUTTON_1`/`btnBUTTON_2` (delete class? Yes/No).
 
 > IDs were captured by `/sap-gui-probe` + `/sap-gui-inspect`. Re-record
-> with `/sap-gui-record` if a different release renumbers a tree/menu node.
+> with `/sap-gui-probe --record` if a different release renumbers a tree/menu node.
 
 ---
 

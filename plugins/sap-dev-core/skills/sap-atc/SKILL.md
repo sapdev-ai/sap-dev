@@ -11,7 +11,7 @@ description: |
   Replaces the legacy SCI-results-tree implementation that lacked a
   Priority column. Per-stage VBS references are recorded against the
   S/4HANA 1909 ATC layout — re-record on first failure with
-  /sap-gui-record if your release uses different tree node IDs / grid
+  /sap-gui-probe --record if your release uses different tree node IDs / grid
   column IDs.
   Prerequisites: Active SAP GUI session (use /sap-login first).
 argument-hint: "<OBJECT_TYPE> <OBJECT_NAME> | --object-list=<file> [--variant=<NAME>] [--object-provider=<ID>] [--max-priority=<n>] [--object-set=<NAME>] [--run-series=<NAME>] [--poll-interval=<sec>] [--max-wait=<sec>] [--save-to=<PATH>] [--drill] [--no-drill]"
@@ -282,7 +282,7 @@ Expected last line:
 If it fails with "Object set <NAME> already exists" or similar, that's
 fine for our reuse model — proceed to Stage 2 with the same name. If
 it fails with a missing-field-id error, the SCI screen layout shifted;
-re-record via `/sap-gui-record`.
+re-record via `/sap-gui-probe --record`.
 
 ---
 
@@ -301,7 +301,7 @@ check-variant input field on the connected release, **Stage 2 fails loud**
 could not be located`) rather than silently running the default variant — a
 silent fallback would misreport non-readiness findings as readiness. If you hit
 that error, re-record the ATC run-series config screen via `/sap-gui-probe` (or
-`/sap-gui-record`) and add the real field id to the `chkvCands` list in
+`/sap-gui-probe --record`) and add the real field id to the `chkvCands` list in
 `sap_atc_create_run_series.vbs`.
 
 ```powershell
@@ -644,7 +644,7 @@ because the screen 201 layout shifted on a newer SAP_BASIS release):
   determined PASS/FAIL.
 - Emit a warning line: `WARN: Stage 4b drill failed — operator must
   inspect findings manually via /nATC > Manage Results > <series>.`
-- Suggest re-recording via `/sap-gui-record` against the result-display
+- Suggest re-recording via `/sap-gui-probe --record` against the result-display
   screen, then updating the `findingPaths` fallback list in
   `sap_atc_drill_findings.vbs`.
 
@@ -855,7 +855,7 @@ anything.
 
 **On a different release:** if Stage 2 errors with "check-variant input field
 could not be located", record the config screen via `/sap-gui-probe` or
-`/sap-gui-record`, read the real field id, and prepend it to `chkvCands`. Then
+`/sap-gui-probe --record`, read the real field id, and prepend it to `chkvCands`. Then
 update this table.
 
 ---
@@ -931,7 +931,7 @@ true field id to `provCands`, then update the table below.
 
 - **One-time recording per release.** ATC tree node IDs and result-
   grid column IDs were captured on S/4HANA 1909. On other releases,
-  re-record via `/sap-gui-record` and patch the four VBS files.
+  re-record via `/sap-gui-probe --record` and patch the four VBS files.
 - **OBJECT_TYPE coverage** (verified live, S/4HANA 1909):
   - `PROGRAM` → `XSO_REPO` + `SO_REPO-LOW` ✓
   - `CLASS` / `INTERFACE` → `XSO_CLAS` + `SO_CLAS-LOW` ✓

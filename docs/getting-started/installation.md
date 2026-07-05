@@ -153,9 +153,7 @@ Claude: [Uses sap-se38]
 | `sap-explain-object` | Read-only comprehension aid for an existing object: acquires source, builds a structure + call map, optionally pulls callers, and emits an explanation dossier |
 | `sap-function-group` | Full lifecycle for SAP function groups: check, create, activate, query, and delete |
 | `sap-gui-inspect` | Inspects the active SAP GUI session structurally (dumps component IDs + properties: `tree`/`menu`/`type`/`id`/`wnd` modes) and/or visually (`screenshot` — composes every visible window into an annotated PNG). Absorbed the former `sap-gui-object-details` and `sap-gui-diagnose`. |
-| `sap-gui-probe` | Drives a SAP transaction step by step against a natural-language scenario and emits a synthesized recording-style VBS |
-| `sap-gui-record` | Guides recording of SAP GUI interactions and extracts component IDs, actions, and field names from the VBS |
-| `sap-gui-skill-scaffold` | Authors a new mode-aware transaction skill from N natural-language scenarios — runs `/sap-gui-probe` per scenario, merges probe folders via cross-probe diff, emits a ready-to-test draft |
+| `sap-gui-probe` | Drives a SAP transaction step by step against a natural-language scenario and emits a synthesized recording-style VBS || `sap-gui-skill-scaffold` | Authors a new mode-aware transaction skill from N natural-language scenarios — runs `/sap-gui-probe` per scenario, merges probe folders via cross-probe diff, emits a ready-to-test draft |
 | `sap-impact-analysis` | Pre-change impact analysis from SAP's cross-reference index (where-used + forward deps + entry points + transport history) with a transparent LOW/MEDIUM/HIGH risk band — read-only |
 | `sap-log-analyze` | Summarizes sap-dev JSONL log files: per-skill counts, success/fail rates, p50/p95 duration, top error classes |
 | `sap-login` | Opens a SAP GUI connection and logs in via SAP GUI Scripting; also verifies SAP NCo 3.1 RFC connectivity |

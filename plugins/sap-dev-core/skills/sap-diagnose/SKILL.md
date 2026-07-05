@@ -292,7 +292,7 @@ powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_
   and business keys, not the tight temporal window.
 - **ST22 GUI recording debt.** ST22 selection/grid component IDs vary by release;
   the reader tries candidates and degrades to `skipped` with a record hint
-  (`/sap-gui-record`) if it cannot locate the list.
+  (`/sap-gui-probe --record`) if it cannot locate the list.
 
 ## Failure Modes
 

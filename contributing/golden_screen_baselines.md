@@ -113,7 +113,7 @@ One baseline per driving VBS, named `<vbs-stem>.screens.json`, beside the VBS in
 
 Coverage **120/121** (2026-07-03 seeding wave; the only gap is
 `sap_stms_import.vbs`, deliberately unbaselined until its PLACEHOLDER control
-IDs are calibrated via `/sap-gui-record` — a baseline would freeze placeholder
+IDs are calibrated via `/sap-gui-probe --record` — a baseline would freeze placeholder
 text). Every driving VBS now ships a multi-checkpoint seed: `method: static`,
 `status: pending_live`, the required-control set extracted per checkpoint from
 the VBS's literal `findById` paths (dynamic/concatenated IDs excluded — capture

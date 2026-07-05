@@ -372,7 +372,7 @@ On Error Resume Next
 Set w1prop = oSession.findById("wnd[1]")
 Err.Clear : On Error GoTo 0
 If w1prop Is Nothing Then
-    FailExit "Goto > Properties did not open a dialog (menu layout differs on this release). Re-record with /sap-gui-record."
+    FailExit "Goto > Properties did not open a dialog (menu layout differs on this release). Re-record with /sap-gui-probe --record."
 End If
 
 Dim descId : descId = FindByName(w1prop, "VSEOCLASS-DESCRIPT", "GuiTextField")
@@ -380,7 +380,7 @@ If descId = "" Then
     On Error Resume Next
     oSession.findById("wnd[1]").sendVKey VKEY_CANCEL
     Err.Clear : On Error GoTo 0
-    FailExit "Properties dialog opened but the description field (VSEOCLASS-DESCRIPT) was not found. Re-record with /sap-gui-record."
+    FailExit "Properties dialog opened but the description field (VSEOCLASS-DESCRIPT) was not found. Re-record with /sap-gui-probe --record."
 End If
 WScript.Echo "INFO: Properties dialog open."
 

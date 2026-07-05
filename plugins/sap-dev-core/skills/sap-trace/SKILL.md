@@ -135,7 +135,7 @@ as `/sap-se16n` does (pre-check + OS-level sidecar watcher around the blocking
 cscript). The VBS identifies controls by recorded component IDs; the
 ST05/SAT-specific IDs are already **filled in with real values captured live on
 S4D / S/4HANA 1909 (2026-06-03)** (see **Component IDs** below) — no placeholders
-to fill. Re-record them with `/sap-gui-record` or `/sap-gui-probe` only if a
+to fill. Re-record them with `/sap-gui-probe` only if a
 later release moved a control (the SAT evaluation-desktop IDs embed program/
 screen names most prone to drift). The ALV export block at the bottom of each
 template uses the known SE16N-style IDs.
@@ -303,7 +303,7 @@ last line `HOTSPOTS=3`.
 
 The two GUI templates ship with **real recorded IDs** (captured live on S4D /
 S/4HANA 1909, 2026-06-03 — no `PH_*` placeholders to fill in). Re-verify them per
-release with `/sap-gui-record` or `/sap-gui-probe` only if a control moved, then
+release with `/sap-gui-probe` only if a control moved, then
 update the affected `Const` in the VBS. The ALV export
 mechanism (`pressToolbarContextButton "&MB_EXPORT"` → `selectContextMenuItem "&PC"`
 → "Text with Tabs" radio → `wnd[1]/usr/ctxtDY_PATH` + `ctxtDY_FILENAME`) is reused

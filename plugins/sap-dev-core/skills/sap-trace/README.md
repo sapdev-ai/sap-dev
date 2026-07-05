@@ -46,6 +46,6 @@ line `HOTSPOTS=3`.
 | `../../shared/tables/perf_antipattern_map.tsv` | signal → rule → fix map (customer-overridable) |
 
 The GUI templates ship with **recorded-ID placeholders** (`PH_*`). Capture them
-once per SAP release with `/sap-gui-record` or `/sap-gui-probe` and fill them in
+once per SAP release with `/sap-gui-probe` and fill them in
 before using `--source`. The ALV-export block is reused from `/sap-se16n` and is
 already complete.

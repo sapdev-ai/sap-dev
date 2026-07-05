@@ -8,7 +8,7 @@
 '
 ' READ-ONLY: opens lists and reads cells; presses no write button. Control IDs
 ' vary by release -- tries candidates, degrades to status=skipped with a
-' /sap-gui-record hint. Language-independent (IDs + MessageType, no text).
+' /sap-gui-probe --record hint. Language-independent (IDs + MessageType, no text).
 '
 ' Tokens:
 '   %%TARGET_SID%%   the system whose import log to read
@@ -51,14 +51,14 @@ Dim bOnQueue : bOnQueue = OpenTargetQueue(TARGET_SID)
 
 Dim grid : Set grid = FindGridShell()
 If grid Is Nothing Then
-    WriteLog "skipped", "STMS grid not found for this release. Run /sap-gui-record on STMS_IMPORT and update candidate IDs in sap_stms_log_read.vbs.", "", ""
+    WriteLog "skipped", "STMS grid not found for this release. Run /sap-gui-probe --record on STMS_IMPORT and update candidate IDs in sap_stms_log_read.vbs.", "", ""
     WScript.Quit 0
 End If
 
 ' If we could not confirm the target-system queue is open, refuse rather than
 ' mislabel another queue's RC as TARGET_SID's.
 If Not bOnQueue Then
-    WriteLog "skipped", "Could not open the import queue for " & TARGET_SID & " (system not found in the STMS overview, or the queue view differs on this release). Run /sap-gui-record on STMS_IMPORT and update OpenTargetQueue candidate IDs.", "", ""
+    WriteLog "skipped", "Could not open the import queue for " & TARGET_SID & " (system not found in the STMS overview, or the queue view differs on this release). Run /sap-gui-probe --record on STMS_IMPORT and update OpenTargetQueue candidate IDs.", "", ""
     WScript.Echo "LOG: tr=" & TR & " system=" & TARGET_SID & " rc=- verdict=QUEUE_NOT_REACHED file=" & OUTPUT_FILE
     WScript.Quit 0
 End If

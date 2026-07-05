@@ -6,7 +6,7 @@
 ' toolset, so the VBS is built to FAIL SAFE:
 '
 '   1. CALIBRATION GATE. The destructive control IDs ship as PLACEHOLDER_*
-'      constants. Until they are recorded for this release (via /sap-gui-record
+'      constants. Until they are recorded for this release (via /sap-gui-probe --record
 '      on STMS_IMPORT) and substituted, the script ABORTS with
 '      ERROR: not-calibrated -- it presses NOTHING. An uncalibrated run can never
 '      mis-import.
@@ -42,7 +42,7 @@ Const OUTPUT_FILE    = "%%OUTPUT_FILE%%"
 Const SESSION_PATH   = "%%SESSION_PATH%%"
 
 ' --- Destructive control IDs: PLACEHOLDER until recorded for this release. -----
-' Replace via /sap-gui-record on the STMS_IMPORT import flow. While any of these
+' Replace via /sap-gui-probe --record on the STMS_IMPORT import flow. While any of these
 ' still begins with "PLACEHOLDER", the calibration gate aborts (no action).
 Const IMPORT_BTN     = "PLACEHOLDER_IMPORT_BTN"      ' the "Import Request" toolbar/menu button
 Const OPTS_CONFIRM   = "PLACEHOLDER_OPTS_CONFIRM"    ' the import-options dialog confirm button
@@ -61,7 +61,7 @@ Set oSession = AttachSapSession(SESSION_PATH)
 
 ' ---- CALIBRATION GATE (fail safe before anything else) ---------------------
 If IsPlaceholder(IMPORT_BTN) Or IsPlaceholder(OPTS_CONFIRM) Then
-    Fail "not-calibrated", "Import control IDs are PLACEHOLDER. Run /sap-gui-record on STMS_IMPORT for this release and substitute IMPORT_BTN / OPTS_CONFIRM / OPTS_CLIENT_FLD in sap_stms_import.vbs before importing."
+    Fail "not-calibrated", "Import control IDs are PLACEHOLDER. Run /sap-gui-probe --record on STMS_IMPORT for this release and substitute IMPORT_BTN / OPTS_CONFIRM / OPTS_CLIENT_FLD in sap_stms_import.vbs before importing."
     WScript.Quit 1
 End If
 
@@ -71,7 +71,7 @@ End If
 ' non-default option we cannot honor, FAIL LOUD rather than silently importing
 ' with the queue default -- the option was advertised, so a no-op would mislead.
 If IsFlagSet(IMMEDIATE) Or IsFlagSet(LEAVE_IN_QUEUE) Then
-    Fail "STMS_OPTION_UNSUPPORTED", "IMMEDIATE / LEAVE_IN_QUEUE were requested but the import-options checkboxes are not calibrated in this VBS (no recorded control IDs). Record them via /sap-gui-record on the STMS_IMPORT options dialog and add the checkbox control IDs, or re-run without these options."
+    Fail "STMS_OPTION_UNSUPPORTED", "IMMEDIATE / LEAVE_IN_QUEUE were requested but the import-options checkboxes are not calibrated in this VBS (no recorded control IDs). Record them via /sap-gui-probe --record on the STMS_IMPORT options dialog and add the checkbox control IDs, or re-run without these options."
     WScript.Quit 1
 End If
 
@@ -92,7 +92,7 @@ OpenTargetQueue TARGET_SID
 
 Dim grid : Set grid = FindGridShell()
 If grid Is Nothing Then
-    Fail "queue-not-found", "STMS import-queue grid not found for this release; run /sap-gui-record."
+    Fail "queue-not-found", "STMS import-queue grid not found for this release; run /sap-gui-probe --record."
     ReleaseSession oSession, bLocked
     WScript.Quit 1
 End If
@@ -144,7 +144,7 @@ WScript.Sleep 1000
 ' LEAVE_IN_QUEUE checkboxes are release-specific and NOT calibrated here -- the
 ' OPTION-SUPPORT GATE above already aborted if either was requested, so reaching
 ' here means the queue default is acceptable. To support them, record the checkbox
-' control IDs via /sap-gui-record and set them here BEFORE removing that gate.
+' control IDs via /sap-gui-probe --record and set them here BEFORE removing that gate.
 If Len(TARGET_CLIENT) > 0 And Not IsPlaceholder(OPTS_CLIENT_FLD) Then
     oSession.findById(OPTS_CLIENT_FLD).text = TARGET_CLIENT
 End If

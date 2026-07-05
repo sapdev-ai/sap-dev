@@ -78,7 +78,7 @@ sap-se19/
 ## Probed against
 
 S/4HANA 1909 (S4D), SAP GUI 7.60, EN logon — 2026-05-30. Re-record screen IDs with
-`/sap-gui-record` if a different release renumbers a tree/menu node.
+`/sap-gui-probe --record` if a different release renumbers a tree/menu node.
 
 ## License
 

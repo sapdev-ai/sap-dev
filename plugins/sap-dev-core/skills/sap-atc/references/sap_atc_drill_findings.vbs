@@ -25,7 +25,7 @@
 '
 ' Per-stage VBS references for the screen 201 ALV grid were observed on
 ' S/4HANA 1909 (sap-dev test build 2026-05-11). If the grid layout differs
-' on your release, re-record via /sap-gui-record on the same screen.
+' on your release, re-record via /sap-gui-probe --record on the same screen.
 '
 ' Column-ID lookup
 ' ----------------
@@ -199,7 +199,7 @@ If oFindings Is Nothing Then
     ReleaseSession oSess, wasLocked
     WScript.Echo "ERROR: Could not locate findings ALV grid after drill-in."
     WScript.Echo "       Tried: " & Join(findingPaths, " ; ")
-    WScript.Echo "       Re-record via /sap-gui-record on screen " & sDrillScr & " (program " & sDrillPgm & ") to capture the current ID."
+    WScript.Echo "       Re-record via /sap-gui-probe --record on screen " & sDrillScr & " (program " & sDrillPgm & ") to capture the current ID."
     WScript.Quit 1
 End If
 

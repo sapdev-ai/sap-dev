@@ -312,7 +312,7 @@ For idx = 0 To UBound(ALL_CATS)
             oSess.findById(fld).caretPosition = Len(names(0))
             If Err.Number <> 0 Then
                 WScript.Echo "ERROR: Could not fill name field (" & NameFieldId(cat) & "): " & Err.Description
-                WScript.Echo "       Field IDs for " & cat & " may differ on this SAP release - re-record via /sap-gui-record."
+                WScript.Echo "       Field IDs for " & cat & " may differ on this SAP release - re-record via /sap-gui-probe --record."
                 ReleaseSession oSess, wasLocked
                 WScript.Quit 1
             End If

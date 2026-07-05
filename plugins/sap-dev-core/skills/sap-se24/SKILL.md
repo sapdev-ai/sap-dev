@@ -665,7 +665,7 @@ if ($watcher) { $watcher | Wait-Process -Timeout 50 -ErrorAction SilentlyContinu
 |---|---|
 | `SUCCESS: Local test classes uploaded and activated for <CLASS>.` | Done — tests live in the `CCAU` include; run them via `/sap-run-abap-unit --type=CLASS <CLASS>`. |
 | `ERROR: Class is in form-based view …` | Switch to source-code-based view (see Source-Code-Based View Setup) and retry. |
-| `ERROR: Could not find the Upload menu …` | Menu indices differ on this release; re-record via `/sap-gui-record`. |
+| `ERROR: Could not find the Upload menu …` | Menu indices differ on this release; re-record via `/sap-gui-probe --record`. |
 | `ERROR: Upload file dialog did not appear …` | SAP GUI Security blocked it — ensure the watcher above ran. |
 | `ERROR: Syntax errors in the uploaded test classes …` | Fix the test source and retry. |
 

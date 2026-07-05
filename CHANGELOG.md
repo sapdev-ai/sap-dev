@@ -19,6 +19,19 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **Retired `sap-gui-record`; folded into `/sap-gui-probe --record` (68 → 67 skills).**
+  The manual-recording capability (guide the operator through SAP GUI Script
+  Recording, then parse the saved VBS into a findById/action map) is now a
+  fallback capture mode of `/sap-gui-probe` — **Mode R** — alongside its default
+  AI-drive capture. AI cannot start a GUI recording, so the standalone skill only
+  added a menu entry, not an AI-invocable capability. The SAP GUI Scripting API
+  cheat-sheet (component-ID grammar, type prefixes, VKey codes, toolbar positions,
+  runtime gotchas) was promoted to the shared reference
+  `sap-dev-core/shared/rules/sap_gui_scripting_reference.md` so every VBS author
+  reads it in one place. Repointed all `/sap-gui-record` references across skills,
+  the cc-migration agent, docs (EN/JA/ZH), READMEs, and reference-VBS comments to
+  `/sap-gui-probe --record` (paired "record or probe" mentions collapsed to
+  `/sap-gui-probe`); removed the skill dir + marketplace / catalogue entries.
 - **`sap-cc-learn` → `/sap-cc-triage --learn` (69 → 68 skills).** The
   knowledge-pack flywheel (learns real ATC message ids from a triaged campaign and
   feeds them back into the pack's `detect_message_ids`) is now an opt-in mode of the

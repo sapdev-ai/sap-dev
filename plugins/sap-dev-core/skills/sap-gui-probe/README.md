@@ -63,4 +63,4 @@ SAPLSETX master-language popups).
 ## See also
 
 - `/sap-gui-inspect` -- the underlying dump/screenshot engine (reused verbatim)
-- `/sap-gui-record` -- if you'd rather record by hand
+- `--record <vbs>` -- capture the flow by hand with the SAP Script Recorder instead of driving it (Mode R; replaces the retired `/sap-gui-record`)

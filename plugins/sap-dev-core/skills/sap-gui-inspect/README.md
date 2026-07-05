@@ -72,7 +72,7 @@ Conversational forms:
 - Read-only — never modifies the screen state.
 - Dumps the **current** screen only; cannot navigate forward. Run after each step.
 - `HardCopy` (visual) is best-effort — fails on minimised windows, and omits
-  tooltips / dropdowns / context menus. Fall back to `/sap-gui-record` if the
+  tooltips / dropdowns / context menus. Fall back to `/sap-gui-probe --record` if the
   diagnosis hinges on one of those.
 
 ## Version

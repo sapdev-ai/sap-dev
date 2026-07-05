@@ -249,7 +249,7 @@ powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_
 |---|---|---|
 | `BLOCKED standard-object` | the dump's root cause is in SAP standard code | this is a Note / enhancement, not a code fix — surface the analysis, do not patch |
 | `BLOCKED non-dev-target` | the incident system is production / non-modifiable | pass `--dev-connection <DEV>`; the fix is made in DEV and transported |
-| `dump_detail.detail_status=partial` (no failing line) | HTML-rendered dump — `/sap-st22 --deep` could not scrape the body | calibrate the ST22 detail-screen IDs via `/sap-gui-record`; meanwhile reason from the exception + program, and stay PROPOSE-only if the line is essential |
+| `dump_detail.detail_status=partial` (no failing line) | HTML-rendered dump — `/sap-st22 --deep` could not scrape the body | calibrate the ST22 detail-screen IDs via `/sap-gui-probe --record`; meanwhile reason from the exception + program, and stay PROPOSE-only if the line is essential |
 | `COULD_NOT_REPRODUCE` | the object has no unit-test seam (hard-wired statics / monolithic FORMs) | `/sap-gen-abap-unit` flags the needed refactor; the fix stays PROPOSE-only (no auto-apply without a regression guard) |
 | loop never reaches green | the hypothesis was wrong, or the fix is incomplete | stop at `--max-rounds`, present the diff, re-run `/sap-diagnose` for a better root cause |
 

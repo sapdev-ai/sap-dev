@@ -124,7 +124,7 @@ On Error GoTo 0
 
 ' Try common column-id candidates for the Run Series name. The Run Monitor
 ' grid actually exposes it as APP_CONFIG_NAME on S/4HANA 1909 (verified
-' live via /sap-gui-record probe); the other candidates are kept as
+' live via /sap-gui-probe --record probe); the other candidates are kept as
 ' release-portability fallbacks.
 Dim seriesCols, sCol, foundRow, sRowName
 seriesCols = Array("APP_CONFIG_NAME", "RUN_SERIES_NAME", "RUN_SERIES", "SERIE_NAME", "NAME")

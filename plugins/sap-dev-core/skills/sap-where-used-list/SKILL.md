@@ -292,7 +292,7 @@ operator wants it.
 - **MESSAGE_CLASS** field-id assumption (`ctxtRSDAG-ARBGB`) is the
   default SE91 initial-screen field. If a customised SE91 layout uses
   a different field, override via the field-id table after recording
-  with `/sap-gui-record`.
+  with `/sap-gui-probe --record`.
 - **Print params dialog** field positions vary by SAP release —
   S/4HANA 1909 verified; other releases may need a one-time recording
   to confirm `PRIMM2` and `btn[13]` paths.

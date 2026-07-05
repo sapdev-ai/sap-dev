@@ -188,7 +188,7 @@ For i = 0 To iCnt - 1
         ' tail still echoed "SUCCESS: Intervals saved" -- a false success with
         ' NRIV untouched. The popup ids are release-specific; when absent,
         ' every row fails identically, so abort loudly instead of skipping.
-        WScript.Echo "ERROR: Insert popup field ids not found -- release layout differs. Re-record per SKILL.md (use /sap-gui-inspect / /sap-gui-record)."
+        WScript.Echo "ERROR: Insert popup field ids not found -- release layout differs. Re-record per SKILL.md (use /sap-gui-inspect / /sap-gui-probe --record)."
         WScript.Quit 1
     End If
     On Error GoTo 0

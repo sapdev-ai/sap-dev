@@ -89,7 +89,7 @@ Contract:
 
 | Class | Meaning |
 |---|---|
-| `STMS_NOT_CALIBRATED` | Import control IDs still PLACEHOLDER on this release — record once with `/sap-gui-record`. |
+| `STMS_NOT_CALIBRATED` | Import control IDs still PLACEHOLDER on this release — record once with `/sap-gui-probe --record`. |
 | `STMS_NO_AUTH` | Missing STMS authorization (S_TRANSPRT / S_CTS_ADMI). |
 | `STMS_BLOCKED` | Queue/import blocked (predecessor, target lock). |
 | `STMS_IMPORT_RC_ERROR` | Import finished with RC >= 8. |

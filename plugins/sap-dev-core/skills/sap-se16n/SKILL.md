@@ -357,7 +357,7 @@ runtime and matches `Tab` or `preadsheet` substrings, then falls back to
   IDs, so this skill may not be portable there. `/sap-se01`'s create + verify
   chain depends on SE16N (`E070`/`E07T` reads) — on ECC6 prefer the RFC path
   (`RFC_READ_TABLE` / `sap_tr_object_entries.ps1`) where a helper exists, and
-  re-record the SE16N control IDs with `/sap-gui-record` if the GUI path is
+  re-record the SE16N control IDs with `/sap-gui-probe --record` if the GUI path is
   required.
 - Date values must be passed as 8-digit `YYYYMMDD` (e.g. `20240131`) — SAP DATS
   fields accept this regardless of the logon user's date personalization

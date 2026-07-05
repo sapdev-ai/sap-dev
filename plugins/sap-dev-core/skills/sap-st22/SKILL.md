@@ -10,7 +10,7 @@ description: |
   consumes to root-cause a dump); deep is strictly additive — a deep failure
   degrades to partial/skipped and never loses the list-level evidence. Component
   IDs vary by release: the reader tries candidates and degrades to a clean
-  skipped/partial with a /sap-gui-record hint. Usually invoked by /sap-diagnose;
+  skipped/partial with a /sap-gui-probe --record hint. Usually invoked by /sap-diagnose;
   runs standalone.
   Prerequisites: active SAP GUI session (/sap-login first); RZ11
   sapgui/user_scripting = TRUE.
@@ -114,14 +114,14 @@ C:\Windows\SysWOW64\cscript.exe //NoLogo "{RUN_DIR}\st22_run.vbs"
 ## Step 3 — Report
 Parse `EVIDENCE: source=ST22 status=ok events=<n> deep=<n> ...` +
 `evidence_st22.json`. If `status=skipped`, report the reason (likely "grid not
-found — run /sap-gui-record on ST22"). In `--deep` mode, each event may carry a
+found — run /sap-gui-probe --record on ST22"). In `--deep` mode, each event may carry a
 `dump_detail` object — surface its `detail_status`:
 
 - `ok` — failing `include`/`line` + a `source_extract` snippet were captured
   (this is what a downstream fix consumes).
 - `partial` — the dump was opened but its body was not scrapeable (typically an
   HTML-rendered dump). The exception / program are still known from the list
-  level; recommend a `/sap-gui-record` pass on the ST22 dump-detail screen for
+  level; recommend a `/sap-gui-probe --record` pass on the ST22 dump-detail screen for
   this release. **Never report `partial` as "no defect found."**
 - `skipped` — could not re-open the dump from the list.
 
@@ -134,7 +134,7 @@ powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_
 ## Known Issues / Failure Modes
 - **Recording debt.** ST22 selection-field + result-grid IDs vary by release. The
   reader tries candidate IDs then scans for the grid; if it cannot locate the
-  list it emits `status=skipped` with a hint to run `/sap-gui-record` on ST22 and
+  list it emits `status=skipped` with a hint to run `/sap-gui-probe --record` on ST22 and
   update the candidates in `sap_st22_read.vbs`.
 - **List level** emits date/time/user/program/exception/short-text + a synthetic
   `dump_key` (date+time+program) so SM13 can link to it. `--deep` adds the
@@ -144,7 +144,7 @@ powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_
   and anchors the error line on the locale-independent `>>>>` marker. On releases
   that render the dump as an **HTML viewer** there is no readable text control,
   so deep returns `detail_status=partial` (exception/program still captured) —
-  run `/sap-gui-record` on the ST22 dump-open and add the detail container ID to
+  run `/sap-gui-probe --record` on the ST22 dump-open and add the detail container ID to
   `sap_st22_read.vbs` (`ReadDetailText` candidates) to lift it to `ok`. **Live
   calibration on the target release is pending** — the candidate-ID + `>>>>`
   approach is built and degrades safely, but has not yet been recorded against a

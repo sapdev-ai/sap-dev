@@ -189,7 +189,7 @@ If sEdProg <> "SAPLSEO_CLEDITOR" Or bStillMain Then
     WScript.Echo "ERROR: CCAU_EDITOR_NOT_REACHED -- the Local Test Classes editor did not open" & vbCrLf & _
                  "       (Program=" & sEdProg & "; still on main source=" & bStillMain & ")." & vbCrLf & _
                  "       Aborting so the test source is not saved over the main class include." & vbCrLf & _
-                 "       Re-record the CCAU navigation (btn[35]/Ctrl+F11) via /sap-gui-record."
+                 "       Re-record the CCAU navigation (btn[35]/Ctrl+F11) via /sap-gui-probe --record."
     ReleaseSession oSession, wasLocked
     WScript.Quit 1
 End If

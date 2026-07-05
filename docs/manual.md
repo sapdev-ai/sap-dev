@@ -1043,7 +1043,7 @@ p50/p95 duration, top error classes).
 | `sap-explain-object` / `sap-compare` | Comprehension (`--spec` emits a formal spec document) / cross-system diff |
 | `sap-rfc-wrapper` | Call non-RFC FMs (`fm`) / wrap class methods (`class`) over RFC |
 | `sap-call-bdc` / `sap-update-addon` | BDC replay / add-on table maintenance |
-| `sap-gui-record` / `sap-gui-probe` / `sap-gui-inspect` / `sap-gui-skill-scaffold` | Skill-authoring & GUI robustness tooling (golden-screen drift → `/sap-doctor --screens`) |
+| `sap-gui-probe` / `sap-gui-inspect` / `sap-gui-skill-scaffold` | Skill-authoring & GUI robustness tooling (`--record` captures by hand; golden-screen drift → `/sap-doctor --screens`) |
 | `sap-log-analyze` / `sap-error-kb` | Log summary / frequently-errors knowledge base |
 
 ### sap-gen-code (spec → ABAP)
