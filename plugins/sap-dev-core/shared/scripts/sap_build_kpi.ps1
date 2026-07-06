@@ -115,7 +115,7 @@ function Get-GateForSkill([string]$skill) {
     switch ($skill) {
         'sap-gen-abap'           { return 'GEN' }
         'sap-check-abap'         { return 'CHECK' }
-        'sap-check-fm'           { return 'CHECK' }
+        'sap-check-fm'           { return 'CHECK' }   # legacy alias -- folded into sap-check-abap 'fm' dimension; kept for historical-log rollup
         'sap-docs-check'         { return 'SPEC' }
         'sap-se38'               { return 'DEPLOY' }
         'sap-se37'               { return 'DEPLOY' }

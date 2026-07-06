@@ -53,7 +53,7 @@
 # Plus a special row when the FM doesn't exist on the server:
 #   FM_NAME<TAB>NOT_FOUND<TAB><TAB><TAB><TAB>
 #
-# The skill caller (sap-gen-abap, sap-check-fm, sap-fix-fm) injects the
+# The skill caller (sap-gen-abap, sap-check-abap, sap-fix-abap) injects the
 # absolute path to this file via the %%RFC_LOOKUP_FM_PS1%% token, resolved
 # as: <SAP_DEV_CORE_SHARED_DIR>\scripts\sap_rfc_lookup_fm.ps1
 # =============================================================================

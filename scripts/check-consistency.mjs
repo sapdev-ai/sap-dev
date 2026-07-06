@@ -141,7 +141,7 @@ if (mp.metadata.total_skills !== totalSkills) {
 // runtime VBS via `Set-Content ... _run.vbs` should substitute %%ATTACH_LIB_VBS%%
 // — but ONLY when the referenced template actually contains the token (i.e.
 // it's a SAP-driving VBS that needs the helper). Non-SAP-driving VBS like
-// sap-gen-code's `sap_check_abap.vbs` / `sap_check_fm.vbs` are static-analysis
+// sap-dev-core's `sap_check_abap.vbs` / `sap_check_fm.vbs` are static-analysis
 // tools and don't need the helper.
 // ---------------------------------------------------------------------------
 

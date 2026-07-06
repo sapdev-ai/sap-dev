@@ -287,7 +287,7 @@ carry a reasoned entry in the checker's `SHARED_PLACEMENT_ALLOWLIST`.
 Single-consumer scripts relocated 2026-07-03 under this rule:
 `sap_se38_content_verify.ps1/.vbs` → sap-se38,
 `sap_check_conversion/signatures/spec_coverage.ps1` → sap-check-abap
-(sap-gen-code), `sap_session_owner.ps1` + `sap_probe_end_of_run.ps1` →
+(sap-dev-core), `sap_session_owner.ps1` + `sap_probe_end_of_run.ps1` →
 sap-gui-probe; the zero-consumer `sap_check_transport.ps1` (dead since
 v0.1.0 — superseded by `/sap-transport-request`'s built-in E070 validation)
 was deleted the same day.

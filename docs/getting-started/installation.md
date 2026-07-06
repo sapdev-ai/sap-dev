@@ -131,7 +131,7 @@ Claude: [Uses sap-se38]
 
 ---
 
-## Available Skills (70)
+## Available Skills (67)
 
 ### Core Utilities & ABAP Workbench (`sap-dev-core`)
 
@@ -148,12 +148,16 @@ Claude: [Uses sap-se38]
 | `sap-dev-init` | Initializes the SAP development environment: transport request, package, function group, and utility program |
 | `sap-dev-status` | Read-only status report on the `/sap-dev-init` artefacts (TR, package, function group, wrapper FM, utility program) |
 | `sap-diagnose` | Incident-triage orchestrator: fans out across the read-only readers (its built-in SM13 / SM12 / SLG1 / SM37 RFC readers + the `sap-st22` GUI dump reader), correlates the evidence into clusters, and ranks root-cause hypotheses — pure read-only. Run one reader standalone with `--reader <name>` |
+| `sap-doctor` | Read-only environment preflight: diagnoses why skills fail BEFORE they run — GUI scripting, 32-bit PowerShell / NCo / config, RFC connectivity, client modifiability, authorizations, and dev-env artefacts, with a FIX per failure. Opt-in `--screens` group replays golden-screen baselines to catch control-ID drift |
 | `sap-enhancement-advisor` | Finds the safest extension point for a behavior change and recommends the enhancement mechanism (BAdI / SMOD / user-exit) with transparent scoring — read-only |
+| `sap-error-kb` | Curates the team frequently_errors knowledge base — the per-object store of recurring FM / method / codegen traps that `/sap-gen-abap` reads to steer generation; review and promote auto-recorded CANDIDATE rows — pure-local |
 | `sap-evidence-pack` | Collects the artifacts other delivery-assurance skills registered into one audit-ready pack with an executive summary and an honest "Missing evidence" section — pure-local |
 | `sap-explain-object` | Read-only comprehension aid for an existing object: acquires source, builds a structure + call map, optionally pulls callers, and emits an explanation dossier |
+| `sap-fix-incident` | Closes the loop from a `/sap-diagnose` root cause to a deployed, test-verified custom-code fix — reproduces the defect as a RED ABAP Unit test, patches, re-checks with `/sap-check-abap`, deploys in DEV behind a transport; gated, never touches standard code or production |
 | `sap-function-group` | Full lifecycle for SAP function groups: check, create, activate, query, and delete |
 | `sap-gui-inspect` | Inspects the active SAP GUI session structurally (dumps component IDs + properties: `tree`/`menu`/`type`/`id`/`wnd` modes) and/or visually (`screenshot` — composes every visible window into an annotated PNG). Absorbed the former `sap-gui-object-details` and `sap-gui-diagnose`. |
-| `sap-gui-probe` | Drives a SAP transaction step by step against a natural-language scenario and emits a synthesized recording-style VBS || `sap-gui-skill-scaffold` | Authors a new mode-aware transaction skill from N natural-language scenarios — runs `/sap-gui-probe` per scenario, merges probe folders via cross-probe diff, emits a ready-to-test draft |
+| `sap-gui-probe` | Drives a SAP transaction step by step against a natural-language scenario and emits a synthesized recording-style VBS; `--record` (Mode R) captures a flow by hand instead of driving it (replaces the retired `sap-gui-record`) |
+| `sap-gui-skill-scaffold` | Authors a new mode-aware transaction skill from N natural-language scenarios — runs `/sap-gui-probe` per scenario, merges probe folders via cross-probe diff, emits a ready-to-test draft |
 | `sap-impact-analysis` | Pre-change impact analysis from SAP's cross-reference index (where-used + forward deps + entry points + transport history) with a transparent LOW/MEDIUM/HIGH risk band — read-only |
 | `sap-log-analyze` | Summarizes sap-dev JSONL log files: per-skill counts, success/fail rates, p50/p95 duration, top error classes |
 | `sap-login` | Opens a SAP GUI connection and logs in via SAP GUI Scripting; also verifies SAP NCo 3.1 RFC connectivity |
@@ -174,6 +178,7 @@ Claude: [Uses sap-se38]
 | `sap-snro` | Creates and maintains SAP Number Range Objects (NRO) via SNRO, including sub-object intervals |
 | `sap-sp02` | Downloads a SAP spool request to a local text file via SP02 |
 | `sap-st22` | `/sap-diagnose` reader: ABAP short-dump (ST22 / SNAP) evidence via GUI scripting — read-only |
+| `sap-stms` | Moves a released transport request through the landscape (DEV → QAS → PRD) and reads import status / return code via STMS. Modes: `status` / `logs` (read-only), `import` / `import-all` (write, gated — a PRODUCTION target needs a typed-SID confirmation) |
 | `sap-trace` | Analyzes an already-recorded SAP performance trace (ST05 / SAT or an imported file), ranks hotspots, flags anti-patterns, and proposes fixes — read-only |
 | `sap-transport-readiness` | Release gate for a transport request: RFC structural checks (unreleased tasks, inactive objects, local objects) rolled up to GO / GO_WITH_WARNINGS / NO-GO — read-only |
 | `sap-transport-request` | Single entry point that resolves a modifiable SAP transport request per the `way_to_get_transport_request` policy |
@@ -191,6 +196,9 @@ Claude: [Uses sap-se38]
 | `sap-docs-layout` | Edits the structural layout of a SAP design spec template (.xlsx) via its `(Meta) Layout` sheet |
 | `sap-fix-abap` *(moved to sap-dev-core)* | Fixes issues found by `/sap-check-abap` — renames, unused-comment-out, syntax-safe rewrites, CALL FUNCTION param fixes (absorbed `sap-fix-fm`), and a bounded AI syntax-fix loop |
 | `sap-gen-abap` | Generates ABAP source code (dialog/module pool, report, function module/RFC) from a process text file |
+| `sap-gen-abap-unit` | Generates ABAP Unit tests for an existing object (class / FM / report) and closes the loop on a live system — pre-check, deploy, activate, run with coverage, fix, repeat until green (bounded) |
+| `sap-gen-cds` | Generates an ABAP CDS view from a spec or natural-language description and deploys it WITHOUT ADT via the RFC installer FM `Z_CDS_DDL_INSTALL` — classic DDL on SAP_BASIS 7.50–7.54, view entities on 7.55+ |
+| `sap-review-abap` | AI semantic + security code review for an existing ABAP object or local `.abap` file — line-cited findings across security, correctness, performance, and maintainability, gated via the customer brief |
 
 ### S/4HANA Custom-Code Migration (`sap-migrate`)
 
@@ -204,6 +212,7 @@ Companion to `sap-dev-core` (install that first). Ships the `cc-migration-engine
 | `sap-cc-analyze` | Runs the S/4HANA-readiness ATC over the REMEDIATE objects (delegates to `/sap-atc`) and captures per-finding results |
 | `sap-cc-triage` | Classifies each ATC finding into a remediation pattern + tier (R1 mechanical … R4 redesign) via the Simplification Knowledge Pack. `--learn` runs the knowledge-pack flywheel: learns real ATC message ids from a triaged campaign and feeds them back so future triage matches more (absorbed the former `sap-cc-learn`) |
 | `sap-cc-remediate` | Remediates triaged R1 objects on the sandbox only, after a mandatory dry-run review — the one sap-migrate skill that writes to SAP |
+| `sap-cc-decommission` | EXECUTES the retirement of unused custom objects a campaign flagged — physically deletes behind a hard signed gate and a per-object safety chain (`plan` builds the worklist, `apply` deletes); `/sap-cc-usage` only flags |
 
 ### Business Process Automation (`sap-tcd`)
 
