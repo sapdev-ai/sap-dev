@@ -16,7 +16,8 @@
     "validation",
     "ddic",
     "naming-conventions",
-    "fm-check",
-    "auto-fix"
+    "cds",
+    "abap-unit",
+    "code-review"
   ]
 }

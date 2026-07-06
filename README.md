@@ -72,8 +72,10 @@ silent:
 - `/sap-stms` import ships with two uncalibrated checkbox IDs
   (immediate / leave-in-queue) — it refuses (`STMS_NOT_CALIBRATED`) until one
   `/sap-gui-probe --record` pass on your release wires them.
-- Golden-screen baseline coverage is 8/121 driving scripts — drift detection
-  protects only those until the live capture pass lands.
+- Golden-screen baseline coverage is 120/121 driving scripts (1 unbaselined),
+  but most are `pending_live` static seeds — drift detection is fully armed for a
+  script only after a `/sap-doctor --screens` pass verifies its control-ID
+  identity live on your release.
 - sap-tcd control IDs were recorded on S/4HANA 1909; `sap-bp` / `sap-va01`
   popups need a re-record for ECC6 (`sap-mm01` already probes both layouts).
 - sap-migrate's knowledge pack ships 13 patterns (3 ACTIVE + 10 DRAFT;
