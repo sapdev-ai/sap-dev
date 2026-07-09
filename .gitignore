@@ -48,6 +48,7 @@ sap_*_run.json
 sap_*_run.ps1
 !plugins/sap-dev-core/shared/scripts/sap_probe_end_of_run.ps1
 sap_*_run.vbs
+!plugins/sap-dev-core/skills/sap-run-report/references/sap_sa38_run.vbs
 se16n_params.txt
 se16n_*.txt
 
