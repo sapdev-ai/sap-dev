@@ -24,7 +24,7 @@
 8. [Quality gates — ATC and ABAP Unit](#8-quality-gates)
 9. [Transport readiness, release, and STMS](#9-transport-readiness-release-and-stms)
 10. [A complete worked example — and the `abap-developer` agent](#10-a-complete-worked-example)
-11. [Day-2 skills: diagnose, fix, explain, migrate](#11-day-2-skills)
+11. [Day-2 skills: run, diagnose, fix, explain, migrate](#11-day-2-skills)
 12. [How the toolkit keeps you safe](#12-safety-model)
 13. [Troubleshooting & FAQ](#13-troubleshooting--faq)
 14. [Appendix A — Full skill catalogue](#appendix-a--full-skill-catalogue)
@@ -46,9 +46,9 @@ two standard interfaces SAP already ships:
 
 | Plugin | Skills | What it gives you |
 |---|---|---|
-| **sap-dev-core** | 50 + `abap-developer` agent | Login & connection store, transport handling, the ABAP Workbench (SE38/SE37/SE24/SE11/SE91/SE16N/SE01/…), the ATC quality gate, ABAP-Unit runner, activation, diagnosis (ST22/SM13/SM12/SLG1/SM37), delivery assurance, and **STMS** import to QAS/PRD. |
+| **sap-dev-core** | 52 + `abap-developer` agent | Login & connection store, transport handling, the ABAP Workbench (SE38/SE37/SE24/SE11/SE91/SE16N/SE01/…), the ATC quality gate, ABAP-Unit runner, activation, diagnosis (ST22/SM13/SM12/SLG1/SM37), report & background-job execution, PC ↔ app-server file transfer, delivery assurance, and **STMS** import to QAS/PRD. |
 | **sap-gen-code** | 8 | The **spec → ABAP** pipeline: read a design doc (Excel/Word/PDF), validate it, generate ABAP tailored to your project, and validate the result against the live system. |
-| **sap-migrate** | 8 + `cc-migration-engineer` agent | S/4HANA custom-code migration as a tracked campaign. |
+| **sap-migrate** | 7 + `cc-migration-engineer` agent | S/4HANA custom-code migration as a tracked campaign. |
 | **sap-tcd** | 3 | Business transaction automation: BP, MM01/02/03, VA01/02/03. |
 
 ### What it is **not**
@@ -349,7 +349,9 @@ checks what exists and only creates what's missing. It performs, in order:
    `ZCMST_RFC_PARAM`, table type `ZCMCT_RFC_PARAM`.
 8. **Generic RFC wrapper FM** `Z_GENERIC_RFC_WRAPPER_TBL` (marked remote-enabled) —
    lets the toolkit call non-RFC function modules safely over RFC.
-9. **Utility program** `ZCMRUPDATE_ADDON_TABLE` — used by `/sap-update-addon`.
+9. **Report-runner FM** `Z_RUN_REPORT` (remote-enabled; best-effort) — the headless
+   background-run fast-path used by `/sap-run-report` and `/sap-job schedule`.
+10. **Utility program** `ZCMRUPDATE_ADDON_TABLE` — used by `/sap-update-addon`.
 
 When asked about **TR policy** (`way_to_get_transport_request`), pick one:
 
@@ -935,6 +937,28 @@ spends most time on:
 fix deployed in DEV behind a transport — gated, never touching standard code or
 production.
 
+**Run reports, background jobs & app-server files**
+
+```text
+/sap-run-report ZHKMM001R01 --variant=MONTH_END      # foreground (SA38 F8); always confirms first
+/sap-run-report ZHKMM001R01 --background --values="P_BUKRS=1000;S_MATNR=BT:A,M"
+/sap-run-report variant list ZHKMM001R01             # variants: list | show | set | delete
+/sap-job schedule ZHKMM001R01 --variant=MONTH_END --period=daily --start=20260801020000
+/sap-job list --user=DEVELOPER --status=R            # also: status / log / spool / cancel / delete
+/sap-file-transfer upload in.csv /tmp/in.csv --text  # PC → app server (CG3Z); download = CG3Y
+/sap-file-transfer list /usr/sap/trans               # app-server directory listing over RFC
+```
+
+Running a report is a **different risk class from deploying it** — it may change data —
+so `/sap-run-report` and `/sap-job schedule` always stop for explicit confirmation
+before executing (`cancel` / `delete` confirm too; the monitoring verbs run unprompted).
+Background runs prefer the headless RFC fast-path through `Z_RUN_REPORT` (deployed by
+`/sap-dev-init`) and capture the job's spool via `/sap-sp02`, degrading to GUI
+scheduling when RFC is unavailable. `/sap-file-transfer` (text or binary, overwrite
+only with an explicit `--overwrite`) touches no repository object — no transport
+request involved — and closes the file-interface test loop: upload the test input →
+run the report → download the output → diff against the spec's expected file.
+
 **S/4HANA custom-code migration** (the `sap-migrate` plugin)
 
 ```text
@@ -956,9 +980,10 @@ The toolkit is built to be trusted on a customer landscape. The guarantees:
   APIs; if none exists, the skill stops and asks.
 - **No unsolicited deployment.** Skills don't create or deploy objects unless you asked
   (or the skill *is* a deploy skill you invoked).
-- **Every irreversible action confirms.** TR release, object delete, and **production
-  STMS import** all stop for explicit confirmation; production additionally requires
-  you to type the SID back.
+- **Every irreversible action confirms.** TR release, object delete, report execution /
+  job scheduling (a report is **not** assumed read-only), and **production STMS
+  import** all stop for explicit confirmation; production additionally requires you to
+  type the SID back.
 - **No false success.** Deploys verify activation over RFC; ATC reads the real priority
   columns; STMS reads the real return code. "Couldn't check" is reported as such, never
   as "passed".
@@ -1037,6 +1062,9 @@ p50/p95 duration, top error classes).
 | `sap-transport-readiness` / `sap-impact-analysis` / `sap-enhancement-advisor` / `sap-evidence-pack` | Delivery assurance |
 | `sap-stms` | Import a released TR through the landscape (gated PROD) |
 | `sap-diagnose` + `sap-st22` | Incident triage (SM13/SM12/SLG1/SM37 RFC readers built in — `--reader <name>` runs one standalone) + ST22 dump reader |
+| `sap-run-report` | Execute a report foreground/background (variants, ad-hoc values; always confirms first) |
+| `sap-job` | Background-job lifecycle — schedule / list / status / log / spool / cancel / delete |
+| `sap-file-transfer` | PC ↔ app-server file transfer (CG3Z / CG3Y) + RFC directory listing |
 | `sap-sp02` | Display / export spool output requests |
 | `sap-fix-incident` / `sap-check-fix` | Test-first fix loop / check-and-fix router |
 | `sap-trace` | Analyse a recorded performance trace |

@@ -11,18 +11,18 @@ via SAP NCo); there is no macOS/Linux path.
 
 Project home: <https://sapdev.ai>
 
-## Available Plugins (4 plugins · 67 skills · 2 agents · v0.7.1)
+## Available Plugins (4 plugins · 70 skills · 2 agents · v0.7.2)
 
 | Plugin | Skills | Description |
 |--------|--------|-------------|
-| **sap-dev-core** | 49 + agent | Foundation. **Multi-profile login** (DPAPI-encrypted credentials per SAP system, AI-session pin so each Claude conversation drives one SAP), TR resolution, package / function-group management, ABAP Workbench (SE38 / SE37 / SE24 / SE11 / SE91 / SE16N / SE21 / SE01 / SE19 / SE41 / SE51 / SE54 / SNRO / SP02 / CMOD), 4-stage ATC quality gate, ABAP Unit runner, standalone activator, package mover, where-used list, RFC wrapper generators, BDC executor, GUI recording / inspection / visual diagnostics, **skill-authoring tooling** (`gui-probe` + `gui-skill-scaffold` — probe an unknown transaction with natural-language scenarios → scaffold a working skill draft), **incident diagnosis + repair** (`sap-diagnose` orchestrator over ST22 / SM13 / SM12 / SLG1 / SM37 readers + performance-trace analysis, with `sap-fix-incident` closing the loop from a root cause to a test-verified custom-code fix deployed in DEV behind a transport — gated, never touching standard code or production), **delivery assurance** (transport-readiness release gate, impact analysis, enhancement advisor, evidence pack), **transport landscape movement** (`sap-stms` — read import queues / logs, and import a released TR through DEV→QAS→PRD with tiered confirmation and a typed-SID production gate), cross-system object compare / explain, structured logging, log analysis, dev-env lifecycle (init / status / clean), **environment doctor** (`sap-doctor` — read-only preflight across GUI scripting, NCo/config, RFC connectivity, client modifiability, and dev-env artefacts, with an actionable FIX per failure; the opt-in `--screens` group replays per-VBS golden-screen baselines against the live system to catch release/locale control-ID drift before a silent false-success), **session broker** for parallel execution against multiple SAP sessions. Ships the **`abap-developer` agent** (BUILD / FIX / DEPLOY) that reads your Customer Brief and orchestrates the skills. |
+| **sap-dev-core** | 52 + agent | Foundation. **Multi-profile login** (DPAPI-encrypted credentials per SAP system, AI-session pin so each Claude conversation drives one SAP), TR resolution, package / function-group management, ABAP Workbench (SE38 / SE37 / SE24 / SE11 / SE91 / SE16N / SE21 / SE01 / SE19 / SE41 / SE51 / SE54 / SNRO / SP02 / CMOD), 4-stage ATC quality gate, ABAP Unit runner, **report execution + variant maintenance** (`sap-run-report` — SA38 foreground/background, confirm-gated), **background-job lifecycle** (`sap-job` — SM36/SM37 + RFC fast-path), **PC ↔ app-server file transfer** (`sap-file-transfer` — CG3Z/CG3Y + RFC `list`/`exists`), standalone activator, package mover, where-used list, RFC wrapper generators, BDC executor, GUI recording / inspection / visual diagnostics, **skill-authoring tooling** (`gui-probe` + `gui-skill-scaffold` — probe an unknown transaction with natural-language scenarios → scaffold a working skill draft), **incident diagnosis + repair** (`sap-diagnose` orchestrator over ST22 / SM13 / SM12 / SLG1 / SM37 readers + performance-trace analysis, with `sap-fix-incident` closing the loop from a root cause to a test-verified custom-code fix deployed in DEV behind a transport — gated, never touching standard code or production), **delivery assurance** (transport-readiness release gate, impact analysis, enhancement advisor, evidence pack), **transport landscape movement** (`sap-stms` — read import queues / logs, and import a released TR through DEV→QAS→PRD with tiered confirmation and a typed-SID production gate), cross-system object compare / explain, structured logging, log analysis, dev-env lifecycle (init / status / clean), **environment doctor** (`sap-doctor` — read-only preflight across GUI scripting, NCo/config, RFC connectivity, client modifiability, and dev-env artefacts, with an actionable FIX per failure; the opt-in `--screens` group replays per-VBS golden-screen baselines against the live system to catch release/locale control-ID drift before a silent false-success), **session broker** for parallel execution against multiple SAP sessions. Ships the **`abap-developer` agent** (BUILD / FIX / DEPLOY) that reads your Customer Brief and orchestrates the skills. |
 | **sap-gen-code** | 8 | Spec → ABAP pipeline. Customise spec-template layout per customer, extract from Excel / Word / PDF, normalise via customer rules, validate DDIC and process, generate ABAP per Customer Brief profile (with FM-signature pre-fetch + per-system cache), validate naming / types / SQL / FM args via live RFC, auto-fix detected issues. |
 | **sap-migrate** | 7 + agent | S/4HANA custom-code migration engine. Run a brownfield conversion as a tracked campaign (`sap-cc-campaign`): inventory custom (Z/Y) objects, overlay runtime usage to flag unused code for decommission, run the S/4HANA-readiness ATC, triage findings into remediation tiers, and auto-remediate mechanical (R1) changes on a sandbox. Ships the **`cc-migration-engineer` agent**. Companion to sap-dev-core (install that first). |
 | **sap-tcd** | 3 | Business process automation: Business Partner (BP), Material Master (MM01 / MM02 / MM03), Sales Order (VA01 / VA02 / VA03). |
 
 ## Skill Index
 
-All 67 skills, grouped by task (all names are `/`-invocable in Claude Code;
+All 70 skills, grouped by task (all names are `/`-invocable in Claude Code;
 skills outside sap-dev-core are tagged with their plugin):
 
 - **Session & environment** — `sap-login`, `sap-doctor` (incl. `--screens`
@@ -41,6 +41,10 @@ skills outside sap-dev-core are tagged with their plugin):
 - **Data & object insight** — `sap-se16n`, `sap-update-addon`,
   `sap-where-used-list`, `sap-compare`, `sap-explain-object` (`--spec` emits a
   formal spec document), `sap-sp02` (spool)
+- **Report execution & jobs** — `sap-run-report` (foreground/background run +
+  variant maintenance, confirm-gated), `sap-job` (background-job schedule /
+  monitor / cancel), `sap-file-transfer` (PC ↔ app-server files +
+  `list`/`exists`)
 - **Incident diagnosis & ops** — `sap-diagnose` (the SM13 / SM12 / SLG1 / SM37
   RFC readers are built in — run one standalone with `--reader <name>`),
   `sap-st22`, `sap-trace`, `sap-log-analyze`, `sap-fix-incident`
@@ -60,7 +64,7 @@ skills outside sap-dev-core are tagged with their plugin):
   `sap-cc-remediate`, `sap-cc-decommission`
 - **Test data (sap-tcd)** — `sap-bp`, `sap-mm01`, `sap-va01`
 
-## Current Limitations (v0.7.1)
+## Current Limitations (v0.7.2)
 
 Honest list of shipped-but-bounded functionality — these fail **loud**, not
 silent:
@@ -69,6 +73,10 @@ silent:
 - `/sap-run-abap-unit` is GUI-backed (Phase 1); the headless RFC backend is
   Phase 2. On a release whose result screen isn't recorded yet it emits
   `NEEDS_RECORDING` with instructions instead of guessing.
+- `/sap-run-report` foreground list capture (`%PC`) is best-effort — ALV output
+  needs the background→spool path (`/sap-sp02`). `/sap-job cancel` (abort a
+  *running* job) is captured but not yet live-verified, and GUI job ops target
+  by job NAME — exact-JOBCOUNT disambiguation is the RFC path's job.
 - `/sap-stms` import ships with two uncalibrated checkbox IDs
   (immediate / leave-in-queue) — it refuses (`STMS_NOT_CALIBRATED`) until one
   `/sap-gui-probe --record` pass on your release wires them.

@@ -25,7 +25,7 @@
 8. [质量门禁 —— ATC 和 ABAP Unit](#8-质量门禁)
 9. [传输就绪检查、释放与 STMS](#9-传输就绪检查释放与-stms)
 10. [一个完整的实战示例 —— 以及 `abap-developer` 代理](#10-一个完整的实战示例)
-11. [Day-2 技能：诊断、修复、解释、迁移](#11-day-2-技能)
+11. [Day-2 技能：运行、诊断、修复、解释、迁移](#11-day-2-技能)
 12. [工具集如何保障你的安全](#12-安全模型)
 13. [疑难排查与常见问题](#13-疑难排查与常见问题)
 14. [附录 A —— 完整技能目录](#附录-a--完整技能目录)
@@ -47,9 +47,9 @@
 
 | 插件 | 技能 | 它为你提供什么 |
 |---|---|---|
-| **sap-dev-core** | 50 个 + `abap-developer` 代理 | 登录与连接库、传输处理、ABAP 工作台（SE38/SE37/SE24/SE11/SE91/SE16N/SE01/…）、ATC 质量门禁、ABAP-Unit 运行器、激活、诊断（ST22/SM13/SM12/SLG1/SM37）、交付保障，以及向 QAS/PRD 的 **STMS** 导入。 |
+| **sap-dev-core** | 52 个 + `abap-developer` 代理 | 登录与连接库、传输处理、ABAP 工作台（SE38/SE37/SE24/SE11/SE91/SE16N/SE01/…）、ATC 质量门禁、ABAP-Unit 运行器、激活、诊断（ST22/SM13/SM12/SLG1/SM37）、报表与后台作业执行、PC ↔ 应用服务器文件传输、交付保障，以及向 QAS/PRD 的 **STMS** 导入。 |
 | **sap-gen-code** | 8 个 | **规格 → ABAP** 流水线：读取设计文档（Excel/Word/PDF）、校验它、生成贴合你项目的 ABAP，并将结果与实时系统对照校验。 |
-| **sap-migrate** | 8 个 + `cc-migration-engineer` 代理 | 以受跟踪的"战役"（campaign）形式进行的 S/4HANA 自定义代码迁移。 |
+| **sap-migrate** | 7 个 + `cc-migration-engineer` 代理 | 以受跟踪的"战役"（campaign）形式进行的 S/4HANA 自定义代码迁移。 |
 | **sap-tcd** | 3 个 | 业务事务自动化：BP、MM01/02/03、VA01/02/03。 |
 
 ### 它**不是**什么
@@ -340,7 +340,9 @@ setx SAPDEV_AI_WORK_DIR "D:\sapdev"
    `ZCMST_RFC_PARAM`、表类型 `ZCMCT_RFC_PARAM`。
 8. **通用 RFC 包装 FM** `Z_GENERIC_RFC_WRAPPER_TBL`（标记为 remote-enabled）——
    让工具集能够安全地通过 RFC 调用非 RFC 函数模块。
-9. **工具程序** `ZCMRUPDATE_ADDON_TABLE` —— 供 `/sap-update-addon` 使用。
+9. **报表运行器 FM** `Z_RUN_REPORT`（remote-enabled；尽力而为）—— 供 `/sap-run-report`
+   和 `/sap-job schedule` 使用的无头后台运行快速路径。
+10. **工具程序** `ZCMRUPDATE_ADDON_TABLE` —— 供 `/sap-update-addon` 使用。
 
 当被问到 **TR 策略**（`way_to_get_transport_request`）时，选一个：
 
@@ -893,6 +895,26 @@ READINESS: tr=DEVK900123 verdict=GO_WITH_WARNINGS block=0 warn=2 info=1 objects=
 `/sap-fix-incident` 把闭环从一个根因，一直闭合到一个**经测试验证的**、部署在 DEV、藏在
 一个传输请求之后的自定义代码修复 —— 受门禁约束，绝不碰标准代码或生产。
 
+**运行报表、管理后台作业、传输应用服务器文件**
+
+```text
+/sap-run-report ZHKMM001R01 --variant=MONTH_END      # foreground (SA38 F8); always confirms first
+/sap-run-report ZHKMM001R01 --background --values="P_BUKRS=1000;S_MATNR=BT:A,M"
+/sap-run-report variant list ZHKMM001R01             # variants: list | show | set | delete
+/sap-job schedule ZHKMM001R01 --variant=MONTH_END --period=daily --start=20260801020000
+/sap-job list --user=DEVELOPER --status=R            # also: status / log / spool / cancel / delete
+/sap-file-transfer upload in.csv /tmp/in.csv --text  # PC → app server (CG3Z); download = CG3Y
+/sap-file-transfer list /usr/sap/trans               # app-server directory listing over RFC
+```
+
+运行一个报表与部署它属于**不同的风险等级** —— 报表可能会修改数据，所以 `/sap-run-report`
+和 `/sap-job schedule` 在执行前总是停下来等待显式确认（`cancel` / `delete` 同样如此；
+监控类动词无需确认直接运行）。后台运行优先走经 `Z_RUN_REPORT`（由 `/sap-dev-init` 部署）
+的无头 RFC 快速路径，并通过 `/sap-sp02` 抓取作业的假脱机输出；RFC 不可用时回退到 GUI
+调度。`/sap-file-transfer`（文本或二进制，只有显式 `--overwrite` 才会覆盖）不触碰任何
+仓库对象 —— 不涉及传输请求 —— 并闭合文件接口测试闭环：上传输入 → 运行报表 → 下载输出 →
+与规格比对。
+
 **S/4HANA 自定义代码迁移**（`sap-migrate` 插件）
 
 ```text
@@ -914,8 +936,9 @@ READINESS: tr=DEVK900123 verdict=GO_WITH_WARNINGS block=0 warn=2 info=1 objects=
   技能就停下来询问。
 - **不擅自部署。** 除非是你要求的（或者该技能*本身*就是你调用的部署技能），否则技能不会
   创建或部署对象。
-- **每个不可逆操作都会确认。** TR 释放、对象删除，以及**生产 STMS 导入**都会停下来等
-  显式确认；生产还额外要求你把 SID 回敲一遍。
+- **每个不可逆操作都会确认。** TR 释放、对象删除、报表执行 / 作业调度（报表**不会**被
+  假定为只读），以及**生产 STMS 导入**都会停下来等显式确认；生产还额外要求你把 SID
+  回敲一遍。
 - **没有假成功。** 部署通过 RFC 验证激活；ATC 读取真实的优先级列；STMS 读取真实的返回
   码。"无法检查"会被如实报告，绝不会被报成"通过"。
 - **你的凭据，你的机器。** 密码经 DPAPI 加密，只有这台工作站上你的 Windows 账号能解密，
@@ -991,6 +1014,9 @@ top 错误类别）。
 | `sap-transport-readiness` / `sap-impact-analysis` / `sap-enhancement-advisor` / `sap-evidence-pack` | 交付保障 |
 | `sap-stms` | 把一个已释放的 TR 沿系统格局导入（生产受门禁） |
 | `sap-diagnose` + `sap-st22` | 事故分诊（内置 SM13/SM12/SLG1/SM37 RFC 读取器，`--reader <name>` 单独运行）+ ST22 转储读取器 |
+| `sap-run-report` | 前台/后台执行报表（变式、临时选择值；执行前总是先确认） |
+| `sap-job` | 后台作业生命周期 —— schedule / list / status / log / spool / cancel / delete |
+| `sap-file-transfer` | PC ↔ 应用服务器文件传输（CG3Z / CG3Y）+ RFC 目录列表 |
 | `sap-sp02` | 显示 / 导出假脱机输出请求 |
 | `sap-fix-incident` / `sap-check-fix` | 测试优先的修复闭环 / 检查并修复的路由器 |
 | `sap-trace` | 分析一段已记录的性能追踪 |

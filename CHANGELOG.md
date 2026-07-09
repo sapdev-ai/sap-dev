@@ -2,7 +2,65 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## [0.7.2] — 2026-07-09
+
+### Added
+
+- **Report execution, background jobs, and app-server file transfer — 3 new
+  sap-dev-core skills (67 → 70).**
+  - `/sap-run-report` — execute an ABAP report foreground (SA38 F8,
+    best-effort list capture) or background, with `--variant` / ad-hoc
+    `--values` (params, select-options, `BT:` ranges, `IN:` multi-values,
+    checkboxes, radios, dropdowns), plus full variant maintenance
+    (`variant list|show|set|delete`). Background prefers the RFC fast-path —
+    the new `Z_RUN_REPORT` FM (`JOB_OPEN` → `SUBMIT … VIA JOB` → `JOB_CLOSE`),
+    `TBTCO` poll to completion, `TBTCP` spool id, capture via `/sap-sp02` —
+    and degrades to GUI Execute-in-Background when RFC / the FM is
+    unavailable. Confirm-to-run gate per the new Rule 5. Verified live on
+    S/4HANA 1909 (S4D/S4G) + ECC 7.31 (EC2, JA logon).
+  - `/sap-job` — background-job lifecycle: `schedule` (immediate via
+    `Z_RUN_REPORT` RFC; date-time / periodic via the SM36 wizard), `list` /
+    `status` / `spool` (RFC on `TBTCO`/`TBTCP`), `log` / `cancel` (SM37 GUI),
+    `delete` (`BP_JOB_DELETE`, SM37 fallback). Schedule / cancel / delete
+    confirm per Rule 5; the read verbs run unprompted. SM36/SM37 control IDs
+    captured live on S/4HANA + ECC.
+  - `/sap-file-transfer` — CG3Z upload / CG3Y download between PC and app
+    server (text/binary, explicit `--overwrite`, popup-guarded,
+    locale-independent) plus headless RFC `list` / `exists` via
+    `EPS2_GET_DIRECTORY_LISTING`; wires the SAP GUI Security
+    precheck/sidecar around the local-file IO. No transport request involved.
+  - **`skill_operating_rules.md` Rule 5** — executing or scheduling a report
+    requires explicit confirmation (a report is NOT assumed read-only);
+    destructive job ops likewise. Sole exception: `/sap-se38`'s bounded
+    post-deploy F8 smoke test.
+  - `/sap-dev-init` Step 8c deploys `Z_RUN_REPORT` (Remote-Enabled, optional /
+    best-effort) into the dev function group.
+
+### Changed
+
+- **`abap-developer` agent synced to the current skill catalogue** (full
+  contract audit of every skill it cites):
+  - Runtime lane wired in: offer-only Step 2k runtime verification
+    (foreground/background run via `/sap-run-report`, `/sap-job` monitoring,
+    and the file-interface loop upload → run → download → diff via
+    `/sap-file-transfer`), a Rule-5 boundary row, Runtime catalogue rows, and
+    a `RuntimeVerify:` line in the final report.
+  - New pipeline steps: 2f.5 AI semantic review (`/sap-review-abap`,
+    advisory), Module-Pool completion in 2h (`/sap-se51` screens +
+    `/sap-se41` PF-STATUS — a type-`M` build is otherwise not runnable),
+    fix-mode runtime-defect lane 3a.5 (`/sap-diagnose` → `/sap-fix-incident`),
+    and `/sap-doctor` on Step-0 preflight failures.
+  - Stale contracts corrected: Step 2i rewritten for the rebuilt `/sap-atc`
+    (`GATE_VERDICT` / `PRIORITY_COUNTS` / `ATC_PLAN_ERRORS` parsing; the
+    retired `PLACEHOLDER` pre-flight removed; `FM` → gate the `FUGR`);
+    Step 3b now describes `/sap-check-fix` as a one-shot router including its
+    `/sap-cmod` enhancement-component diversion; the unsupported
+    `--transport` flag removed from deploy invocations (each deploy skill
+    resolves its TR internally); `/sap-se11` / `/sap-se91` calls now pass the
+    definition / messages files (existing objects UPDATE, never skip); FG
+    re-activation after FM deploys; docs-extract's newer outputs documented
+    (incl. `_file_mapping_in/out.txt` as the file-loop trigger); `=`-form
+    flags; tri-state `MODE_UNIT_TESTS` vocabulary.
 
 ### Fixed
 
@@ -28,6 +86,16 @@ All notable changes to this project will be documented in this file.
   misread as picks. Tokens are codepoint-built so the .ps1 source stays pure
   ASCII (PS 5.1 no-BOM safety). Verified under pwsh 7 + Windows PowerShell
   5.1 (19 parser cases + 8 resolution cases).
+- **CLAUDE.md's "Standalone ATC Quality Gate" section described the retired
+  implementation** (a one-time Scripting Recorder session for `PLACEHOLDER`
+  constants in `sap_atc_run.vbs` — now a deprecation stub). Rewritten to the
+  current Object Set → Run Series → Run Monitor → Manage Results contract
+  with the fail-loud guards (`ATC_PLAN_ERRORS`, `ATC_EMPTY_SCOPE`) and the
+  `FUGR`-instead-of-`FM` type rule.
+- **`/sap-file-transfer`'s description cited `/sap-compare` for the
+  file-interface test loop's diff step** — that skill compares one repository
+  object across two SAP systems, not two files. The loop now ends with a
+  local diff against the expected output.
 
 ## [0.7.1] — 2026-07-05
 
