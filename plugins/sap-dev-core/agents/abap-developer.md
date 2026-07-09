@@ -568,7 +568,7 @@ the customer brief asks for `--gate block`.
 ALWAYS prompt before invoking the first deploy skill:
 
 > "Generated `Z<PROGRAM_ID>.abap` (<N> lines, <M> sections).
-> Tests: `Z<PROGRAM_ID>_TEST.abap` (<K> test methods) | NOT GENERATED (MODE_UNIT_TESTS=FALSE)
+> Tests: `Z<PROGRAM_ID>_TEST.abap` (<K> test methods) | NOT GENERATED (MODE_UNIT_TESTS=OFF)
 > Quality checks pass. Plan: deploy to package `<P>` under TR `<T>`, activate,
 > and run ATC priority ≤ `<ATC_MAX>`. Proceed? (yes / show source first / cancel)"
 
@@ -874,7 +874,7 @@ On `yes`: continue.
 ```
 /sap-transport-request OBJECT_TYPE=<X> OBJECT_DESCRIPTION=Z<NAME>
 /sap-se38 (or se37/se24) Z<NAME> <file>
-/sap-atc <X> Z<NAME> --max-priority=<ATC_MAX>     # FM target: gate its FUGR instead
+/sap-atc <X> Z<NAME> --max-priority=<ATC_MAX>     # type map: REPORT→PROGRAM; FM target: gate its FUGR instead
 ```
 
 Same ATC gate as build mode. STOP if findings exceed `ATC_MAX`.
@@ -892,7 +892,7 @@ SUMMARY
   Object(s): Z<NAME> [+ tests, exception class, DDIC objects]
   TR: <TRKORR>
   ATC: PASS | <N> findings (priority breakdown)
-  Tests: Z<NAME>_TEST.abap (<K> methods) | NOT GENERATED (MODE_UNIT_TESTS=FALSE) | MISSING (contract violation — see Boundaries)
+  Tests: Z<NAME>_TEST.abap (<K> methods) | NOT GENERATED (MODE_UNIT_TESTS=OFF) | MISSING (contract violation — see Boundaries)
                 # MANDATORY when MODE_UNIT_TESTS=TRUE AND _golden.txt has rows; never silent-skip.
   TextElements: APPLIED <N>/<M> sym=<A>/<B> | FAILED:<reason> | N/A (non-report) | SKIPPED:<reason>
                 # MANDATORY for type=1 reports; cite Step 2h.1 remediation if FAILED.
@@ -937,6 +937,8 @@ do not improvise.
      retry once. If second failure → STOP.
 3. **Blocking errors → STOP.**
    - ATC priority ≤ `ATC_MAX` finding.
+   - ATC infra/plan error (`ATC_PLAN_ERRORS`, `ATC_EMPTY_SCOPE`, `ATC_POLL_TIMEOUT`,
+     …) — the gate did not run; never report the object as gate-passed (Step 2i table).
    - Customer brief missing AND user hasn't said "use defaults".
    - User declines a deploy / show-source confirmation.
    - Skill returns `ABANDONED` (user cancelled mid-flow).
@@ -965,7 +967,7 @@ enforcement details.
 | Prompt the user directly for a TR number, or call `/sap-se01` directly | `tr_resolution.md` | Always go through `/sap-transport-request`. |
 | Branch on localised text (window titles, button labels, status-bar text) | `language_independence_rules.md` Rules 1-4 | Use IDs, `MessageType` codes, and VKey codes. Localised text is for `WScript.Echo` only. |
 | Bypass the session lock around source paste / save / activate | `language_independence_rules.md` Rule 7 | Already enforced inside the deploy skills' VBS — don't reach around them. |
-| Bypass an ATC priority-1 or -2 finding | This agent's contract | Surface findings; let the user decide. |
+| Bypass an ATC finding at priority ≤ `ATC_MAX` (default 2) | This agent's contract | Surface findings; let the user decide. |
 | Deploy without explicit user "yes" on the first run | This agent's contract | Always prompt at Step 2g / 4c. |
 | Execute a deployed report, or schedule/cancel/delete a background job, as an unconfirmed side effect (e.g. an automatic post-deploy "runtime check") | `skill_operating_rules.md` Rule 5 | Offer, don't run (Step 2k). On user request, invoke `/sap-run-report` / `/sap-job` and let their Step 2.5 confirm gate show engine/variant/target and take the final yes — never pre-empt or suppress that gate. The sole sanctioned automatic run is the bounded F8 smoke test inside `/sap-se38`'s own deploy verification. |
 | Run more than 3 fix iterations per error class | This agent's contract | Surface remaining errors. |
