@@ -135,9 +135,37 @@ every one. The `sap-dev-{YYYYMMDD}.log` showed no entries for the
 ran), but the run-level telemetry was lost. This rule exists so the next
 audit can reconstruct what happened.
 
+## Rule 5 — Report execution requires explicit confirmation
+
+A skill that **executes** an ABAP report/program, or **schedules** it as a
+background job (`/sap-run-report`, `/sap-job schedule`), MUST obtain explicit
+user confirmation immediately before the run. Execution is a distinct risk
+class from deployment: the skill cannot know whether a given report only reads
+or also mutates data (`UPDATE` / COMMITting `BAPI_*` / job submission / IDoc /
+mail / spool). **A report is NOT assumed read-only.**
+
+Required workflow:
+1. STOP before the run (foreground F8, background F9 / JOB submit, or RFC submit).
+2. Show: program name, resolved engine (foreground / background), the variant or
+   ad-hoc selection values, and the target SID / client.
+3. Ask for explicit permission:
+   > "I will EXECUTE report `Z_FOO` (background, variant `TEST01`) on `ERP/800`.
+   >  This may change data. Proceed? (yes / no / foreground / show selection)"
+4. Proceed only on explicit `yes`. Record the confirmation via
+   `sap_log_helper.ps1 -Action step`. On `no` / no answer, stop (`SKIPPED`).
+
+**Never auto-run.** A report is never executed as an unconfirmed side effect of
+another skill (e.g. a post-deploy step). The bounded post-deploy F8 *smoke test*
+inside `/sap-se38` is the sole exception — it launches only to confirm the
+program starts without a short dump, captures nothing, and is part of that
+skill's documented deploy verification.
+
+**Destructive job operations** (`/sap-job cancel`, `/sap-job delete`) likewise
+require explicit confirmation and are irreversible for a running job.
+
 ## Enforcement
 
 - Every skill SKILL.md should reference this file in its `## Shared Resources`
   section: `<SAP_DEV_CORE_SHARED_DIR>/rules/skill_operating_rules.md`.
-- A skill that violates either rule should be treated as a bug and corrected
-  on next maintenance pass.
+- A skill that violates any of these rules should be treated as a bug and
+  corrected on next maintenance pass.

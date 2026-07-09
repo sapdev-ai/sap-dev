@@ -10,9 +10,9 @@
   },
   "metadata": {
     "version": "0.7.1",
-    "last_updated": "2026-07-05",
+    "last_updated": "2026-07-09",
     "total_plugins": 4,
-    "total_skills": 67,
+    "total_skills": 68,
     "categories": [
       "tooling"
     ]
@@ -51,6 +51,7 @@
         "./skills/sap-login",
         "./skills/sap-rfc-wrapper",
         "./skills/sap-run-abap-unit",
+        "./skills/sap-run-report",
         "./skills/sap-se01",
         "./skills/sap-se11",
         "./skills/sap-se16n",
@@ -104,6 +105,7 @@
         "login",
         "rfc",
         "rfc-wrapper",
+        "run-report",
         "sap",
         "scripting",
         "se01",

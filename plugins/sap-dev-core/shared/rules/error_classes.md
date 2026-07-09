@@ -57,6 +57,19 @@ Contract:
 | `AUNIT_GEN_NO_SEAM` | Test generation: no testable seam found (object needs refactoring for testability). |
 | `AUNIT_GEN_NOT_GREEN` | Generated tests do not pass yet at hand-off. |
 
+## Report execution (`/sap-run-report`, `/sap-job`)
+
+| Class | Meaning |
+|---|---|
+| `RUN_DUMP` | The executed report short-dumped (background job ended ABORTED, or a foreground run raised a runtime error) — drill via the linked ST22 id. |
+| `RUN_SUBMIT_FAILED` | Job submit/schedule failed (`Z_RUN_REPORT` JOB_OPEN/SUBMIT/CLOSE non-zero, or SA38 Execute-in-Background created no job). |
+| `RUN_GUI_PARSE_FAILED` | The SA38 run / selection / save screen could not be driven on this release (NEEDS_RECORDING) — never reported as a successful run. |
+| `RUN_VARIANT_NEEDS_RFC` | A variant create/edit was requested but RFC is unavailable; GUI variant persistence needs the report's dynamic selection screen — degraded, not run. |
+| `RUN_TIMEOUT` | Background poll exceeded `--timeout` before the job reached a final state. |
+| `JOB_SCHEDULE_FAILED` | `/sap-job schedule` could not create the scheduled job. |
+| `JOB_NOT_FOUND` | `/sap-job status\|log\|spool\|cancel\|delete` — the named (jobname, jobcount) is not in `TBTCO`. |
+| `JOB_CANCEL_FAILED` | `BP_JOB_ABORT` / `BP_JOB_DELETE` (or the SM37 GUI fallback) failed. |
+
 ## Custom-code migration (`sap-migrate`, `CC_*`)
 
 | Class | Meaning |

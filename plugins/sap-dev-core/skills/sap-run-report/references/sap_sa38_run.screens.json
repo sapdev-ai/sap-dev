@@ -1,0 +1,72 @@
+{
+  "schema": "sapdev.screenbaseline/1",
+  "vbs": "sap_sa38_run.vbs",
+  "captured_on": {
+    "release": "S/4HANA 1909 (S4D) + ECC (EC2)",
+    "kernel": "7700.257.9",
+    "date": "2026-07-09",
+    "method": "live"
+  },
+  "checkpoints": [
+    {
+      "id": "sa38_initial",
+      "reach": { "okcode": "/nSA38" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/usr/ctxtRS38M-PROGRAMM"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "selection_screen",
+      "reach": { "note": "F8 from SA38 initial; identity is report-specific (the executed program's own selection dynpro), so program/dynpro are intentionally empty. Get Variant button = wnd[0]/tbar[1]/btn[17]; Execute-in-Background menu = wnd[0]/mbar/menu[0]/menu[2]" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/sbar",
+        "wnd[0]/mbar/menu[0]/menu[2]"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "get_variant",
+      "reach": { "note": "Shift+F5 (sendVKey 17) on the selection screen opens the SAPLSVAR 'Find Variant' popup. Verified identical on S/4HANA 1909 and ECC (under JA logon)." },
+      "identity": { "program": "SAPLSVAR", "dynpro": "0100" },
+      "required_ids": [
+        "wnd[1]/usr/txtV-LOW",
+        "wnd[1]/tbar[0]/btn[8]",
+        "wnd[1]/tbar[0]/btn[12]"
+      ],
+      "status": "captured"
+    },
+    {
+      "id": "background_print_params",
+      "reach": { "note": "wnd[0]/mbar/menu[0]/menu[2] (Execute in Background) opens SAPLSPRI 'Background Print Parameters'. Continue (advance) = tbar[0]/btn[13]; Enter does NOT advance. Output device = ctxtPRI_PARAMS-PDEST." },
+      "identity": { "program": "SAPLSPRI", "dynpro": "0100" },
+      "required_ids": [
+        "wnd[1]/tbar[0]/btn[13]",
+        "wnd[1]/usr/ctxtPRI_PARAMS-PDEST"
+      ],
+      "status": "captured"
+    },
+    {
+      "id": "background_start_time",
+      "reach": { "note": "After the print-params Continue, SAPLBTCH 'Start Time' (screen 1010). Immediate = usr/btnSOFORT_PUSH; Save (schedules the job now) = tbar[0]/btn[11]." },
+      "identity": { "program": "SAPLBTCH", "dynpro": "1010" },
+      "required_ids": [
+        "wnd[1]/usr/btnSOFORT_PUSH",
+        "wnd[1]/tbar[0]/btn[11]"
+      ],
+      "status": "captured"
+    },
+    {
+      "id": "list_save",
+      "reach": { "note": "okcode %PC on a CLASSIC ABAP list. NOT reproduced on S4D or EC2 (RSPARAM renders ALV on both S/4HANA and ECC, so %PC was a no-op). Save-dialog fields DY_PATH/DY_FILENAME are release-stable (confirmed by /sap-sp02). Reliable foreground capture is background->spool via /sap-sp02." },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]/usr/ctxtDY_PATH",
+        "wnd[1]/usr/ctxtDY_FILENAME"
+      ],
+      "status": "pending_live"
+    }
+  ]
+}

@@ -1,0 +1,41 @@
+{
+  "schema": "sapdev.screenbaseline/1",
+  "vbs": "sap_sa38_variant.vbs",
+  "captured_on": {
+    "release": "S/4HANA 1909 (S4D)",
+    "kernel": "7700.257.9",
+    "date": "2026-07-09",
+    "method": "live"
+  },
+  "checkpoints": [
+    {
+      "id": "sa38_initial",
+      "reach": { "okcode": "/nSA38" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/usr/ctxtRS38M-PROGRAMM"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "variant_attributes",
+      "reach": { "note": "SET: from the report selection screen, Goto>Variants>Save as Variant (wnd[0]/mbar/menu[2]/menu[0]/menu[3]). Verified live S4D create + overwrite round-trip 2026-07-09." },
+      "identity": { "program": "SAPLSVAR", "dynpro": "0281" },
+      "required_ids": [
+        "wnd[0]/usr/ctxtRSVAR-VARIANT",
+        "wnd[0]/usr/txtRSVAR-VTEXT",
+        "wnd[0]/tbar[0]/btn[11]"
+      ],
+      "status": "captured"
+    },
+    {
+      "id": "variant_delete_scope",
+      "reach": { "note": "DELETE: Goto>Variants>Delete (menu[2]/menu[0]/menu[2]) -> Find popup (txtV-LOW + btn[8]) -> this scope popup. Continue = tbar[0]/btn[5], then the SPOP confirm (btnSPOP-OPTION1 = Yes). Verified live S4D 2026-07-09." },
+      "identity": { "program": "SAPLSVAR", "dynpro": "0322" },
+      "required_ids": [
+        "wnd[1]/tbar[0]/btn[5]"
+      ],
+      "status": "captured"
+    }
+  ]
+}
