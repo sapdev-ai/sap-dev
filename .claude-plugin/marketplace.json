@@ -12,7 +12,7 @@
     "version": "0.7.1",
     "last_updated": "2026-07-09",
     "total_plugins": 4,
-    "total_skills": 68,
+    "total_skills": 70,
     "categories": [
       "tooling"
     ]
@@ -40,6 +40,7 @@
         "./skills/sap-error-kb",
         "./skills/sap-evidence-pack",
         "./skills/sap-explain-object",
+        "./skills/sap-file-transfer",
         "./skills/sap-fix-abap",
         "./skills/sap-fix-incident",
         "./skills/sap-function-group",
@@ -47,6 +48,7 @@
         "./skills/sap-gui-probe",
         "./skills/sap-gui-skill-scaffold",
         "./skills/sap-impact-analysis",
+        "./skills/sap-job",
         "./skills/sap-log-analyze",
         "./skills/sap-login",
         "./skills/sap-rfc-wrapper",
@@ -101,6 +103,7 @@
         "gui-probe",
         "gui-scripting",
         "gui-skill-scaffold",
+        "job",
         "log-analyze",
         "login",
         "rfc",

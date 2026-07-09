@@ -3,10 +3,11 @@ name: sap-sp02
 description: |
   Downloads a SAP spool request to a local text file via transaction
   SP02 (Output Controller — own spool requests). Drives the GUI in
-  three steps: locate the spool by number on the SP02 list, F2 to
-  open contents, then Save (tbar[1]/btn[48]) — picking the export
-  format radio (default Unconverted = plain text) and entering the
-  target path/filename.
+  three steps: locate the spool by number on the SP02 list (matched
+  across all columns, so the driver adapts to whatever column the
+  layout uses), open its contents via the Display-contents button,
+  then Save to local file — picking the export format radio (default
+  Unconverted = plain text) and entering the target path/filename.
   Works for any list-style spool that SP02 can render (executable
   reports, ALV grids printed to spool, etc.). Format defaults to
   Unconverted plain text but accepts Spreadsheet / Rich text / HTML
@@ -87,8 +88,8 @@ State file: `{RUN_TEMP}\sap_sp02_run.json`. Best-effort.
 | `SPOOL_NUMBER` | yes (or `--row=<N>`) | SAP spool request number, numeric, e.g. `397`. Matches `TSP01-RQIDENT`. |
 | `OUTPUT_PATH` | yes | Full local path, e.g. `C:\Temp\SP02_397.txt`. The skill splits this into `OUTPUT_DIR` (parent + trailing `\`) and `OUTPUT_FILE` (basename). |
 | `--format=<fmt>` | no | `text` (default = Unconverted, index 0), `csv` (Spreadsheet, index 1), `rtf` (Rich text, index 2), `html` (HTML, index 3). The exact mapping depends on SAP GUI version — verify with a one-time recording on a new release. |
-| `--row=<N>` | no | Bypass the list scan and tick row `<N>` directly (0-based on the user-area). Use this when the auto-scan can't find the spool because it's on a non-default column position. |
-| `--col=<N>` | no | Override the spool-number column index used by the list scan (default `4`, S/4HANA 1909). |
+| `--row=<N>` | no | Bypass the label match and tick row `<N>` directly (0-based on the user-area). Use when you already know the row from a probe. |
+| `--col=<N>` | no | Restrict the spool-number match to one column index. **Default: match the number in any column** — the driver adapts to whatever column the layout uses (col 3 on S/4HANA 400, col 4 elsewhere). Set only to disambiguate a list where another cell could equal the number. |
 
 **Validation:**
 
@@ -124,7 +125,7 @@ $skillDir = '<SKILL_DIR>'
 $content  = [System.IO.File]::ReadAllText("$skillDir\references\sap_sp02_download.vbs", [System.Text.Encoding]::UTF8)
 $content  = $content.Replace('%%SPOOL_NUMBER%%',  'THE_SPOOL_NUMBER')
 $content  = $content.Replace('%%ROW_INDEX%%',     'THE_ROW_INDEX')      # empty if auto-scan
-$content  = $content.Replace('%%SPOOL_NUM_COL%%', 'THE_SPOOL_NUM_COL')  # empty for default 4
+$content  = $content.Replace('%%SPOOL_NUM_COL%%', 'THE_SPOOL_NUM_COL')  # empty = match number in any column (recommended)
 $content  = $content.Replace('%%FORMAT_INDEX%%',  'THE_FORMAT_INDEX')   # empty for default 0
 $content  = $content.Replace('%%OUTPUT_DIR%%',    'THE_OUTPUT_DIR')     # MUST end with '\'
 $content  = $content.Replace('%%OUTPUT_FILE%%',   'THE_OUTPUT_FILE')
@@ -187,8 +188,8 @@ if ($watcher) { $watcher | Wait-Process -Timeout 45 -ErrorAction SilentlyContinu
 | Last line | Meaning |
 |---|---|
 | `SUCCESS: Spool <NUM> written to <PATH>.` | Spool downloaded. The script also echoes `INFO: File written: <path> (<bytes> bytes)` for verification. |
-| `ERROR: Spool <NUM> not found in SP02 list (scanned <N> rows in col <C>).` | The auto-scan didn't find a row matching the spool number. Most common causes: the spool belongs to another user, it's older than the default selection window, the list shows a different layout (column index ≠ 4), or the number was mistyped. See **Troubleshooting** below. |
-| `ERROR: Could not press Save (tbar[1]/btn[48])` | Some SAP GUI builds put Save under the system toolbar — try the same flow with `tbar[0]/btn[11]` after recording with the Scripting Recorder. |
+| `ERROR: Spool <NUM> not found among <N> list labels …` | No list label matched the spool number. Most common causes: the spool belongs to another user, it's scrolled below the visible page, it's filtered out of the SP02 selection, or the number was mistyped. See **Troubleshooting** below. |
+| `ERROR: Could not press Save (<id>): …` | The spool CONTENT wasn't displayed. The Save-to-local button (icon `B_DOWN`) exists only on the content-display screen, not the list — so this usually means the Display-contents step didn't navigate. Check the status bar and re-probe with `/sap-gui-inspect`. |
 | `ERROR: Save dialog completed but file is not on disk` | Path was rejected silently (permissions / locked file / wrong DY_PATH separator). Check the path and retry. |
 | Other `ERROR: …` | Surface verbatim and consult Step 7. |
 
@@ -239,10 +240,11 @@ inspect the live SP02 list:
 
 | Symptom | Diagnose with | Fix |
 |---|---|---|
-| `Spool <NUM> not found` but the operator sees it on screen | `/sap-gui-inspect` mode `type` filter `GuiLabel` — find the row index where the spool number appears, and the column index | Re-run with `--row=<N>` and/or `--col=<C>` |
+| `Spool <NUM> not found` but the operator sees it on screen | `/sap-gui-inspect` mode `type` filter `GuiLabel` — confirm the number is present and note its row | The driver already matches across all columns; if the spool is off-screen, maximize/scroll the list, else re-run with `--row=<N>` |
+| Located the row, but Save fails on the content screen | `/sap-gui-inspect` on the content screen — list `tbar[1]` buttons + icon names | The Display-contents (`B_DISP`) or Save-to-local (`B_DOWN`) icon differs on this release; extend the icon match in the VBS |
 | Spool belongs to a different user | Check SP02's selection screen | Either change `User` filter on the SP02 selection screen (Settings…) or run as the spool's owner |
-| F2 (Display) opens an empty window | Spool is binary (PDF/postscript) — Unconverted format won't help | Use `--format=html` or `--format=csv` if the report supports those, or download via SP01 binary path |
-| Save toolbar button doesn't exist | SAP GUI version differs | Record `tbar[1]/btn[48]` vs `tbar[0]/btn[11]` with /sap-gui-probe --record and patch the VBS |
+| Display contents opens an empty window | Spool is binary (PDF/postscript) — Unconverted format won't help | Use `--format=html` or `--format=csv` if the report supports those, or download via SP01 binary path |
+| Save button resolves to the wrong control | Release renumbered the toolbar | The driver locates Save by icon `B_DOWN` (not a fixed btn index) and falls back to `btn[48]`; if a release uses a different icon, re-probe and extend `FindBtnByIcon` |
 | File-save dialog doesn't appear | A "List has been completely displayed" popup may be on top | Add an Enter dismiss in the popup-handling block; this can also be handled by running `/sap-gui-inspect screenshot full` between steps |
 
 If any GUI step fails with "control could not be found by id", invoke
@@ -256,10 +258,10 @@ plus the structural component dump for the topmost window.
 | Element | ID |
 |---|---|
 | OK code | `wnd[0]/tbar[0]/okcd` |
-| SP02 list checkbox (column 1, row N) | `wnd[0]/usr/chk[1,N]` |
-| SP02 list spool number (column 4 by default, row N) | `wnd[0]/usr/lbl[4,N]` |
-| F2 = Display contents | `sendVKey 2` on `wnd[0]` |
-| Save (export) | `wnd[0]/tbar[1]/btn[48]` |
+| SP02 list checkbox (selection column, row N) | `wnd[0]/usr/chk[1,N]` (col 1; fallback scans the row for any GuiCheckBox) |
+| SP02 list spool number (column varies) | `wnd[0]/usr/lbl[<col>,N]` — col 3 on S/4HANA 400, 4 elsewhere. Located by matching the number across **all** labels, not a fixed column. |
+| Display contents (reach the content screen) | `tbar[1]` button with icon `B_DISP` (F6 / `btn[6]` on S/4HANA 400); `sendVKey 2` (F2) fallback |
+| Save to local file (**content screen only**) | `tbar[1]` button with icon `B_DOWN` (`btn[48]` on the tested release) |
 | Format-selection radio | `wnd[1]/usr/subSUBSCREEN_STEPLOOP:SAPLSPO5:0150/sub:SAPLSPO5:0150/radSPOPLI-SELFLAG[1,<idx>]` |
 | Format-selection Continue | `wnd[1]/tbar[0]/btn[0]` |
 | Save dialog directory | `wnd[1]/usr/ctxtDY_PATH` |

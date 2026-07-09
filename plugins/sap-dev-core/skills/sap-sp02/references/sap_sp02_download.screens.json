@@ -2,10 +2,10 @@
   "schema": "sapdev.screenbaseline/1",
   "vbs": "sap_sp02_download.vbs",
   "captured_on": {
-    "release": "",
+    "release": "S/4HANA (S4H, client 400)",
     "kernel": "",
-    "date": "",
-    "method": "static"
+    "date": "2026-07-09",
+    "method": "live"
   },
   "checkpoints": [
     {
@@ -18,14 +18,25 @@
       "status": "pending_live"
     },
     {
+      "id": "spool_list",
+      "reach": { "note": "SP02 own-spool list. Renders as a classic list (SAPMSSY0/0120): each row is GuiLabel cells lbl[col,row] + a selection chk[1,row]. The spool-number COLUMN varies by layout (col 3 on S/4HANA 400, col 4 elsewhere), so the driver matches the number across ALL labels rather than a fixed column. 'Display contents' is a tbar[1] button (icon B_DISP; F6 here, not F2)." },
+      "identity": { "program": "SAPMSSY0", "dynpro": "120" },
+      "required_ids": [
+        "wnd[0]/usr",
+        "wnd[0]/tbar[1]",
+        "wnd[0]/tbar[0]/okcd"
+      ],
+      "status": "captured"
+    },
+    {
       "id": "spool_contents",
-      "reach": { "note": "spool contents display after F2 on a selected list row; list lbl/chk cell ids are dynamic, captured live" },
-      "identity": { "program": "", "dynpro": "" },
+      "reach": { "note": "spool CONTENT display, reached from the list via the Display-contents button (icon B_DISP). Only here does 'Save to local file' (icon B_DOWN, btn[48] on the tested release) exist -- it is absent on the list screen (where btn[48] is Select All)." },
+      "identity": { "program": "SAPMSSY0", "dynpro": "120" },
       "required_ids": [
         "wnd[0]/sbar",
         "wnd[0]/tbar[1]/btn[48]"
       ],
-      "status": "pending_live"
+      "status": "captured"
     },
     {
       "id": "format_popup",

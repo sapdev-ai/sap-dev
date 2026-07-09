@@ -1,0 +1,58 @@
+{
+  "schema": "sapdev.screenbaseline/1",
+  "vbs": "sap_sm36_schedule.vbs",
+  "captured_on": {
+    "release": "S/4HANA (S4G, EN); initial screen confirmed identical on ECC 7.31 (EC2, JA)",
+    "kernel": "7700.257.9",
+    "date": "2026-07-09",
+    "method": "live"
+  },
+  "checkpoints": [
+    {
+      "id": "sm36_initial",
+      "reach": { "okcode": "/nSM36", "note": "Define Background Job. Job name = txtBTCH1140-JOBNAME (plain GuiTextField, NOT ctxt), class = ctxtBTCH1140-JOBCLASS. Step = tbar[1]/btn[6], Start condition = tbar[1]/btn[5], Save job = tbar[0]/btn[11] (Ctrl+S). Full immediate flow walked live on S4G; initial screen confirmed identical on EC2 (JA)." },
+      "identity": { "program": "SAPLBTCH", "dynpro": "1140" },
+      "required_ids": [
+        "wnd[0]/usr/txtBTCH1140-JOBNAME",
+        "wnd[0]/usr/ctxtBTCH1140-JOBCLASS",
+        "wnd[0]/tbar[1]/btn[6]",
+        "wnd[0]/tbar[1]/btn[5]"
+      ],
+      "status": "captured"
+    },
+    {
+      "id": "sm36_step",
+      "reach": { "note": "Step (tbar[1]/btn[6]) opens the step popup (wnd[1]). ABAP program = ctxtBTCH1120-ABAPNAME, variant = ctxtBTCH1120-VARIANT (btnABAP_PUSH selects ABAP-program mode). Save step = wnd[1]/tbar[0]/btn[11]. IMPORTANT: Save lands on the step-LIST overview (SAPMSSY0/120), not the initial screen -- Back (sendVKey 3) until txtBTCH1140-JOBNAME reappears. Verified live." },
+      "identity": { "program": "SAPLBTCH", "dynpro": "1120" },
+      "required_ids": [
+        "wnd[1]/usr/ctxtBTCH1120-ABAPNAME",
+        "wnd[1]/usr/ctxtBTCH1120-VARIANT",
+        "wnd[1]/tbar[0]/btn[11]"
+      ],
+      "status": "captured"
+    },
+    {
+      "id": "sm36_start_condition",
+      "reach": { "note": "Start condition (tbar[1]/btn[5]) opens the start-condition popup (wnd[1]). Immediate = btnSOFORT_PUSH (verified live). Date/Time = btnDATE_PUSH -> ctxtBTCH1010-SDLSTRTDT / -SDLSTRTTM. Periodic = chkBTCH1010-PERIODIC; Period Values = wnd[1]/tbar[0]/btn[5]. Save = wnd[1]/tbar[0]/btn[11]." },
+      "identity": { "program": "SAPLBTCH", "dynpro": "1010" },
+      "required_ids": [
+        "wnd[1]/usr/btnSOFORT_PUSH",
+        "wnd[1]/usr/btnDATE_PUSH",
+        "wnd[1]/tbar[0]/btn[11]"
+      ],
+      "status": "captured"
+    },
+    {
+      "id": "sm36_period_values",
+      "reach": { "note": "After DATE_PUSH + tick PERIODIC, Period Values (wnd[1]/tbar[0]/btn[5]) opens the recurrence popup (wnd[2], SAPLBTCH/1060): Hourly/Daily/Weekly/Monthly buttons. Save = wnd[2]/tbar[0]/btn[11]. Captured live (dumped); the periodic write path awaits a confirmed run." },
+      "identity": { "program": "SAPLBTCH", "dynpro": "1060" },
+      "required_ids": [
+        "wnd[2]/usr/btnDAILYBUTTON",
+        "wnd[2]/usr/btnWEEKLYBUTTON",
+        "wnd[2]/usr/btnMONTHLYBUTTON",
+        "wnd[2]/tbar[0]/btn[11]"
+      ],
+      "status": "captured"
+    }
+  ]
+}

@@ -1,0 +1,36 @@
+{
+  "schema": "sapdev.screenbaseline/1",
+  "vbs": "sap_sm37_ops.vbs",
+  "captured_on": {
+    "release": "S/4HANA (S4G, EN); selection+list+ops confirmed identical on ECC 7.31 (EC2, JA)",
+    "kernel": "7700.257.9",
+    "date": "2026-07-09",
+    "method": "live"
+  },
+  "checkpoints": [
+    {
+      "id": "sm37_selection",
+      "reach": { "okcode": "/nSM37", "note": "Job selection. Job name + user are plain GuiTextFields (txt, NOT ctxt). Status checkboxes chkBTCH2170-PRELIM(scheduled)/SCHEDUL(released)/READY/RUNNING(active)/FINISHED/ABORTED(cancelled). Dates ctxtBTCH2170-FROM_DATE/TO_DATE. Execute = sendVKey 8. Verified identical on S4G (EN) and EC2 (ECC 7.31, JA)." },
+      "identity": { "program": "SAPLBTCH", "dynpro": "2170" },
+      "required_ids": [
+        "wnd[0]/usr/txtBTCH2170-JOBNAME",
+        "wnd[0]/usr/txtBTCH2170-USERNAME",
+        "wnd[0]/usr/chkBTCH2170-PRELIM",
+        "wnd[0]/usr/chkBTCH2170-ABORTED",
+        "wnd[0]/usr/ctxtBTCH2170-FROM_DATE"
+      ],
+      "status": "captured"
+    },
+    {
+      "id": "sm37_joblist_ops",
+      "reach": { "note": "F8 from selection -> job list is a CLASSIC list (SAPMSSY0/120), NOT an ALV grid. A job row is a GuiLabel whose Text = the job name in the left DATA column (col<=12; the header echoes the selection criteria at col ~29 -- match only the data column). Select the row via setFocus, then: Job log = tbar[1]/btn[47], Spool = tbar[1]/btn[44]; DELETE = Shift+F2 (sendVKey 14) -> SAPLSPO1 'Delete selection?' confirm (btnSPOP-OPTION1=Yes) -- VKey, NOT the Job-menu index (menu[0]/menu[9] is Delete on S/4HANA but NOT on ECC 7.31); Cancel-active-job = Job menu mbar/menu[0]/menu[1] (S/4HANA-captured, needs a running job to verify on ECC); Back = tbar[0]/btn[3]. LIST/LOG verified live S4G(EN)+EC2(JA); full SM36-schedule -> SM37-delete round-trip verified on BOTH." },
+      "identity": { "program": "SAPMSSY0", "dynpro": "0120" },
+      "required_ids": [
+        "wnd[0]/tbar[1]/btn[47]",
+        "wnd[0]/tbar[1]/btn[44]",
+        "wnd[0]/tbar[0]/btn[3]"
+      ],
+      "status": "captured"
+    }
+  ]
+}

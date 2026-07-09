@@ -1,0 +1,46 @@
+{
+  "schema": "sapdev.screenbaseline/1",
+  "vbs": "sap_file_transfer_download.vbs",
+  "captured_on": {
+    "release": "S4HANA_1909",
+    "kernel": "",
+    "date": "2026-07-09",
+    "method": "sap-gui-probe drive (S4D/100)"
+  },
+  "checkpoints": [
+    {
+      "id": "cg3y_parameter_dialog",
+      "reach": "/nCG3Y from SAP Easy Access",
+      "identity": { "program": "SAPLC13Z", "dynpro": "1010" },
+      "required_ids": [
+        "wnd[1]/usr/txtRCGFILETR-FTAPPL",
+        "wnd[1]/usr/ctxtRCGFILETR-FTFRONT",
+        "wnd[1]/usr/ctxtRCGFILETR-FTFTYPE",
+        "wnd[1]/usr/chkRCGFILETR-IEFOW",
+        "wnd[1]/tbar[0]/btn[13]",
+        "wnd[1]/tbar[0]/btn[12]"
+      ],
+      "status": "captured"
+    },
+    {
+      "id": "local_overwrite_query",
+      "reach": "press Download (btn[13]) with an existing local target and overwrite unticked",
+      "identity": { "program": "SAPLSPO1", "dynpro": "300" },
+      "required_ids": [
+        "wnd[2]/usr/btnSPOP-OPTION1",
+        "wnd[2]/usr/btnSPOP-OPTION2"
+      ],
+      "status": "captured"
+    },
+    {
+      "id": "source_missing_information",
+      "reach": "press Download with a nonexistent app-server source (after Query, if any)",
+      "identity": { "program": "SAPMSDYP", "dynpro": "10" },
+      "required_ids": [
+        "wnd[2]/usr/txtMESSTXT1",
+        "wnd[2]/tbar[0]/btn[0]"
+      ],
+      "status": "captured"
+    }
+  ]
+}

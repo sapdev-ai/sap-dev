@@ -4,7 +4,8 @@
 ' Drives transaction SP02 (Output Controller -- own spool requests):
 '
 '   1. /nsp02                                   -> spool list
-'   2. Locate the row of %%SPOOL_NUMBER%% in the list (column scan)
+'   2. Locate the row by matching %%SPOOL_NUMBER%% against every list label
+'      (layout- & language-independent -- column position is not assumed)
 '   3. Tick chk[1,<row>]                        -> select the spool
 '   4. sendVKey 2                               -> F2 = Display contents
 '   5. tbar[1]/btn[48]                          -> "Save..." (export to local)
@@ -24,12 +25,15 @@
 '                       padded forms in the list cell).
 '   %%ROW_INDEX%%      Optional explicit row index in the SP02 list (0-based
 '                       row number on the user-area). When non-empty / non-
-'                       zero, the row scan is skipped. Useful when you
+'                       zero, the label match is skipped. Useful when you
 '                       already know the row from a recording or from a
 '                       prior /sap-gui-inspect probe.
-'   %%SPOOL_NUM_COL%%  Column index that carries the spool number on the
-'                       SP02 list. Default 4 (S/4HANA 1909). Override if
-'                       the list layout was customised.
+'   %%SPOOL_NUM_COL%%  Optional column-index filter. Empty (default) = match
+'                       the spool number in ANY column, so the driver adapts to
+'                       whatever column the list layout puts it in (col 3 on
+'                       S/4HANA 400, col 4 elsewhere). Set it only to
+'                       disambiguate a list where another cell could equal the
+'                       number.
 '   %%FORMAT_INDEX%%   Index of the format radio on the export popup
 '                       (radSPOPLI-SELFLAG[1,<idx>]). Default 0
 '                       (Unconverted = plain text). 1=Spreadsheet,
@@ -63,9 +67,13 @@ Const VKEY_ENTER     = 0
 Const VKEY_F2        = 2
 Const VKEY_F3_BACK   = 3
 
-Dim spoolCol, fmtIdx, rowIdx
-spoolCol = 4
-If IsNumeric(SPOOL_NUM_COL) And Trim(SPOOL_NUM_COL) <> "" Then spoolCol = CInt(SPOOL_NUM_COL)
+Dim filterCol, fmtIdx, rowIdx, matchedCol
+' filterCol = -1 means "match the spool number in ANY column" (layout-independent).
+' A caller-supplied SPOOL_NUM_COL narrows the match to that one column (a
+' disambiguator for the rare list whose Title/Date cells could equal the number).
+filterCol = -1
+If IsNumeric(SPOOL_NUM_COL) And Trim(SPOOL_NUM_COL) <> "" Then filterCol = CInt(SPOOL_NUM_COL)
+matchedCol = -1
 
 fmtIdx = 0
 If IsNumeric(FORMAT_INDEX) And Trim(FORMAT_INDEX) <> "" Then fmtIdx = CInt(FORMAT_INDEX)
@@ -93,45 +101,45 @@ oSess.findById("wnd[0]/tbar[0]/okcd").Text = "/nSP02"
 oSess.findById("wnd[0]").sendVKey VKEY_ENTER
 WScript.Sleep 1500
 
-' --- 2. Locate the row ------------------------------------------------------
-' SP02 renders the spool list as static labels in the user-area. Each row
-' has a checkbox at chk[1,<row>] and the spool number as a text label at
-' lbl[<spoolCol>,<row>]. Header rows occupy the first 1-3 indices (varies
-' by SAP GUI theme); we scan from row 0 upward and accept the first row
-' whose spoolCol cell trims to SPOOL_NUMBER.
+' --- 2. Locate the row (layout- & language-independent) --------------------
+' SP02 (SAPMSSY0/0120) renders the own-spool list as classic GuiLabel cells
+' whose ids encode [col,row]; each data row also has a checkbox at chk[1,row].
+' The spool-number COLUMN is not fixed across releases/layouts (col 4 on some
+' installs, col 3 on S/4HANA client 400) and the data rows start BELOW a header
+' row -- so the old fixed-column scan that anchored at row 0 and broke on the
+' first empty cell reported "scanned 0 rows in col 4" on S4H even though the
+' spool was right there. Instead we enumerate every label in the user area and
+' match on the SPOOL NUMBER itself -- a value we already know -- so we find the
+' row regardless of which column carries it and regardless of the header offset.
+' Never branch on the (translated) header text.
 If rowIdx < 0 Then
-    WScript.Echo "INFO: Scanning SP02 list for spool " & SPOOL_NUMBER & " (col " & spoolCol & ")..."
-    Dim r, sCellId, sCell, sTrim, bFound
-    bFound = False
-    r = 0
-    Do While r < 300   ' hard cap; spool lists rarely exceed this
-        sCellId = "wnd[0]/usr/lbl[" & spoolCol & "," & r & "]"
-        On Error Resume Next
-        sCell = oSess.findById(sCellId).Text
-        Dim eNo : eNo = Err.Number
-        Err.Clear
-        On Error GoTo 0
-        If eNo <> 0 Then
-            ' No more rows at this column.
-            Exit Do
+    WScript.Echo "INFO: Locating spool " & SPOOL_NUMBER & " among SP02 list labels..."
+    Dim oChild, cType, cId, br, bc, nLbl
+    nLbl = 0
+    For Each oChild In oSess.findById("wnd[0]/usr").Children
+        cType = oChild.Type
+        If cType = "GuiLabel" Then
+            nLbl = nLbl + 1
+            cId = oChild.Id
+            If ParseColRow(cId, bc, br) Then
+                If filterCol < 0 Or bc = filterCol Then
+                    If Trim(oChild.Text) = Trim(SPOOL_NUMBER) Then
+                        rowIdx = br
+                        matchedCol = bc
+                        Exit For
+                    End If
+                End If
+            End If
         End If
-        sTrim = Trim(sCell)
-        If sTrim = Trim(SPOOL_NUMBER) Then
-            rowIdx = r
-            bFound = True
-            Exit Do
-        End If
-        r = r + 1
-    Loop
-    If Not bFound Then
-        WScript.Echo "ERROR: Spool " & SPOOL_NUMBER & " not found in SP02 list (scanned " & r & " rows in col " & spoolCol & ")."
-        WScript.Echo "       The spool may not belong to the current user, may be older than the default selection,"
-        WScript.Echo "       or the spool-number column may differ on this system. Try widening SP02 selection"
-        WScript.Echo "       criteria, or pass an explicit ROW_INDEX after probing the list with"
-        WScript.Echo "       /sap-gui-inspect (mode=type filter=GuiLabel)."
+    Next
+    If rowIdx < 0 Then
+        WScript.Echo "ERROR: Spool " & SPOOL_NUMBER & " not found among " & nLbl & " list labels" & IIfStr(filterCol >= 0, " in col " & filterCol, " (any column)") & "."
+        WScript.Echo "       It may be scrolled below the visible page, belong to another user, or be"
+        WScript.Echo "       filtered out of the SP02 selection. Widen/scroll the list, or pass an"
+        WScript.Echo "       explicit ROW_INDEX after probing with /sap-gui-inspect (mode=type filter=GuiLabel)."
         WScript.Quit 1
     End If
-    WScript.Echo "INFO: Spool " & SPOOL_NUMBER & " located on row " & rowIdx & "."
+    WScript.Echo "INFO: Spool " & SPOOL_NUMBER & " located on row " & rowIdx & " (col " & matchedCol & ")."
 Else
     WScript.Echo "INFO: Using explicit ROW_INDEX=" & rowIdx & "."
 End If
@@ -140,36 +148,72 @@ End If
 Dim sChkId : sChkId = "wnd[0]/usr/chk[1," & rowIdx & "]"
 On Error Resume Next
 oSess.findById(sChkId).Selected = True
-If Err.Number <> 0 Then
-    WScript.Echo "ERROR: Could not tick checkbox " & sChkId & ": " & Err.Description
-    WScript.Quit 1
-End If
+Dim chkErr : chkErr = Err.Number
 Err.Clear
 On Error GoTo 0
+If chkErr <> 0 Then
+    ' Fallback: the selection checkbox isn't at column 1 on this layout --
+    ' find any GuiCheckBox on the located row and tick it instead.
+    Dim oc2, ccol, crow, chkDone : chkDone = False
+    For Each oc2 In oSess.findById("wnd[0]/usr").Children
+        If oc2.Type = "GuiCheckBox" Then
+            If ParseColRow(oc2.Id, ccol, crow) Then
+                If crow = rowIdx Then
+                    On Error Resume Next
+                    oc2.Selected = True
+                    If Err.Number = 0 Then chkDone = True
+                    Err.Clear
+                    On Error GoTo 0
+                    If chkDone Then sChkId = oc2.Id : Exit For
+                End If
+            End If
+        End If
+    Next
+    If Not chkDone Then
+        WScript.Echo "ERROR: Could not tick a selection checkbox on row " & rowIdx & "."
+        WScript.Quit 1
+    End If
+End If
 WScript.Sleep 300
 
-' --- 4. F2 = Display contents ----------------------------------------------
-WScript.Echo "INFO: Opening spool contents (F2)..."
+' --- 4. Display the spool contents -----------------------------------------
+' Reaching the CONTENT display is what makes "Save to local file" (Step 5)
+' appear. F2 alone does NOT navigate on all releases (on S/4HANA client 400
+' it stays on the list -- there "Display contents" is F6/btn[6]), so identify
+' the button by its language-independent icon B_DISP and press it; fall back to
+' F2 only if no such button exists (older layouts where F2 was the display key).
+WScript.Echo "INFO: Opening spool contents..."
 On Error Resume Next
-oSess.findById("wnd[0]/usr/lbl[" & spoolCol & "," & rowIdx & "]").setFocus
+oSess.findById(sChkId).setFocus
 Err.Clear
 On Error GoTo 0
-oSess.findById("wnd[0]").sendVKey VKEY_F2
+Dim dispId : dispId = FindBtnByIcon("wnd[0]/tbar[1]", "B_DISP")
+If dispId <> "" Then
+    oSess.findById(dispId).press
+Else
+    oSess.findById("wnd[0]").sendVKey VKEY_F2
+End If
 WScript.Sleep 2000
 
 If oSess.findById("wnd[0]/sbar").MessageType = "E" Then
-    WScript.Echo "ERROR: F2 (Display contents) returned: " & oSess.findById("wnd[0]/sbar").Text
+    WScript.Echo "ERROR: Display contents returned: " & oSess.findById("wnd[0]/sbar").Text
     WScript.Quit 1
 End If
 
-' --- 5. Save (export) -- application toolbar btn[48] ------------------------
-WScript.Echo "INFO: Pressing Save (tbar[1]/btn[48])..."
+' --- 5. Save (export) to local file ----------------------------------------
+' On the content-display screen the "Save to local file" button carries icon
+' B_DOWN (btn[48] on the tested release). Locate it by icon so a release that
+' renumbers the toolbar still resolves it; fall back to the documented btn[48].
+Dim saveId : saveId = FindBtnByIcon("wnd[0]/tbar[1]", "B_DOWN")
+If saveId = "" Then saveId = "wnd[0]/tbar[1]/btn[48]"
+WScript.Echo "INFO: Pressing Save (" & saveId & ")..."
 On Error Resume Next
-oSess.findById("wnd[0]/tbar[1]/btn[48]").press
+oSess.findById(saveId).press
 WScript.Sleep 1500
 If Err.Number <> 0 Then
-    WScript.Echo "ERROR: Could not press Save (tbar[1]/btn[48]): " & Err.Description
-    WScript.Echo "       Some SAP GUI versions place Save under the system toolbar -- try tbar[0]/btn[11]."
+    WScript.Echo "ERROR: Could not press Save (" & saveId & "): " & Err.Description
+    WScript.Echo "       Ensure the spool CONTENT is displayed (not the list); the Save-to-local"
+    WScript.Echo "       button (icon B_DOWN) only exists on the content-display screen."
     WScript.Quit 1
 End If
 Err.Clear
@@ -252,3 +296,58 @@ Dim oFile : Set oFile = oFSO.GetFile(sFullPath)
 WScript.Echo "INFO: File written: " & sFullPath & " (" & oFile.Size & " bytes)"
 WScript.Echo "SUCCESS: Spool " & SPOOL_NUMBER & " written to " & sFullPath & "."
 WScript.Quit 0
+
+' ---------------------------------------------------------------------------
+' Helpers
+' ---------------------------------------------------------------------------
+
+' Parse the trailing "[<col>,<row>]" coordinate off a GuiVComponent id
+' (e.g. ".../usr/lbl[3,4]" -> col=3,row=4; also works for "chk[1,3]"). Returns
+' True and sets oCol/oRow (ByRef) on success; False if the id has no numeric
+' [c,r] coordinate. Uses InStrRev so it always reads the LAST bracket pair.
+Function ParseColRow(sId, ByRef oCol, ByRef oRow)
+    ParseColRow = False
+    Dim p1, p2, inner, parts
+    p1 = InStrRev(sId, "[")
+    If p1 = 0 Then Exit Function
+    p2 = InStr(p1, sId, "]")
+    If p2 = 0 Then Exit Function
+    inner = Mid(sId, p1 + 1, p2 - p1 - 1)
+    parts = Split(inner, ",")
+    If UBound(parts) <> 1 Then Exit Function
+    If Not (IsNumeric(parts(0)) And IsNumeric(parts(1))) Then Exit Function
+    oCol = CInt(parts(0))
+    oRow = CInt(parts(1))
+    ParseColRow = True
+End Function
+
+' Tiny string ternary for diagnostic messages (both args always evaluated).
+Function IIfStr(bCond, sA, sB)
+    If bCond Then IIfStr = sA Else IIfStr = sB
+End Function
+
+' Return the id of the first GuiButton on toolbar <sBar> whose IconName equals
+' <sIcon> (case-insensitive), or "" if none. Icon names (B_DISP, B_DOWN, ...)
+' are language-independent SAP codes, so this resolves a function button even
+' when the release renumbers the toolbar or the logon language translates the
+' tooltip. Caller uses it on a screen where the target icon is unambiguous.
+Function FindBtnByIcon(sBar, sIcon)
+    FindBtnByIcon = ""
+    On Error Resume Next
+    Dim oBar : Set oBar = oSess.findById(sBar)
+    If Err.Number <> 0 Then Err.Clear : On Error GoTo 0 : Exit Function
+    On Error GoTo 0
+    Dim b, ic
+    For Each b In oBar.Children
+        If b.Type = "GuiButton" Then
+            ic = ""
+            On Error Resume Next
+            ic = b.IconName
+            On Error GoTo 0
+            If UCase(ic) = UCase(sIcon) Then
+                FindBtnByIcon = b.Id
+                Exit Function
+            End If
+        End If
+    Next
+End Function

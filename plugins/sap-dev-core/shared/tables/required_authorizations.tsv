@@ -25,3 +25,7 @@ rfc_execute	S_RFC	ACTVT	16	Execute RFC FMs -- verification gates, lookups, wrapp
 gui_file_transfer	S_GUI	ACTVT	61	GUI file up/download (source paste, SE16N export)
 table_display	S_TABU_DIS	ACTVT	03	Display table contents (/sap-se16n, diagnose readers)
 tcode_workbench	S_TCODE	TCD	SE38	ABAP editor transaction (representative workbench S_TCODE)
+file_transfer_upload	S_TCODE	TCD	CG3Z	Upload file to application server (/sap-file-transfer upload)
+file_transfer_upload	S_DATASET	ACTVT	34	Write app-server file via CG3Z; SPTH/S_PATH may further restrict paths
+file_transfer_download	S_TCODE	TCD	CG3Y	Download file from application server (/sap-file-transfer download)
+file_transfer_download	S_DATASET	ACTVT	33	Read app-server file via CG3Y; SPTH/S_PATH may further restrict paths

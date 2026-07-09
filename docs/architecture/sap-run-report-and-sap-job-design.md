@@ -283,7 +283,7 @@ like the deploy skills.
 
 ---
 
-## 3. `/sap-job` — full implementation (deferred build)
+## 3. `/sap-job` — full implementation (✅ BUILT 2026-07-09)
 
 ### 3.1 Modes
 ```
@@ -320,8 +320,23 @@ verdict `JOB_VERDICT: OK|ERROR`. Error classes `JOB_SCHEDULE_FAILED`, `JOB_NOT_F
 ```
 skills/sap-job/{SKILL.md,README.md,references/{sap_sm36_schedule.vbs,sap_sm37_ops.vbs,*.screens.json,sap_job_rfc.ps1}}
 ```
-On build: **promote** `sap_variant_rfc.ps1` → `shared/scripts/sap_variant_lib.ps1` (now
-2 consumers) and share `Z_RUN_REPORT`. Update the CLAUDE.md "Current Shared Files" table.
+**As built (2026-07-09):** all six files created; `./skills/sap-job` registered in
+`marketplace.json` (total_skills 68→69).
+
+Two planned promotions were **re-scoped** against how Phase A/B actually shipped:
+- **`sap_variant_rfc.ps1` → `shared/scripts/sap_variant_lib.ps1`: N/A.** That dedicated
+  RFC variant script was never built — variant *set* went the GUI route
+  (`sap_sa38_variant.vbs`) and *list/show/delete* route through `/sap-rfc-wrapper`
+  (design §1.2). There is no single-file variant lib to promote, and `/sap-job` needs no
+  variant maintenance of its own, so nothing was moved. If an RFC `RS_CREATE_VARIANT`
+  fast-path is built later, `shared/scripts/sap_variant_lib.ps1` remains its intended home.
+- **`Z_RUN_REPORT` sharing: by reference, not by file move.** The FM is deployed once by
+  `/sap-dev-init` and lives in the SAP system; `/sap-job schedule` calls it *by name* over
+  RFC (`sap_job_rfc.ps1`), exactly as `/sap-run-report` does (`sap_run_report_rfc.ps1`).
+  The `.abap` source stays in `sap-run-report/references/` and is already registered in
+  `sap_dev_artefacts.ps1` §7c + dev-init Step 8c — no second copy, no CLAUDE.md shared-file
+  row needed (`sap_job_rfc.ps1` is a single-consumer skill-private script, so it lives in
+  `sap-job/references/`, not `shared/`).
 
 ---
 
@@ -349,7 +364,32 @@ delegates spool capture to `/sap-sp02` and abort-detail to `/sap-st22`. Verified
 skill. Deferred: flip the *default* engine foreground→background per D3 (a behavior change —
 kept opt-in via `--background` for now); optional RFC `RS_CREATE_VARIANT` fast-path.
 
-**Phase C — `/sap-job`.** Only on real demand. Promote the variant lib; share `Z_RUN_REPORT`.
+**Phase C — `/sap-job`. ✅ BUILT 2026-07-09.** Seven modes (`schedule` / `list` / `status`
+/ `log` / `spool` / `cancel` / `delete`) on the same RFC-preferred → GUI-fallback spine as
+`/sap-run-report`. RFC backend `sap_job_rfc.ps1` (32-bit PS) reuses the Phase-B mechanism:
+`schedule`(immediate) → `Z_RUN_REPORT`; `list`/`status` → `TBTCO`; `spool` → `TBTCP.LISTIDENT`
+→ `/sap-sp02`; `delete` → `BP_JOB_DELETE` (best-effort over direct RFC → SM37 degrade).
+`log`/`cancel` are GUI-primary (job-log TemSe read / running-job abort need SM37), and
+start-time/periodic scheduling routes to the SM36 wizard. GUI drivers `sap_sm36_schedule.vbs`
++ `sap_sm37_ops.vbs` carry **live-captured** SM36/SM37 control IDs (S4G S/4HANA EN + EC2 ECC
+7.31 JA, 2026-07-09 — identical across both; core `SAPLBTCH`/`SAPMSSY0` kernel dialogs). SM37
+`list`/`log` (classic list `SAPMSSY0/120`; row = a `GuiLabel` selected via `setFocus`, ops
+`tbar[1]/btn[47]`=Job log / `btn[44]`=Spool / Job-menu `menu[0]/menu[1]`=cancel `menu[0]/menu[9]`=delete)
+and the full SM36 immediate wizard (`1140` initial → `1120` step → step-list Back → `1010`
+start-cond → save) were verified live end-to-end; `.screens.json` baselines flipped to
+`captured`. Two seed bugs fixed on capture: SM37 job/user fields are `txt` not `ctxt`, and
+DefineStep must Back out of the step-list overview to the initial screen. Confirm gate (Rule 5)
+covers `schedule` + `cancel` + `delete`; the `JOB_*` error classes were pre-seeded in Phase B.
+Variant-lib promotion re-scoped (see §3.4); `Z_RUN_REPORT` shared by reference, not copied.
+Consistency gate: clean. **Write paths verified 2026-07-09:** a confirmed throwaway round-trip
+(SM36 schedule RSPARAM immediate → `list`/`status` → SM37 delete → gone) ran clean on BOTH S4G
+(RFC-verified) and EC2 (SM37-GUI-verified, JA). Delete uses **Shift+F2 (sendVKey 14)** not the
+Job-menu index (menu[0]/menu[9] is Delete on S/4HANA but a different item on ECC 7.31 — the live
+round-trip caught this), and self-verifies the job left the list before reporting `DELETED`. The
+round-trip also caught two more real bugs: the RFC `list` `-User "*"` → `SDLUNAME EQ '*'` no-match
+(now treats `*`/`%` as no-filter), and the classic-list op targeting the header selection-echo
+label instead of the data row (now column-filtered). **Still unverified:** `cancel` (abort a
+*running* job — needs a live running job) and `schedule` date-time/periodic (IDs captured).
 
 **Registration checklist (per new skill):**
 - [ ] `skills/<skill>/SKILL.md` + `.claude-plugin/plugin.json`

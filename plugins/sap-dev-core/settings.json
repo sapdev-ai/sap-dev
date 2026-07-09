@@ -156,6 +156,11 @@
                        "aunit_min_coverage":  { "description":  "Used by /sap-run-abap-unit: minimum code-coverage percent required. RFC backend only -- the GUI backend cannot measure coverage. Blank = no coverage requirement.", "sensitive":  false, "value":  "" },
                        "aunit_coverage_gate":  { "description":  "Used by /sap-run-abap-unit: action when measured coverage is below aunit_min_coverage. Allowed values: 'warn' (default; report but do not fail) / 'block' (fail the run). Test failures always fail regardless.", "sensitive":  false, "value":  "" },
                        "aunit_risk_level":  { "description":  "Used by /sap-run-abap-unit: maximum ABAP Unit risk level executed (that level and below). Allowed values: 'harmless' / 'dangerous' (default) / 'critical'. The client's SAUNIT_CLIENT_SETUP additionally gates dangerous/critical.", "sensitive":  false, "value":  "" },
+                       "sap_appserver_dir":  {
+                                                 "description":  "Standing application-server directory for /sap-file-transfer (upload targets, list default). Per-connection override via dev_defaults (Set-SapUserSetting -Scope Connection) so each SAP system keeps its own interface directory (e.g. /tmp on S4D, a shared DIR_GLOBAL path in QA). Blank = the skill requires an explicit app-server path per call.",
+                                                 "sensitive":  false,
+                                                 "value":  ""
+                                             },
                        "sap_gui_security_warmup_done":  {
                                                             "description":  "Set to true after sap-dev-init Step 1b successfully persists SAP GUI Security trust for {work_dir}. Subsequent runs skip the warmup when true.",
                                                             "sensitive":  false,

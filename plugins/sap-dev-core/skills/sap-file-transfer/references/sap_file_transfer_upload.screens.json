@@ -1,0 +1,46 @@
+{
+  "schema": "sapdev.screenbaseline/1",
+  "vbs": "sap_file_transfer_upload.vbs",
+  "captured_on": {
+    "release": "S4HANA_1909",
+    "kernel": "",
+    "date": "2026-07-09",
+    "method": "sap-gui-probe drive (S4D/100)"
+  },
+  "checkpoints": [
+    {
+      "id": "cg3z_parameter_dialog",
+      "reach": "/nCG3Z from SAP Easy Access",
+      "identity": { "program": "SAPLC13Z", "dynpro": "1020" },
+      "required_ids": [
+        "wnd[1]/usr/ctxtRCGFILETR-FTFRONT",
+        "wnd[1]/usr/txtRCGFILETR-FTAPPL",
+        "wnd[1]/usr/ctxtRCGFILETR-FTFTYPE",
+        "wnd[1]/usr/chkRCGFILETR-IEFOW",
+        "wnd[1]/tbar[0]/btn[14]",
+        "wnd[1]/tbar[0]/btn[12]"
+      ],
+      "status": "captured"
+    },
+    {
+      "id": "overwrite_query",
+      "reach": "press Upload (btn[14]) with an existing target and overwrite unticked",
+      "identity": { "program": "SAPLSPO1", "dynpro": "300" },
+      "required_ids": [
+        "wnd[2]/usr/btnSPOP-OPTION1",
+        "wnd[2]/usr/btnSPOP-OPTION2"
+      ],
+      "status": "captured"
+    },
+    {
+      "id": "open_error_information",
+      "reach": "press Upload with an unreadable source file",
+      "identity": { "program": "SAPMSDYP", "dynpro": "10" },
+      "required_ids": [
+        "wnd[2]/usr/txtMESSTXT1",
+        "wnd[2]/tbar[0]/btn[0]"
+      ],
+      "status": "pending_live"
+    }
+  ]
+}

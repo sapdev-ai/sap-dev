@@ -115,6 +115,17 @@ Contract:
 | `CDS_INSTALLER_MISSING` | Installer FM `Z_CDS_DDL_INSTALL` absent or not Remote-Enabled (FMODE != R) — run the Step 3 bootstrap. |
 | `CDS_ACTIVATE_FAILED` | DDL source saved but activation raised (syntax / DDIC error) — the generated SQL view was not produced. |
 
+## File transfer (`/sap-file-transfer`)
+
+| Class | Meaning |
+|---|---|
+| `FILE_TCODE_UNAVAILABLE` | CG3Y/CG3Z parameter dialog never appeared — transaction locked (SM01) or `S_TCODE` missing. |
+| `FILE_TRANSFER_FAILED` | Transfer executed but the status bar reported `E`/`A`, or no `S` success message arrived (silence is not success). |
+| `FILE_TARGET_EXISTS` | Target file exists and `--overwrite` was not requested (SPOP Query declined; driver exit 4). |
+| `FILE_SOURCE_MISSING` | Source file unreadable — "Cannot open file" Information popup (`SAPMSDYP/10`); OS errno text in `error_msg` (driver exit 5). |
+| `FILE_LIST_RFC_UNAVAILABLE` | `list`/`exists` could not reach RFC (NCo missing, logon failed) — transfer modes remain usable; run `/sap-doctor` rfc group. |
+| `FILE_VERIFY_MISMATCH` | Post-transfer verification failed (BIN size/hash mismatch, or `exists` probe cannot find the just-uploaded target). |
+
 Registered consumers: `/sap-log-analyze` (Top error_class section),
 `sap_error_hints.ps1 -Action record` (auto-record attribution), customer
 dashboards reading `{log_dir}` JSONL. See the Logging Settings section in the
