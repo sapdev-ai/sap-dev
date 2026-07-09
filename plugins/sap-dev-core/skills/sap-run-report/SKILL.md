@@ -195,15 +195,25 @@ if ($watcher) { $watcher | Wait-Process -Timeout 45 -ErrorAction SilentlyContinu
 `--variant` (Get Variant) or notes `--values`, then F8 to execute. Foreground list capture
 (Step 4) uses the guarded run above.
 
-### 3B — Background GUI fallback (`--background` without RFC)
+### 3B — Background RFC (default engine when `Z_RUN_REPORT` + RFC are available)
+Preferred background path (D3/D5). Run the headless backend under **32-bit** PS — it
+submits via the RFC-enabled `Z_RUN_REPORT` (JOB_OPEN → SUBMIT VIA JOB → JOB_CLOSE), then
+polls `TBTCO` to completion and reads `TBTCP` for the generated spool id:
+
+```bash
+C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File "<SKILL_DIR>\references\sap_run_report_rfc.ps1" -Program "<PROGRAM>" -Variant "<VARIANT-or-empty>" -Timeout <--timeout|300> -RfcLib "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_rfc_lib.ps1"
+```
+
+Parse the last `RUN_REPORT:` line (Step 4/5). Any `ERROR:` — `Z_RUN_REPORT` missing / RFC
+down / connect failure — **degrades to 3C** (GUI Execute-in-Background), never blocks.
+Verified live on S4G (S/4HANA) 2026-07-09: a WRITE report submitted → `TBTCO` polled to
+`status=F` → `TBTCP` spool `351933` captured (present in `TSP01`, owner KM717).
+
+### 3C — Background GUI fallback (`--background` without RFC / `Z_RUN_REPORT`)
 `%%MODE%%=BG`. The VBS reaches the selection screen, loads the variant, then triggers
 **Program · Execute in Background**, accepts the print-params + start-immediate popups,
 and reads the scheduled job name from the status bar (`MessageType=S`). Monitoring is
-delegated to SM37 / `/sap-job` (Phase A does not poll GUI-only).
-
-> **Phase B (RFC):** when `Z_RUN_REPORT` is deployed and RFC is available, background
-> runs go headless through it (`sap_run_report_rfc.ps1`) → `TBTCO` poll → `TBTCP` spool
-> → `/sap-sp02` capture → `/sap-st22` on abort. Until then, background = 3B.
+delegated to SM37 / `/sap-job` (GUI-only does not poll).
 
 ### 3V — Variant sub-command
 For **set** / **delete**, generate `./references/sap_sa38_variant.vbs` (tokens
@@ -250,15 +260,29 @@ Step 3. Verified live on S/4HANA 1909 (S4D), 2026-07-09 (SAPLSVAR kernel dialogs
 
 ---
 
-## Step 4 — Capture Output (foreground)
+## Step 4 — Capture Output
 
-If `--save-output` is set and the run produced a classic list, the VBS attempts a
-`%PC` list-download (format = Unconverted plain text) to `--save-output`. Because that
-writes a local file via SAP GUI, wrap the cscript with the security guard exactly as
-`/sap-sp02` Step 3 does (pre-check → launch `sap_gui_security_sidecar.ps1` if not
-allow-listed → run → reap). ALV / interactive lists are **best-effort** — when the list
-can't be captured, the VBS emits `list_saved=NONE` and the report says so; use the
-background+spool path (Phase B) for reliable capture.
+**Foreground (3A).** If `--save-output` is set and the run produced a classic list, the VBS
+attempts a `%PC` list-download (format = Unconverted plain text) to `--save-output`. Because
+that writes a local file via SAP GUI, wrap the cscript with the security guard exactly as
+`/sap-sp02` Step 3 does (pre-check → launch `sap_gui_security_sidecar.ps1` if not allow-listed
+→ run → reap). ALV / interactive lists are **best-effort** — when the list can't be captured,
+the VBS emits `list_saved=NONE` and the report says so; use the background+spool path for
+reliable capture.
+
+**Background RFC (3B).** `sap_run_report_rfc.ps1` already polled `TBTCO` to completion and read
+the spool id. On `RUN_REPORT: COMPLETED … spool=<LISTIDENT>` with `<LISTIDENT>` ≠ `NONE` **and**
+`--save-output` set, capture the spool text by delegating to the (already-verified) spool skill:
+
+```
+/sap-sp02 <LISTIDENT> <--save-output>
+```
+
+Append the resulting path to the report (`out=<path>`). `spool=NONE` = the report produced no
+list output (nothing to capture). On `RUN_REPORT: DUMP … status=A`, drill the abort with
+`/sap-st22` (deep) and, if useful, the job log (`BP_JOBLOG_READ`). On `RUN_REPORT: TIMEOUT …`
+the job is still running server-side — report it and point to `/sap-job` / SM37; re-capture its
+spool via `/sap-sp02` once it finishes.
 
 ---
 
@@ -269,7 +293,10 @@ The last `RUN_REPORT:` / `VARIANT:` line is authoritative:
 | Line | Meaning | Verdict |
 |---|---|---|
 | `RUN_REPORT: EXECUTED_FG list_saved=<path\|NONE> sbar=<S\|I>` | Foreground run completed | `OK` |
-| `RUN_REPORT: SUBMITTED job=<name> count=<n>` | Background job scheduled | `OK` (async — not yet waited) |
+| `RUN_REPORT: SUBMITTED job=<name> count=<n>` | Background job scheduled (GUI 3C, or RFC 3B before poll) | `OK` (async — not yet waited) |
+| `RUN_REPORT: COMPLETED job=<name> count=<n> status=F spool=<id\|NONE>` | RFC background job finished; Step 4 captures the spool via `/sap-sp02` | `OK` |
+| `RUN_REPORT: TIMEOUT job=<name> count=<n> status=<s> timeout=<t>s` | RFC poll cap hit; job still running server-side | `OK` (async) — monitor via `/sap-job` |
+| `RUN_REPORT: SUBMIT_FAILED program=<P> status=<s>` | `Z_RUN_REPORT` could not schedule (`PROG_NOT_FOUND` / `OPEN_FAILED` / `CLOSE_FAILED`) | `ERROR` |
 | `RUN_REPORT: DUMP job=<name> <short>` | Runtime short dump | `DUMP` → drill with `/sap-st22` |
 | `RUN_REPORT: NEEDS_RECORDING step=<s> program=<P> screen=<S>` | A release-specific popup/screen didn't resolve | not a run — see below |
 | `VARIANT: <LISTED\|SHOWN\|DELETED\|NEEDS_RFC> …` | Variant op result | `OK` / degrade |

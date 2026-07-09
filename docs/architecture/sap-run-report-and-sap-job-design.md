@@ -336,9 +336,18 @@ classes; `sap_sa38_run.vbs` + `.screens.json` (seed, `pending_live`); marketplac
 daily dev-loop value as **+1 skill**. Remaining: `/sap-gui-probe --record` the Get-Variant /
 background-exec / `%PC` popups on the target release to flip the baseline to `captured`.
 
-**Phase B — `/sap-run-report`, RFC background.** `Z_RUN_REPORT` in `/sap-dev-init`;
-`sap_run_report_rfc.ps1` (Z_RUN_REPORT + TBTCO/TBTCP poll); `/sap-sp02` capture;
-`/sap-st22` dump-detail. Variant **set** via RFC. Still one skill.
+**Phase B — `/sap-run-report`, RFC background. ✅ BUILT 2026-07-09.** `Z_RUN_REPORT`
+(RFC-enabled FM — JOB_OPEN → SUBMIT VIA JOB → JOB_CLOSE, with a TRDIR program-exists guard +
+default `GET_PRINT_PARAMETERS` spool params; `references/Z_RUN_REPORT.abap`) deployed via
+`/sap-dev-init` **Step 8c** (best-effort RFC insert, Remote-Enabled) and registered in
+`sap_dev_artefacts.ps1` **§7c** + the dev-init orphan-lock hygiene list (dev-status/dev-clean
+see it). `sap_run_report_rfc.ps1` (submit → `TBTCO` poll → `TBTCP` spool id) wired into
+SKILL.md **Step 3B** (preferred) with GUI Execute-in-Background as **Step 3C** fallback; Step 4
+delegates spool capture to `/sap-sp02` and abort-detail to `/sap-st22`. Verified live on S4G
+(S/4HANA) 2026-07-09: a WRITE report submitted → polled to `status=F` → spool `351933`
+(TSP01-confirmed, owner KM717). Variant **set** stays GUI (Phase A, decision #4). Still one
+skill. Deferred: flip the *default* engine foreground→background per D3 (a behavior change —
+kept opt-in via `--background` for now); optional RFC `RS_CREATE_VARIANT` fast-path.
 
 **Phase C — `/sap-job`.** Only on real demand. Promote the variant lib; share `Z_RUN_REPORT`.
 

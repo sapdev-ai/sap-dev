@@ -293,7 +293,7 @@ then resolve reactively with the same `/sap-se01 remove-objects` call.
    gone (a genuine stale lock), never for a live object:
 
    ```bash
-   C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_tr_object_entries.ps1" -OnlyOrphaned -Objects "ZCMD_RFCVAL,ZCMDE_RFCVAL,ZCMST_RFC_PARAM,ZCMCT_RFC_PARAM,Z_GENERIC_RFC_WRAPPER_TBL,ZCMRUPDATE_ADDON_TABLE,Z_CLASS_SOURCE_INSTALL"
+   C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_tr_object_entries.ps1" -OnlyOrphaned -Objects "ZCMD_RFCVAL,ZCMDE_RFCVAL,ZCMST_RFC_PARAM,ZCMCT_RFC_PARAM,Z_GENERIC_RFC_WRAPPER_TBL,ZCMRUPDATE_ADDON_TABLE,Z_CLASS_SOURCE_INSTALL,Z_RUN_REPORT"
    ```
 
    **Use the 32-bit `SysWOW64` PowerShell** as shown — the helper loads SAP NCo
@@ -932,6 +932,36 @@ Interpret the `STATUS:` line — **all outcomes are non-fatal**:
 | `STATUS: EXISTS …` | Already present (idempotent re-run) ✓. |
 | `STATUS: INSERTED_INACTIVE …` | Inserted but could not activate → this release lacks the full OO source API. Remove the inactive shell with `/sap-se37 delete Z_CLASS_SOURCE_INSTALL`, then SKIP — `/sap-se24` uses the GUI path on this release. |
 | `STATUS: FG_MISSING …` / `RFC_ERROR …` / `INSERT_FAILED …` | Log an INFO `class_installer skipped: <reason>` and continue. Optional — `/sap-se24` Step 4.7 self-heals it later on a supported, RFC-capable system. |
+
+Do **not** treat any of these as an init failure; record the outcome for the Step 9 summary.
+
+---
+
+## Step 8c — Deploy Z_RUN_REPORT (RFC background report runner) — OPTIONAL, best-effort
+
+This FM backs `/sap-run-report`'s **Step 3B RFC background path** — it schedules a report
+as a background job headlessly (`JOB_OPEN` → `SUBMIT … VIA JOB` → `JOB_CLOSE`) and returns
+the job name/count so the caller can poll `TBTCO` and capture the spool
+(`TBTCP.LISTIDENT` → `/sap-sp02`). It is a KEEPER in `{sap_dev_function_group}` alongside
+the wrapper, but **OPTIONAL** (Phase B): `/sap-run-report` degrades to the GUI
+Execute-in-Background fallback (its Step 3C) when it is absent, so this step is
+**BEST-EFFORT and MUST NEVER fail `/sap-dev-init`**.
+
+It needs only RFC (standard `JOB_*` FMs — present on every release). Deploy it
+**Remote-Enabled in one call** via the same RFC helper (no separate change_attrs step). Run
+under **32-bit** PowerShell (NCo 3.1):
+
+```bash
+C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File "<SKILL_DIR>\..\sap-se37\references\sap_rfc_fm_insert.ps1" -SourceFile "<SKILL_DIR>\..\sap-run-report\references\Z_RUN_REPORT.abap" -FunctionGroup "{sap_dev_function_group}" -Transport "{RESOLVED_TR}" -Remote -ShortText "RFC background report runner (/sap-run-report)"
+```
+
+Interpret the `STATUS:` line — **all outcomes are non-fatal**:
+
+| Result | Action |
+|---|---|
+| `STATUS: INSERTED_ACTIVE …` | Deployed + active, Remote-Enabled ✓. |
+| `STATUS: EXISTS …` | Already present (idempotent re-run) ✓. |
+| `STATUS: FG_MISSING …` / `RFC_ERROR …` / `INSERT_FAILED …` / `INSERTED_INACTIVE …` | Log an INFO `run_report_fm skipped: <reason>` and continue. Optional — `/sap-run-report` uses the GUI background fallback until it is deployed. |
 
 Do **not** treat any of these as an init failure; record the outcome for the Step 9 summary.
 

@@ -343,6 +343,30 @@ if ($null -eq $rows) {
 }
 
 # ---------------------------------------------------------------------------
+# 7c. RFC report-runner FM -- Z_RUN_REPORT (OPTIONAL, Phase B)
+# ---------------------------------------------------------------------------
+# Backs /sap-run-report's Step 3B RFC background path (JOB_OPEN -> SUBMIT VIA JOB
+# -> JOB_CLOSE). OPTIONAL like 7b: /sap-run-report degrades to the GUI
+# Execute-in-Background fallback (Step 3C) when it is absent, so its absence is
+# reported informationally and NEVER increments $gaps. Token falls back to the
+# default when left unsubstituted.
+$runReportFm = if ("%%RUN_REPORT_FM%%" -like "*RUN_REPORT_FM*" -or [string]::IsNullOrWhiteSpace("%%RUN_REPORT_FM%%")) { "Z_RUN_REPORT" } else { "%%RUN_REPORT_FM%%" }
+$rows = Q-RfcReadTable "TFDIR" "FUNCNAME = '$runReportFm'" @("FUNCNAME","FMODE")
+if ($null -eq $rows) {
+    Emit $runReportFm "FM" "ERROR" "RFC_READ_TABLE on TFDIR failed (optional artefact)"
+} elseif ($rows.Count -eq 0) {
+    Emit $runReportFm "FM" "MISSING" "OPTIONAL (Phase B) -- /sap-run-report degrades to GUI Execute-in-Background without it (not a gap)"
+} else {
+    $rrFmodeOk = $false
+    foreach ($r in $rows) { $parts = $r -split '\|'; if ($parts.Count -ge 2 -and $parts[1].Trim() -eq 'R') { $rrFmodeOk = $true; break } }
+    if ($rrFmodeOk) {
+        Emit $runReportFm "FM" "ACTIVE" "TFDIR ok, FMODE=R (run-report RFC background ready)"
+    } else {
+        Emit $runReportFm "FM" "INACTIVE" "OPTIONAL -- TFDIR ok but FMODE != 'R'; re-deploy Remote-Enabled for the RFC background path"
+    }
+}
+
+# ---------------------------------------------------------------------------
 # 8. Anchor validation -- does the configured package / FG actually host the
 #    dev-init toolset?
 # ---------------------------------------------------------------------------
