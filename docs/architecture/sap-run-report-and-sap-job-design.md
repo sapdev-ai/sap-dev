@@ -381,15 +381,24 @@ start-cond → save) were verified live end-to-end; `.screens.json` baselines fl
 DefineStep must Back out of the step-list overview to the initial screen. Confirm gate (Rule 5)
 covers `schedule` + `cancel` + `delete`; the `JOB_*` error classes were pre-seeded in Phase B.
 Variant-lib promotion re-scoped (see §3.4); `Z_RUN_REPORT` shared by reference, not copied.
-Consistency gate: clean. **Write paths verified 2026-07-09:** a confirmed throwaway round-trip
-(SM36 schedule RSPARAM immediate → `list`/`status` → SM37 delete → gone) ran clean on BOTH S4G
-(RFC-verified) and EC2 (SM37-GUI-verified, JA). Delete uses **Shift+F2 (sendVKey 14)** not the
-Job-menu index (menu[0]/menu[9] is Delete on S/4HANA but a different item on ECC 7.31 — the live
-round-trip caught this), and self-verifies the job left the list before reporting `DELETED`. The
-round-trip also caught two more real bugs: the RFC `list` `-User "*"` → `SDLUNAME EQ '*'` no-match
-(now treats `*`/`%` as no-filter), and the classic-list op targeting the header selection-echo
-label instead of the data row (now column-filtered). **Still unverified:** `cancel` (abort a
-*running* job — needs a live running job) and `schedule` date-time/periodic (IDs captured).
+Consistency gate: clean. **All GUI write paths verified 2026-07-09** on BOTH S4G (S/4HANA EN,
+RFC-verified) and EC2 (ECC 7.31 JA, SM37-GUI-verified):
+- `schedule` — immediate, date-time, and periodic (daily/weekly), S4G `TBTCS`-confirmed
+  (`PERIODIC=X` + `PRDDAYS`/`PRDWEEKS`); `--period` w/o `--start` anchors at now (VBScript `Date`/`Time`).
+- `delete` — SM37 **Shift+F2 (sendVKey 14)**, NOT the Job-menu index (Delete = menu[0]/menu[9] on
+  S/4HANA but menu[0]/menu[2] on ECC 7.31 — the live round-trip caught this); self-verifies the
+  job left the list before reporting.
+- `cancel` — a running WAIT job (throwaway `ZZJOBWAIT`) aborted → RFC-confirmed status `A` on S4G;
+  resolved by **localized-text menu match** ('Cancel active job' / `有効ジョブ中止`, `ChrW`) not the
+  release-dependent index, live-confirmed on both; self-verifies via an Active-only re-query.
+
+The live testing caught **five** real bugs total: the two from the delete round-trip (RFC
+`-User "*"` → `SDLUNAME EQ '*'` no-match, now treated as no-filter; classic-list ops targeting
+the header selection-echo not the data row, now column-filtered) plus the SM37 default-date-window
+gap (row-ops now widen the window so future/past-dated jobs are found), the SM36 `--period`-without-
+`--start` anchor, and the release-dependent Delete-menu index. **Only step not run literally on
+EC2:** aborting a live job there (needs a flaky ECC clipboard-paste fixture deploy) — the mechanism
+is identical and every component is EC2-verified.
 
 **Registration checklist (per new skill):**
 - [ ] `skills/<skill>/SKILL.md` + `.claude-plugin/plugin.json`

@@ -1,22 +1,30 @@
 # SAP ATC / Code Inspector Quality Gate Skill
 
-Runs SAP Code Inspector (SCI) / ATC against an SAP repository object via SAP
-GUI Scripting and writes findings to a TSV. Acts as the **in-system quality
-gate** that complements the offline `/sap-check-abap` static checker. The
-customer brief's `MAX_PRIORITY` controls which findings block deployment
-(priority 1 = critical, 2 = high, 3 = medium, 4 = low; lower = worse).
+Runs the SAP ABAP Test Cockpit (ATC) end-to-end against an SAP repository
+object via SAP GUI Scripting — SCI Object Set → ATC Run Series → Run Monitor
+→ Manage Results — and gates on the Priority 1 / 2 / 3 finding counts. Acts
+as the **in-system quality gate** that complements the offline
+`/sap-check-abap` static checker. The customer brief's `MAX_PRIORITY`
+controls which findings block deployment (priority 1 = critical, 2 = high,
+3 = medium, 4 = low; lower = worse).
 
 ## Skill Overview
 
-1. Parse: object type + object name + optional check variant + optional
-   `MAX_PRIORITY` override
-2. Route by object type to the appropriate SCI scope
-   (PROGRAM / CLASS / FUGR / FM / INTERFACE / PACKAGE)
-3. Run the check variant (default reads `MAX_PRIORITY` from `customer_brief.md`)
-4. Read findings from the ALV grid and write to
-   `<OBJECT_NAME>.atc.tsv` in the work folder
-5. Apply the gate: any finding with `priority ≤ MAX_PRIORITY` blocks
-   deployment; rest are reported as warnings
+1. Parse: object type + object name (or an `--object-list=<file>` batch) +
+   optional `--variant=<NAME>` + optional `--max-priority=<n>` override
+   (default reads `MAX_PRIORITY` from `customer_brief.md`)
+2. Build an SCI Object Set scoped to the target(s) — PROGRAM / CLASS /
+   INTERFACE / FUGR / DDIC / TYPEGROUP / WDYN; `FM` is rejected (SCI has no
+   per-FM category — pass `FUGR <function-group-name>` instead)
+3. Create + execute an ATC Run Series bound to that set, then poll the ATC
+   Run Monitor until the run completes
+4. Read the Priority 1 / 2 / 3 counts from Manage Results (best-effort
+   result-TXT download; on FAIL or `--drill`, export the per-finding ALV as
+   `<save-to>.findings.tsv`)
+5. Apply the gate: emit `PRIORITY_COUNTS:` + `GATE_VERDICT: PASS|FAIL` — FAIL
+   when any priority ≤ `MAX_PRIORITY` has findings; plan errors
+   (`COUNT_PLNERR` > 0 → `ATC_PLAN_ERRORS`) and unverified 0/0/0 results
+   (`ATC_EMPTY_SCOPE`) never PASS
 
 ## Auto-Trigger Keywords
 
@@ -53,7 +61,7 @@ Conversational forms:
 - Customer brief at `{custom_url}\customer_brief.md` (or shared default)
   — the `MAX_PRIORITY` field is the gate threshold
 
-## One-time setup
+## Re-recording on other releases (no one-time setup)
 
 This skill drives a four-stage flow — SCI Object Set → ATC Run Series → Run
 Monitor → Manage Results — across four VBS references

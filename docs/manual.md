@@ -702,14 +702,14 @@ done, and reads the **Priority 1 / 2 / 3** finding counts. It applies your
 findings to a TSV. On a FAIL it drills into the per-finding detail automatically.
 
 ```
-RESULT: P1=0 P2=1 P3=3
-VERDICT: FAIL          # because P2 ≤ MAX_PRIORITY(2)
-FINDINGS_TSV: …\ZHKMM001R01.atc.tsv
+PRIORITY_COUNTS: P1=0 P2=1 P3=3
+GATE_VERDICT: FAIL  P1=0 P2=1 P3=3 (threshold=2 → P2 blocks)
+FILE: …\ATC_R_260709_101500.txt.findings.tsv (4210 bytes)
 ```
 
 Object types: `PROGRAM`, `CLASS`, `INTERFACE`, `FUGR`, `DDIC`, … (for a function
 module, pass its **FUGR**). Fix the findings (often via `/sap-fix-abap` or a targeted
-edit + re-deploy), then re-run until `VERDICT: PASS`.
+edit + re-deploy), then re-run until `GATE_VERDICT: PASS`.
 
 ### 8.2 ABAP Unit — `/sap-run-abap-unit`
 

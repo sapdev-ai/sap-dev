@@ -11,8 +11,9 @@ description: |
   manual "Manage Results" export — header-tolerant) into the findings ledger and
   advances state. Run after /sap-cc-usage, before /sap-cc-triage.
   Prerequisites: the connected system offers the S4HANA_READINESS variant with the
-  Simplification Database loaded; /sap-atc working (one-time Scripting Recorder
-  session per release).
+  Simplification Database loaded; /sap-atc working (its per-stage recordings
+  target the S/4HANA 1909 ATC layout — re-record a failing stage with
+  /sap-gui-probe --record).
 argument-hint: "<prepare|ingest> --campaign <id> [--results <file|dir>] [--limit <n>] [--batch-size <n>] [--variant <NAME>]"
 ---
 
@@ -37,7 +38,7 @@ Task: $ARGUMENTS
 | `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_log_helper.ps1` | *(invoke)* | Start/step/end JSONL logging. |
 | `<SKILL_DIR>/references/sap_cc_analyze.ps1` | *(invoke)* | Offline spine: `prepare` (scope→worklist) and `ingest` (ATC results→`findings_raw.tsv`, state→ANALYZED). |
 | `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_readiness_probe.ps1` | *(invoke, RFC)* | Step 1.5 readiness-capability preflight — confirms the connected system HAS `S4HANA_READINESS` variants before the ATC loop (shared with `/sap-doctor`). |
-| `/sap-atc` | *(skill)* | The ATC engine. Run per worklist object with `--variant=S4HANA_READINESS`. Needs a one-time recorded session per release (see that skill). |
+| `/sap-atc` | *(skill)* | The ATC engine. Run per worklist object with `--variant=S4HANA_READINESS`. Its per-stage VBS are recorded on S/4HANA 1909 — re-record a failing stage via `/sap-gui-probe --record` (see that skill). |
 
 Workspace contract (`findings/findings_raw.tsv` columns, the ANALYZED state)
 is defined by `/sap-cc-campaign`. This skill **owns** `findings/findings_raw.tsv`
@@ -222,8 +223,9 @@ Notes:
 - The connected system must offer the **`S4HANA_READINESS`** variant with the
   **Simplification Database** loaded. If your source ECC lacks it, run against a
   prepared sandbox/check system (the campaign's `sandbox`/`check_system`).
-- `/sap-atc` requires a one-time **Scripting Recorder** session per release to
-  capture its SCI/ATC node + grid IDs — see `/sap-atc` and `/sap-gui-probe --record`.
+- `/sap-atc`'s per-stage recordings capture its SCI/ATC node + grid IDs on
+  S/4HANA 1909; if a stage fails on your release, re-record it via
+  `/sap-gui-probe --record` and patch that stage's VBS — see `/sap-atc`.
 
 ### Central / remote check system
 
@@ -247,8 +249,10 @@ hub). Two modes:
    id is unverified (no configured hub was available to record against) — see
    `/sap-atc` "Central / remote ATC".
 
-- **Scale (v1):** this is per-object. For large estates a batched single-object-
-  set run is still a documented enhancement (see Limitations).
+- **Scale:** the worklist loop is per-object by default; for large estates use
+  `prepare --batch-size <n>`, which emits `--object-list` batch files that
+  `/sap-atc` runs as one object set / one run per batch (see "Batched
+  analysis (A5)" in Step 1).
 
 ---
 

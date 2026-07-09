@@ -24,7 +24,7 @@ Task: $ARGUMENTS
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/skill_operating_rules.md` | Mandatory operating rules |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/language_independence_rules.md` | GUI-scripting language independence — offline generator, but rule applies to downstream deploy skills the generated source feeds |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/abap_code_quality_rules.md` | **Mandatory ABAP code-quality rules** — release-aware modern syntax, OOP scaffolds, exception classes, performance gates, authz hooks, ABAP Unit, dependency + traceability emission |
-| `<SAP_DEV_CORE_SHARED_DIR>/templates/customer_brief.md` | One-page Project Profile read at Step 0a; drives release / OOP / perf decisions |
+| `<SAP_DEV_CORE_SHARED_DIR>/templates/customer_brief.md` (+ `customer_brief_<LANG>.md` variants — `_JA` shipped) | One-page Project Profile read at Step 0a via the language-aware resolution chain; drives release / OOP / perf decisions |
 | `<SAP_DEV_CORE_SHARED_DIR>/tables/abap_naming_rules.tsv` | Variable naming prefixes (overridable via `{custom_url}`) |
 | `<SAP_DEV_CORE_SHARED_DIR>/tables/frequently_errors.tsv` | **TIER-3 seed of the frequently_errors loop** — curated FM / class-method / codegen traps + remedies. Read (merged with `{custom_url}` tiers) at Step 1.5f. |
 | `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_error_hints.ps1` | CLI for the frequently_errors loop. `-Action resolve` (Step 1.5f read path) merges the 3 tiers for the spec's FMs/methods/auth-objects and writes `{work_folder}\_error_hints.txt`. OFFLINE. |
@@ -79,8 +79,18 @@ powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_
 
 ## Step 0a — Read the Customer Project Brief
 
-Read `{custom_url}\customer_brief.md` if it exists; otherwise fall back to
-`<SAP_DEV_CORE_SHARED_DIR>/templates/customer_brief.md` (the empty default).
+Resolve the brief language-aware (first hit wins), where `<LANG>` is
+`userConfig.template_language`, else `userConfig.sap_language` (the SAP
+logon language), else `EN` — and `EN` needs no `_EN` probe (the base,
+unsuffixed file IS the EN variant):
+
+1. `{custom_url}\customer_brief_<LANG>.md` — customer override, language-specific name.
+2. `{custom_url}\customer_brief.md` — customer override.
+3. `<SAP_DEV_CORE_SHARED_DIR>/templates/customer_brief_<LANG>.md` — built-in language variant (`_JA` ships today).
+4. `<SAP_DEV_CORE_SHARED_DIR>/templates/customer_brief.md` — the empty default.
+
+The resolved brief may be in any shipped language — map its fields
+semantically; the MODE flags below are language-independent.
 Extract these fields and use them to set generator MODE flags applied
 end-to-end:
 
@@ -103,8 +113,10 @@ If the brief is empty / missing, ask the user:
 > "No Project Brief found. I can generate with safe defaults (classic ABAP, FORM
 > routines, no unit tests, $TMP package). To get release-aware modern ABAP +
 > OOP + ABAP Unit tests + traceability files, fill out
-> `<SAP_DEV_CORE_SHARED_DIR>/templates/customer_brief.md` and save to
-> `{custom_url}\customer_brief.md`. Continue with defaults?"
+> `<SAP_DEV_CORE_SHARED_DIR>/templates/customer_brief.md` (or its language
+> variant, e.g. `customer_brief_JA.md`) and save to
+> `{custom_url}\customer_brief.md` (a `customer_brief_<LANG>.md` name works
+> too). Continue with defaults?"
 
 Apply `<SAP_DEV_CORE_SHARED_DIR>/rules/abap_code_quality_rules.md` end-to-end.
 Emit the chosen mode as a one-line header comment in the generated `.abap`:

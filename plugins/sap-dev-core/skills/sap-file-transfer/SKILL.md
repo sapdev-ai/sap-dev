@@ -10,8 +10,9 @@ description: |
   via control IDs + MessageType, verified for JA logons). Wires the SAP GUI
   Security precheck/sidecar around the local-file IO. Closes the
   file-interface test loop: upload test input -> /sap-run-report -> list ->
-  download output -> /sap-compare. No transport request involved - this
-  skill touches no repository object.
+  download output -> diff against the spec's expected output (golden rows /
+  Mapping (File Out)). No transport request involved - this skill touches
+  no repository object.
   Typical asks: "upload <file> to the SAP server", "download /tmp/x from S4D",
   "list /usr/sap/trans", "does /tmp/out.txt exist on the app server".
   Prerequisites: active SAP GUI session (use /sap-login first) for

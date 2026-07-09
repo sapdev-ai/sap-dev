@@ -44,12 +44,12 @@ once at session start; cite by filename when refusing an action.
 
 | File | Purpose |
 |---|---|
-| `<SAP_DEV_CORE_SHARED_DIR>/rules/skill_operating_rules.md` | **MANDATORY.** Rule 1 (no write SQL on standard tables), Rule 2 (no unsolicited deploy), Rule 3 (forbidden `RFC_READ_TABLE` tables — `REPOSRC` etc.), Rule 4 (structured logging on every skill invocation). This file's rules OVERRIDE any conflicting guidance in skill bodies or this agent file. The Boundaries table below cites these rules — when a Boundary row says "see Rule N", read the full text in `skill_operating_rules.md`. |
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/skill_operating_rules.md` | **MANDATORY.** Rule 1 (no write SQL on standard tables), Rule 2 (no unsolicited deploy), Rule 3 (forbidden `RFC_READ_TABLE` tables — `REPOSRC` etc.), Rule 4 (structured logging on every skill invocation), Rule 5 (report execution / job scheduling requires explicit confirmation — a report is NOT assumed read-only). This file's rules OVERRIDE any conflicting guidance in skill bodies or this agent file. The Boundaries table below cites these rules — when a Boundary row says "see Rule N", read the full text in `skill_operating_rules.md`. |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/tr_resolution.md` | TR-resolution policy. `/sap-transport-request` is the single entry point; never prompt the user for a TR number, never call `/sap-se01` directly. |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/abap_code_quality_rules.md` | ABAP code-quality rules driven by the customer brief. Consumed by `/sap-gen-abap`, `/sap-check-abap`, `/sap-fix-abap` — this agent inherits via those skills. |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/language_independence_rules.md` | GUI-scripting language independence. Enforced inside the deploy skills' VBS — this agent inherits via those skills. |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/settings_lookup.md` | Two-file `settings.json` / `settings.local.json` merge contract. |
-| `<SAP_DEV_CORE_SHARED_DIR>/templates/customer_brief.md` | Built-in empty brief template (see Step 0.2 resolution chain). |
+| `<SAP_DEV_CORE_SHARED_DIR>/templates/customer_brief.md` | Built-in empty brief template; language variants (`customer_brief_<LANG>.md`, `_JA` shipped) sit beside it (see Step 0.2 resolution chain). |
 
 **Path resolution from this file**: `<SAP_DEV_CORE_SHARED_DIR>` is `../shared/`
 relative to this agent file (i.e. `plugins/sap-dev-core/shared/`). This is
@@ -102,10 +102,16 @@ CLAUDE.md "Two-bucket temp model".
 
 ### 0.2 Read the customer brief and set MODE flags
 
-Resolution chain (first hit wins):
+Resolution chain (first hit wins; `<LANG>` = `userConfig.template_language`,
+else `userConfig.sap_language` (the SAP logon language), else `EN` — `EN`
+needs no `_EN` probe, the base unsuffixed file IS the EN variant):
 
-1. `{custom_url}\customer_brief.md` — customer-specific filled-in brief.
-2. `<SAP_DEV_CORE_SHARED_DIR>/templates/customer_brief.md` — built-in
+1. `{custom_url}\customer_brief_<LANG>.md` — customer-specific filled-in
+   brief under a language-specific name.
+2. `{custom_url}\customer_brief.md` — customer-specific filled-in brief.
+3. `<SAP_DEV_CORE_SHARED_DIR>/templates/customer_brief_<LANG>.md` — built-in
+   language variant (`_JA` ships today; still an empty template).
+4. `<SAP_DEV_CORE_SHARED_DIR>/templates/customer_brief.md` — built-in
    empty template (placeholder fields, no real values).
 
 Detect which one was hit by checking whether the resolved file contains
@@ -119,7 +125,8 @@ NOT said "use defaults" / "skip the brief":
 
 > STOP and ask:
 >
-> "No customer-filled brief found at `{custom_url}\customer_brief.md`.
+> "No customer-filled brief found at `{custom_url}\customer_brief.md`
+> (nor a `customer_brief_<LANG>.md` variant).
 > I can run with safe defaults (classic ABAP, FORM routines, no unit
 > tests, $TMP package, ATC max=2), but customer-specific requirements
 > (release, authz objects, naming sub-prefix, perf bands) won't be
@@ -148,8 +155,9 @@ invocation, not before each subskill.
 
 If `/sap-login` fails (no SAP GUI installed, credentials wrong, server
 unreachable), STOP. This agent's V1 scope assumes a working SAP system.
-Surface the login error verbatim and ask the user to resolve it before
-re-invoking. **Do not** attempt to continue with offline-only steps; the
+Surface the login error verbatim, run `/sap-doctor` (read-only — its
+gui/cfg/rfc probes print a copy-pasteable FIX per failure), and ask the
+user to resolve it before re-invoking. **Do not** attempt to continue with offline-only steps; the
 pipeline requires DDIC checks, deploy, and ATC, all of which need SAP.
 
 ### 0.3a Verify the pinned system matches the user's intent
@@ -210,7 +218,7 @@ Interpret the exit code:
 |---|---|---|
 | `0` | `STATUS: ALL_OK` — every artefact healthy | Proceed silently to Step 0.5 |
 | `1` | `STATUS: GAPS=<N>` — one or more `MISSING` / `INACTIVE` / `NOT_CONFIGURED` artefacts | STOP. Surface the gap table the skill produced. Recommend `/sap-dev-init` and ask: "Run `/sap-dev-init` now to create the missing artefacts, continue anyway (downstream skills may fail with `FM_NOT_FOUND` etc.), or cancel? (init / continue / cancel)". On `init`, run `/sap-dev-init`, then re-run `/sap-dev-status` to confirm all-OK before resuming. On `continue`, log the explicit override in the transcript. On `cancel`, write the transcript and stop. |
-| `2` | `STATUS: ERROR` — RFC connection failed | STOP. Surface the RFC error verbatim. Likely causes: SAP NCo 3.1 not in GAC_32, wrong RFC params in `settings.json`, server unreachable, credentials expired. Ask the user to resolve before re-invoking the agent. |
+| `2` | `STATUS: ERROR` — RFC connection failed | STOP. Surface the RFC error verbatim. Likely causes: SAP NCo 3.1 not in GAC_32, wrong RFC params in `settings.json`, server unreachable, credentials expired. Run `/sap-doctor` (rfc group) for the exact FIX line, and ask the user to resolve before re-invoking the agent. |
 
 **Skip conditions.** If the user said any of the following in their
 invocation, skip the check and record the skip in the transcript:
@@ -339,7 +347,12 @@ Resolve the spec path from `$ARGUMENTS`. If absent, ask the user.
 
 This produces `{work_folder}` with the structured `_*.txt` files (and an
 optional `_selection_screen_layout.png` for spec workbooks that include
-one). Capture `{work_folder}` from the output.
+one). Capture `{work_folder}` from the output. Beyond the files the checks
+below consume, extract also emits `_textElements.txt`, `_supplement.txt`,
+`_deps.txt` (spec-level dependencies — distinct from the generated
+`Z<ID>.deps.txt`), per-table `table_data_<TABLE>.txt`, and — for
+file-interface specs — `_file_mapping_in.txt` / `_file_mapping_out.txt`
+(the Step 2k file-loop trigger).
 
 If `{custom_url}` contains `spec_conversion_rules.tsv` (per-customer
 field-name / type / flag normalisation), apply it:
@@ -386,24 +399,28 @@ ddic` / `--dimension process` to force one)
 
 ### 2c. Resolve DDIC + message-class dependencies
 
-For each domain / data element / table the spec defines that doesn't yet
-exist on the target SAP, deploy via the corresponding `/sap-se11`
-sub-flow. The skill auto-detects existence via `DD02L` / `DD04L` / `DD01L`
-RFC reads — so the safe pattern is "always invoke; the skill skips
-existing objects":
+For each domain / data element / table the spec defines, deploy via the
+corresponding `/sap-se11` sub-flow, passing the definition extracted from
+the spec (the contract is `<object-type> <object-name> [definition-file]`
+— without a definition the skill has nothing to create). The skill checks
+existence itself (SE11 display probe); an EXISTING object routes to the
+UPDATE flow, not a skip — re-invoking is safe but re-applies the spec
+definition:
 
 ```
-/sap-se11 DOMAIN <name>          # for each domain in _domains.txt
-/sap-se11 DATAELEMENT <name>     # for each in _dataElements.txt
-/sap-se11 TABLE <name>           # for each in _tables.txt
+/sap-se11 DOMAIN <name> <definition>       # per domain in _domains.txt
+/sap-se11 DATAELEMENT <name> <definition>  # per entry in _dataElements.txt
+/sap-se11 TABLE <name> <definition>        # per table in _tables.txt
 ```
 
 If `_errorMsgs.txt` has ≥1 row, group rows by `MSG_CLASS` (the unique
-message-class IDs the generated ABAP will reference) and deploy each
-class with its messages via `/sap-se91`:
+message-class IDs the generated ABAP will reference), write each group's
+number/text pairs to a tab-separated messages file, and deploy each class
+WITH that file — `/sap-se91` does not auto-discover messages from the
+class name:
 
 ```
-/sap-se91 <MSG_CLASS>            # for each unique MSG_CLASS, deploys class + all messages
+/sap-se91 <MSG_CLASS> <messages-file>   # per unique MSG_CLASS: class + its messages
 ```
 
 A program that calls `MESSAGE e001(zmm15)` will fail activation if
@@ -451,7 +468,11 @@ any dependent objects:
 /sap-transport-request OBJECT_TYPE=REPORT OBJECT_DESCRIPTION=<from spec>
 ```
 
-Capture the returned TR. Pass it to subsequent skills.
+Capture the returned TR for the transcript and the Step 5 report. Do NOT
+pass it as a flag — the deploy skills take no `--transport` argument; each
+resolves its TR internally via `/sap-transport-request`, which returns the
+same request under the `DEFAULT` policy / session dev-defaults. This step
+exists to surface TR problems BEFORE generation, not to thread a token.
 
 ### 2e. Generate ABAP source
 
@@ -475,6 +496,7 @@ This produces (in `{work_folder}`):
 - `_fm_signatures.txt` — RPY_FUNCTIONMODULE_READ_NEW results (FM cache)
 - `_authz_signatures.txt` — USOBT_C results (AUTHORITY-CHECK field cache)
 - `_struct_signatures.txt` — DDIF_FIELDINFO_GET results (BAPI/DDIC struct cache)
+- `_error_hints.txt` — frequently_errors trap hints applied at generation (Step 1.5f)
 
 **Pre-deploy verification (mandatory gate before Step 2f).** Before
 running `/sap-check-abap`, run this offline sanity sweep on the generated
@@ -488,7 +510,7 @@ that the agent must not let through:
 | Confirm `_struct_signatures.txt` exists and is non-empty if the spec defines BAPI calls (grep `_fm_signatures.txt` for `BAPI_`) | **WARN** the user that BAPI structure-parameter assignments were emitted from AI training knowledge, not live SAP. Recommend `/sap-gen-abap --refresh-cache` before deploy. |
 | Confirm `Z<PROGRAM_ID>.messages.txt` exists if the source references any `MESSAGE eNNN(<msgclass>)` | **STOP**. The deploy pipeline needs this file at Step 2c to populate the message class before the program activates. |
 | A `CALLFUNC_WRONG_SECTION` lint finding on a `CALL FUNCTION` that activates and passes ATC | **DIAGNOSE, do not "fix" the call.** The `_fm_signatures.txt` `SECTION` column is CALLER perspective (FM IMPORT param → `EXPORTING`, FM EXPORT param → `IMPORTING`); the lint compares it directly with no flip. A wrong-section on correct code means the **snapshot is flipped** — a stale/legacy FM cache. Re-run `/sap-gen-abap --refresh-cache` (the `.cache_format` guard now auto-purges pre-contract caches) and re-lint. Do NOT reorder the ABAP or ask to make the lint "direction-aware" — that inverts a correct contract (abap_code_quality_rules.md §24). |
-| Confirm `Z<PROGRAM_ID>_TEST.abap` exists if `MODE_UNIT_TESTS = TRUE` AND `_golden.txt` has ≥1 data row. Also scan the `/sap-gen-abap` output for the `TEST_FILE:` marker line — `EMITTED ... methods=N` is the only PASS state; `FAILED:*`, `SKIPPED:NO_GOLDEN_ROWS`, or absent line all count as failure here. | **STOP**. `/sap-gen-abap` silently dropped the test file despite the customer brief requiring it. Re-invoke `/sap-gen-abap` with an explicit reminder that `MODE_UNIT_TESTS = TRUE` is mandatory, citing the SKILL.md §3.4 contract. If it still skips on retry, surface as a generator bug — do NOT proceed to deploy. The 2026-05-27 `ZMMRMAT042R01` build shipped without tests despite the brief saying `yes (mandatory)`; this gate exists to catch that pattern. |
+| Confirm `Z<PROGRAM_ID>_TEST.abap` exists if `MODE_UNIT_TESTS = TRUE` AND `_golden.txt` has ≥1 data row. Also scan the `/sap-gen-abap` output for the `TEST_FILE:` marker line — `EMITTED ... methods=N` is the only PASS state; `FAILED:*`, `SKIPPED:NO_GOLDEN_ROWS`, or absent line all count as failure here. | **STOP**. `/sap-gen-abap` silently dropped the test file despite the customer brief requiring it. Re-invoke `/sap-gen-abap` with an explicit reminder that `MODE_UNIT_TESTS = TRUE` is mandatory, citing the SKILL.md Step-3 test-file emit contract. If it still skips on retry, surface as a generator bug — do NOT proceed to deploy. The 2026-05-27 `ZMMRMAT042R01` build shipped without tests despite the brief saying `yes (mandatory)`; this gate exists to catch that pattern. |
 
 If any check fires STOP, do NOT continue to Step 2f.
 
@@ -510,7 +532,9 @@ After 3 iterations:
 ```
 
 fix-abap's contract is `<file> [<result-tsv>]` — pass the `.check.tsv` result
-file check-abap just wrote (there is no `--reasons` flag). fix-abap presents
+file check-abap just wrote (there is no `--reasons` flag; the `fm` / `syntax`
+dimensions write separate siblings `.check_fm.tsv` / `.syntax.tsv`, which
+fix-abap auto-discovers, so the main `.check.tsv` is enough). fix-abap presents
 a fix plan and asks for confirmation before applying; inside this bounded
 loop YOU review that plan and confirm on the operator's behalf (per your
 brief authority) — apply only the fixes fix-abap classifies **Auto**
@@ -522,6 +546,22 @@ point remains Step 2g (pre-deploy confirmation).
 If FM signatures matter, the `fm` dimension of `/sap-check-abap` covers it
 (`/sap-check-abap <Z<PROGRAM_ID>.abap> --dimensions fm`) — chain it the same
 way and feed errors to `/sap-fix-abap` (which absorbed the former sap-fix-fm).
+
+### 2f.5. AI semantic review (advisory gate)
+
+`/sap-check-abap` is structural and `/sap-atc` is rule-based; neither
+reasons about logic, security, or performance intent. Run the AI review on
+the generated file (FILE mode — no GUI session needed); its own pipeline
+contract is `gen-abap → check-abap → review-abap → atc`:
+
+```
+/sap-review-abap {work_folder}\Z<PROGRAM_ID>.abap
+```
+
+Advisory by default — findings do NOT block. Fold them into the Step 2g
+confirmation prompt ("review: <N> advisory findings — show them?") so the
+user decides with them on the table. The gate blocks only when the user or
+the customer brief asks for `--gate block`.
 
 ### 2g. Confirm before deploying
 
@@ -548,12 +588,25 @@ Pick the deploy skill by program type (read from `_PGM_summary.txt`):
 | Type | Skill |
 |---|---|
 | `1` Executable / `M` Module Pool / `I` Include | `/sap-se38` |
-| `F` Function group + FM | `/sap-function-group` then `/sap-se37` |
+| `F` Function group + FM | `/sap-function-group`, then `/sap-se37`, then re-activate the FG via `/sap-function-group` (its Step 3c: after an FM create/update against an existing FG, the pool program `SAPL<FG>` can stay inactive and later block TR release) |
 | `K` Class | `/sap-se24` |
 
 The deploy skill handles save → syntax check → activate, locks the
 session (per Rule 7) for the critical section, and returns success only
 when the object is active.
+
+**Module Pool (`M`) completion — screens + GUI status.** `/sap-gen-abap`
+emits a type-`M` program with PBO/PAI stubs only and explicitly leaves
+"screen layout, GUI status" for completion; `/sap-se38` deploys only the
+program source. After the source is active, finish the object:
+
+- `/sap-se51 Z<PROGRAM_ID> <screen-number> <flow-logic-file>` per spec
+  dynpro (add layout fields via `--add-element`).
+- `/sap-se41 CREATE Z<PROGRAM_ID> <status-name> …` for every status the
+  source references (grep the generated .abap for `SET PF-STATUS`).
+
+Without these, a type-`M` deploy activates but is NOT runnable — a skipped
+screen/status makes the build `PARTIAL` in Step 5, never a silent pass.
 
 ### 2h.1 — Verify text elements applied (Report programs only)
 
@@ -592,28 +645,22 @@ is a contract violation (see Boundaries table).
 
 ### 2i. ATC quality gate
 
-**Pre-flight readiness check.** `/sap-atc` is implemented by a VBS that
-contains `PLACEHOLDER` constants for SCI scope-radio + results-grid IDs
-which must be captured via a one-time Scripting Recorder session per the
-target SAP version. Before invoking, check whether
-`<SAP_DEV_CORE_SHARED_DIR>/../skills/sap-atc/references/sap_atc_run.vbs`
-still contains the literal string `PLACEHOLDER`. If yes, STOP with:
-
-> "/sap-atc requires a one-time Scripting Recorder session to capture
-> SCI control IDs for your SAP version. See sap-atc/SKILL.md § 'First-time
-> setup'. Skipping ATC for now — the program is deployed but quality-gate
-> is not enforced. Re-run /sap-atc manually after recording, or ask me
-> to walk you through the recording session."
-
-Once the placeholders are replaced, run:
-
 ```
-/sap-atc <TYPE> Z<PROGRAM_ID> --max-priority <ATC_MAX>
+/sap-atc <TYPE> Z<PROGRAM_ID> --max-priority=<ATC_MAX>
 ```
 
-If ATC reports any finding at priority ≤ `ATC_MAX`, STOP. Surface findings
-to the user; do NOT mark the build complete. The user decides whether to
-fix-and-redeploy or accept-and-document.
+Type caveat: `/sap-atc` rejects `FM` as a `<TYPE>` — for a function module,
+gate its function group (`/sap-atc FUGR <FG_NAME> --max-priority=<ATC_MAX>`).
+
+The skill drives the full SCI Object Set → ATC Run Series → Run Monitor →
+Manage Results flow; its result lines are authoritative:
+
+| Line | Meaning | Agent action |
+|---|---|---|
+| `GATE_VERDICT: PASS …` | No finding at priority ≤ `ATC_MAX` | Proceed to Step 2j |
+| `GATE_VERDICT: FAIL …` (+ `PRIORITY_COUNTS: P1=<n> P2=<n> P3=<n>`) | Blocking findings | STOP. Surface the findings + counts; do NOT mark the build complete. The user decides fix-and-redeploy vs. accept-and-document. |
+| `ERROR: ATC_PLAN_ERRORS …` (`COUNT_PLNERR>0`) | The check plan itself errored | STOP. The object is deployed but the quality gate did NOT run — never report this as a pass. |
+| Other `ERROR:` (classes `ATC_EMPTY_SCOPE` / `ATC_OBJ_SET_FAILED` / `ATC_RUN_SCHEDULE_FAILED` / `ATC_POLL_TIMEOUT` / `ATC_RESULT_PARSE_FAILED`) | Infra / scope / release-layout failure | STOP. Report the error class verbatim; on a release-layout failure follow the skill's own re-record guidance (`/sap-gui-probe --record` for the affected stage). |
 
 ### 2j. Deploy (or generate) the test class
 
@@ -621,7 +668,7 @@ If `MODE_UNIT_TESTS != OFF` and a real `Z<PROGRAM_ID>_TEST.abap` was generated,
 deploy it the same way as the main program (after the main object is active):
 
 ```
-/sap-se38 Z<PROGRAM_ID>_TEST {work_folder}\Z<PROGRAM_ID>_TEST.abap --transport <TR>
+/sap-se38 Z<PROGRAM_ID>_TEST {work_folder}\Z<PROGRAM_ID>_TEST.abap
 ```
 
 **No test class (or skeleton-only) under a mandatory bar.** If
@@ -635,8 +682,9 @@ generate real tests first instead of skipping the gate:
 
 `/sap-gen-abap-unit` generates the test container, deploys + activates it, runs
 `/sap-run-abap-unit`, and iterates until green (or reports honestly what is
-untestable without a refactor). Use its final `AUNIT_VERDICT` as the gate below —
-you then do NOT need a separate 2j.1 run. If it hands off `AUNIT_GEN_NOT_GREEN`
+untestable without a refactor). Use the `AUNIT_VERDICT` from its inner
+`/sap-run-abap-unit` run as the gate below — you then do NOT need a separate
+2j.1 run. If it hands off error class `AUNIT_GEN_NOT_GREEN`
 or `AUNIT_GEN_NO_SEAM`, treat the build as **not verified** — surface it; do not
 mark complete.
 
@@ -652,7 +700,7 @@ file whenever `!= OFF`; only this gate reads the distinction.)
 
 - **`MANDATORY` → auto-run:**
   ```
-  /sap-run-abap-unit Z<PROGRAM_ID>_TEST [--min-coverage <MODE_MIN_COVERAGE>]
+  /sap-run-abap-unit Z<PROGRAM_ID>_TEST [--min-coverage=<MODE_MIN_COVERAGE>]
   ```
   - `AUNIT_VERDICT: FAIL` (test failures) → **STOP**; surface the failing
     `class::method` + messages; do not mark the build complete.
@@ -663,7 +711,7 @@ file whenever `!= OFF`; only this gate reads the distinction.)
   - `UNIT_TEST_RUN: NEEDS_RECORDING` → the result grid is not yet recorded for
     this SAP release; surface the "First-time setup" note from
     `sap-run-abap-unit/SKILL.md` and treat the tests as not-yet-run (do NOT claim
-    pass). Same model as the `/sap-atc` placeholder pre-flight.
+    pass).
   - **Cross-check**: the executed `methods=N` should equal the
     `TEST_FILE: EMITTED … methods=N` that `/sap-gen-abap` reported; a mismatch
     means tests were silently dropped — surface it.
@@ -672,6 +720,45 @@ file whenever `!= OFF`; only this gate reads the distinction.)
 
 Surface `UNIT_TEST_RUN` + `AUNIT_VERDICT` in the Step 5 final summary, next to
 the ATC result.
+
+### 2k. Runtime verification (OFFER-ONLY — never auto-run)
+
+ATC + ABAP Unit prove code quality, not runtime behavior on real selection
+values. After the gates pass, OFFER a runtime run — do NOT execute it
+unprompted (`skill_operating_rules.md` Rule 5: a report is not assumed
+read-only; the only sanctioned automatic run is the bounded F8 smoke test
+already inside `/sap-se38`):
+
+> "Deployed and gates passed. Also RUN `Z<PROGRAM_ID>` to verify runtime
+> behavior? (foreground / background / skip)"
+
+On `skip` or no answer: record `RuntimeVerify: SKIPPED` and go to Step 5.
+
+On a run request, drive it through the runtime skills — their own Step 2.5
+confirm gates show engine/variant/target and take the final yes; never
+pre-empt or suppress them:
+
+1. **Plain report** — `/sap-run-report Z<PROGRAM_ID> [--variant=… |
+   --values=…] [--background] [--save-output=…]`.
+2. **Background run** — monitor via `/sap-job status <job> <count>`. On
+   `status=A` (aborted), drill the dump with `/sap-st22` and carry the top
+   error line into the Step 5 report.
+3. **File-interface program** (the work folder has `_file_mapping_in.txt` /
+   `_file_mapping_out.txt`, extracted from the spec's Mapping (File In) /
+   (File Out) sheets) — close the loop end-to-end:
+   - `/sap-file-transfer upload <test-input> <appserver-in-path>` (stage input)
+   - `/sap-run-report Z<PROGRAM_ID> --background …` (execute)
+   - `/sap-job status <job> <count>` until `F`
+   - `/sap-file-transfer download <appserver-out-path> <local-out>` (fetch output)
+   - Diff `<local-out>` against the spec's expected output (golden rows /
+     Mapping (File Out)) and report mismatches. Do NOT reach for
+     `/sap-compare` here — that skill diffs one repository object across two
+     SAP systems, not two files.
+
+Record the outcome for Step 5: `RuntimeVerify: OK | DUMP (ST22 <id>) |
+SKIPPED`. A `DUMP` does not retroactively fail the deploy (the object is
+active and ATC-clean) but the build is NOT runtime-verified — surface it
+prominently and let the user decide fix-and-redeploy vs. accept.
 
 ---
 
@@ -684,22 +771,53 @@ spec.
 
 `$ARGUMENTS` should include the program/object name. If not, ask.
 
+### 3a.5 Route by defect class: syntax/quality vs. runtime
+
+`/sap-check-fix` fixes what a syntax check or quality pass can see. A
+RUNTIME defect (short dump, wrong result, aborted job) needs the incident
+lane instead:
+
+- Dump key / "it dumps" / aborted-job symptom → `/sap-diagnose` (read-only
+  root-cause; `--dump <KEY>` for a known dump), then `/sap-fix-incident
+  --incident <diagnose.json>` — it reproduces the defect as a RED ABAP Unit
+  test, applies a minimal patch behind a TR, and proves it GREEN. The ATC
+  re-check (3c) still applies to the patched object.
+- Plain "fix Z<X>" / syntax or activation errors → 3b below.
+
+When in doubt, ask which defect class the user means — the lanes produce
+different artifacts (a test-verified patch vs. a re-activated object).
+
 ### 3b. Run the unified check-fix dispatcher
 
 ```
 /sap-check-fix <name>
 ```
 
-This skill already encapsulates the routing: identifies the object type,
-runs the appropriate check, attempts auto-fix if errors are found, and
-re-checks. It internally manages the up-to-3-iteration loop. Capture its
-final status (`SUCCESS` / `FAILED` / `MANUAL_INTERVENTION_REQUIRED`).
+This skill is a pure ROUTER: it detects the object type (explicit keyword,
+else an SE38 → SE37 → SE24 → SE11 display probe) and dispatches ONCE to the
+matching workbench skill (`/sap-se38` / `/sap-se37` / `/sap-se24` /
+`/sap-se11`) in check-and-fix mode — it does not loop or fix on its own.
+Two behaviours to honour:
+
+- **Enhancement components divert to `/sap-cmod`.** A name matching
+  `EXIT_SAP*` (function exit), `ZX*` (exit include), `CI_*` (table
+  enhancement), or `SAPLX*` (screen exit) is confirmed via MODSAP and routed
+  to `/sap-cmod`, which edits the correct underlying object (for a function
+  exit: the ZX* customer include, never the standard FM) and re-activates
+  the CMOD project. Expect this branch; do not re-route it back to SE37.
+- **The outcome is forwarded verbatim** from the downstream skill; the
+  router's own log statuses are only `SUCCESS` / `FAILED` (error classes
+  `CHECK_FIX_FAILED`, `DISPATCH_FAILED`). There is no
+  `MANUAL_INTERVENTION_REQUIRED` status — findings the downstream skill
+  classifies as manual come back in its report; surface them in Step 3d.
 
 ### 3c. ATC re-check
 
 ```
-/sap-atc <TYPE> <name> --max-priority <ATC_MAX>
+/sap-atc <TYPE> <name> --max-priority=<ATC_MAX>
 ```
+
+(For a function module, gate its function group: `TYPE=FUGR`, name = the FG.)
 
 Same gate as build mode. Don't claim "fixed" if ATC still flags the
 object at or above `ATC_MAX`.
@@ -730,7 +848,7 @@ Read the .abap file. Detect:
 For each FM / class / table the source references:
 
 ```
-/sap-check-abap <file>             # all dimensions: naming + technical + fm + syntax
+/sap-check-abap <file>             # all dimensions (naming, type, sql, unused, contract, spec, conv, fm, syntax)
 ```
 
 If anything is missing or the source is malformed, STOP. Tell the user
@@ -755,8 +873,8 @@ On `yes`: continue.
 
 ```
 /sap-transport-request OBJECT_TYPE=<X> OBJECT_DESCRIPTION=Z<NAME>
-/sap-se38 (or se37/se24) Z<NAME> <file> --transport <TR>
-/sap-atc <X> Z<NAME> --max-priority <ATC_MAX>
+/sap-se38 (or se37/se24) Z<NAME> <file>
+/sap-atc <X> Z<NAME> --max-priority=<ATC_MAX>     # FM target: gate its FUGR instead
 ```
 
 Same ATC gate as build mode. STOP if findings exceed `ATC_MAX`.
@@ -778,6 +896,8 @@ SUMMARY
                 # MANDATORY when MODE_UNIT_TESTS=TRUE AND _golden.txt has rows; never silent-skip.
   TextElements: APPLIED <N>/<M> sym=<A>/<B> | FAILED:<reason> | N/A (non-report) | SKIPPED:<reason>
                 # MANDATORY for type=1 reports; cite Step 2h.1 remediation if FAILED.
+  RuntimeVerify: OK (fg | bg job <name>/<count>) | DUMP (ST22 <id>) | SKIPPED
+                # Step 2k is offer-only; a run happens only on user request (Rule 5).
 
 ARTIFACTS
   Source:        {work_folder}\Z<NAME>.abap
@@ -789,6 +909,8 @@ ARTIFACTS
 NEXT STEPS
   - Hand <NAME>.deps.txt to basis for authorization design.
   - Run ABAP Unit tests: `/sap-run-abap-unit Z<NAME>_TEST` (or SE80 > Test, Ctrl+Shift+F10).
+  - Run the report itself: `/sap-run-report Z<NAME>` (its confirm gate asks before
+    executing); monitor a background run via `/sap-job`.
   - <Any user actions surfaced by skills, in order.>
 ```
 
@@ -845,46 +967,59 @@ enforcement details.
 | Bypass the session lock around source paste / save / activate | `language_independence_rules.md` Rule 7 | Already enforced inside the deploy skills' VBS — don't reach around them. |
 | Bypass an ATC priority-1 or -2 finding | This agent's contract | Surface findings; let the user decide. |
 | Deploy without explicit user "yes" on the first run | This agent's contract | Always prompt at Step 2g / 4c. |
+| Execute a deployed report, or schedule/cancel/delete a background job, as an unconfirmed side effect (e.g. an automatic post-deploy "runtime check") | `skill_operating_rules.md` Rule 5 | Offer, don't run (Step 2k). On user request, invoke `/sap-run-report` / `/sap-job` and let their Step 2.5 confirm gate show engine/variant/target and take the final yes — never pre-empt or suppress that gate. The sole sanctioned automatic run is the bounded F8 smoke test inside `/sap-se38`'s own deploy verification. |
 | Run more than 3 fix iterations per error class | This agent's contract | Surface remaining errors. |
 | Use computer-use, Chrome, web-fetch, or any tool outside the `/sap-*` family | Tool boundary | Out of scope; ask the main Claude. |
 | Make assumptions about an FM's signature | `/sap-gen-abap` Step 1.5 | Use the cached `_fm_signatures.txt`. |
 | **Hand-write ABAP source** in build mode (Step 2). The generator is `/sap-gen-abap` — it has the FM-signature cache (Step 1.5), the AUTHORITY-CHECK SU21 field cache (Step 1.5b'), and the DDIC struct-field cache (Step 1.5e). Hand-written ABAP bypasses every one of these and reverts to AI training knowledge that is provably wrong on BAPI parameter structures (e.g. `gross_wt`/`volume` not on BAPI_MARA), AUTHORITY-CHECK field names (e.g. M_MATE_MAR has `BEGRU` not `MATART`), and message-class translation hygiene. | `/sap-gen-abap` SKILL.md Steps 1.5/1.5b'/1.5e + this agent's contract | Invoke `/sap-gen-abap <work_folder>/<doc>_process.txt`. If it fails, surface the failure — DO NOT substitute it with manual coding. If the generated output looks wrong, fix the spec or fix `/sap-gen-abap`; don't side-step it. |
-| Emit `MESSAGE 'literal text' TYPE 'X'.` (literal-string MESSAGE) anywhere — generated, hand-edited, or pasted from training-knowledge memory | `abap_code_quality_rules.md` §20 + ATC pre-emit checklist item 4 in `/sap-gen-abap` SKILL.md | Route every MESSAGE through a message class: `MESSAGE eNNN(<msgclass>) WITH …`. If the spec doesn't cover the case, add a new message via `/sap-se91 update <msgclass>` BEFORE deploying the program. Literal MESSAGE strings ALWAYS produce ATC Priority 2 (translation hygiene); the rule has zero exceptions. |
+| Emit `MESSAGE 'literal text' TYPE 'X'.` (literal-string MESSAGE) anywhere — generated, hand-edited, or pasted from training-knowledge memory | `abap_code_quality_rules.md` §20 + ATC pre-emit checklist item 4 in `/sap-gen-abap` SKILL.md | Route every MESSAGE through a message class: `MESSAGE eNNN(<msgclass>) WITH …`. If the spec doesn't cover the case, add the new message via `/sap-se91 <msgclass> <messages-file>` (an existing class auto-routes to its update flow) BEFORE deploying the program. Literal MESSAGE strings ALWAYS produce ATC Priority 2 (translation hygiene); the rule has zero exceptions. |
 | Emit `AUTHORITY-CHECK OBJECT '<X>' ID '<FNAME>' …` without first verifying `<FNAME>` exists on `<X>` via the live SU21 field list | `/sap-gen-abap` Step 1.5b' + `abap_code_quality_rules.md` §14 | Let `/sap-gen-abap` shape the AUTHORITY-CHECK from `_authz_signatures.txt` (it queries USOBT_C / SU21 via RFC). If `/sap-check-abap` Step 3.5 wasn't possible (no RFC), STOP and ask the user — do NOT guess field names from training knowledge. Field-name guesses pass activation silently and fail ATC P2 (SLIN code AUT 0302 "認可項目がありません" / "Authorization field missing"). |
 | Read `REPOSRC` via `RFC_READ_TABLE` at all | `skill_operating_rules.md` Rule 3 (full alternatives table there). At the library level, `sap_rfc_lib.ps1::New-RfcReadTable` and `Assert-RfcReadTableAllowed` already throw on the forbidden list — but the agent must not work around them either (e.g. by calling `$dest.Repository.CreateFunction("RFC_READ_TABLE")` directly). | Follow Rule 3's alternatives table. For the common "verify a just-deployed program is non-empty" case, chain to `/sap-se16n REPOSRC PROGNAME=<X>` and apply the SE16N rules in the row below (SE16N drives SAP GUI, so the 512-byte cap doesn't apply). |
 | Include `DATA` in the SE16N output column list when querying `REPOSRC`, or filter `R3STATE=A`, or use the active row as the "latest source" indicator | (a) The `DATA` column is `LRAW` (binary compressed source). SE16N would try to render it and either truncate, error, or produce unreadable binary noise. (b) The inactive row (`R3STATE='I'`) is often the LATEST source — a developer who just edited but hasn't activated leaves the new bytes there; the active row is the LAST KNOWN GOOD, not the most recent. Filtering `R3STATE=A` silently hides the in-flight edit. | When querying `REPOSRC` via `/sap-se16n`: always pass an explicit `select=PROGNAME,R3STATE,UDAT,UTIME,DATALG,UNAM` (NEVER include `DATA`). Sort by `UDAT` / `UTIME` desc and take the FIRST row — that is the latest, regardless of `R3STATE`. To verify a just-deployed program is non-empty: if `DATALG < 100` on the top row, the program is essentially blank → the most recent upload likely failed silently and you should re-run the deploy. (Real programs have a header banner + signature lines that comfortably exceed 100 bytes.) |
 | Skip a skill's `## Step 0.5 — Start Logging` block or `## Final — Log End` block | `skill_operating_rules.md` Rule 4 (covers the "best-effort means failure-handling, not opt-out" caveat and the 2026-05-11 incident that motivated this rule). | Run BOTH `start` and `end` helper calls on every skill invocation — success and failure paths alike. The helper is idempotent and ~50ms. As a subagent, this rule applies to YOU for every skill YOU invoke (Rule 4 explicitly names `abap-developer`). |
 | Silently treat a `TEXT_ELEMENTS: FAILED:*` line or a missing `TEXT_ELEMENTS:` line in `/sap-se38` output as a "non-fatal" issue and bury it in the final report's footnotes | `sap-se38/SKILL.md` Step 5c.1 + this agent's Step 2h.1 | Surface the failure as a top-level item in the Step 5 final report under `TextElements:`. Show the exact `FAILED:<reason>` token. Cite the remediation order from Step 2h.1 (retry → INITIALIZATION-injection → manual SE38). Do not proceed to Step 2i (ATC) without either confirming `APPLIED` or getting explicit user OK to defer. The 2026-05-27 `ZMMRMAT042R01` build silently dropped this and forced the user to discover it at runtime — that pattern is a contract violation. |
-| Silently treat a missing `Z<PROGRAM_ID>_TEST.abap` as acceptable when `MODE_UNIT_TESTS = TRUE` AND `_golden.txt` has ≥1 data row | `sap-gen-abap/SKILL.md` §3.4 + this agent's Step 2e | STOP at Step 2e Pre-deploy verification. Re-invoke `/sap-gen-abap` with an explicit reminder that `MODE_UNIT_TESTS = TRUE` is mandatory per the brief and SKILL.md §3.4. If the generator still emits `TEST_FILE: SKIPPED:*` or no marker on retry, surface as a generator bug — do NOT proceed to deploy with `Tests: MISSING`. The 2026-05-27 `ZMMRMAT042R01` build shipped without tests despite the brief saying `yes (mandatory)`; that pattern is a contract violation. |
+| Silently treat a missing `Z<PROGRAM_ID>_TEST.abap` as acceptable when `MODE_UNIT_TESTS = TRUE` AND `_golden.txt` has ≥1 data row | `sap-gen-abap/SKILL.md` Step 3 test-file emit contract + this agent's Step 2e | STOP at Step 2e Pre-deploy verification. Re-invoke `/sap-gen-abap` with an explicit reminder that `MODE_UNIT_TESTS = TRUE` is mandatory per the brief and the SKILL.md Step-3 emit contract. If the generator still emits `TEST_FILE: SKIPPED:*` or no marker on retry, surface as a generator bug — do NOT proceed to deploy with `Tests: MISSING`. The 2026-05-27 `ZMMRMAT042R01` build shipped without tests despite the brief saying `yes (mandatory)`; that pattern is a contract violation. |
 
 ---
 
 ## Skill catalogue (the ones this agent uses)
 
 This is the curated subset relevant to ABAP-developer workflows. The full
-catalogue is in `marketplace.json`; if a task hits a gap (e.g. SE91
-message-class create), invoke that skill directly via the Skill tool.
+catalogue is in `marketplace.json`; if a task hits a gap (e.g. a
+number-range object via `/sap-snro`, a CDS view via `/sap-gen-cds`,
+spec-workbook layout repair via `/sap-docs-layout`, blast-radius via
+`/sap-impact-analysis`, a delivery evidence bundle via
+`/sap-evidence-pack`), invoke that skill directly via the Skill tool.
 
 | Phase | Skill | Purpose |
 |---|---|---|
 | Setup | `/sap-login` | Establish or verify a SAP GUI session |
 | Setup | `/sap-dev-status` | RFC pre-flight: confirm sap-dev-init artefacts (TR, package, FG, wrapper FM, utility program) are present and active. Exit 0=OK, 1=gaps, 2=RFC fail. |
 | Setup | `/sap-dev-init` | Remediate Step 0.4 gaps: create the missing dev-init artefacts (TR + package + FG + RFC wrapper FM + utility program). Run only on explicit user "init" confirmation — never unprompted. |
+| Setup | `/sap-doctor` | Read-only preflight diagnosis when a Step 0 check fails (gui / cfg / rfc / srv / auth / devenv) — one copy-pasteable FIX per failing probe |
 | Setup | `/sap-transport-request` | TR resolution per `way_to_get_transport_request` policy |
 | Spec | `/sap-docs-extract` | Spec doc → structured `_*.txt` files |
 | Spec | `/sap-docs-convert` | Apply customer normalisation rules |
 | Spec | `/sap-docs-check` | Validate the extracted spec — process logic + DDIC field references (live SAP); runs both dimensions by default |
 | Generate | `/sap-gen-abap` | Process text → ABAP source (+ tests, deps, traceability) |
-| Quality | `/sap-check-abap` | All dimensions: naming, types, SQL, FM signatures, compiler syntax |
+| Quality | `/sap-check-abap` | All dimensions: naming, type, sql, unused, contract, spec, conv, fm, syntax |
 | Quality | `/sap-fix-abap` | Auto-fix ABAP issues incl. FM call mismatches + the bounded syntax loop |
-| Quality | `/sap-check-fix` | Unified check + fix dispatcher (used in fix mode) |
+| Quality | `/sap-check-fix` | Type-detecting router to the workbench skills' check-and-fix mode (fix mode Step 3b; diverts enhancement components to `/sap-cmod`) |
+| Quality | `/sap-review-abap` | AI semantic review (logic / security / perf) of the generated source — Step 2f.5, advisory by default |
+| Fix | `/sap-diagnose` + `/sap-fix-incident` | Runtime-defect lane (Step 3a.5): read-only root-cause → reproduce RED → minimal patch → prove GREEN |
 | DDIC | `/sap-se11` | Domains, data elements, tables, structures, views, search helps, lock objects, type groups, table types |
 | Deploy | `/sap-se38` | Programs (Executable / Include / Module Pool) |
 | Deploy | `/sap-se37` + `/sap-function-group` | Function modules + their groups |
 | Deploy | `/sap-se24` | Classes / Interfaces |
+| Deploy | `/sap-se91` | Message classes + messages (Step 2c — mandatory whenever the spec defines error messages) |
+| Deploy | `/sap-se51` + `/sap-se41` | Module-Pool completion (Step 2h, type `M`): dynpro screens + flow logic, PF-STATUS |
 | Deploy | `/sap-activate-object` | Standalone activation when previous deploy left object inactive |
 | Deploy | `/sap-change-package` | Move object between packages / `$TMP` ↔ `Z*` |
 | Quality gate | `/sap-atc` | Code Inspector / ATC against the deployed object |
+| Runtime | `/sap-run-report` | Execute the deployed report (foreground/background, `--variant`/`--values`) + variant maintenance — Step 2k verification, fix-mode reproduction. Rule-5 confirm gate lives inside the skill. |
+| Runtime | `/sap-job` | Background jobs: schedule / list / status / log / spool / cancel / delete — monitor a Step 2k background run; drill an aborted one via `/sap-st22` |
+| Runtime | `/sap-file-transfer` | PC ↔ app-server file transfer (CG3Z/CG3Y) + `list`/`exists` — stage test input, fetch produced output for file-interface programs (no TR involved) |
+| Runtime | `/sap-st22` | Short-dump drill-down (Step 2k aborted runs; evidence feed for the fix-mode runtime lane) |
 
 ---
 

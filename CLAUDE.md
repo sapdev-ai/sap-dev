@@ -314,7 +314,7 @@ was deleted the same day.
 | `shared/scripts/sap_object_resolver.ps1` | **Phase-0 foundation for the delivery-assurance skills** (sap-impact-analysis, sap-transport-readiness, sap-evidence-pack, sap-enhancement-advisor) | Canonical SAP object-identity resolver (RFC, NCo 3.1). `Resolve-SapObject -Destination $dest -Token "<PROGRAM ZMMR001 \| ZMMR001 \| TCODE ME21N \| TR DEVK… \| PACKAGE …>" [-TypeHint] [-Expand] [-ProbeActive]` → `{pgmid, object, obj_name, kind, package, exists, active, system, client, resolved_via, confidence, note}` in the TADIR `OBJECT`-code vocabulary. Dual-use: **dot-source** for the `Resolve-SapObject` function (caller supplies the RFC destination), or run as a **CLI** (creds fall back to the pinned profile via `Connect-SapRfc`, so `-Token` alone works on a logged-in session). Reads `TADIR`/`TFDIR`/`ENLFDIR`/`TSTC`/`E070`/`E071`/`TDEVC` (+ `DWINACTIV` only under `-ProbeActive`); REPOSRC never touched. FMs resolved via TFDIR+ENLFDIR (not TADIR); `-Expand` turns a TR/PACKAGE into one record per contained object. CLI emits `OBJECT: …` lines + `STATUS: RESOLVED\|NOT_FOUND\|AMBIGUOUS\|UNKNOWN_TYPE\|RFC_ERROR`; exit `0`/`1`/`2`/`3`. Token `%%OBJECT_RESOLVER_PS1%%`. |
 | `shared/scripts/sap_artifact_lib.ps1` | **Phase-0 foundation for the delivery-assurance skills** | Artifact index / manifest — pure-local (no SAP/RFC). Every analytical skill registers each file it writes so `/sap-evidence-pack` collects them by scope / ticket / date without filesystem scraping. Dot-source for: `New-SapScopeKey -Resolved $obj` (→ `PROG_ZMMR001` / `TR_…` / `PKG_…`); `Get-SapArtifactDir -ScopeKey -Skill [-RunId]` (creates + returns `{artifact_dir}\<scope>\<skill>\<run_id>`); `Register-SapArtifact -Skill -ScopeKey -Kind -Format -Path [-Object] [-Coverage] [-Verdict] [-Ticket] [-Rows] [-Supersedes]` (appends one `sapdev.artifact/1` JSONL record to `{artifact_dir}\index.jsonl`, returns its id); `Find-SapArtifacts [-ScopeKey] [-Since] [-Ticket] [-Kind] [-Skill] [-IncludeSuperseded]` (newest-first with append-order tie-break under same-millisecond ts; explicit `supersedes` honored; bad lines skipped). Shares `run_id` with `sap_log_lib` via `$env:SAPDEV_RUN_ID`. `artifact_dir` resolves `$env:SAPDEV_ARTIFACT_DIR` → `userConfig.artifact_dir` → `{work_dir}\artifacts`. Token `%%ARTIFACT_LIB_PS1%%`. |
 | `shared/scripts/sap_finding_lib.ps1` | **Phase-0 foundation for the delivery-assurance skills** | Reconciled finding model — pure-local (no SAP). ONE severity / category / coverage / gate vocabulary that impact-analysis, transport-readiness, ATC, and check-abap map into. `severity` (intrinsic: `BLOCKER>HIGH>MEDIUM>LOW>INFO`) is kept SEPARATE from `gate` (computed by `sap_gate_policy.ps1`). `New-SapFinding -Severity -Category -Detail [-Object] [-Source] [-Coverage CHECKED\|COULD_NOT_CHECK] …` → `sapdev.finding/1`; `New-SapCheckResult -Check [-Findings] [-CouldNotCheck] [-NotApplicable]` → the tri-state honesty contract (`CHECKED_CLEAN\|CHECKED_FINDINGS\|COULD_NOT_CHECK\|NOT_APPLICABLE`) so "couldn't run" is never rendered as "passed". Adapters `ConvertFrom-SapAtcPriority` (1→BLOCKER…4→LOW) + `ConvertFrom-SapCheckAbapSeverity` (ERROR→HIGH…) map existing producers in with no rewrites. `Get-SapVerdict` rolls gated findings up to GO / GO_WITH_WARNINGS / NO_GO (any COULD_NOT_CHECK downgrades a clean GO). `Export-SapFindingsTsv` (header block + columns, UTF-8 **BOM** for Excel) / `Export-SapFindingsJson` (no BOM). Token `%%FINDING_LIB_PS1%%`. |
-| `shared/scripts/sap_gate_policy.ps1` | **Phase-0 foundation for the delivery-assurance skills** | Gate computation for the finding model — reads the customer brief's Quality bar (§6), NOT a second policy store. Auto-loads `sap_finding_lib.ps1`. `Get-SapGatePolicy [-BriefPath] [-Strict]` resolves the brief (`{custom_url}\customer_brief.md` → shared template) and parses ATC gating (`priority 1+2`→block sev≥HIGH / `priority 1 only`→block sev≥BLOCKER / `no`→non-gating; an unfilled template falls back to the HIGH default) + ABAP-Unit gating (`mandatory`→BLOCK / `nice to have`→WARN) + the `unit_gate_when_no_tests` knob (`block`/`warn`, default WARN; consumed by `/sap-cc-remediate`'s record unit-test gate). Directives are read ONLY from the brief's `| Field | Pick |` tables (prose is ignored). `Set-SapFindingGates -Findings -Policy` sets each `finding.gate` ∈ BLOCK/WARN/INFO via `Resolve-SapGate` (order: COULD_NOT_CHECK caps at WARN → ATC severity threshold → unit → category map → severity fallback → `--strict` promotes LOCK_OTHER_USER / MISSING_DEPENDENCY WARN→BLOCK). Token `%%GATE_POLICY_PS1%%`. |
+| `shared/scripts/sap_gate_policy.ps1` | **Phase-0 foundation for the delivery-assurance skills** | Gate computation for the finding model — reads the customer brief's Quality bar (§6), NOT a second policy store. Auto-loads `sap_finding_lib.ps1`. `Get-SapGatePolicy [-BriefPath] [-Strict]` resolves the brief per the Template Language Resolution chain (`{custom_url}\customer_brief_<LANG>.md` → `{custom_url}\customer_brief.md` → shared `customer_brief_<LANG>.md` → shared template) and parses ATC gating (`priority 1+2`→block sev≥HIGH / `priority 1 only`→block sev≥BLOCKER / `no`→non-gating; an unfilled template falls back to the HIGH default) + ABAP-Unit gating (`mandatory`→BLOCK / `nice to have`→WARN) + the `unit_gate_when_no_tests` knob (`block`/`warn`, default WARN; consumed by `/sap-cc-remediate`'s record unit-test gate). Directives are read ONLY from the brief's `| Field | Pick |` tables (prose is ignored); both the EN tokens and the JA tokens of `customer_brief_JA.md` §6 are recognized (codepoint-built regexes keep the .ps1 source pure ASCII). `Set-SapFindingGates -Findings -Policy` sets each `finding.gate` ∈ BLOCK/WARN/INFO via `Resolve-SapGate` (order: COULD_NOT_CHECK caps at WARN → ATC severity threshold → unit → category map → severity fallback → `--strict` promotes LOCK_OTHER_USER / MISSING_DEPENDENCY WARN→BLOCK). Token `%%GATE_POLICY_PS1%%`. |
 | `shared/scripts/sap_log_lib.ps1` | **All PowerShell skill wrappers (optional)** | Structured logger. Dot-source via `%%LOG_LIB_PS1%%`. Functions: `Start-SapLog -Skill -Params`, `Write-SapLog -Run -Level -Step -Message [-Extra]`, `Stop-SapLog -Run -Status -ExitCode [-ErrorClass] [-ErrorObject]`. Honours `userConfig.log_*` keys (JSONL/TSV/TEXT, console echo, redaction, size + date rotation). Run-id propagation via `$env:SAPDEV_RUN_ID` / `SAPDEV_PARENT_RUN_ID` for parent/child call-tree analysis. |
 | `shared/scripts/sap_log_helper.ps1` | **All Claude-driven skills (optional)** | Thin start/step/end wrapper around `sap_log_lib.ps1`. Persists `run_id` to a JSON state file so a skill made of multiple discrete bash blocks can append to one logical run. Best-effort: silently no-ops on lib-load failure. Wired into every skill in sap-dev-core, sap-gen-code, and sap-tcd via a per-skill **Step 0.5 — Start Logging** block and a closing **Final — Log End** section. |
 | `shared/scripts/sap_log_lib.vbs` | **All VBScript skill scripts (optional)** | Structured logger. Include via `ExecuteGlobal FSO.OpenTextFile("%%LOG_LIB_VBS%%",1).ReadAll()`. Functions: `LogStart(skill, paramsArray)`, `LogStep(runId, level, step, msg)`, `LogEnd(runId, status, exitCode, errorMsg)`. Same JSONL/TSV/TEXT formats and redaction as the PS lib. Writes UTF-8 (no BOM) via ADODB.Stream so files concatenate cleanly with PS-emitted lines. |
@@ -386,6 +386,9 @@ Where `<LANG>` is resolved from:
 2. `userConfig.sap_language` if `template_language` is unset (re-uses the SAP logon language).
 3. `EN` if neither is set.
 
+When `<LANG>` resolves to `EN`, tiers 2 and 4 are skipped — the base
+(unsuffixed) file IS the EN variant, so no `_EN` files exist or are probed.
+
 Currently shipped variants (all defaults are clean English):
 
 - `customer_brief.md`             — default (EN) + `_JA`
@@ -420,15 +423,26 @@ dialog (SE38 / SE37 / SE24 / SE11 / SE91 by type). Three flows handled:
 
 ### Standalone ATC Quality Gate
 
-`/sap-atc <OBJECT_TYPE> <OBJECT_NAME> [CHECK_VARIANT] [MAX_PRIORITY]` runs SAP
-Code Inspector / ATC against the object via GUI scripting and writes findings
-to a TSV (`<OBJECT_NAME>.atc.tsv`). Acts as a quality gate: any finding with
-priority ≤ the customer brief's `MAX_PRIORITY` blocks deployment (default 2 =
-critical + high block, medium + low warn). Routes by object type the same way
-as `/sap-activate-object` (PROGRAM/CLASS/FUGR/FM/INTERFACE/PACKAGE).
-**Requires a one-time Scripting Recorder session** to capture the SCI scope
-radios + results-grid IDs (PLACEHOLDER constants in
-`references/sap_atc_run.vbs`); SKILL.md documents the recording steps.
+`/sap-atc <OBJECT_TYPE> <OBJECT_NAME> [--variant=<NAME>] [--max-priority=<n>]`
+(batch: `--object-list=<file>`) drives the full ATC pipeline via GUI scripting:
+builds an SCI Object Set scoped to the target(s), creates and executes an ATC
+Run Series bound to that set, polls the ATC Run Monitor until the run
+completes, then reads the Priority 1/2/3 finding counts from Manage Results
+(best-effort result-TXT download; on FAIL — or with `--drill` — a Stage-4b
+drill exports the per-finding ALV as `<save-to>.findings.tsv`). Gate: any
+priority ≤ `--max-priority` (default 2, or the customer brief's
+`MAX_PRIORITY`) with count > 0 fails; emits
+`PRIORITY_COUNTS: P1=<n> P2=<n> P3=<n>` plus `GATE_VERDICT: PASS|FAIL`.
+Fail-loud guards: `COUNT_PLNERR` > 0 fails with `ATC_PLAN_ERRORS` (counts
+untrustworthy, never PASS), and a 0/0/0 result only passes when the run
+demonstrably checked ≥ 1 object (`ATC_EMPTY_SCOPE` otherwise — a pre-flight
+object resolver aborts before any scope is built). Object types: PROGRAM /
+CLASS / INTERFACE / FUGR / DDIC / TYPEGROUP / WDYN; `FM` is intentionally
+rejected (SCI Object Sets have no per-FM category — pass
+`FUGR <function-group-name>` instead). No one-time setup: the per-stage VBS
+references are recorded against the S/4HANA 1909 ATC layout — if a stage
+fails on a release with different tree-node / grid-column IDs, re-record that
+stage via `/sap-gui-probe --record` and patch its VBS.
 
 ### Standalone Object Activation
 

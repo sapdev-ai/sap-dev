@@ -100,6 +100,14 @@ SetTextIf oSession, "wnd[0]/usr/txtBTCH2170-USERNAME", PickUser()
 ' Date window (optional; display format as the field expects).
 If FROM_DATE <> "" Then SetTextIf oSession, "wnd[0]/usr/ctxtBTCH2170-FROM_DATE", FROM_DATE
 If TO_DATE   <> "" Then SetTextIf oSession, "wnd[0]/usr/ctxtBTCH2170-TO_DATE",   TO_DATE
+' Row-targeted ops (STATUS/LOG/SPOOL/CANCEL/DELETE) name a specific job -- widen
+' the window when the caller gave none, so the job is found regardless of its
+' schedule date. SM37's screen default is TODAY only, which would miss a job
+' scheduled for a future date or run on a past one (a NOT_FOUND false negative).
+If UCase(OP) <> "LIST" And FROM_DATE = "" And TO_DATE = "" Then
+    SetTextIf oSession, "wnd[0]/usr/ctxtBTCH2170-FROM_DATE", VbsYmd(DateAdd("yyyy", -1, Date))
+    SetTextIf oSession, "wnd[0]/usr/ctxtBTCH2170-TO_DATE",   VbsYmd(DateAdd("yyyy",  1, Date))
+End If
 ' Status checkboxes: tick the requested set, or ALL when no filter given.
 TickStatuses oSession
 
@@ -214,19 +222,56 @@ Sub OpSpool(oSess)
 End Sub
 
 ' ---- CANCEL: Job menu > Cancel active job (mbar/menu[0]/menu[1]) ------------
+' The Job-menu index for "Cancel active job" is release-dependent (verified
+' menu[0]/menu[1] on S/4HANA). A wrong index that no-ops is caught by the
+' re-query verify below (a cancelled job leaves the Active status), so cancel
+' never reports a false CANCELLED -- it degrades to NEEDS_RECORDING instead.
 Sub OpCancel(oSess)
-    If Not SelectMenu(oSess, "wnd[0]/mbar/menu[0]/menu[1]") Then
+    If Not SelectMenu(oSess, CancelMenuId(oSess)) Then
         WScript.Echo "JOB: NEEDS_RECORDING step=cancel screen=" & InfoScreen(oSess)
         WScript.Quit 0
     End If
     ConfirmPopup oSess
     Dim t : t = SbarType(oSess)
-    If t = "E" Or t = "A" Then
+    If t = "E" Then
         WScript.Echo "ERROR: SM37 cancel failed -- [" & t & "] " & SbarText(oSess)
         WScript.Quit 1
     End If
+    WScript.Sleep 1500
+    ' Verify locale-independently: re-query with ONLY the Active status ticked.
+    If StillActive(oSess, JOBNAME) Then
+        WScript.Echo "JOB: NEEDS_RECORDING step=cancel_not_aborted screen=" & InfoScreen(oSess)
+        WScript.Quit 0
+    End If
     WScript.Echo "JOB: CANCELLED count=" & JOBCOUNT
 End Sub
+
+' Re-query SM37 for the job with ONLY the Active (RUNNING) status ticked; return
+' True if it is still Active. Uses the status CHECKBOX filter, never reads the
+' localized status text -- so a cancel that actually aborted the job (it leaves
+' Active) is detected release/locale-independently.
+Function StillActive(oSess, jn)
+    StillActive = False
+    On Error Resume Next
+    oSess.StartTransaction "SM37"
+    WScript.Sleep 1000
+    oSess.findById("wnd[0]/usr/txtBTCH2170-JOBNAME").Text = jn
+    oSess.findById("wnd[0]/usr/txtBTCH2170-USERNAME").Text = "*"
+    oSess.findById("wnd[0]/usr/ctxtBTCH2170-FROM_DATE").Text = VbsYmd(DateAdd("yyyy", -1, Date))
+    oSess.findById("wnd[0]/usr/ctxtBTCH2170-TO_DATE").Text   = VbsYmd(DateAdd("yyyy",  1, Date))
+    On Error GoTo 0
+    CheckIf oSess, "wnd[0]/usr/chkBTCH2170-PRELIM",   False
+    CheckIf oSess, "wnd[0]/usr/chkBTCH2170-SCHEDUL",  False
+    CheckIf oSess, "wnd[0]/usr/chkBTCH2170-READY",    False
+    CheckIf oSess, "wnd[0]/usr/chkBTCH2170-RUNNING",  True
+    CheckIf oSess, "wnd[0]/usr/chkBTCH2170-FINISHED", False
+    CheckIf oSess, "wnd[0]/usr/chkBTCH2170-ABORTED",  False
+    On Error Resume Next
+    oSess.findById("wnd[0]").sendVKey 8
+    WScript.Sleep 1300
+    On Error GoTo 0
+    StillActive = (FindJobLabelId(oSess, jn) <> "")
+End Function
 
 ' ---- DELETE: Shift+F2 (sendVKey 14) on the focused job row -----------------
 ' Language- AND release-independent (verified S4G S/4HANA EN + EC2 ECC 7.31 JA):
@@ -336,6 +381,12 @@ Function ColOf(id)
     If q > 0 Then ColOf = CInt(Left(s, q - 1))
 End Function
 
+' Format a VBScript date as YYYY/MM/DD (the observed SM37 date-field display
+' format on S4G + EC2). Used only for the widened row-op selection window.
+Function VbsYmd(d)
+    VbsYmd = Right("0000" & Year(d), 4) & "/" & Right("0" & Month(d), 2) & "/" & Right("0" & Day(d), 2)
+End Function
+
 ' Extract the row number from a classic-list label id "...lbl[col,row]".
 Function RowOf(id)
     RowOf = 0
@@ -362,6 +413,47 @@ Function SelectMenu(oSess, id)
     If Err.Number = 0 Then SelectMenu = True
     On Error GoTo 0
     WScript.Sleep 1000
+End Function
+
+' Resolve the "Cancel active job" item in the SM37 Job menu (mbar/menu[0]).
+' Prefer a localized-text match (EN + JA, both verified live) so the item is
+' found regardless of its index, then fall back to its position menu[1] (verified
+' identical on S/4HANA and ECC 7.31 -- only later items like Delete shift across
+' releases). The JA string is built via ChrW so this source stays ASCII, per
+' language_independence_rules. This is the menu equivalent of the delete VKey.
+Function CancelMenuId(oSess)
+    Dim ja
+    ja = ChrW(26377) & ChrW(21177) & ChrW(12472) & ChrW(12519) & ChrW(12502) & ChrW(20013) & ChrW(27490)  ' cancel-active-job (JA)
+    CancelMenuId = FindMenuChildByText(oSess, "wnd[0]/mbar/menu[0]", Array("Cancel active job", ja))
+    If CancelMenuId = "" Then CancelMenuId = "wnd[0]/mbar/menu[0]/menu[1]"
+End Function
+
+' Return the id of the first child of a menu whose Text matches one of `texts`.
+Function FindMenuChildByText(oSess, menuId, texts)
+    FindMenuChildByText = ""
+    Dim m : Set m = Nothing
+    On Error Resume Next
+    Set m = oSess.findById(menuId)
+    On Error GoTo 0
+    If m Is Nothing Then Exit Function
+    Dim ch : Set ch = Nothing
+    On Error Resume Next
+    Set ch = m.Children
+    On Error GoTo 0
+    If ch Is Nothing Then Exit Function
+    Dim i, kid, tx, j
+    For i = 0 To ch.Count - 1
+        Set kid = Nothing
+        On Error Resume Next
+        Set kid = ch.ElementAt(i)
+        On Error GoTo 0
+        If Not (kid Is Nothing) Then
+            tx = "" : On Error Resume Next : tx = kid.Text : On Error GoTo 0
+            For j = 0 To UBound(texts)
+                If Trim(tx) = texts(j) Then FindMenuChildByText = kid.Id : Exit Function
+            Next
+        End If
+    Next
 End Function
 
 ' Dismiss a confirm popup (SPOP Yes, or Enter) if one appeared.

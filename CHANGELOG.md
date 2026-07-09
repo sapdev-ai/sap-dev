@@ -4,6 +4,31 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Template Language Resolution is now actually implemented for the customer
+  brief.** CLAUDE.md / `settings.json` promised that `customer_brief_JA.md` is
+  "picked up automatically when `userConfig.template_language=JA`", but no
+  consumer implemented the chain — the shipped JA variant was never resolved.
+  `/sap-gen-abap` (Step 0a), `/sap-check-abap`, `/sap-review-abap`,
+  `/sap-gen-abap-unit`, and the `abap-developer` agent (Step 0.2) now document
+  the 4-tier chain (`{custom_url}\customer_brief_<LANG>.md` →
+  `{custom_url}\customer_brief.md` → shared `customer_brief_<LANG>.md` →
+  shared default; `<LANG>`: `userConfig.template_language` →
+  `userConfig.sap_language` → `EN`, where `EN` skips the `_<LANG>` probes —
+  the base file IS the EN variant), and `sap_gate_policy.ps1` applies the
+  same chain in its PowerShell brief resolution.
+- **`sap_gate_policy.ps1` §6 quality-bar parser understands the Japanese
+  brief.** The parser matched EN directive tokens only (`mandatory` /
+  `nice to have` / `no` / `priority 1[+2]`), so a Japanese-filled brief's
+  ATC / ABAP-Unit picks were silently ignored (defaults applied) even under
+  the documented manual_JA workflow. It now also recognizes the JA tokens of
+  `customer_brief_JA.md` §6 (hissu / areba-yoi / fuyou / yuusendo 1[+2]),
+  with a lookahead so the JA row labels (which end in "...hissu?") can't be
+  misread as picks. Tokens are codepoint-built so the .ps1 source stays pure
+  ASCII (PS 5.1 no-BOM safety). Verified under pwsh 7 + Windows PowerShell
+  5.1 (19 parser cases + 8 resolution cases).
+
 ## [0.7.1] — 2026-07-05
 
 ### Added

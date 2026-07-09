@@ -48,7 +48,7 @@ Task: $ARGUMENTS
 | SE24 download VBS | `<SAP_DEV_CORE_SHARED_DIR>\..\skills\sap-se24\references\sap_se24_check_and_download.vbs` | class source (GUI) |
 | `sap_attach_lib.vbs` (`%%ATTACH_LIB_VBS%%`) | `<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs` | `AttachSapSession` for the download VBS |
 | `abap_code_quality_rules.md` (§15) | `<SAP_DEV_CORE_SHARED_DIR>\rules\abap_code_quality_rules.md` | the ABAP Unit emission rules (`FOR TESTING DURATION SHORT RISK LEVEL HARMLESS`, `cl_abap_unit_assert=>assert_*`) |
-| `customer_brief.md` | `{custom_url}\customer_brief.md` → built-in template | `MODE_MIN_COVERAGE`, `MODE_OOP`, release, risk level |
+| `customer_brief.md` | `{custom_url}\customer_brief_<LANG>.md` → `{custom_url}\customer_brief.md` → built-in `_<LANG>` variant → built-in template (`<LANG>`: `userConfig.template_language` → `userConfig.sap_language` → `EN`) | `MODE_MIN_COVERAGE`, `MODE_OOP`, release, risk level |
 | `sap_log_helper.ps1` | `<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1` | structured logging |
 
 **Skills this one orchestrates** (skills-first, per CLAUDE.md Rule 6 — invoke via

@@ -668,14 +668,14 @@ P2 阻断；P3/P4 仅告警），并把发现项写入一个 TSV。失败（FAIL
 的详情。
 
 ```
-RESULT: P1=0 P2=1 P3=3
-VERDICT: FAIL          # because P2 ≤ MAX_PRIORITY(2)
-FINDINGS_TSV: …\ZHKMM001R01.atc.tsv
+PRIORITY_COUNTS: P1=0 P2=1 P3=3
+GATE_VERDICT: FAIL  P1=0 P2=1 P3=3 (threshold=2 → P2 blocks)
+FILE: …\ATC_R_260709_101500.txt.findings.tsv (4210 bytes)
 ```
 
 对象类型：`PROGRAM`、`CLASS`、`INTERFACE`、`FUGR`、`DDIC`……（对于一个函数模块，传入它的
 **FUGR**）。修复这些发现项（通常通过 `/sap-fix-abap` 或一次有针对性的编辑 + 重新部署），
-然后反复运行直到 `VERDICT: PASS`。
+然后反复运行直到 `GATE_VERDICT: PASS`。
 
 ### 8.2 ABAP Unit —— `/sap-run-abap-unit`
 

@@ -55,6 +55,20 @@ function _Read-SapBriefQualityBar {
     $atc         = 'HIGH'
     $unit        = 'WARN'
     $unitNoTests = 'WARN'
+    # JA directive tokens of customer_brief_JA.md section 6, built from
+    # codepoints so this source stays pure ASCII (same rule as
+    # sap_syntax_check_lib.vbs's ChrW; immune to PS 5.1 no-BOM ANSI source
+    # decoding). Romaji glosses: tsuuka = "must pass" (row label), yuusendo =
+    # "priority", fuyou = "no / not required", areba yoi = "nice to have",
+    # hissu = "mandatory".
+    $jaTsuuka   = -join [char[]](0x901A,0x904E)
+    $jaYuusendo = -join [char[]](0x512A,0x5148,0x5EA6)
+    $jaFuyou    = -join [char[]](0x4E0D,0x8981)
+    $jaArebaYoi = -join [char[]](0x3042,0x308C,0x3070,0x826F,0x3044)
+    # hissu as a PICK value: the negative lookahead skips the JA row LABELS,
+    # which also contain hissu but immediately followed by an ASCII or
+    # full-width question mark (0xFF1F).
+    $jaHissuPick = (-join [char[]](0x5FC5,0x9808)) + '(?![?' + [char]0xFF1F + '])'
     foreach ($line in ($Text -split "`n")) {
         $l = $line.ToLower()
         # Gate directives live ONLY in the brief's Pick tables (`| Field | Pick |`).
@@ -63,10 +77,13 @@ function _Read-SapBriefQualityBar {
         if ($l -notmatch '^\s*\|') { continue }
         $isOptionsList = ($l -match '`\s*/\s*`')   # template option list -> skip
 
-        if ($l -match 'atc' -and $l -match 'pass' -and -not $isOptionsList) {
-            if     ($l -match '1\s*\+\s*2' -or $l -match '1\s*and\s*2')      { $atc = 'HIGH' }
-            elseif ($l -match 'priority\s*1')                               { $atc = 'BLOCKER' }
-            elseif ($l -match '\bno\b')                                     { $atc = '' }
+        # Row selectors + directive tokens cover EN and JA (the shipped
+        # customer_brief_JA.md writes its section-6 picks in Japanese; the
+        # $ja* tokens above are built codepoint-wise).
+        if ($l -match 'atc' -and ($l -match 'pass' -or $l -match $jaTsuuka) -and -not $isOptionsList) {
+            if     ($l -match '1\s*\+\s*2' -or $l -match '1\s*and\s*2')            { $atc = 'HIGH' }
+            elseif ($l -match 'priority\s*1' -or $l -match ($jaYuusendo + '\s*1')) { $atc = 'BLOCKER' }
+            elseif ($l -match '\bno\b' -or $l -match $jaFuyou)                     { $atc = '' }
         }
         # The "no test class" policy line is checked (and consumed) BEFORE the
         # main unit-bar parse: it also contains "abap unit", and its "no" in
@@ -77,9 +94,9 @@ function _Read-SapBriefQualityBar {
             continue
         }
         if (($l -match 'abap unit' -or $l -match 'unit test') -and -not $isOptionsList) {
-            if     ($l -match 'mandatory')      { $unit = 'BLOCK' }
-            elseif ($l -match 'nice to have')   { $unit = 'WARN' }
-            elseif ($l -match '\bno\b')         { $unit = 'INFO' }
+            if     ($l -match 'mandatory' -or $l -match $jaHissuPick)   { $unit = 'BLOCK' }
+            elseif ($l -match 'nice to have' -or $l -match $jaArebaYoi) { $unit = 'WARN' }
+            elseif ($l -match '\bno\b' -or $l -match $jaFuyou)          { $unit = 'INFO' }
         }
     }
     return @{ atc = $atc; unit = $unit; unit_no_tests = $unitNoTests }
@@ -87,8 +104,12 @@ function _Read-SapBriefQualityBar {
 
 # ---------------------------------------------------------------------------
 # Get-SapGatePolicy - resolve the brief and build the policy object.
-# Brief resolution (when -BriefPath omitted): {custom_url}\customer_brief.md ->
-# <shared>\templates\customer_brief.md. Falls back to pure defaults if none.
+# Brief resolution (when -BriefPath omitted) follows the Template Language
+# Resolution chain (CLAUDE.md): {custom_url}\customer_brief_<LANG>.md ->
+# {custom_url}\customer_brief.md -> <shared>\templates\customer_brief_<LANG>.md
+# -> <shared>\templates\customer_brief.md, where <LANG> = template_language,
+# else sap_language, else EN - and EN skips the _<LANG> probes (the base,
+# unsuffixed file IS the EN variant). Falls back to pure defaults if none.
 # ---------------------------------------------------------------------------
 function Get-SapGatePolicy {
     param(
@@ -114,9 +135,25 @@ function Get-SapGatePolicy {
                 $customUrl = Join-Path (Get-SapWorkDir) 'custom'
             }
         } catch { }
+        # Template Language Resolution (CLAUDE.md): probe _<LANG> names first.
+        # EN / blank / unknown -> no _<LANG> probe (the base file IS the EN variant).
+        $lang = ''
+        try {
+            if (Get-Command Get-SapSettingValue -ErrorAction SilentlyContinue) {
+                $lang = "$(Get-SapSettingValue 'template_language' '')".Trim()
+                if (-not $lang) { $lang = "$(Get-SapSettingValue 'sap_language' '')".Trim() }
+            }
+        } catch { $lang = '' }
+        $lang = $lang.ToUpper()
+        if ($lang -notin @('JA','ZH')) { $lang = '' }
         $cand = @()
-        if ($customUrl) { $cand += (Join-Path $customUrl 'customer_brief.md') }
-        $cand += (Join-Path (Split-Path -Parent $PSScriptRoot) 'templates\customer_brief.md')
+        if ($customUrl) {
+            if ($lang) { $cand += (Join-Path $customUrl ('customer_brief_{0}.md' -f $lang)) }
+            $cand += (Join-Path $customUrl 'customer_brief.md')
+        }
+        $tplDir = Join-Path (Split-Path -Parent $PSScriptRoot) 'templates'
+        if ($lang) { $cand += (Join-Path $tplDir ('customer_brief_{0}.md' -f $lang)) }
+        $cand += (Join-Path $tplDir 'customer_brief.md')
         foreach ($c in $cand) { if ($c -and (Test-Path -LiteralPath $c)) { $resolved = $c; break } }
     }
 

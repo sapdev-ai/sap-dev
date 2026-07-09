@@ -341,7 +341,7 @@ caught, never false-greened. Verified identical on S/4HANA (EN) and ECC 7.31 (JA
 | SM37 selection | Dates / Execute | `ctxtBTCH2170-FROM_DATE` `-TO_DATE` / `sendVKey 8` (F8) |
 | SM37 list (`SAPMSSY0/120`, **classic list**) | Row select | job row = a `GuiLabel` whose Text = job name (col 4); `.setFocus` positions the cursor (verified) |
 | SM37 list | Job log / Spool | `wnd[0]/tbar[1]/btn[47]` / `wnd[0]/tbar[1]/btn[44]` |
-| SM37 list | Delete / Cancel active job | Delete = **`sendVKey 14`** (Shift+F2) → SPOP `btnSPOP-OPTION1`=Yes — a VKey, release/locale-independent (the Job-menu index for Delete differs across releases; verified S4G+EC2). Cancel-active = Job menu `wnd[0]/mbar/menu[0]/menu[1]` (S/4HANA-captured). Back `tbar[0]/btn[3]` |
+| SM37 list | Delete / Cancel active job | Delete = **`sendVKey 14`** (Shift+F2) → SPOP `btnSPOP-OPTION1`=Yes — a VKey, release/locale-independent (the Job-menu index for Delete differs across releases: menu[9] on S/4HANA, menu[2] on ECC 7.31). Cancel-active = Job menu, resolved by **localized-text match** ("Cancel active job" EN / `有効ジョブ中止` JA via `ChrW`) in `wnd[0]/mbar/menu[0]`, `menu[1]` fallback — matcher live-confirmed on S4G+EC2; then re-query Active-only to verify the abort. Back `tbar[0]/btn[3]` |
 | SM36 initial (`SAPLBTCH/1140`) | Job name / class | `wnd[0]/usr/txtBTCH1140-JOBNAME` (txt) / `ctxtBTCH1140-JOBCLASS` |
 | SM36 initial | Step / Start condition / Save | `wnd[0]/tbar[1]/btn[6]` / `wnd[0]/tbar[1]/btn[5]` / `sendVKey 11` (Ctrl+S) |
 | SM36 step (`SAPLBTCH/1120`, wnd[1]) | Program / variant / Save | `ctxtBTCH1120-ABAPNAME` / `ctxtBTCH1120-VARIANT` / `wnd[1]/tbar[0]/btn[11]` — Save lands on the step-LIST (`SAPMSSY0/120`); **Back (sendVKey 3) to the 1140 initial** |
@@ -356,14 +356,16 @@ caught, never false-greened. Verified identical on S/4HANA (EN) and ECC 7.31 (JA
   and `delete` — it reuses the Phase-B `Z_RUN_REPORT` + `TBTCO`/`TBTCP` reads
   (`sap_job_rfc.ps1`). `delete` via `BP_JOB_DELETE` is best-effort over direct RFC and
   degrades to SM37 if the FM is not remote-enabled on the system.
-- **GUI SM36/SM37 verified live** (S4G S/4HANA EN + EC2 ECC 7.31 JA, 2026-07-09). The full
-  **`schedule`(immediate) → `list`/`status` → `delete`** round-trip was verified end-to-end on
-  BOTH systems (a throwaway RSPARAM job scheduled via SM36, confirmed, then deleted via SM37
-  Shift+F2, confirmed gone). `list`/`log` also verified. **Still unverified:** `cancel` (abort a
-  *running* job — needs a live running job; menu-index based, S/4HANA-captured) and `schedule`
-  **date-time/periodic** (IDs captured, write path not yet run). Any future release drift
-  surfaces as `NEEDS_RECORDING`, never a false success — and `delete` self-verifies the job left
-  the list before reporting `DELETED`.
+- **GUI SM36/SM37 verified live** (S4G S/4HANA EN + EC2 ECC 7.31 JA, 2026-07-09). Verified
+  end-to-end: `schedule` **immediate / date-time / periodic** (S4G `TBTCS`-confirmed:
+  `PERIODIC=X` + day/week counts), `list` / `status` / `log`, `delete` (SM37 Shift+F2), and
+  `cancel` — a running WAIT job **aborted and RFC-confirmed `A` on S4G**; on EC2 every cancel
+  component is verified (localized menu matcher live-confirmed finds `有効ジョブ中止`, SAPLSPO1
+  confirm + the SM37 re-query both proven via the delete round-trip). Both destructive ops
+  **self-verify** before reporting (delete: job left the list; cancel: job left the Active
+  status via a re-query) — never a false success; any release drift → `NEEDS_RECORDING`. The
+  only step not run literally on EC2 is aborting a live job there (would need a flaky ECC
+  clipboard-paste fixture deploy); the mechanism is identical and every component is verified.
 - **GUI job ops target by job NAME** (first matching row). The SM37 classic list does not
   show `JOBCOUNT`, so exact-jobcount disambiguation among same-named runs is the RFC path's
   job; the GUI acts on the first row of that name.

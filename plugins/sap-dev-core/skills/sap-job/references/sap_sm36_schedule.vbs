@@ -176,7 +176,16 @@ Function StartCondition(oSess)
     On Error GoTo 0
     If oImm Is Nothing Then Exit Function
 
-    If IsImmediate() Then
+    ' Event-based start (event:<EVT>) is not captured -- fail loud, never mis-schedule.
+    If LCase(Left(JOB_START, 6)) = "event:" Then
+        WScript.Echo "JOB: NEEDS_RECORDING step=start_cond_event screen=" & InfoScreen(oSess)
+        WScript.Quit 0
+    End If
+
+    ' Pure immediate only when there is NO recurrence. A periodic job needs a
+    ' date/time start ANCHOR, so --period forces the date-time route even when the
+    ' start is "immediate" (the anchor defaults to now -- see StartDate/StartTime).
+    If IsImmediate() And JOB_PERIOD = "" Then
         oImm.press
         WScript.Sleep 600
     Else
@@ -211,17 +220,32 @@ Function IsImmediate()
     IsImmediate = (LCase(JOB_START) = "immediate" Or JOB_START = "")
 End Function
 
-' START = YYYYMMDDHHMMSS -> date as YYYY/MM/DD (matches the observed display
-' format on S4G + EC2). NOTE: date-field display format is user-locale-specific;
-' the immediate path (no date) is the release/locale-robust one.
-Function StartDate()
-    Dim d : d = Left(JOB_START & "00000000", 8)
-    StartDate = Left(d, 4) & "/" & Mid(d, 5, 2) & "/" & Mid(d, 7, 2)
+' True when JOB_START is an explicit YYYYMMDD[HHMMSS] datetime (not immediate/event).
+Function IsDateTimeStart()
+    IsDateTimeStart = (Len(JOB_START) >= 8 And IsNumeric(Left(JOB_START, 8)))
 End Function
 
+' Start DATE as YYYY/MM/DD. Explicit datetime -> its first 8 digits; otherwise
+' (--period with an immediate/empty start) -> TODAY as the recurrence anchor.
+' NOTE: the date-field display format is user-locale-specific; YYYY/MM/DD matches
+' the observed format on S4G + EC2. The pure-immediate path uses no date at all.
+Function StartDate()
+    If IsDateTimeStart() Then
+        Dim d : d = Left(JOB_START, 8)
+        StartDate = Left(d, 4) & "/" & Mid(d, 5, 2) & "/" & Mid(d, 7, 2)
+    Else
+        StartDate = Right("0000" & Year(Date), 4) & "/" & Right("0" & Month(Date), 2) & "/" & Right("0" & Day(Date), 2)
+    End If
+End Function
+
+' Start TIME as HH:MM:SS. Explicit datetime -> its HHMMSS; otherwise -> NOW.
 Function StartTime()
-    Dim tm : tm = Mid(JOB_START & "000000000000", 9, 6)
-    StartTime = Left(tm, 2) & ":" & Mid(tm, 3, 2) & ":" & Mid(tm, 5, 2)
+    If IsDateTimeStart() Then
+        Dim tm : tm = Mid(JOB_START & "000000", 9, 6)
+        StartTime = Left(tm, 2) & ":" & Mid(tm, 3, 2) & ":" & Mid(tm, 5, 2)
+    Else
+        StartTime = Right("0" & Hour(Time), 2) & ":" & Right("0" & Minute(Time), 2) & ":" & Right("0" & Second(Time), 2)
+    End If
 End Function
 
 Function PeriodButton()

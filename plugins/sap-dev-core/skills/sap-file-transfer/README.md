@@ -23,4 +23,5 @@ popup discrimination, SAP GUI Security precheck/sidecar wiring, RFC list mode,
 target-identity guard.
 
 Typical loop it closes: `upload` test input → `/sap-run-report` → `list` /
-`exists` output → `download` → `/sap-compare`.
+`exists` output → `download` → diff against the spec's expected output
+(golden rows / Mapping (File Out)).

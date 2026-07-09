@@ -30,12 +30,14 @@ Rule 5) and never acts as an unconfirmed side effect. The monitoring verbs
   `sap_sm36_schedule.vbs` (SM36 wizard) carry control IDs **captured live on S4G (S/4HANA, EN)
   and EC2 (ECC 7.31, JA)**, 2026-07-09 — identical across both (core `SAPLBTCH`/`SAPMSSY0`
   kernel dialogs). SM37 `list`/`log` and the full SM36 immediate wizard were verified live
-  end-to-end; `.screens.json` baselines are `captured`. The full **schedule(immediate) → list →
-  delete** round-trip was verified on both systems (throwaway RSPARAM job, deleted via SM37
-  Shift+F2, confirmed gone). Still unverified: `cancel` (needs a running job) and `schedule`
-  date-time/periodic (IDs captured, write path not yet run). `log`/`cancel` are GUI-primary
-  (job-log text is in TemSe; aborting a running job needs SM37's server/PID resolution). Every
-  transition is guarded by `JOB: NEEDS_RECORDING`; `delete` self-verifies before reporting.
+  end-to-end; `.screens.json` baselines are `captured`. Verified on both systems: `schedule`
+  (immediate / date-time / periodic — S4G `TBTCS`-confirmed), `list` / `status` / `log`,
+  `delete` (SM37 Shift+F2), and `cancel` (a running WAIT job aborted + RFC-confirmed `A` on S4G;
+  on EC2 the localized menu matcher, SAPLSPO1 confirm, and SM37 re-query are all live-confirmed).
+  Both destructive ops **self-verify** before reporting (delete: job left the list; cancel: job
+  left the Active status) — never a false success; any release drift → `JOB: NEEDS_RECORDING`.
+  `log`/`cancel` are GUI-primary (job-log text is in TemSe; aborting a running job needs SM37's
+  server/PID resolution).
 
 Reuses `Z_RUN_REPORT` (deployed by `/sap-dev-init`); delegates spool text to `/sap-sp02`
 and abort detail to `/sap-st22`.

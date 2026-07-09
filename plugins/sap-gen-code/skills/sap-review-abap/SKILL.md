@@ -59,7 +59,7 @@ Task: $ARGUMENTS
 | SE24 download VBS | `<SAP_DEV_CORE_SHARED_DIR>\..\skills\sap-se24\references\sap_se24_check_and_download.vbs` | class source (GUI) |
 | where-used VBS | `<SAP_DEV_CORE_SHARED_DIR>\..\skills\sap-where-used-list\references\sap_where_used_list.vbs` | callers (GUI, `--callers`) |
 | `abap_code_quality_rules.md` | `<SAP_DEV_CORE_SHARED_DIR>\rules\abap_code_quality_rules.md` | The §-numbered quality rules the dimension checklist anchors to |
-| `customer_brief.md` | `{custom_url}\customer_brief.md` → `<SAP_DEV_CORE_SHARED_DIR>\templates\customer_brief.md` | Release / `MODE_*` / Quality bar — drives gating |
+| `customer_brief.md` | `{custom_url}\customer_brief_<LANG>.md` → `{custom_url}\customer_brief.md` → `<SAP_DEV_CORE_SHARED_DIR>\templates\customer_brief_<LANG>.md` → `...\templates\customer_brief.md` (`<LANG>`: `userConfig.template_language` → `userConfig.sap_language` → `EN`; `EN` skips the `_<LANG>` probes) | Release / `MODE_*` / Quality bar — drives gating |
 | `sap_log_helper.ps1` | `<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1` | structured logging |
 
 `<SAP_DEV_CORE_SHARED_DIR>` resolves to `plugins/sap-dev-core/shared` — from this
@@ -185,7 +185,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\.
 ```
 
 **Customer brief** — resolve per the Template Language chain
-(`{custom_url}\customer_brief.md` → built-in template). Record the ABAP
+(`{custom_url}\customer_brief_<LANG>.md` → `{custom_url}\customer_brief.md` →
+built-in `customer_brief_<LANG>.md` → built-in template; `<LANG>`:
+`userConfig.template_language` → `userConfig.sap_language` → `EN`). Record the ABAP
 **release**, `MODE_*` flags (esp. `MODE_MAX_METHOD_LINES`), and the **Quality
 bar** (drives gating in Step 6). Detect the empty-template case and treat the bar
 as "defaults".
