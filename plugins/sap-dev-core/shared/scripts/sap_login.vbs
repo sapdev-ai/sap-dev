@@ -435,7 +435,8 @@ If bOnLogin Then
         ' screen (Audit P7). Identify the popup by stable DDIC control id:
         '   * Password-change/expired (pwdRSYST-NCODE1) -> hard ERROR; do NOT
         '     dismiss (the logon is not usable until a new password is set).
-        '   * Multiple-logon warning (radMULTI_LOGON_OPT*) -> accept with Enter.
+        '   * Multiple-logon warning (radMULTI_LOGON_OPT*) -> explicitly SELECT a
+        '     continue option, then Enter (see the critical note in that branch).
         '   * Anything else (e.g. a benign system-message announcement) -> Enter
         '     once to clear it; the login is re-verified below regardless.
         On Error Resume Next
@@ -449,7 +450,27 @@ If bOnLogin Then
                 WScript.Echo "ERROR: SAP requires a password change for user '" & SAP_USER & "' (password expired/initial). Set a new password interactively in SAP GUI, then re-run /sap-login. The dialog was NOT auto-dismissed."
                 WScript.Quit 1
             ElseIf Not (oMultiLogon Is Nothing) Then
-                WScript.Echo "INFO: Multiple-logon warning - continuing with this logon."
+                ' CRITICAL: the multiple-logon dialog (SAPMSYST screen 500)
+                ' PRESELECTS radMULTI_LOGON_OPT3 = "Terminate this logon" -- verified
+                ' live 2026-07-11 on S/4HANA 2022 (S4H) AND ECC (ER1): OPT1/OPT2
+                ' selected=False, OPT3 selected=True. A blind sendVKey ENTER therefore
+                ' TERMINATES the session we just authenticated -- the connection
+                ' vanishes while this script goes on to print "Login successful" and
+                ' then crashes on a Nothing GuiSessionInfo at the final echo (the
+                ' 2026-07-11 EC6 field failure). So explicitly SELECT a continue
+                ' option before Enter: OPT2 "continue WITHOUT ending any other logons"
+                ' is the least-disruptive choice (it never kills the operator's own
+                ' separate GUI sessions); fall back to OPT1 "continue and end others"
+                ' only when OPT2 is absent on a release. NEVER accept the OPT3 default.
+                Dim oContOpt
+                Set oContOpt = oSession.findById("wnd[1]/usr/radMULTI_LOGON_OPT2", False)
+                If oContOpt Is Nothing Then Set oContOpt = oSession.findById("wnd[1]/usr/radMULTI_LOGON_OPT1", False)
+                If Not (oContOpt Is Nothing) Then
+                    oContOpt.Select
+                    WScript.Echo "INFO: Multiple-logon warning - selected continue-without-ending; keeping this logon."
+                Else
+                    WScript.Echo "WARNING: Multiple-logon warning - no continue radio found; pressing default (may terminate)."
+                End If
                 oSession.findById("wnd[1]").sendVKey VKEY_ENTER
                 WScript.Sleep 1500
             Else

@@ -39,6 +39,21 @@ DismissModals
 oSession.findById("wnd[0]/tbar[0]/okcd").text = "/nSTMS_IMPORT"
 oSession.findById("wnd[0]").sendVKey VKEY_ENTER
 WScript.Sleep 1500
+On Error GoTo 0
+
+' ---- TMS-down guard (BEFORE any modal dismissal) ----------------------------
+' A broken TMS communication layer renders the Alert Viewer + error popup
+' instead of the queue; blind-dismissing it would end in a misleading
+' "grid not found / re-record IDs" skip (field 2026-07-11, S4H + ER1).
+Dim sTmsAlert : sTmsAlert = DetectTmsAlert()
+If Len(sTmsAlert) > 0 Then
+    CloseTmsAlertPopup
+    WriteLog "error", "STMS_TMS_RFC_DOWN: " & sTmsAlert, "", "TMS_RFC_DOWN"
+    WScript.Echo "LOG: tr=" & TR & " system=" & TARGET_SID & " rc=- verdict=TMS_RFC_DOWN file=" & OUTPUT_FILE
+    WScript.Quit 1
+End If
+
+On Error Resume Next
 DismissModals
 On Error GoTo 0
 
@@ -225,4 +240,57 @@ Sub DismissModals()
         Next
         If Not any Then Exit Sub
     Next
+End Sub
+
+' ---- TMS-down guard helpers -------------------------------------------------
+' When the TMS communication layer is broken (TMSADM RFC destination
+' unreachable, or its secure-storage logon data missing), STMS_IMPORT renders
+' the TMS Alert Viewer (program SAPLTMSU_ALT) with an error popup instead of
+' the import queue. Detection uses locale-stable signals only: the popup's
+' DDIC field IDs (GS_DYN100-S_ALOG-*) and the program name -- both captured
+' live on S/4HANA 2022 (S4H) and ECC (ER1) on 2026-07-11, identical IDs. The
+' S_ALOG-ERROR value is a technical exception name (e.g.
+' RFC_COMMUNICATION_FAILURE), not translated text.
+Function DetectTmsAlert()
+    DetectTmsAlert = ""
+    Dim sProg, oFld, sAlErr, sAlFunc, sAlDest
+    On Error Resume Next
+    sProg = "" : sProg = oSession.Info.Program
+    sAlErr = "" : sAlFunc = "" : sAlDest = ""
+    Set oFld = Nothing
+    Set oFld = oSession.findById("wnd[1]/usr/txtGS_DYN100-S_ALOG-ERROR")
+    If Err.Number = 0 And Not (oFld Is Nothing) Then sAlErr = oFld.Text
+    Err.Clear
+    Set oFld = Nothing
+    Set oFld = oSession.findById("wnd[1]/usr/txtGS_DYN100-S_ALOG-FUNCTION")
+    If Err.Number = 0 And Not (oFld Is Nothing) Then sAlFunc = oFld.Text
+    Err.Clear
+    Set oFld = Nothing
+    Set oFld = oSession.findById("wnd[1]/usr/txtGS_DYN100-MSG_LINE2")
+    If Err.Number = 0 And Not (oFld Is Nothing) Then sAlDest = oFld.Text
+    Err.Clear
+    On Error GoTo 0
+    If Len(sAlErr) > 0 Then
+        DetectTmsAlert = "alert=" & sAlErr & " function=" & sAlFunc & " destination=" & sAlDest
+    ElseIf sProg = "SAPLTMSU_ALT" Then
+        DetectTmsAlert = "TMS Alert Viewer (SAPLTMSU_ALT) opened instead of the import queue"
+    End If
+End Function
+
+' Close the alert popup so the session is not left modal-locked. The popup's
+' confirm is Close (tbar[0]/btn[0], Enter); fall back to VKey 0 (Enter).
+Sub CloseTmsAlertPopup()
+    Dim oBtn
+    On Error Resume Next
+    Set oBtn = Nothing
+    Set oBtn = oSession.findById("wnd[1]/tbar[0]/btn[0]")
+    If Err.Number = 0 And Not (oBtn Is Nothing) Then
+        oBtn.press
+    Else
+        Err.Clear
+        oSession.findById("wnd[1]").sendVKey 0
+    End If
+    Err.Clear
+    On Error GoTo 0
+    WScript.Sleep 400
 End Sub

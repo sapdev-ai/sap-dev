@@ -106,6 +106,7 @@ Contract:
 | `STMS_NO_AUTH` | Missing STMS authorization (S_TRANSPRT / S_CTS_ADMI). |
 | `STMS_BLOCKED` | Queue/import blocked (predecessor, target lock). |
 | `STMS_IMPORT_RC_ERROR` | Import finished with RC >= 8. |
+| `STMS_TMS_RFC_DOWN` | TMS communication layer down — STMS_IMPORT opened the TMS Alert Viewer (`SAPLTMSU_ALT`) instead of the queue, typically `RFC_COMMUNICATION_FAILURE` on the `TMSADM@<SID>.DOMAIN_<SID>` destination (gateway unreachable, or its secure-storage logon data missing). Basis fix (repair/regenerate the TMSADM destination); control-ID recording is NOT the remedy. |
 
 ## CDS generation (`/sap-gen-cds`)
 

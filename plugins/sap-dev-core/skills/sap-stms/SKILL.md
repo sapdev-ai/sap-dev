@@ -125,6 +125,14 @@ It navigates `/nSTMS_IMPORT`, opens the target queue, and scrapes each row
 Print the queue (or the TR's position) and whether the TR is already imported.
 `STATUS: QUEUE system=<SID> rows=<n> tr=<TR?> position=<n|not-in-queue|imported>`.
 
+> **TMS-down outcome.** When the reader exits 1 with
+> `QUEUE: status=error reason=STMS_TMS_RFC_DOWN alert=<exception> function=<FM> destination=<TMSADM@...>`,
+> the TMS communication layer itself is broken on that system (the alert
+> fields carry the technical exception, e.g. `RFC_COMMUNICATION_FAILURE`).
+> Report `STATUS: COULD_NOT_READ reason=STMS_TMS_RFC_DOWN` with those details
+> and point the operator at Basis (repair the `TMSADM@<SID>.DOMAIN_<SID>`
+> destination) — do NOT suggest re-recording control IDs for this outcome.
+
 ---
 
 # Logs Mode (read-only)
@@ -147,6 +155,7 @@ reading, so the RC is read from the RIGHT system — not whatever queue
 | `12` | FATAL (cancelled / system error) |
 | (none / not found) | NOT_IMPORTED |
 | (target queue not reachable) | QUEUE_NOT_REACHED |
+| (TMS communication down) | TMS_RFC_DOWN |
 
 `STATUS: LOG tr=<TR> system=<SID> rc=<0|4|8|12|-> verdict=<...>`. **RC 8/12 is a
 failure even if the queue row shows "done"** — say so plainly. A
@@ -251,7 +260,7 @@ sign-off").
 STATUS: IMPORTED tr=<TR> target=<SID>/<client> rc=<0|4|8|12> verdict=<OK|OK_WITH_WARNINGS|ERROR|FATAL>
 STATUS: QUEUED tr=<TR> target=<SID>            (scheduled, not yet run)
 STATUS: ALREADY_IMPORTED tr=<TR> target=<SID>
-STATUS: COULD_NOT_IMPORT reason=<no-auth|not-released|no-go|not-in-queue|not-calibrated|STMS_OPTION_UNSUPPORTED|verify-failed|queue-not-found>
+STATUS: COULD_NOT_IMPORT reason=<no-auth|not-released|no-go|not-in-queue|not-calibrated|STMS_OPTION_UNSUPPORTED|STMS_TMS_RFC_DOWN|verify-failed|queue-not-found>
 STATUS: BLOCKED reason=<prod-not-confirmed|tr-not-released>
 ```
 
@@ -286,6 +295,7 @@ powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_
 | Blocked (not released / prod not confirmed) | `-Status SKIPPED -ExitCode 1 -ErrorClass STMS_BLOCKED` |
 | No import authorization | `-Status SKIPPED -ExitCode 1 -ErrorClass STMS_NO_AUTH` |
 | Import controls not calibrated | `-Status SKIPPED -ExitCode 1 -ErrorClass STMS_NOT_CALIBRATED` |
+| TMS communication down (alert viewer) | `-Status SKIPPED -ExitCode 1 -ErrorClass STMS_TMS_RFC_DOWN -ErrorMsg "<alert=... function=... destination=...>"` |
 
 ---
 
@@ -296,6 +306,7 @@ powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_
 | OK code | `wnd[0]/tbar[0]/okcd` | stable |
 | STMS Import Overview | okcd `/nSTMS_IMPORT` | system-overview list |
 | Import queue grid/tree | `wnd[0]/usr/cntlCTRL_IMPORT_QUEUE/shellcont/shell` (candidate) | **RECORD** — varies by release |
+| TMS Alert Viewer (TMS down) | program `SAPLTMSU_ALT` + popup fields `wnd[1]/usr/txtGS_DYN100-S_ALOG-ERROR` / `-FUNCTION` / `MSG_LINE2` | **captured live 2026-07-11** on S/4HANA 2022 + ECC — identical IDs; drives the `STMS_TMS_RFC_DOWN` guard |
 | Import Request button | `PLACEHOLDER_IMPORT_BTN` | **RECORD** — destructive; PLACEHOLDER until calibrated |
 | Import-options dialog | `PLACEHOLDER_OPTS_DIALOG` (target client / date tab / options tab) | **RECORD** |
 | Confirm import | `PLACEHOLDER_OPTS_CONFIRM` | **RECORD** |
@@ -306,6 +317,7 @@ powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_
 | Symptom | Cause | Recovery |
 |---|---|---|
 | `COULD_NOT_IMPORT not-calibrated` | the import VBS PLACEHOLDER IDs are not yet recorded for this release | `/sap-gui-probe --record` the STMS_IMPORT flow; replace `PLACEHOLDER_*` in `sap_stms_import.vbs` |
+| `STMS_TMS_RFC_DOWN` (any mode) | TMS communication layer broken — STMS_IMPORT opens the TMS Alert Viewer (`SAPLTMSU_ALT` + `GS_DYN100-S_ALOG-*` popup) instead of the queue. Observed live 2026-07-11 on BOTH S/4HANA 2022 (CPIC `ThSAPOCMINIT` gateway failure on `TMSADM@S4H.DOMAIN_S4H`) and ECC (secure-storage logon-data retrieval failure on `TMSADM@ER1.DOMAIN_ER1`) | Basis: repair/regenerate the `TMSADM@<SID>.DOMAIN_<SID>` RFC destination (SM59 / STMS reconfiguration; for the secure-storage variant see SAP Note 1568362 — `TMS_UPDATE_PWD_OF_TMSADM` on the domain controller, client 000). NOT a control-ID recording issue — calibration is impossible until the queue renders |
 | `COULD_NOT_IMPORT no-auth` | dialog user lacks TMS import authorization (often Basis-gated) | run status/logs only, or have Basis import; this is expected in many shops |
 | `BLOCKED tr-not-released` | TR is still modifiable (`E070-TRSTATUS != R`) | `/sap-se01 release <TR>` first |
 | queue grid not found | STMS queue control ID drift | `/sap-gui-probe --record` STMS_IMPORT; update the candidate in `sap_stms_queue_read.vbs` |

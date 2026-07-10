@@ -4,6 +4,34 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **`sap_login.vbs` no longer silently terminates the session on the
+  multiple-logon warning.** The handler detected the popup but pressed Enter
+  without selecting a radio, accepting SAP's preselected default — which is
+  `radMULTI_LOGON_OPT3` "Terminate this logon" (verified live 2026-07-11 on
+  S/4HANA 2022 + ECC: OPT1/OPT2 `selected=False`, OPT3 `selected=True`). The
+  just-authenticated session was killed while the script still printed "Login
+  successful" and then crashed on a Nothing `GuiSessionInfo`, and the
+  connection vanished. It now explicitly `.Select`s OPT2 "continue without
+  ending any other logons" (falls back to OPT1; never accepts OPT3) before
+  Enter. Verified live: forced popup → fixed sequence → session stays
+  `SAPLSMTR_NAVIGATION`/Easy Access.
+- **`/sap-stms` no longer misreports a TMS-communication outage as control-ID
+  drift.** When the TMS layer is down, `/nSTMS_IMPORT` renders the TMS Alert
+  Viewer (`SAPLTMSU_ALT`) instead of the import queue; the queue/log/import
+  VBS previously blind-dismissed it and reported `skipped … grid not found …
+  re-record IDs` (exit 0), sending the operator to chase control-ID recording.
+  A locale-independent guard (`DetectTmsAlert` on `Info.Program` +
+  `GS_DYN100-S_ALOG-*` popup fields — IDs captured live on both S4H and ER1,
+  identical) now closes the popup and emits the new error class
+  **`STMS_TMS_RFC_DOWN`** (exit 1) with the failing exception / function /
+  `TMSADM@<SID>.DOMAIN_<SID>` destination. Added to `error_classes.md`;
+  SKILL.md Known-Issues / status-lines / component table updated (incl. the
+  SAP Note 1568362 pointer for the secure-storage variant). `sap_stms_import.vbs`
+  stays deliberately unbaselined — its PLACEHOLDER import IDs cannot be
+  calibrated until Basis repairs TMS and the queue renders.
+
 ### Changed
 
 - **Both remaining lint ratchets driven to zero and promoted WARN → ERROR**
