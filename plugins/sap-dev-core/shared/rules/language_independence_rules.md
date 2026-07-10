@@ -88,10 +88,12 @@ End If
 ```
 
 ❌ **Never** branch on substrings of `sbar.Text` such as `"created"`,
-`"activated"`, `"no entries"`. They are translated. The few places in the
-codebase that still do (e.g. `sap_se38_check.vbs`, `sap_function_group_gui_create.vbs`)
-are **legacy** and should be migrated to `MessageType` checks plus, where the
-exact text is genuinely needed, the patterns in Rule 4 below.
+`"activated"`, `"no entries"`. They are translated. The legacy offenders
+(`sap_se38_check.vbs`, `sap_function_group_gui_create.vbs`) were migrated to
+`MessageType` / structural checks on 2026-07-10, and
+`scripts/check-consistency.mjs` now fails the build on new curated-literal
+branching. Where the exact text is genuinely needed, use the patterns in
+Rule 4 below.
 
 ---
 
@@ -290,13 +292,20 @@ Acceptable patterns:
 
 ### Localised-text branching (Rules 1–4)
 
-The following VBS files still contain localised-text branching and should be
-migrated to ID/MessageType-based checks the next time they are touched:
+Backlog cleared 2026-07-10 — the last two offenders were migrated
+(`sap_se38_check.vbs` now decides structurally via program/screen identity;
+`sap_function_group_gui_create.vbs` derives the outcome from
+`sbar.MessageType`), and `scripts/check-consistency.mjs` now FAILS the build
+on new localised-text branching in `references/*.vbs`. Add new entries here
+only if a file must temporarily ship with a known violation.
 
-| File | Pattern |
+**Documented Rule-6 exceptions** (multi-locale matchers, listed in the
+checker's `LOCALE_LITERAL_EXEMPT` where they trip the curated-literal gate):
+
+| File | Why text matching is unavoidable |
 |---|---|
-| `sap-se38/references/sap_se38_check.vbs` | `InStr(LCase(sSbarMsg), "no entries")` |
-| `sap-function-group/references/sap_function_group_gui_create.vbs` | `InStr(sbarText, "created")` |
+| `sap-atc/references/sap_atc_check_run_status.vbs` | ATC Run Monitor state cell exposes no MessageType; icon-ID prefixes stay authoritative, EN/JA/ZH tooltip stems add recall |
+| `sap-se24/sap_se24_change_props.vbs`, `sap-se38/sap_se38_change_attrs.vbs`, `sap-se37/sap_se37_change_attrs.vbs`, `sap-se37/sap_se37_reassign_fugr.vbs`, `sap-se91/sap_se91_change_props.vbs` | Generic message popup (`txtMESSTXT1..4` + OK) has no locale-stable control/icon/MessageType; fatal-popup classifier matches EN + ChrW-built JA/ZH lock/error wording |
 
 ### Missing session lock (Rule 7)
 

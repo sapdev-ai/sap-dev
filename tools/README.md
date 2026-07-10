@@ -72,6 +72,7 @@ downstream wiring of `/sap-docs-extract` and `/sap-gen-abap`).
 | Script | Purpose |
 |---|---|
 | `extract_spec.py` | Reference implementation of `/sap-docs-extract` for workbooks with a `(Meta) Layout` sheet. Reads SECTIONS + COLUMNS, dispatches by format (`kv`, `tsv`, `image`, `text`), produces the standard `_*.txt` / `_*.png` artefacts. Useful for CI / regression and as documentation of the skill's intent. |
+| `sanity_check_spec.py` | Offline spec sanity check — Step 2a.5 of the `abap-developer` agent. Runs the eight checks defined in the agent body against a work folder (`python tools/sanity_check_spec.py <work_folder>`); exit 0 = pass/WARN-only, 1 = a STOP-level check failed. Prints a result table for the agent transcript. |
 
 ## Migration helpers
 

@@ -48,8 +48,8 @@ files into the per-version cache and records the install in
 `~/.claude/plugins/installed_plugins.json`, e.g.:
 
 ```
-installPath : C:\Users\<you>\.claude\plugins\cache\sap-dev\sap-dev-core\0.3.1
-version     : 0.3.1
+installPath : C:\Users\<you>\.claude\plugins\cache\sap-dev\sap-dev-core\0.7.2
+version     : 0.7.2
 gitCommitSha: <sha>
 ```
 
@@ -72,6 +72,7 @@ confusion. Listed highest read-precedence first:
 | Source | Location | Tracked? | Survives update? | Role |
 |---|---|---|---|---|
 | env var `SAPDEV_AI_WORK_DIR` | OS user environment | n/a | **yes** | Bootstrap for `work_dir` ONLY (highest precedence). |
+| `work_dir.txt` pointer | `%APPDATA%\sapdev-ai\work_dir.txt` | n/a | **yes** | Durable out-of-cache mirror of the env var for `work_dir` ONLY — also bridges the current AI session (a freshly-set User env var never reaches already-running processes). Written together with the env var by `sap_workdir_setup.ps1 set`. |
 | `settings.local.json` | `<plugin-root>/settings.local.json` | **no** (gitignored) | **no (in cache)** | Dev *checkout* override; live only when running from a repo checkout (`--plugin-dir`). Hand-edited, never written by a skill. |
 | `userconfig.json` | `{work_dir}\runtime\userconfig.json` | no | **yes** — outside the plugin tree | Machine-global user overrides + the single skill WRITE target. The end-user config home. |
 | `connections.json` | `{work_dir}\runtime\connections.json` | no | **yes** — outside the plugin tree | SAP connection profiles (DPAPI passwords) + per-connection `dev_defaults` (TR / package / FG). |
@@ -95,6 +96,7 @@ Key consequences:
   it survives plugin updates (as long as `work_dir` resolves to the same place).
 - **`work_dir` is the load-bearing value.** Everything stable lives under it.
   `work_dir` resolves env var `SAPDEV_AI_WORK_DIR` → settings.local.json →
+  `%APPDATA%\sapdev-ai\work_dir.txt` (durable out-of-cache pointer) →
   settings.json → default `C:\sap_dev_work`. Set the **env var** once at the OS
   user level (then restart the host so it's inherited) to make the root
   update-proof; otherwise a custom `work_dir` set only in a cache
@@ -119,7 +121,9 @@ are:
 So the repo's `settings.local.json` is **inert for installed runs** and only
 becomes live under `--plugin-dir`. Layer them like git config (most-specific
 wins): env var (`work_dir` only) > checkout-local `settings.local.json` >
-machine-global `userconfig.json` > schema defaults (`settings.json`).
+machine-global `userconfig.json` > schema defaults (`settings.json`) — with the
+`%APPDATA%\sapdev-ai\work_dir.txt` pointer slotting between `settings.local.json`
+and `settings.json` for `work_dir` itself.
 
 > Tip: if the repo's `settings.local.json` overrides `work_dir` to a different
 > path than your installed runs use, your `--plugin-dir` session will look for

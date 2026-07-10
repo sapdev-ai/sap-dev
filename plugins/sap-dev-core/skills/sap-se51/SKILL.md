@@ -169,7 +169,7 @@ powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_se51_check_run.ps1"
 ### Execute
 
 ```bash
-cscript //NoLogo {RUN_TEMP}\sap_se51_check_run.vbs
+C:\Windows\SysWOW64\cscript.exe //NoLogo {RUN_TEMP}\sap_se51_check_run.vbs
 ```
 
 **Parse the last line of output:**
@@ -553,7 +553,7 @@ Run with **`cscript`** (this VBS writes to a log file, not the clipboard, so no
 
 ```bash
 powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_se51_add_element_run.ps1"
-cscript //NoLogo {RUN_TEMP}\sap_se51_add_element_run.vbs
+C:\Windows\SysWOW64\cscript.exe //NoLogo {RUN_TEMP}\sap_se51_add_element_run.vbs
 ```
 
 Read `{RUN_TEMP}\sap_se51_add_element.log`. Last line:
@@ -730,7 +730,7 @@ needed):
 
 ```bash
 powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_se51_layout_rebuild_run.ps1"
-cscript //NoLogo {RUN_TEMP}\sap_se51_layout_rebuild_run.vbs
+C:\Windows\SysWOW64\cscript.exe //NoLogo {RUN_TEMP}\sap_se51_layout_rebuild_run.vbs
 ```
 
 Read `{RUN_TEMP}\sap_se51_layout_rebuild.log`. Last line:

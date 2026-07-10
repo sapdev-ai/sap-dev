@@ -140,7 +140,17 @@ Function DrainPopups(oSess, nMax)
             Set oM2 = oSess.findById("wnd[1]/usr/txtMESSTXT2")
             If Err.Number = 0 And Not (oM2 Is Nothing) Then sM2 = oM2.Text
             Err.Clear
-            If InStr(LCase(sM1 & " " & sM2), "locked") > 0 Then
+            ' Fatal-popup classifier -- documented Rule-6 exception: the generic
+            ' message popup (txtMESSTXT1..4 + OK) exposes no locale-stable
+            ' control ID / MessageType / icon to branch on, so match the lock
+            ' wording across the product's declared logon languages (EN + ChrW-
+            ' built JA/ZH, best-effort translations; source stays ASCII), same
+            ' pattern as sap_atc_check_run_status.vbs.
+            Dim sPopLow : sPopLow = LCase(sM1 & " " & sM2)
+            Dim JA_LOCKED : JA_LOCKED = ChrW(&H30ED) & ChrW(&H30C3) & ChrW(&H30AF) ' rokku   = lock
+            Dim ZH_LOCKED : ZH_LOCKED = ChrW(&H9501) & ChrW(&H5B9A)                ' suoding = locked
+            If InStr(sPopLow, "lock") > 0 Or InStr(sPopLow, JA_LOCKED) > 0 Or _
+               InStr(sPopLow, ZH_LOCKED) > 0 Then
                 oSess.findById("wnd[1]").sendVKey VKEY_CANCEL
                 DrainPopups = "SAP popup [" & sTitle & "] " & Trim(sM1 & " " & sM2)
                 Err.Clear : On Error GoTo 0

@@ -178,7 +178,7 @@ SE21/SE38 and (when NCo 3.1 is available) RFC for the
 ### Step 1.1 — Probe current state
 
 - `has_session` = run
-  `cscript //NoLogo "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_check_gui_login_status.vbs"`
+  `C:\Windows\SysWOW64\cscript.exe //NoLogo "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_check_gui_login_status.vbs"`
   and check whether `STATUS: LOGGED_IN` is emitted.
 - `has_creds`   = read merged settings (per
   `shared/rules/settings_lookup.md`); both `sap_user.value` and
@@ -414,7 +414,7 @@ Start-Sleep -Milliseconds 800
 
 # Foreground warmup. The Hardcopy call blocks until the sidecar dismisses
 # the dialog (or the customer clicks something manually).
-& cscript.exe //NoLogo "{RUN_TEMP}\sap_gui_security_warmup_run.vbs" *> $warmupOut
+& C:\Windows\SysWOW64\cscript.exe //NoLogo "{RUN_TEMP}\sap_gui_security_warmup_run.vbs" *> $warmupOut
 
 # Wait for the sidecar to exit (it exits as soon as it dismisses or times out).
 $sidecar | Wait-Process -Timeout 35
@@ -461,7 +461,7 @@ $warmupSrc2 = $warmupSrc2.Replace('%%PROBE_FILE%%', $probe2)
 
 # No poller this time. If a dialog appears, this will hang for human input —
 # guard with a 5 s timeout (the second pass should complete in <1 s when trusted).
-$verify = Start-Process -FilePath "cscript.exe" `
+$verify = Start-Process -FilePath "C:\Windows\SysWOW64\cscript.exe" `
     -ArgumentList "//NoLogo", "{RUN_TEMP}\sap_gui_security_warmup_verify.vbs" `
     -RedirectStandardOutput (Join-Path $env:TEMP "sap_gui_verify.out") `
     -NoNewWindow -PassThru

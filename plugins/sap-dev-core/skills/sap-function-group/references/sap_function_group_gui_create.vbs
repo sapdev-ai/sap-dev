@@ -118,12 +118,14 @@ sbarText = oSess.findById("wnd[0]/sbar").Text
 On Error GoTo 0
 WScript.Echo "INFO: sbar [" & sbarType & "] " & sbarText
 
-' Determine outcome from sbar
+' Determine outcome from sbar MessageType (locale-independent). The old
+' InStr(sbarText, "created") success match was EN-only and, since `outcome`
+' is only ever tested for "ERROR" below, had no effect beyond shadowing --
+' the real gates are the activation sbar check at the end of this script
+' and the caller's post-create existence verify.
 Dim outcome
 outcome = "UNKNOWN"
-If InStr(1, sbarText, "created", 1) > 0 Or InStr(1, sbarText, "Created", 1) > 0 Then
-    outcome = "CREATED"
-ElseIf sbarType = "E" Or sbarType = "A" Then
+If sbarType = "E" Or sbarType = "A" Then
     outcome = "ERROR"
 End If
 

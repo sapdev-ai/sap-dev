@@ -64,8 +64,9 @@ WScript.Sleep 1500
 
 ' ------ 5. Check result count ------------------------------------------------
 ' SE16N may show the result count in a popup (wnd[1]) OR navigate directly to
-' the data browser screen. Some systems show a "no entries" status bar message
-' instead of a popup when zero records are found.
+' the data browser screen. Zero-record systems may show only a status-bar
+' message instead of a popup; the structural fallback below covers that case
+' without branching on translated text.
 
 On Error Resume Next
 Dim sCount
@@ -81,22 +82,11 @@ If InStr(oSession.ActiveWindow.Id, "wnd[1]") > 0 Then
     Err.Clear
 End If
 
-' If no popup, check status bar for "no entries" or "0 entries"
-If sCount = "" Then
-    Dim sSbarMsg
-    sSbarMsg = oSession.findById("wnd[0]/sbar").Text
-    If Err.Number <> 0 Then sSbarMsg = "" : Err.Clear
-    If InStr(LCase(sSbarMsg), "no entries") > 0 Or _
-       InStr(LCase(sSbarMsg), "no data") > 0 Or _
-       InStr(sSbarMsg, "0 entries") > 0 Then
-        sCount = "0"
-    ElseIf InStr(LCase(sSbarMsg), "entries") > 0 Then
-        ' Some message like "1 entries selected" -- program exists
-        sCount = "1"
-    End If
-End If
-
-' If still empty, we may be on the data browser with results (program exists)
+' If no popup, decide structurally (locale-independent). The old middle tier
+' matched EN-only sbar stems ("no entries" / "0 entries" / "entries"), so
+' ZH/JA logons already took the structural path below exclusively -- EN now
+' does the same: staying on SAPLSE16N (and not on output screen 200) after
+' F8 means zero rows; navigating to the data browser means rows exist.
 If sCount = "" Then
     Dim sProgName
     sProgName = oSession.Info.Program

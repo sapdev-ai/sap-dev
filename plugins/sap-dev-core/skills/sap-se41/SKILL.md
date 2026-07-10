@@ -256,7 +256,7 @@ powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_se41_ops_run.ps1"
 ### Execute
 
 ```bash
-cscript //NoLogo {RUN_TEMP}\sap_se41_ops_run.vbs
+C:\Windows\SysWOW64\cscript.exe //NoLogo {RUN_TEMP}\sap_se41_ops_run.vbs
 ```
 
 ---

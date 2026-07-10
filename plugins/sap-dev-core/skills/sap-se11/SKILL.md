@@ -464,7 +464,7 @@ powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_se11_check_run.ps1"
 ### Execute
 
 ```bash
-cscript //NoLogo {RUN_TEMP}\sap_se11_check_run.vbs
+C:\Windows\SysWOW64\cscript.exe //NoLogo {RUN_TEMP}\sap_se11_check_run.vbs
 ```
 
 **Parse the last line of output:**
@@ -1122,7 +1122,7 @@ powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_se11_chgpkg_run.ps1"
 ### Execute
 
 ```bash
-cscript //NoLogo {RUN_TEMP}\sap_se11_chgpkg_run.vbs
+C:\Windows\SysWOW64\cscript.exe //NoLogo {RUN_TEMP}\sap_se11_chgpkg_run.vbs
 ```
 
 **On success** (output contains `SUCCESS:`): report the package change to the user.
@@ -1237,7 +1237,7 @@ powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_se11_delete_run.ps1"
 ### Execute
 
 ```bash
-cscript //NoLogo {RUN_TEMP}\sap_se11_delete_run.vbs
+C:\Windows\SysWOW64\cscript.exe //NoLogo {RUN_TEMP}\sap_se11_delete_run.vbs
 ```
 
 ### Behaviour Notes

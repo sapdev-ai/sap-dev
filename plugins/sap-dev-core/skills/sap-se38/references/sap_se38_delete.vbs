@@ -134,19 +134,12 @@ On Error GoTo 0
 ReleaseSession oSession, wasLocked
 If wasLocked Then WScript.Echo "INFO: Session UI lock released."
 
-' Decide success: if Display navigated us into the editor (title leaves the
-' SE38 initial screen), the program still exists. Otherwise it's gone.
-On Error Resume Next
-Dim sTitle : sTitle = ""
-sTitle = oSession.findById("wnd[0]/titl").Text
-If Err.Number <> 0 Then sTitle = "" : Err.Clear
-On Error GoTo 0
-
-Dim bStillOnInitial
-bStillOnInitial = (InStr(1, sTitle, "Initial Screen", vbTextCompare) > 0) Or _
-                  (InStr(1, sTitle, "ABAP Editor",    vbTextCompare) = 0)
-' Belt-and-suspenders: also check that the program-name field is still
-' findable (it only exists on the SE38 initial screen).
+' Decide success by a locale-independent structural probe (same idiom as the
+' sibling delete/check templates): the program-name field ctxtRS38M-PROGRAMM
+' only exists on the SE38 initial screen, so if Display navigated into the
+' editor the field is gone and the program still exists. The old title-
+' substring check ("Initial Screen" / "ABAP Editor") was locale-dependent
+' dead code -- the verdict below never read it.
 On Error Resume Next
 Dim oNameField : Set oNameField = Nothing
 Set oNameField = oSession.findById("wnd[0]/usr/ctxtRS38M-PROGRAMM")

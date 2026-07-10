@@ -127,7 +127,7 @@
 | **已启用 SAP GUI Scripting（客户端侧）** | 必须允许 VBScript 引擎 | 见 §2.3 |
 | **Claude Code CLI** | 运行技能的宿主 | `claude --version` |
 | **SAP .NET Connector 3.1（32 位，.NET 4.0）** *（可选，但推荐）* | RFC 快速通道：TR 状态、FM 签名、激活验证、表读取 | 见 §2.4 |
-| **Python 3.10+** *（可选）* | `sap-gen-code` 文档流水线的部分功能会用到 | `py --version` |
+| **Python 3.10+** *（仅使用 `sap-gen-code` 时必需）* | `sap-gen-code` 文档流水线（`/sap-docs-extract` 解析 Excel/Word/PDF 规格书）；其他插件无需它 | `py --version` |
 
 > **Shell 说明（对 Windows 很重要）。** 你可以从**任何你喜欢的 shell** 启动 `claude`
 > —— cmd、PowerShell、Windows Terminal 都行。这不会改变技能的运行方式：
@@ -1011,6 +1011,7 @@ top 错误类别）。
 | `sap-snro` | 编号范围对象 |
 | `sap-activate-object` / `sap-change-package` / `sap-where-used-list` | 激活 / 移动包 / 交叉引用 |
 | `sap-atc` / `sap-run-abap-unit` | ATC 门禁 / ABAP Unit 运行器 |
+| `sap-check-abap` / `sap-fix-abap` | 校验 / 自动修复 ABAP 质量 —— 命名、类型、SQL、CALL FUNCTION 签名、编译器语法 |
 | `sap-transport-readiness` / `sap-impact-analysis` / `sap-enhancement-advisor` / `sap-evidence-pack` | 交付保障 |
 | `sap-stms` | 把一个已释放的 TR 沿系统格局导入（生产受门禁） |
 | `sap-diagnose` + `sap-st22` | 事故分诊（内置 SM13/SM12/SLG1/SM37 RFC 读取器，`--reader <name>` 单独运行）+ ST22 转储读取器 |
@@ -1035,7 +1036,11 @@ top 错误类别）。
 | `sap-docs-convert` | 应用客户归一化规则 |
 | `sap-docs-check` | 校验规格（DDIC + 处理逻辑维度） |
 | `sap-gen-abap` | 生成 ABAP（报表 / 对话 / FM） |
-| `sap-check-abap` / `sap-fix-abap` | 校验 / 自动修复 ABAP 质量 —— 命名、类型、SQL、CALL FUNCTION 签名、编译器语法 |
+| `sap-gen-abap-unit` | 为既有对象生成 ABAP Unit 测试并在实机上运行到全绿（缝隙分析、有界修复循环） |
+| `sap-gen-cds` | 不用 ADT，通过 RFC 生成并部署 CDS 视图（7.50–7.54 经典 DDL，7.55+ 视图实体） |
+| `sap-review-abap` | 对 ABAP 对象 / 本地文件做 AI 语义 + 安全代码评审（仅建议） |
+
+*（`sap-check-abap` / `sap-fix-abap` 已移入 sap-dev-core —— 见上表。）*
 
 ### sap-migrate（S/4HANA 自定义代码迁移）
 

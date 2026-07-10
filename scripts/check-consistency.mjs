@@ -19,10 +19,11 @@
 //     2026-07-03 after 23 undocumented scripts were found)
 // WARN-level ratchets (do not fail the build yet): Phase-4 broker hints,
 // build-KPI enrichment, Step-0 work_dir resolution, {WORK_TEMP}-root scratch
-// (.vbs/.ps1/.json/.xml/.log/.txt), bare-cscript / wscript invocations,
-// locale-literal GUI-text branching, missing screen baselines,
+// (.vbs/.ps1/.json/.xml/.log/.txt), missing screen baselines,
 // single/zero-consumer shared-script placement (CLAUDE.md placement rule,
 // reverse direction of the coverage ERROR above).
+// Former ratchets promoted to ERROR on 2026-07-10 (counts reached zero):
+// bare-cscript / wscript invocations, locale-literal GUI-text branching.
 
 import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
 import { join, dirname, resolve, basename } from 'node:path';
@@ -757,7 +758,9 @@ const refExistWarnings = [];
 }
 
 // ---------------------------------------------------------------------------
-// Bare cscript / wscript invocation gate (added 2026-07-02). WARN-level.
+// Bare cscript / wscript invocation gate (added 2026-07-02; promoted from
+// WARN to ERROR on 2026-07-10 when the bare-invocation count ratcheted to
+// zero, per the original promotion plan).
 //
 // SAP GUI Scripting COM binds only from a 32-bit host: a bare `cscript`
 // resolves to the 64-bit binary on x64 Windows and the generated VBS fails
@@ -766,15 +769,10 @@ const refExistWarnings = [];
 // C:\Windows\SysWOW64\cscript.exe (either slash form, quoted or bare).
 // `wscript(.exe)` is never acceptable for these templates: the attach-lib
 // diagnostics echo via WScript.Echo, which under wscript renders each echo
-// as a BLOCKING MsgBox. WARN (not ERROR) while the parallel remediation
-// waves migrate the existing bare invocations; promote once the count
-// ratchets to zero. Comment lines (leading ' or #) inside embedded snippets
-// are skipped -- the gate targets copy-pasteable invocations.
+// as a BLOCKING MsgBox. Comment lines (leading ' or #) inside embedded
+// snippets are skipped -- the gate targets copy-pasteable invocations.
 // ---------------------------------------------------------------------------
 
-const cscriptWarnings = [];
-let bareCscriptCount = 0;
-let wscriptCount = 0;
 for (const plugin of mp.plugins) {
   const sourceRel = plugin.source.replace(/^\.\//, '').replace(/\/$/, '');
   const skillsDir = join(repoRoot, sourceRel, 'skills');
@@ -795,11 +793,9 @@ for (const plugin of mp.plugins) {
         if (!/^["']?\s+(\/\/|["'{$]|[A-Za-z]:|\.[\\/])/.test(after)) continue;
         const before = line.slice(0, m.index);
         if (m[1].toLowerCase() === 'wscript') {
-          wscriptCount++;
-          cscriptWarnings.push(`${plugin.name}: skills/${skillEntry}/SKILL.md:${i + 1} invokes wscript -- blocks with MsgBox under attach-lib echoes; use C:\\Windows\\SysWOW64\\cscript.exe //NoLogo instead`);
+          errors.push(`${plugin.name}: skills/${skillEntry}/SKILL.md:${i + 1} invokes wscript -- blocks with MsgBox under attach-lib echoes; use C:\\Windows\\SysWOW64\\cscript.exe //NoLogo instead`);
         } else if (!/syswow64[\\/]+$/i.test(before)) {
-          bareCscriptCount++;
-          cscriptWarnings.push(`${plugin.name}: skills/${skillEntry}/SKILL.md:${i + 1} invokes bare cscript (picks the 64-bit host; SAP GUI COM needs 32-bit) -- prefix C:\\Windows\\SysWOW64\\ per CLAUDE.md / feedback_sap_gui_vbs_must_be_32bit`);
+          errors.push(`${plugin.name}: skills/${skillEntry}/SKILL.md:${i + 1} invokes bare cscript (picks the 64-bit host; SAP GUI COM needs 32-bit) -- prefix C:\\Windows\\SysWOW64\\ per CLAUDE.md / feedback_sap_gui_vbs_must_be_32bit`);
         }
       }
     }
@@ -807,7 +803,9 @@ for (const plugin of mp.plugins) {
 }
 
 // ---------------------------------------------------------------------------
-// Locale-literal gate (added 2026-07-02). WARN-level ratchet.
+// Locale-literal gate (added 2026-07-02; promoted from WARN to ERROR on
+// 2026-07-10 when the hit count ratcheted to zero, per the original
+// promotion plan).
 //
 // language_independence_rules.md forbids branching on translated GUI text,
 // yet the 2026-07-02 review found ~40 shipped lines that InStr() SAP screen
@@ -821,8 +819,9 @@ for (const plugin of mp.plugins) {
 //     (b) call InStr(...) whose argument text (from the InStr( onward, code
 //         part only) contains a quoted English literal from the curated list.
 // Curated literals keep the signal high -- every 2026-07-02 hit was verified
-// real locale-dependence (41/41). WARN until the waves migrate the hits to
-// control-ID / MessageType / icon-ID checks; then promote.
+// real locale-dependence (41/41). The shipped hits were migrated to
+// control-ID / MessageType / icon-ID checks (or the documented multi-locale
+// matcher exception below) on 2026-07-10.
 // ---------------------------------------------------------------------------
 
 const LOCALE_PHRASES = [
@@ -852,11 +851,23 @@ function vbsQuotedStrings(code) {
   return out;
 }
 
-const localeLiteralWarnings = [];
+// Files that implement the DOCUMENTED multi-locale matcher exception: the
+// ATC Run Monitor state cell exposes no MessageType and its icon markup is
+// release-dependent, so sap_atc_check_run_status.vbs matches state wording
+// across the product's declared logon languages (EN literals + ChrW-built
+// JA/ZH) with the icon-ID prefixes staying authoritative -- see its header
+// comment. That EN leg legitimately contains curated literals. Keep this
+// list SHORT and justified: naive EN-only branching anywhere else must
+// still be flagged.
+const LOCALE_LITERAL_EXEMPT = new Set([
+  'sap-atc/sap_atc_check_run_status.vbs',
+]);
+
 for (const plugin of mp.plugins) {
   const sourceRel = plugin.source.replace(/^\.\//, '').replace(/\/$/, '');
   const sourceAbs = join(repoRoot, sourceRel);
   for (const { skill, file, abs } of listVbsTemplates(join(sourceAbs, 'skills'))) {
+    if (LOCALE_LITERAL_EXEMPT.has(`${skill}/${file}`)) continue;
     const lines = readFileSync(abs, 'utf8').split(/\r?\n/);
     for (let i = 0; i < lines.length; i++) {
       const raw = lines[i];
@@ -876,7 +887,7 @@ for (const plugin of mp.plugins) {
       }
       if (titleHit || phrase) {
         const kind = titleHit ? 'window-title compare (LCase(..Title..) = ...)' : `InStr against English literal "${phrase}"`;
-        localeLiteralWarnings.push(`${plugin.name}: ${skill}/${file}:${i + 1} ${kind} -- locale-dependent; branch on control ID / sbar MessageType / icon-ID instead (shared/rules/language_independence_rules.md)`);
+        errors.push(`${plugin.name}: ${skill}/${file}:${i + 1} ${kind} -- locale-dependent; branch on control ID / sbar MessageType / icon-ID instead (shared/rules/language_independence_rules.md)`);
       }
     }
   }
@@ -1005,12 +1016,6 @@ if (errors.length === 0) {
   if (refExistWarnings.length > 0) {
     summary += `, ${refExistWarnings.length} known-missing reference warning(s)`;
   }
-  if (cscriptWarnings.length > 0) {
-    summary += `, ${cscriptWarnings.length} cscript-host warning(s) (${bareCscriptCount} bare cscript, ${wscriptCount} wscript)`;
-  }
-  if (localeLiteralWarnings.length > 0) {
-    summary += `, ${localeLiteralWarnings.length} locale-literal warning(s)`;
-  }
   if (sharedPlacementWarnings.length > 0) {
     summary += `, ${sharedPlacementWarnings.length} shared-placement warning(s)`;
   }
@@ -1021,8 +1026,6 @@ if (errors.length === 0) {
   for (const w of step0Warnings) console.warn('  WARN: ' + w);
   for (const w of runTempWarnings) console.warn('  WARN: ' + w);
   for (const w of refExistWarnings) console.warn('  WARN: ' + w);
-  for (const w of cscriptWarnings) console.warn('  WARN: ' + w);
-  for (const w of localeLiteralWarnings) console.warn('  WARN: ' + w);
   for (const w of sharedPlacementWarnings) console.warn('  WARN: ' + w);
   for (const w of baselineWarnings) console.warn('  WARN: ' + w);
   process.exit(0);
@@ -1048,14 +1051,6 @@ if (errors.length === 0) {
   if (refExistWarnings.length > 0) {
     console.error(`\nKnown-missing reference warnings (allowlisted ghosts, pending W11):`);
     for (const w of refExistWarnings) console.error('  WARN: ' + w);
-  }
-  if (cscriptWarnings.length > 0) {
-    console.error(`\nBare-cscript / wscript warnings (informational; ${bareCscriptCount} bare cscript, ${wscriptCount} wscript):`);
-    for (const w of cscriptWarnings) console.error('  WARN: ' + w);
-  }
-  if (localeLiteralWarnings.length > 0) {
-    console.error(`\nLocale-literal warnings (informational):`);
-    for (const w of localeLiteralWarnings) console.error('  WARN: ' + w);
   }
   if (sharedPlacementWarnings.length > 0) {
     console.error(`\nShared-placement warnings (informational):`);

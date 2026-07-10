@@ -223,13 +223,14 @@ read it fine) but is the wrong tree-wide move:
   (skipped). Otherwise it reports the **first** byte `> 0x7F` per file with its
   1-based line and decoded code point. (So the warning count = number of
   **files** flagged, not number of bad bytes.)
-- **Severity:** **informational `WARN`, not a build failure** — the tree carries
-  pre-existing debt that predates the guard, so it flags regressions without
-  breaking CI or forcing a rewrite. Mirrors the golden-screen baseline gate's
-  "ratchet" stance (see `golden_screen_baselines.md`).
-- **Ratchet plan:** clean the tree (P1 + P2 below) → *then* promote the guard to
-  a hard error (`errors.push(...)`) so new non-ASCII fails CI. Do **not** flip it
-  blocking first — 133 pre-existing files would turn the build red instantly.
+- **Severity:** **hard error since 2026-07-02** (`errors.push(...)`) — the tree
+  was cleaned to zero offenders first (P1 + P2 below, then the last
+  glyph-in-comment files were ASCII-cleaned), so any new non-ASCII byte without
+  a UTF-8 BOM now fails CI immediately.
+- **Ratchet history:** the guard shipped 2026-06-02 as an informational WARN
+  (133 pre-existing files would have turned the build red instantly), was
+  driven `133 → 11 → 0` by the P1/P2 passes, and was promoted to a hard error
+  on 2026-07-02 when the tree reached zero.
 
 To clear a file's warning: replace the offending bytes with ASCII (or `ChrW()` /
 `[char]` for runtime chars), or — only if non-ASCII is genuinely required — add
@@ -237,7 +238,14 @@ the appropriate BOM per the policy table.
 
 ## Current debt snapshot
 
-**2026-06-06 — Phase 1 (P2 typography cleanup) DONE; guard now `11 non-ASCII warning(s)`, build green.**
+**2026-07-02 — ZERO offenders; guard promoted to hard error.** The 11
+glyph-in-comment files listed below were subsequently ASCII-cleaned as well
+(glyph comments transliterated — e.g. `' rokku = lock` — instead of retained),
+so the "permanent exception" plan below is superseded: the guard expects zero
+and fails CI on any new non-ASCII byte without a BOM. Entries below are the
+historical record of how the debt was retired.
+
+**2026-06-06 — Phase 1 (P2 typography cleanup) DONE; guard then at `11 non-ASCII warning(s)`, build green.**
 The 122 "Bucket A" reference `.ps1`/`.vbs` (typographic-only non-ASCII, all in comments /
 diagnostics) were ASCII-swapped — `—`→`--`, `→`→`->`, `–`→`-`, `…`→`...`, `←`→`<-`, `≠`→`<>`;
 `§`/`∈` reworded. Verified: guard `133`→`11`, build green, all 82 `.ps1` parse-clean, no swap
@@ -339,10 +347,10 @@ emergency.
   comparison) — no sed/awk batch rewrite (a blind `—`→`--` pass would also corrupt the
   intentional JA literals). The 11 remaining glyph-in-comment files are **accepted as
   permanent exceptions** (snapshot above), not transliterated.
-- **P3 — process (pending):** the only non-ASCII left is those 11 accepted exceptions. To
-  ratchet the guard to a hard error without going red on them, first add the 11 to a guard
-  allowlist (or BOM-exempt set), then flip `WARN`→`errors.push(...)` so any *new* non-ASCII
-  fails CI. Deferred — the 11 are intentionally retained.
+- **P3 — DONE (2026-07-02):** rather than allowlisting the 11 glyph-in-comment
+  files, their comments were ASCII-cleaned too (glyphs transliterated), taking
+  the tree to zero offenders; the guard was then flipped `WARN`→`errors.push(...)`
+  so any *new* non-ASCII fails CI. No allowlist exists — zero is the contract.
 
 ## Decision log
 
@@ -353,6 +361,8 @@ emergency.
   text being matched, the runtime strings are already ASCII, and a `.vbs` can't be guard-cleared
   while keeping a glyph anyway. They stay informational `WARN`s by design; the ratchet (P3) must
   allowlist them rather than expect zero.
+  *(Superseded 2026-07-02: the glyph comments were transliterated after all — zero offenders,
+  no allowlist, guard promoted to hard error. Kept for the reasoning record.)*
 - **2026-06-04 — Rejected any *tree-wide* conversion to UTF-16 LE or UTF-8-with-BOM.**
   Evaluated on the back of a "we have to handle kanji / wrong-codepage trouble" concern.
   Conclusion: **keep ASCII-first**; UTF-8 BOM stays a *per-file* opt-in, never tree-wide.

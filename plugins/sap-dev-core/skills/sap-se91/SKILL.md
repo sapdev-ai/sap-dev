@@ -183,7 +183,7 @@ powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_se91_check_run.ps1"
 ### Execute
 
 ```bash
-cscript //NoLogo {RUN_TEMP}\sap_se91_check_run.vbs
+C:\Windows\SysWOW64\cscript.exe //NoLogo {RUN_TEMP}\sap_se91_check_run.vbs
 ```
 
 **Parse the last line of output:**
@@ -309,7 +309,7 @@ powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_se91_update_run.ps1"
 ### Execute
 
 ```bash
-cscript //NoLogo {RUN_TEMP}\sap_se91_update_run.vbs
+C:\Windows\SysWOW64\cscript.exe //NoLogo {RUN_TEMP}\sap_se91_update_run.vbs
 ```
 
 Proceed to Step 6 to evaluate the result.
@@ -372,7 +372,7 @@ powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_se91_create_run.ps1"
 ### Execute
 
 ```bash
-cscript //NoLogo {RUN_TEMP}\sap_se91_create_run.vbs
+C:\Windows\SysWOW64\cscript.exe //NoLogo {RUN_TEMP}\sap_se91_create_run.vbs
 ```
 
 Proceed to Step 6 to evaluate the result.
@@ -479,7 +479,7 @@ powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_se91_change_props_run.p
 ### Execute
 
 ```bash
-cscript //NoLogo {RUN_TEMP}\sap_se91_change_props_run.vbs
+C:\Windows\SysWOW64\cscript.exe //NoLogo {RUN_TEMP}\sap_se91_change_props_run.vbs
 ```
 
 ### Behaviour Notes

@@ -140,11 +140,11 @@ $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 Write-Host 'Done'
 ```
 
-Run via cscript:
+Run via 32-bit cscript:
 
 ```bash
 powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_where_used_list_run.ps1"
-cscript //NoLogo {RUN_TEMP}\sap_where_used_list_run.vbs
+C:\Windows\SysWOW64\cscript.exe //NoLogo {RUN_TEMP}\sap_where_used_list_run.vbs
 ```
 
 ---

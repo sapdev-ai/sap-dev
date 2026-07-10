@@ -128,7 +128,7 @@
 | **SAP GUI Scripting 有効化（クライアント側）** | VBScript エンジンが許可されている必要がある | §2.3 を参照 |
 | **Claude Code CLI** | スキルを実行するホスト | `claude --version` |
 | **SAP .NET Connector 3.1（32-bit、.NET 4.0）** *（任意だが推奨）* | RFC ファストパス: TR ステータス、FM シグネチャ、有効化検証、テーブル読み取り | §2.4 を参照 |
-| **Python 3.10+** *（任意）* | `sap-gen-code` のドキュメントパイプラインの一部で使用 | `py --version` |
+| **Python 3.10+** *（`sap-gen-code` を使う場合のみ必須）* | `sap-gen-code` のドキュメントパイプライン（`/sap-docs-extract` が Excel/Word/PDF 仕様書を解析）で使用。他のプラグインには不要 | `py --version` |
 
 > **シェルに関する注記（Windows で重要）。** `claude` は **好きなシェル**（cmd、PowerShell、
 > Windows Terminal）から起動してください。それによってスキルの動作が変わることはありません:
@@ -1067,6 +1067,7 @@ p50/p95 の所要時間、上位エラークラス）。
 | `sap-snro` | 番号範囲オブジェクト |
 | `sap-activate-object` / `sap-change-package` / `sap-where-used-list` | 有効化 / パッケージ移動 / 相互参照 |
 | `sap-atc` / `sap-run-abap-unit` | ATC ゲート / ABAP Unit ランナー |
+| `sap-check-abap` / `sap-fix-abap` | ABAP 品質を検証 / 自動修正 — 命名・型・SQL・CALL FUNCTION シグネチャ・コンパイラー構文 |
 | `sap-transport-readiness` / `sap-impact-analysis` / `sap-enhancement-advisor` / `sap-evidence-pack` | デリバリーアシュアランス |
 | `sap-stms` | リリース済み TR をランドスケープを通してインポート（PROD はゲート） |
 | `sap-diagnose` + `sap-st22` | インシデントトリアージ（SM13/SM12/SLG1/SM37 の RFC リーダーを内蔵、`--reader <name>` で単体実行）+ ST22 ダンプリーダー |
@@ -1091,7 +1092,11 @@ p50/p95 の所要時間、上位エラークラス）。
 | `sap-docs-convert` | 顧客正規化ルールを適用 |
 | `sap-docs-check` | 仕様を検証（DDIC + 処理ロジックの各ディメンション） |
 | `sap-gen-abap` | ABAP を生成（レポート / ダイアログ / FM） |
-| `sap-check-abap` / `sap-fix-abap` | ABAP 品質を検証 / 自動修正 — 命名・型・SQL・CALL FUNCTION シグネチャ・コンパイラー構文 |
+| `sap-gen-abap-unit` | 既存オブジェクトの ABAP Unit テストを生成し、ライブシステム上でグリーンになるまで実行（シーム分析、上限付き修正ループ） |
+| `sap-gen-cds` | ADT なしで CDS ビューを RFC 経由で生成・デプロイ（7.50–7.54 はクラシック DDL、7.55+ はビューエンティティ） |
+| `sap-review-abap` | ABAP オブジェクト / ローカルファイルの AI セマンティック + セキュリティレビュー（助言のみ） |
+
+*（`sap-check-abap` / `sap-fix-abap` は sap-dev-core へ移動 — 上の表を参照。）*
 
 ### sap-migrate（S/4HANA カスタムコード移行）
 

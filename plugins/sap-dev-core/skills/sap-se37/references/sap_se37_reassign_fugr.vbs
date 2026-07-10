@@ -183,7 +183,23 @@ For iLoop = 1 To 4
         Set oM2 = oSession.findById(sWin & "/usr/txtMESSTXT2")
         If Err.Number = 0 And Not (oM2 Is Nothing) Then sM2 = oM2.Text
         Err.Clear
-        If LCase(sTitle) = "error" Or InStr(LCase(sM1 & " " & sM2), "locked") > 0 Then
+        ' Fatal-popup classifier -- documented Rule-6 exception: the generic
+        ' message popup (txtMESSTXT1..4 + OK) exposes no locale-stable
+        ' control ID / MessageType / icon to branch on, so match the error
+        ' title / lock wording across the product's declared logon languages
+        ' (EN + ChrW-built JA/ZH, best-effort translations; source stays
+        ' ASCII), same pattern as sap_atc_check_run_status.vbs.
+        Dim sTtlLow : sTtlLow = LCase(sTitle)
+        Dim sPopLow : sPopLow = LCase(sM1 & " " & sM2)
+        Dim JA_LOCKED : JA_LOCKED = ChrW(&H30ED) & ChrW(&H30C3) & ChrW(&H30AF) ' rokku   = lock
+        Dim ZH_LOCKED : ZH_LOCKED = ChrW(&H9501) & ChrW(&H5B9A)                ' suoding = locked
+        Dim JA_ERRTTL : JA_ERRTTL = ChrW(&H30A8) & ChrW(&H30E9) & ChrW(&H30FC) ' eraa    = error
+        Dim ZH_ERRTTL : ZH_ERRTTL = ChrW(&H9519) & ChrW(&H8BEF)                ' cuowu   = error
+        Dim bFatalPopup : bFatalPopup = False
+        If sTtlLow = "error" Or sTtlLow = JA_ERRTTL Or sTtlLow = ZH_ERRTTL Then bFatalPopup = True
+        If InStr(sPopLow, "lock") > 0 Or InStr(sPopLow, JA_LOCKED) > 0 Or _
+           InStr(sPopLow, ZH_LOCKED) > 0 Then bFatalPopup = True
+        If bFatalPopup Then
             WScript.Echo "ERROR: SAP popup [" & sTitle & "] " & Trim(sM1 & " " & sM2)
             On Error Resume Next
             oSession.findById(sWin & "/tbar[0]/btn[12]").press

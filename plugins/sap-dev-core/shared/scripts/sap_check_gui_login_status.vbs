@@ -1,8 +1,8 @@
 ' =============================================================================
 ' sap_check_gui_login_status.vbs  -  Check SAP GUI session status
 '
-' Static script (no tokens). Run directly:
-'   cscript //NoLogo sap_check_gui_login_status.vbs
+' Static script (no tokens). Run directly (32-bit host -- SAP GUI COM):
+'   C:\Windows\SysWOW64\cscript.exe //NoLogo sap_check_gui_login_status.vbs
 '
 ' Output (one STATUS line, plus detail lines if applicable):
 '   STATUS: NO_GUI          SAP GUI / SAP Logon is not running

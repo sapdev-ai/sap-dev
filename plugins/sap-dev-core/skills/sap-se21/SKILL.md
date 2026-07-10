@@ -239,9 +239,9 @@ Run:
 powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_se21_run.ps1"
 ```
 
-Execute via regular cscript (SAP GUI Scripting works in either bitness):
+Execute via the 32-bit cscript host (bare `cscript` resolves to the 64-bit host; SAP GUI COM needs 32-bit — see CLAUDE.md / feedback_sap_gui_vbs_must_be_32bit):
 ```bash
-cscript //NoLogo "{RUN_TEMP}\sap_se21_filled.vbs"
+C:\Windows\SysWOW64\cscript.exe //NoLogo "{RUN_TEMP}\sap_se21_filled.vbs"
 ```
 
 ---
@@ -415,7 +415,7 @@ Run:
 
 ```bash
 powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_se21_delete_run.ps1"
-cscript //NoLogo "{RUN_TEMP}\sap_se21_delete_run.vbs"
+C:\Windows\SysWOW64\cscript.exe //NoLogo "{RUN_TEMP}\sap_se21_delete_run.vbs"
 ```
 
 ### Behaviour Notes

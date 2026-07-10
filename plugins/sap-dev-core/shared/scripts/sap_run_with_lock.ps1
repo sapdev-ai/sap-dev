@@ -14,7 +14,7 @@
 # Usage:
 #   powershell -NoProfile -ExecutionPolicy Bypass -File sap_run_with_lock.ps1 `
 #       -MutexName SapDevGuiPaste_v1 -TimeoutMs 180000 `
-#       -Command "cscript //NoLogo ""C:\...\run\sap_se38_create_run.vbs"""
+#       -Command "C:\Windows\SysWOW64\cscript.exe //NoLogo ""C:\...\run\sap_se38_create_run.vbs"""
 #
 # - Stdout/stderr of the wrapped command pass through unchanged so the caller's
 #   parser (SUCCESS:/ERROR:/PROGDIR: lines, etc.) is unaffected. The lock's own

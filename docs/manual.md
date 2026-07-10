@@ -127,7 +127,7 @@ skill standalone, in any order. The chain above is the recommended order, not a 
 | **SAP GUI Scripting enabled (client)** | The VBScript engine must be allowed | see §2.3 |
 | **Claude Code CLI** | The host that runs the skills | `claude --version` |
 | **SAP .NET Connector 3.1 (32-bit, .NET 4.0)** *(optional but recommended)* | RFC fast-paths: TR status, FM signatures, activation verify, table reads | see §2.4 |
-| **Python 3.10+** *(optional)* | Used by parts of the `sap-gen-code` document pipeline | `py --version` |
+| **Python 3.10+** *(required only for `sap-gen-code`)* | The `sap-gen-code` document pipeline (`/sap-docs-extract` parses Excel/Word/PDF specs); the other plugins work without it | `py --version` |
 
 > **Shell note (important for Windows).** Launch `claude` from **whatever shell you
 > like** — cmd, PowerShell, Windows Terminal. It does not change how the skills run:
@@ -1059,6 +1059,7 @@ p50/p95 duration, top error classes).
 | `sap-snro` | Number range objects |
 | `sap-activate-object` / `sap-change-package` / `sap-where-used-list` | Activate / move package / cross-reference |
 | `sap-atc` / `sap-run-abap-unit` | ATC gate / ABAP Unit runner |
+| `sap-check-abap` / `sap-fix-abap` | Validate / auto-fix ABAP quality — naming, types, SQL, CALL FUNCTION signatures, compiler syntax |
 | `sap-transport-readiness` / `sap-impact-analysis` / `sap-enhancement-advisor` / `sap-evidence-pack` | Delivery assurance |
 | `sap-stms` | Import a released TR through the landscape (gated PROD) |
 | `sap-diagnose` + `sap-st22` | Incident triage (SM13/SM12/SLG1/SM37 RFC readers built in — `--reader <name>` runs one standalone) + ST22 dump reader |
@@ -1083,7 +1084,11 @@ p50/p95 duration, top error classes).
 | `sap-docs-convert` | Apply customer normalisation rules |
 | `sap-docs-check` | Validate the spec (DDIC + process dimensions) |
 | `sap-gen-abap` | Generate ABAP (report / dialog / FM) |
-| `sap-check-abap` / `sap-fix-abap` | Validate / auto-fix ABAP quality — naming, types, SQL, CALL FUNCTION signatures, compiler syntax |
+| `sap-gen-abap-unit` | Generate ABAP Unit tests for an existing object and run them to green on the live system (seam analysis, bounded fix loop) |
+| `sap-gen-cds` | Generate + deploy a CDS view over RFC without ADT (classic DDL on 7.50–7.54, view entities on 7.55+) |
+| `sap-review-abap` | AI semantic + security code review of an ABAP object or local file (advisory) |
+
+*(`sap-check-abap` / `sap-fix-abap` moved to sap-dev-core — see the table above.)*
 
 ### sap-migrate (S/4HANA custom-code migration)
 

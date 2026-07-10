@@ -292,15 +292,27 @@ If oSession.Info.Program = "SAPMSSY0" Then
     Dim sCheckErrors
     sCheckErrors = ""
     On Error Resume Next
-    Dim oChkUsr, oChkChild, sChkText
+    Dim oChkUsr, oChkChild, sChkText, sChkIcon
     Set oChkUsr = oSession.findById("wnd[0]/usr")
     If Err.Number = 0 Then
+        ' Locale-independent verdict: branch on each label's IconName (red
+        ' icon family S_LEDR / S_TL_R / *ERRO* -- ASCII internal identifiers,
+        ' stable across logon languages), never on the translated log TEXT
+        ' (the old "resulted in errors" / "is inconsistent" match was blind
+        ' on ZH/JA logons). If this release renders the log without icons the
+        ' early abort simply doesn't trigger; the activation status-bar gate
+        ' at the end of this script stays the authoritative failure net. Log
+        ' text is still collected for the diagnostic echo (Rule 4: echo only).
         For Each oChkChild In oChkUsr.Children
             sChkText = ""
             sChkText = oChkChild.Text
             If Err.Number <> 0 Then sChkText = "" : Err.Clear
-            If InStr(sChkText, "resulted in errors") > 0 Or _
-               InStr(sChkText, "is inconsistent") > 0 Then
+            sChkIcon = ""
+            sChkIcon = oChkChild.IconName
+            If Err.Number <> 0 Then sChkIcon = "" : Err.Clear
+            If InStr(1, sChkIcon, "S_LEDR", 1) > 0 Or _
+               InStr(1, sChkIcon, "S_TL_R", 1) > 0 Or _
+               InStr(1, sChkIcon, "ERRO", 1) > 0 Then
                 bCheckError = True
             End If
             If sChkText <> "" Then

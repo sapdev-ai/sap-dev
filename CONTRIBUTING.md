@@ -5,11 +5,13 @@ file is the human-oriented short version.
 
 ## First-time setup (per developer)
 
-Personal SAP credentials live in `plugins/sap-dev-core/settings.local.json`,
-which is gitignored. The tracked `settings.json` is the schema only — all its
-`value` fields are blank. Reads merge local over schema; writes from skills
-always target the local file. See `docs/settings-local-faq.md` for the full
-Q&A.
+Personal SAP credentials for a dev checkout live in
+`plugins/sap-dev-core/settings.local.json`, which is gitignored and is only
+ever hand-edited (or written by `dev-setup.ps1`). The tracked `settings.json`
+is the schema only — all its `value` fields are blank. Reads merge per key:
+`settings.local.json` > `{work_dir}\runtime\userconfig.json` >
+`settings.json`; **skill writes always target `userconfig.json`**, never the
+local file or the schema. See `docs/settings-local-faq.md` for the full Q&A.
 
 After cloning, run **one** of:
 
@@ -85,10 +87,11 @@ non-breakingly, document the change in `CLAUDE.md` § Current Shared Files.
   agree.
 - `npm run validate` — runs both.
 
-The website has its own check:
-
-- `cd website && npm run check:i18n` — verifies `en.ts`, `ja.ts`, `zh.ts`
-  share the same key structure.
+The project website is maintained **outside this repository** (a sibling
+`website/` workspace) and carries its own i18n check there
+(`npm run check:i18n` / `node scripts/check-i18n.mjs` — verifies the locale
+files share the same key structure). Nothing website-related is validated
+from this repo.
 
 ## Reserved words
 

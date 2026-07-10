@@ -246,7 +246,7 @@ powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_se37_check_run.ps1"
 ### Execute
 
 ```bash
-cscript //NoLogo {RUN_TEMP}\sap_se37_check_run.vbs
+C:\Windows\SysWOW64\cscript.exe //NoLogo {RUN_TEMP}\sap_se37_check_run.vbs
 ```
 
 **Parse the last line of output:**
@@ -919,7 +919,7 @@ Confirm the parse output matches the expected interface before proceeding.
 ### Execute
 
 ```bash
-cscript //NoLogo {RUN_TEMP}\sap_se37_create_run.vbs
+C:\Windows\SysWOW64\cscript.exe //NoLogo {RUN_TEMP}\sap_se37_create_run.vbs
 ```
 
 Proceed to Step 6 to evaluate the result.
@@ -1000,7 +1000,7 @@ powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_se37_change_attrs_run.p
 ### Execute
 
 ```bash
-cscript //NoLogo {RUN_TEMP}\sap_se37_change_attrs_run.vbs
+C:\Windows\SysWOW64\cscript.exe //NoLogo {RUN_TEMP}\sap_se37_change_attrs_run.vbs
 ```
 
 ### Behaviour Notes
@@ -1113,7 +1113,7 @@ powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_se37_reassign_fugr_run.
 ### Execute
 
 ```bash
-cscript //NoLogo {RUN_TEMP}\sap_se37_reassign_fugr_run.vbs
+C:\Windows\SysWOW64\cscript.exe //NoLogo {RUN_TEMP}\sap_se37_reassign_fugr_run.vbs
 ```
 
 ### Behaviour Notes
@@ -1215,7 +1215,7 @@ powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_se37_delete_run.ps1"
 ### Execute
 
 ```bash
-cscript //NoLogo {RUN_TEMP}\sap_se37_delete_run.vbs
+C:\Windows\SysWOW64\cscript.exe //NoLogo {RUN_TEMP}\sap_se37_delete_run.vbs
 ```
 
 ### Behaviour Notes

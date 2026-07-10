@@ -176,7 +176,7 @@ powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_snro_check_run.ps1"
 ### Execute
 
 ```bash
-cscript //NoLogo {RUN_TEMP}\sap_snro_check_run.vbs
+C:\Windows\SysWOW64\cscript.exe //NoLogo {RUN_TEMP}\sap_snro_check_run.vbs
 ```
 
 **Parse the last line of output:**
@@ -233,7 +233,7 @@ powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_snro_create_run.ps1"
 ### Execute
 
 ```bash
-cscript //NoLogo {RUN_TEMP}\sap_snro_create_run.vbs
+C:\Windows\SysWOW64\cscript.exe //NoLogo {RUN_TEMP}\sap_snro_create_run.vbs
 ```
 
 Proceed to Step 6 to evaluate the result. If the user also supplied intervals, continue with Step 5c after a successful create.
@@ -279,7 +279,7 @@ powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_snro_update_run.ps1"
 ### Execute
 
 ```bash
-cscript //NoLogo {RUN_TEMP}\sap_snro_update_run.vbs
+C:\Windows\SysWOW64\cscript.exe //NoLogo {RUN_TEMP}\sap_snro_update_run.vbs
 ```
 
 Proceed to Step 6.
@@ -327,7 +327,7 @@ powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_snro_intervals_run.ps1"
 ### Execute
 
 ```bash
-cscript //NoLogo {RUN_TEMP}\sap_snro_intervals_run.vbs
+C:\Windows\SysWOW64\cscript.exe //NoLogo {RUN_TEMP}\sap_snro_intervals_run.vbs
 ```
 
 Proceed to Step 6.

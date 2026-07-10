@@ -226,7 +226,7 @@ powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_se38_check_run.ps1"
 ### Execute
 
 ```bash
-cscript //NoLogo {RUN_TEMP}\sap_se38_check_run.vbs
+C:\Windows\SysWOW64\cscript.exe //NoLogo {RUN_TEMP}\sap_se38_check_run.vbs
 ```
 
 **Parse the last line of output:**
@@ -429,7 +429,7 @@ powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_se38_update_run.ps1"
 # SE38 stages ABAP source on the Windows clipboard + SendKeys ^v behind an OS
 # foreground guard -- both machine-global singletons that a per-run folder cannot
 # isolate. Serialize the paste across concurrent runs with a global named mutex.
-powershell -NoProfile -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_run_with_lock.ps1" -MutexName SapDevGuiPaste_v1 -TimeoutMs 180000 -Command "cscript //NoLogo {RUN_TEMP}\sap_se38_update_run.vbs"
+powershell -NoProfile -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_run_with_lock.ps1" -MutexName SapDevGuiPaste_v1 -TimeoutMs 180000 -Command "C:\Windows\SysWOW64\cscript.exe //NoLogo {RUN_TEMP}\sap_se38_update_run.vbs"
 ```
 
 Proceed to Step 6 to evaluate the result.
@@ -521,7 +521,7 @@ powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_se38_create_run.ps1"
 # SE38 stages ABAP source on the Windows clipboard + SendKeys ^v behind an OS
 # foreground guard -- both machine-global singletons that a per-run folder cannot
 # isolate. Serialize the paste across concurrent runs with a global named mutex.
-powershell -NoProfile -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_run_with_lock.ps1" -MutexName SapDevGuiPaste_v1 -TimeoutMs 180000 -Command "cscript //NoLogo {RUN_TEMP}\sap_se38_create_run.vbs"
+powershell -NoProfile -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_run_with_lock.ps1" -MutexName SapDevGuiPaste_v1 -TimeoutMs 180000 -Command "C:\Windows\SysWOW64\cscript.exe //NoLogo {RUN_TEMP}\sap_se38_create_run.vbs"
 ```
 
 Proceed to Step 6 to evaluate the result.
@@ -676,7 +676,7 @@ powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_se38_textelm_run.ps1"
 ### Execute
 
 ```bash
-cscript //NoLogo {RUN_TEMP}\sap_se38_textelm_run.vbs
+C:\Windows\SysWOW64\cscript.exe //NoLogo {RUN_TEMP}\sap_se38_textelm_run.vbs
 ```
 
 **On success** (output contains `SUCCESS:`): proceed to Step 5c.1. The VBS template now handles
@@ -897,7 +897,7 @@ powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_se38_change_attrs_run.p
 ### Execute
 
 ```bash
-cscript //NoLogo {RUN_TEMP}\sap_se38_change_attrs_run.vbs
+C:\Windows\SysWOW64\cscript.exe //NoLogo {RUN_TEMP}\sap_se38_change_attrs_run.vbs
 ```
 
 ### Behaviour Notes
@@ -1013,7 +1013,7 @@ powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_se38_delete_run.ps1"
 ### Execute
 
 ```bash
-cscript //NoLogo {RUN_TEMP}\sap_se38_delete_run.vbs
+C:\Windows\SysWOW64\cscript.exe //NoLogo {RUN_TEMP}\sap_se38_delete_run.vbs
 ```
 
 ### Behaviour Notes

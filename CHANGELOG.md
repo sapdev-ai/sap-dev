@@ -2,6 +2,65 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Changed
+
+- **Both remaining lint ratchets driven to zero and promoted WARN → ERROR**
+  (`scripts/check-consistency.mjs`, per their original promotion plan):
+  - **Bare-cscript / wscript host gate.** All 38 bare `cscript` invocations
+    across 13 SKILL.md files now spell the 32-bit host
+    (`C:\Windows\SysWOW64\cscript.exe`), plus two sites the gate's regex
+    doesn't see (`Start-Process -FilePath "cscript.exe"` in sap-dev-init's
+    warmup-verify, the usage example in `sap_run_with_lock.ps1`) and the
+    run-directly comment in `sap_check_gui_login_status.vbs`. Stale prose
+    claiming either bitness works (sap-se21) or that 64-bit is fine
+    (sap-check-abap) corrected to the repo doctrine.
+  - **Locale-literal gate.** All 18 flagged EN-only text branches in
+    `references/*.vbs` migrated to locale-stable checks: the SE11
+    tabletype/view create/update quartet now detects the "save first?" SPOP
+    by `btnSPOP-OPTION1` control ID and derives the DDIC check-log verdict
+    from label `IconName` (red-icon family) instead of translated log text;
+    the fatal-popup classifiers in sap-se24/se37/se38/se91 change-props /
+    change-attrs / reassign-fugr match lock/error wording across EN + ChrW-built
+    JA/ZH (the generic `txtMESSTXT1..4` popup exposes no locale-stable
+    control — documented Rule-6 exception); `sap_se38_delete.vbs` dropped its
+    dead locale-dependent title check (the structural `ctxtRS38M-PROGRAMM`
+    probe was already the verdict). The two documented backlog offenders were
+    migrated too: `sap_se38_check.vbs` decides existence structurally
+    (program/screen identity — the path ZH/JA logons already took) and
+    `sap_function_group_gui_create.vbs` derives its outcome from
+    `sbar.MessageType`. The deliberate multi-locale ATC state decoder
+    (`sap_atc_check_run_status.vbs`) is exempted via the new, justified
+    `LOCALE_LITERAL_EXEMPT` allowlist.
+- **Documentation refresh (full-repo consistency audit, 2026-07-10).**
+  Manuals (EN/JA/ZH) Appendix A: added the 3 missing sap-gen-code skills
+  (`sap-gen-abap-unit`, `sap-gen-cds`, `sap-review-abap`) and moved
+  `sap-check-abap`/`sap-fix-abap` to their actual home under sap-dev-core;
+  Python prerequisite framing unified ("required only for sap-gen-code").
+  SECURITY.md supported versions → 0.7.x. README structure-tree skill count
+  (49→52) and baseline coverage (120/121→126/127). CONTRIBUTING.md settings
+  model corrected to the four-tier contract (skill writes →
+  `{work_dir}\runtime\userconfig.json`) and the website i18n note repointed
+  (the website lives outside this repo). CLAUDE.md Current Shared Files:
+  corrected the stale two-file settings rows (`sap_settings_lib.ps1`,
+  `settings_lookup.md`, `sap_dpapi.ps1`) and added the missing rows for
+  `perf_antipattern_map.tsv`, `sap_release_markers.tsv`,
+  `sap_connection_lib.ps1`, `sap_dev_default.ps1`, `sap_workdir_setup.ps1`,
+  `sap_login.vbs`, `sap_check_gui_login_status.vbs`,
+  `work_dir_onboarding.md`. settings-local-faq: Q11 now names
+  `connections.json` as the credential store; the phantom "VBS settings
+  helper" wording removed. `sap-run-report-and-sap-job-design.md` status
+  DRAFT → BUILT (2026-07-09) with build-time counts annotated.
+  `parallel_safe_session_attach.md` conditions 8–10 + sample output and
+  `source_encoding_policy.md` severity/debt/P3 sections updated to the
+  promoted-gate reality. `local_development_and_testing.md` work_dir chain
+  now includes the `%APPDATA%\sapdev-ai\work_dir.txt` pointer tier.
+  `language_independence_rules.md` known-offender backlog closed and the
+  Rule-6 exception table added. tools/README.md documents
+  `sanity_check_spec.py`. marketplace.json sap-tcd `source` gets the
+  trailing slash for consistency.
+
 ## [0.7.2] — 2026-07-09
 
 ### Added

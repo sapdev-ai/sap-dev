@@ -19,9 +19,9 @@ plugins. Save / print / forward to teammates.
 > "edit `settings.local.json` in the plugin folder" advice still works for
 > **developers running from a repo checkout**, but **end users** should use the
 > env var + `userconfig.json` (or just `/sap-login`) — the plugin cache is
-> versioned, so anything you put there is lost on update. (The VBS settings
-> helper does not yet implement tiers 1/3 — PowerShell only; see
-> settings_lookup.md.)
+> versioned, so anything you put there is lost on update. (There is no VBS
+> settings library — settings resolve in PowerShell only and reach VBS via
+> `%%TOKEN%%` substitution / env vars; see settings_lookup.md.)
 
 ---
 
@@ -204,13 +204,15 @@ has been removed — restore it before doing anything else.
 
 ## Q11. How does this work with the public repo and DPAPI?
 
-DPAPI is per-Windows-account. The encrypted `dpapi:...` blob in your
-`settings.local.json` cannot be decrypted by anyone else, on any other
-machine, even with the same password. So:
+DPAPI is per-Windows-account. The encrypted `dpapi:...` blob in
+`{work_dir}\runtime\connections.json` (where `/sap-login` stores connection
+profiles and passwords — see Q1/Q2; the same applies to a hand-maintained
+dev-checkout `settings.local.json`) cannot be decrypted by anyone else, on
+any other machine, even with the same password. So:
 
-- Your local file is safe on your disk.
-- Your local file is gitignored.
-- Even if it leaked, the encrypted password is useless to attackers.
+- The credential files live outside the repo (`{work_dir}\runtime\`) or are
+  gitignored (`settings.local.json`), so they are never committed.
+- Even if one leaked, the encrypted password is useless to attackers.
 
 The schema file (`settings.json`) is in the public repo with all blank
 values — there is nothing sensitive in it.

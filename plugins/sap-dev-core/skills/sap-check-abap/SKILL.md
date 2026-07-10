@@ -277,9 +277,9 @@ powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_checkabap_run.ps1"
 
 ### 3c. Execute the VBScript
 
-Run via standard cscript (the VBS itself no longer needs 32-bit; the helper PS1 runs 32-bit PowerShell internally):
+Run via the 32-bit cscript host (the VBS itself is COM-free and the helper PS1 runs 32-bit PowerShell internally, but spelling the SysWOW64 host is the repo-wide standard for every VBS invocation):
 ```bash
-cscript.exe //NoLogo {RUN_TEMP}\sap_checkabap_run.vbs
+C:\Windows\SysWOW64\cscript.exe //NoLogo {RUN_TEMP}\sap_checkabap_run.vbs
 ```
 
 Show the full script output as it runs. Then read the result file.
