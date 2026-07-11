@@ -1,0 +1,40 @@
+# critical_auths.tsv  -  critical authorization grants, co-owned by /sap-explain-role
+# and /sap-suim (one shared vocabulary, two renderers). Customer override wins
+# wholesale at {custom_url}\critical_auths.tsv (template/override chain).
+#
+# Deterministic matcher semantics (in sap_role_critical_match.ps1 / sap_suim_critical.ps1,
+# NEVER the LLM), evaluated against decoded AGR_1251 rows (OBJECT, FIELD, LOW, HIGH):
+#   * a rule matches an object's grant when auth_object matches AND
+#       - field is blank                          -> object presence alone flags, OR
+#       - the granted (LOW..HIGH) range COVERS the rule's low..high value:
+#           granted LOW '*'                        -> grant covers everything -> match (any rule)
+#           rule low '*'                           -> flags ONLY a wildcard grant (granted LOW='*');
+#                                                     to flag ANY grant of an object, leave field BLANK
+#           rule low a trailing-'*' pattern        -> SAP prefix match against granted LOW
+#           rule low..high interval + granted LOW  -> containment (granted value in [low,high])
+#           exact                                  -> granted LOW == rule low (HIGH honored)
+# severity maps onto sap_finding_lib: CRITICAL->BLOCKER, HIGH->HIGH, MEDIUM->MEDIUM.
+#
+check_id	auth_object	field	low	high	severity	rationale
+CRIT_TABLE_MAINT_CHANGE	S_TABU_DIS	ACTVT	02		HIGH	Change access to table maintenance (SM30/SM31) - can alter customizing/master data outside apps
+CRIT_TABLE_MAINT_ALL	S_TABU_DIS	DICBERCLS	*		HIGH	Table maintenance across ALL authorization groups (no table-group restriction)
+CRIT_DEBUG_CHANGE	S_DEVELOP	ACTVT	02		CRITICAL	Debug-and-replace (change field values at runtime) - bypasses all application controls
+CRIT_DEVELOP_CREATE	S_DEVELOP	ACTVT	01		HIGH	Create/modify repository objects (ABAP Workbench write) on this system
+CRIT_TCODE_SE38	S_TCODE	TCD	SE38		HIGH	Run arbitrary ABAP reports (ABAP editor) - broad program execution
+CRIT_TCODE_SA38	S_TCODE	TCD	SA38		HIGH	Run arbitrary ABAP reports (report execution)
+CRIT_TCODE_SE16	S_TCODE	TCD	SE16		HIGH	Generic table data browser - read any table's data
+CRIT_TCODE_SE16N	S_TCODE	TCD	SE16N		HIGH	Generic table data browser (SE16N) - read/edit any table's data
+CRIT_TCODE_SM30	S_TCODE	TCD	SM30		HIGH	Generic table maintenance dialog
+CRIT_TCODE_SM49	S_TCODE	TCD	SM49		CRITICAL	Execute external OS commands from SAP
+CRIT_TCODE_SM69	S_TCODE	TCD	SM69		CRITICAL	Maintain external OS commands
+CRIT_TCODE_SU01	S_TCODE	TCD	SU01		HIGH	User administration (create users / reset passwords)
+CRIT_TCODE_PFCG	S_TCODE	TCD	PFCG		HIGH	Role maintenance (grant oneself or others any authorization)
+CRIT_TCODE_SCC4	S_TCODE	TCD	SCC4		HIGH	Client administration (change client-change settings)
+CRIT_TCODE_STAR	S_TCODE	TCD	*		CRITICAL	Wildcard transaction-code grant - can start ANY transaction
+CRIT_RFC_ALL	S_RFC	RFC_NAME	*		HIGH	Call ANY RFC-enabled function module (broad remote execution surface)
+CRIT_OS_DATASET	S_DATASET	ACTVT	34		HIGH	Write to arbitrary OS files from ABAP (application-server filesystem)
+CRIT_USER_GRP_MAINT	S_USER_GRP	ACTVT	02		HIGH	Maintain users in any user group (assign roles / unlock / reset)
+CRIT_USER_AGR_ASSIGN	S_USER_AGR	ACTVT	22		HIGH	Assign roles to users (grant authorizations to others)
+CRIT_TRANSPORT_ADMIN	S_TRANSPRT	ACTVT	01		MEDIUM	Create/administer transports (move code/config between systems)
+CRIT_BATCH_ADMIN	S_BTCH_ADM	BTCADMIN	Y		MEDIUM	Batch administration (manage all background jobs)
+CRIT_SPOOL_ADMIN	S_ADMI_FCD	S_ADMI_FCD	SP01		MEDIUM	System spool administration

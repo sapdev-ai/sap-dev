@@ -1,0 +1,24 @@
+# golden_master_normalization_rules.tsv  -  volatile-token normalization for /sap-golden-master
+#
+# Applied by sap_gm_normalize.ps1 to spool / table captures BEFORE diffing, so a
+# re-run's volatile tokens (dates, times, timestamps) do not read as regressions.
+# Two token classes are handled structurally in the script, NOT here: CAPTURE_USER
+# (the executing user, passed at runtime -> <USER>) and PAGE_FEED (form-feed page
+# breaks in unconverted spool). Customer override:
+# {custom_url}\golden_master_normalization_rules.tsv (same columns, replaces this).
+#
+# applies_to: SPOOL | TABLE | BOTH
+# enabled: 1 = on, 0 = opt-in (enable per baseline via --rules or the manifest)
+# The regex is .NET regex; replacement is the literal token. Order matters
+# (longer/timestamp patterns first so a 14-digit stamp is not eaten by a date rule).
+# Cell separator is TAB. Lines starting with # and blank lines are skipped.
+rule_id	applies_to	token_class	regex	replacement	enabled
+TIMESTAMP14	BOTH	TIMESTAMP	\b(19|20)\d{2}(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])([01]\d|2[0-3])[0-5]\d[0-5]\d\b	<TS>	1
+DATE_DMY	BOTH	DATE	\b([0-2]\d|3[01])\.(0[1-9]|1[0-2])\.(19|20)\d{2}\b	<DATE>	1
+DATE_ISO	BOTH	DATE	\b(19|20)\d{2}-(0[1-9]|1[0-2])-([0-2]\d|3[01])\b	<DATE>	1
+DATE_MDY	BOTH	DATE	\b(0[1-9]|1[0-2])/([0-2]\d|3[01])/(19|20)\d{2}\b	<DATE>	1
+DATE_YMD	BOTH	DATE	\b(19|20)\d{2}(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])\b	<DATE>	1
+TIME_HMS	BOTH	TIME	\b([01]\d|2[0-3]):[0-5]\d:[0-5]\d\b	<TIME>	1
+SPOOLNO	SPOOL	SPOOLNO	\bSpool[- ]?(request|Auftrag)?\s*[:#]?\s*\d{1,10}\b	<SPOOLNO>	0
+JOBCOUNT	SPOOL	JOBCOUNT	\bJob[- ]?count\s*[:#]?\s*\d{8}\b	<JOBCOUNT>	0
+GENERATED_NO	BOTH	GENERATED_NO	\b\d{9,10}\b	<GENNO>	0

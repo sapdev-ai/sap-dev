@@ -1,0 +1,22 @@
+status	direction	class	note
+02	out	ERROR	Error passing data to port
+04	out	ERROR	Error within control information of EDI subsystem
+05	out	ERROR	Error during translation
+25	out	ERROR	Processing despite syntax error (outbound)
+26	out	ERROR	Error during syntax check of IDoc (outbound)
+29	out	ERROR	Error in ALE service
+30	out	WAITING	IDoc ready for dispatch (ALE service)
+32	out	ERROR	IDoc was edited (outbound)
+03	out	WAITING	Data passed to port OK
+18	out	WAITING	Triggering EDI subsystem OK
+51	in	ERROR	Application document not posted
+56	in	ERROR	IDoc with errors added
+60	in	ERROR	Error during syntax check of IDoc (inbound)
+61	in	ERROR	Processing despite syntax error (inbound)
+62	in	ERROR	IDoc passed to application
+63	in	ERROR	Error passing IDoc to application
+65	in	ERROR	Error in ALE service (inbound)
+64	in	WAITING	IDoc ready to be transferred to application
+66	in	WAITING	IDoc is waiting for predecessor IDoc
+69	in	WAITING	IDoc was edited (inbound)
+75	in	WAITING	IDoc is in inbound queue

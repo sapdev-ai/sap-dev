@@ -1,0 +1,20 @@
+# doc_flow_status_map.tsv - (category, field, value) -> label + health for node decode.
+# The status FIELD is read from the header table (S/4) or VBUK (ECC) per the runtime
+# schema branch; the value->health mapping below is release-independent. health in
+# {OK, OPEN, IN_PROCESS, BLOCKED, CANCELLED, NOT_POSTED}. Override at
+# {custom_url}\doc_flow_status_map.tsv.
+category	field	value	health	label
+order	GBSTK	A	OPEN	Overall status: not processed
+order	GBSTK	B	IN_PROCESS	Overall status: partially processed
+order	GBSTK	C	OK	Overall status: completely processed
+order	ABSTK	B	BLOCKED	Rejection: partially rejected
+order	ABSTK	C	CANCELLED	Rejection: completely rejected
+delivery	WBSTK	A	OPEN	Goods movement: not started
+delivery	WBSTK	B	IN_PROCESS	Goods movement: partial goods issue
+delivery	WBSTK	C	OK	Goods movement: completed
+delivery	KOSTK	A	OPEN	Picking: not started
+delivery	KOSTK	B	IN_PROCESS	Picking: partial
+delivery	KOSTK	C	OK	Picking: completed
+invoice	RFBSK	A	NOT_POSTED	Posting to accounting: open
+invoice	RFBSK	C	OK	Posting to accounting: transferred
+invoice	FKSTO	X	CANCELLED	Billing document cancelled

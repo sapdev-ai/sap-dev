@@ -12,7 +12,7 @@
     "version": "0.7.2",
     "last_updated": "2026-07-09",
     "total_plugins": 5,
-    "total_skills": 74,
+    "total_skills": 97,
     "categories": [
       "tooling"
     ]
@@ -24,6 +24,7 @@
       "source": "./plugins/sap-dev-core/",
       "skills": [
         "./skills/sap-activate-object",
+        "./skills/sap-api-advisor",
         "./skills/sap-atc",
         "./skills/sap-call-bdc",
         "./skills/sap-change-package",
@@ -54,6 +55,7 @@
         "./skills/sap-rfc-wrapper",
         "./skills/sap-run-abap-unit",
         "./skills/sap-run-report",
+        "./skills/sap-scratch-run",
         "./skills/sap-se01",
         "./skills/sap-se11",
         "./skills/sap-se16n",
@@ -69,12 +71,14 @@
         "./skills/sap-sm12",
         "./skills/sap-snro",
         "./skills/sap-sp02",
+        "./skills/sap-sql-query",
         "./skills/sap-st22",
         "./skills/sap-stms",
         "./skills/sap-trace",
         "./skills/sap-transport-readiness",
         "./skills/sap-transport-request",
         "./skills/sap-update-addon",
+        "./skills/sap-version-history",
         "./skills/sap-where-used-list"
       ],
       "agents": [
@@ -173,7 +177,26 @@
       "skills": [
         "./skills/sap-bp",
         "./skills/sap-mm01",
-        "./skills/sap-va01"
+        "./skills/sap-va01",
+        "./skills/sap-release-notes",
+        "./skills/sap-interface-inventory",
+        "./skills/sap-delivery-report",
+        "./skills/sap-golden-master",
+        "./skills/sap-rfc-monitor",
+        "./skills/sap-su01",
+        "./skills/sap-fi-post",
+        "./skills/sap-tcd-chain",
+        "./skills/sap-output-diagnose",
+        "./skills/sap-idoc",
+        "./skills/sap-auth-diagnose",
+        "./skills/sap-explain-role",
+        "./skills/sap-change-history",
+        "./skills/sap-suim",
+        "./skills/sap-transport-copies",
+        "./skills/sap-config-compare",
+        "./skills/sap-transport-sequencer",
+        "./skills/sap-health-check",
+        "./skills/sap-doc-flow"
       ],
       "version": "0.7.2",
       "category": "tooling",
@@ -185,8 +208,10 @@
         "idoc",
         "material-master",
         "operations",
+        "output",
         "project",
         "release",
+        "rfc",
         "sales-order",
         "sap",
         "test-data",

@@ -1,0 +1,12 @@
+# health_probe_matrix.tsv - per-area source, thresholds, enable flag for /sap-health-check
+# Severity from count: >= crit_at -> HIGH, >= warn_at -> MEDIUM, else LOW. A NEW finding
+# adds one severity notch (done in the report, not here). Override per customer at
+# {custom_url}\health_probe_matrix.tsv. Disable an area with enabled=N (reported
+# NOT_APPLICABLE, never silently absent).
+area	source	selection	warn_at	crit_at	enabled
+idoc	EDIDC	CREDAT in window; status class ERROR/WAITING from health_idoc_status_map.tsv	1	20	Y
+trfc	ARFCSSTATE	all pending/failed tRFC LUWs, grouped by (dest,state)	1	50	Y
+qrfc	TRFC_QIN/QOUT_GET_CURRENT_QUEUES	per-queue depth + state	1	100	Y
+spool	TSP02	output requests with a hard finishing error (PJFINAHERR>0), by (owner,device)	1	20	Y
+jobs	TBTCO	aborted jobs (STATUS='A') in window, by job-name stem	1	5	Y
+dumps	SNAP	ABAP short-dumps in window (SEQNO='000'), by (uname,ahost)	1	10	Y

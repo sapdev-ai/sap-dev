@@ -1,0 +1,35 @@
+# interface_program_map.tsv  -  batch-job program -> interface technology/direction
+# Used by /sap-interface-inventory scan (source 6, jobs) to classify a TBTCP step's
+# PROGNAME into an interface signal. A job whose step program matches a row here is
+# strong evidence of a scheduled interface; unmatched Z*/Y* jobs are emitted as
+# INFERRED. Customer override: {custom_url}\interface_program_map.tsv (same columns).
+#
+# Cell separator is TAB. Lines starting with # and blank lines are skipped.
+program	technology	direction	note
+RSEOUT00	IDOC	OUT	Dispatch outbound IDocs in status 30
+RBDAPP01	IDOC	IN	Post inbound IDocs in status 64
+RBDMIDOC	IDOC	OUT	Create IDocs from change pointers (master data distribution)
+RBDMANI2	IDOC	IN	Reprocess/repost inbound IDocs (status 51/64)
+RBDMANIN	IDOC	IN	Reprocess inbound IDocs
+RBDAGAIN	IDOC	OUT	Reprocess outbound IDocs in error
+RBDAGAI2	IDOC	OUT	Reprocess outbound IDocs (status 02/30)
+RBDSYNCH	IDOC	OUT	Synchronous IDoc dispatch
+RSNAST00	OUTPUT	OUT	Process pending NAST output (messages)
+RSNASTED	OUTPUT	OUT	Output via IDoc (message type from NAST)
+RSARFCEX	RFC	OUT	Retry outbound tRFC LUWs (SM58)
+RSARFCSE	RFC	OUT	tRFC send
+RSQIWKEX	RFC	OUT	qRFC outbound queue restart
+RSQOWKEX	RFC	OUT	qRFC outbound worker
+RSQIWKEXALL	RFC	IN	qRFC inbound queue restart
+RSRLDREL	RFC	OUT	Reorg tRFC/qRFC
+RSEIDOC2	IDOC	IN	IDoc status conversion / monitoring
+RSECHK07	IDOC	IN	IDoc consistency check
+RBDCPCLR	IDOC	OUT	Change-pointer cleanup
+RSWWERRE	WORKFLOW	IN	Workflow error monitoring
+RSWWCOND	WORKFLOW	IN	Workflow condition evaluation
+RSCONN01	MAIL	OUT	SAPconnect send process (SOST outbound)
+RSBDCSUB	BDC	IN	Batch-input session submit (SM35)
+RSPO0041	SPOOL	OUT	Spool reorg / output
+/SAPDMC/SAP_LSMW_INTERFACE	FILE	IN	LSMW interface run
+RSXMB_SHOW_STATUS	PROXY	BIDIR	PI/XI message monitoring
+SXMB_MONI_BATCH	PROXY	BIDIR	PI/XI integration engine batch

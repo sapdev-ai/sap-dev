@@ -3,7 +3,7 @@
   "type": "evidence_file",
   "version": 1,
   "properties": {
-    "source":      "Reader id — ST22 | SM13 | SM12 | SLG1 | SM37 | QUEUES | SM21 | GW_LOG",
+    "source":      "Reader id — ST22 | SM13 | SM12 | SLG1 | SM37 | QUEUES | SM21 | GW_LOG | DOCFLOW",
     "status":      "ok | skipped — 'skipped' means the reader did not run (no auth / not installed / timeout); correlate records it and continues",
     "reason":      "Free text — populated when status=skipped or when truncated",
     "truncated":   "true when the reader hit its top-N cap (correlate surfaces this LOUDLY; never silent)",

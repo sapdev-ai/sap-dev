@@ -1,0 +1,26 @@
+# output_field_map.tsv  -  comm-structure field -> document header source field
+#
+# Used by sap_output_walk.ps1 ONLY as an OVERRIDE / fallback. The walk is primarily
+# DYNAMIC: for each B-table access key field it reads T682Z (ZIFNA<-QUFNA) to learn
+# the source comm-structure field, then resolves that field's value from the document:
+#   1. Billing partner fields (KUNRE/KUNWE/KUNAG/KUNRG) -> VBPA by partner function
+#      (RE/WE/AG/RG), falling back to VBRK-KUNRG  -- handled IN CODE, no row needed.
+#   2. A source field that exists DIRECTLY on the header (VBRK / EKKO) is read as-is
+#      -- no row needed (covers VKORG, SPART, FKART, EKORG, BSART, LIFNR, BUKRS, ...).
+#   3. Otherwise this file is consulted: (kappl, komb_field) -> a header source field.
+#   4. Still unresolved -> the access is COULD_NOT_CHECK (never a false NO_RECORD).
+#
+# Add a row only for a comm-structure field that is NEITHER a standard partner field
+# NOR a same-named header field (typically a customer user-exit field, KOMKBZ*/KOMPBZ*).
+# Customer override file: {custom_url}\output_field_map.tsv (merged, second wins).
+#
+# Columns (TAB-separated):
+#   kappl        V3 (billing) | EF (purchasing)
+#   komb_field   the communication-structure field name (T682Z-QUFNA)
+#   source_table VBRK | VBRP | EKKO | EKPO   (documentation only; engine reads the header)
+#   source_field the header field that holds the value
+#   note         free text
+#
+kappl	komb_field	source_table	source_field	note
+# --- seed rows (examples; extend per project) ------------------------------
+# V3	ZZREGION	VBRK	REGIO	example: a customer KOMKBV3 exit field sourced from VBRK-REGIO

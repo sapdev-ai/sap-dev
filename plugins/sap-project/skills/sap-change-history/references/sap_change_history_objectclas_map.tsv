@@ -1,0 +1,20 @@
+# Curated business-token -> change-document object-class map for /sap-change-history.
+# Tab-delimited: token_aliases<TAB>objectclas<TAB>objectclas_s4_alt<TAB>key_element<TAB>notes
+# (# comments + blank lines ignored.) token_aliases is `|`-separated (case-insensitive).
+#
+# The skill resolves the user's token to OBJECTCLAS, then builds OBJECTID from the key by
+# ALPHA-converting per the key_element's DDIC output length (numeric keys get leading zeros;
+# alphanumeric keys are left-justified space-padded). objectclas_s4_alt, when set, is queried
+# ALSO. A raw `OBJECTCLAS:<class>` token bypasses this map. Every OBJECTCLAS below was
+# validated present in live TCDOB on S4D (S/4HANA 1909) 2026-07-11.
+token_aliases	objectclas	objectclas_s4_alt	key_element	notes
+po|purchase order|purchaseorder|ekko	EINKBELEG		EBELN	Purchasing document (PO/contract/RFQ) header+items
+customer|debtor|kunnr	DEBI		KUNNR	FI customer master (KNA1/KNB1/KNVV). On CVI S/4 some changes land under BUPA_* sub-objects (fragmented) — cross-check with `classes` if a change seems missing.
+vendor|supplier|creditor|lifnr	KRED		LIFNR	FI vendor master (LFA1/LFB1). CVI note as for customer.
+material|matnr|mat	MATERIAL		MATNR	Material master (MARA/MARC/MBEW/MVKE/...). Live-verified end-to-end.
+sales order|so|salesorder|vbak	VERKBELEG		VBELN	SD sales document (order/quotation/contract)
+delivery|outbound delivery|likp	LIEFERUNG		VBELN	SD outbound/inbound delivery
+billing|invoice|vbrk	FAKTBELEG		VBELN	SD billing document
+gl account|glaccount|saknr	SACH		SAKNR	G/L account master (company-code + COA segments)
+cost center|kostl	KOSTL		KOSTL	Controlling cost center master
+cost element|kstar	KSTAR		KSTAR	Controlling cost element master

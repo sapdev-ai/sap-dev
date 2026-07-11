@@ -1,0 +1,9 @@
+# SE11 structure definition for ZSQLQ_CHUNK - the RFC-safe flat output row of Z_SQL_QUERY_RO.
+# Consumed by /sap-sql-query `install` (delegates to /sap-se11 create-structure).
+# Columns: FIELDNAME<TAB>DATATYPE<TAB>LENGTH<TAB>DECIMALS<TAB>KEYFLAG<TAB>DESCRIPTION
+# Flat + both-release-safe (no STRING/deep components) so it marshals over classic RFC on
+# ECC6 and S/4; the PS caller reassembles CHUNK by (ROWNUM, SEQ) into TSV rows.
+FIELDNAME	DATATYPE	LENGTH	DECIMALS	KEYFLAG	DESCRIPTION
+ROWNUM	INT4	10	0	X	Result row number (1-based)
+SEQ	INT2	5	0	X	Chunk sequence within the row (1-based)
+CHUNK	CHAR	4000	0		Tab-joined column values, split across chunks at 4000 chars

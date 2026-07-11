@@ -1,0 +1,9 @@
+{
+  "_comment": "Code-freeze policy for /sap-transport-sequencer freeze-audit. Copy to {custom_url}\\freeze_policy.json and edit. CLI --from/--to override the window. Dates are YYYYMMDD; window is capped at 92 days.",
+  "window": { "from": "20260101", "to": "20260115" },
+  "exceptions": {
+    "trkorr": ["S4DK900001"],
+    "users": ["FIREFIGHTER", "BASIS_ADMIN"],
+    "packages": ["ZEMERGENCY", "$TMP"]
+  }
+}

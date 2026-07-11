@@ -1,0 +1,19 @@
+# Batch input for /sap-auth-diagnose check --input <this file>
+# Tab-delimited: checkid<TAB>object<TAB>field<TAB>value   (# comments + blank lines ignored)
+#
+# One "check" = one authorization object + the field/value set that must ALL be
+# satisfied by a SINGLE authorization instance (exactly one AUTHORITY-CHECK). Rows that
+# share a checkid form one group; put each field of the same failed check on its own row.
+# Leave value empty for a presence-only check ("does the user have this object at all").
+#
+# This is what an SU53 screen decodes to: one checkid per SU53 record, one row per field.
+# The header row below (checkid/object/field/value) is optional and skipped if present.
+checkid	object	field	value
+# --- e.g. "cannot start SU01" -> S_TCODE check ---
+su01_tcode	S_TCODE	TCD	SU01
+# --- e.g. "cannot maintain the user" -> S_USER_GRP group (two fields, one instance) ---
+su01_grp	S_USER_GRP	CLASS	SUPER
+su01_grp	S_USER_GRP	ACTVT	01
+# --- e.g. "cannot post in company code 1000" -> org-level value ---
+fi_post	F_BKPF_BUK	BUKRS	1000
+fi_post	F_BKPF_BUK	ACTVT	01

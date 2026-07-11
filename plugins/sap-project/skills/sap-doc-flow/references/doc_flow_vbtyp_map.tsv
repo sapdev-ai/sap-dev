@@ -1,0 +1,22 @@
+# doc_flow_vbtyp_map.tsv - SD document category (VBTYP) -> node category + label
+# Used to label VBFA edges and route each node to its header table. Override per
+# customer at {custom_url}\doc_flow_vbtyp_map.tsv.
+vbtyp	category	label
+A	order	Inquiry
+B	order	Quotation
+C	order	Sales order
+G	order	Contract
+H	return	Returns
+K	invoice	Credit memo
+L	invoice	Debit memo
+J	delivery	Delivery
+T	delivery	Returns delivery
+M	invoice	Invoice
+N	invoice	Invoice cancellation
+O	invoice	Credit memo
+P	invoice	Debit memo
+R	goods_movement	Goods movement
+S	invoice	Credit memo cancellation
+6	return	Returns
+7	delivery	Delivery (WMS)
+u	other	Pro forma invoice

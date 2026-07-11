@@ -33,6 +33,27 @@ Contract:
 | `SCREEN_DRIFT` | sap-doctor (`--screens`) | A golden-screen baseline checkpoint no longer matches the live screen (release/locale moved a control). |
 | `SE38_CHECK_FAILED` | sap-se38 | Program existence/syntax pre-check failed before deploy. |
 
+## Scratch run & FM probe (`/sap-scratch-run`)
+
+| Class | Meaning |
+|---|---|
+| `SCRATCH_GUARD_VIOLATION` | The generated `$TMP` report hit the read-only static guard (a write / COMMIT / CALL TRANSACTION / SUBMIT / dynamic-write / dataset / lock construct) — a hard REFUSE; nothing was deployed. |
+| `SCRATCH_SYNTAX_ERROR` | The headless `EDITOR_SYNTAX_CHECK` (`sap_rfc_syntax_check.ps1`) found errors in the generated source — regenerate-or-abort, never deployed broken. |
+| `SCRATCH_CLEANUP_FAILED` | The `$TMP` scratch program survived the post-run delete (TRDIR re-read still finds it) — reported loud with its exact name, never a silent success. |
+| `SCRATCH_ENV_REFUSED` | `run`/`instrument` deploy was requested on a non-modifiable or production client — refused before any deploy. |
+| `FM_PROBE_WRAPPER_FAILED` | `fm` on a classic (blank-FMODE) FM needs `Z_GENERIC_RFC_WRAPPER_TBL`, which is absent/not remote — routes to `/sap-dev-init` (or delegate `/sap-rfc-wrapper`). |
+
+## SQL query (`/sap-sql-query`)
+
+| Class | Meaning |
+|---|---|
+| `SQLQ_PARSE_REJECTED` | The whitelist parser rejected the SELECT — the exact rule + token are reported (subquery / UNION / INTO / write / MANDT / `;` / comment / host-var / caller UP TO / …). Nothing ran. |
+| `SQLQ_NAME_UNKNOWN` | A referenced table/field did not resolve against live DDIC (DD02L/DD03L) — no guessed names. |
+| `SQLQ_AUTH_REFUSED` | Engine A's in-FM `VIEW_AUTHORITY_CHECK` denied a referenced table (`E_STATUS='A'`) — zero rows, closes the "Open SQL bypasses S_TABU_DIS" hole. |
+| `SQLQ_HELPER_MISSING` | `Z_SQL_QUERY_RO` is absent / not remote-enabled — offer `install` (consent-gated) or `--low-fidelity` (Engine B). |
+| `SQLQ_EXEC_FAILED` | Engine A raised a dynamic-OSQL / DB error (`E_STATUS='E'`) — the verbatim message is surfaced, no partial result claimed. |
+| `SQLQ_LOWFI_UNSUPPORTED` | Engine B (LOW-FIDELITY) was asked for a join / aggregate / grouping it does not do — refused loud with a pointer to `install` Engine A, never a silent wrong answer. |
+
 ## ATC quality gate (`/sap-atc`)
 
 | Class | Meaning |
@@ -137,6 +158,142 @@ Contract:
 | `LOCK_NOT_FOUND` | The selected lock matched no current enqueue entry (it may have cleared itself) — nothing to release. |
 | `LOCK_DELETE_FAILED` | `ENQUE_DELETE` ran but the authoritative re-read still sees the lock (typically a missing `S_ENQUE` delete authorization). |
 | `LOCK_WRAPPER_MISSING` | `release` needs `Z_GENERIC_RFC_WRAPPER_TBL` (for `ENQUE_DELETE` + the multi-instance liveness leg) and it is not deployed — run `/sap-dev-init`. `list` is unaffected. |
+
+## Version history (`/sap-version-history`)
+
+| Class | Meaning |
+|---|---|
+| `VH_NO_VERSIONS` | The object's version store is empty (versions are written only on release/generation, so a freshly built object legitimately has none) — reported honestly, never rendered as "no differences". |
+| `VH_VERSION_NOT_FOUND` | A requested `VERSNO` is not in the version store (out of range) — `SVRS_GET_REPS_FROM_OBJECT` returned no source for it. |
+| `VH_TYPE_UNSUPPORTED` | The resolved object is a class / interface — per-include class versioning is v2; v1 supports programs / includes / function modules only. |
+
+## Release management & delivery (sap-project)
+
+| Class | Emitted by | Meaning |
+|---|---|---|
+| `RELNOTES_EMPTY_SCOPE` | sap-release-notes | The TR list / date range resolved to no content objects (unknown TR, empty request) — no CAB pack is written. |
+| `RELNOTES_SCOPE_TOO_LARGE` | sap-release-notes | A `--from/--to` range matched more than the 50-TR cap — refused; narrow the range or add `--user` / `--prefix`. |
+| `DR_SCOPE_EMPTY` | sap-delivery-report | The scope token resolved to no object (unknown name / empty package) — no report is written. |
+| `DR_NO_ARTIFACT_INDEX` | sap-delivery-report | No `index.jsonl` exists yet — the report still renders with an all-AMBER "no evidence" posture (WARN, exit 0), never a fabricated green. |
+| `DR_SNAPSHOT_CORRUPT` | sap-delivery-report | The snapshot named by `--since` is unparseable — the diff section is skipped (WARN), never silently diffed against a different snapshot. |
+
+## Integration & interfaces (sap-project)
+
+| Class | Emitted by | Meaning |
+|---|---|---|
+| `IFACE_SOURCE_UNAVAILABLE` | sap-interface-inventory | Every requested `--sources` member has no backing table on this release (e.g. `--sources odata` alone on ECC where Gateway is not installed) — the scan refuses rather than returning an empty "success". A single unavailable source among several is a COULD_NOT_CHECK / NOT_APPLICABLE Gaps row, not this error. |
+| `RFCQ_ACTION_REFUSED` | sap-rfc-monitor | A tRFC/qRFC LUW or queue **delete** / **unlock** was requested — refused (not gated); manual SM58 / SMQ1 / SMQ2 only. RSARFCSE's delete flag is never set on any path. |
+| `RFCQ_RETRY_NOT_CLEARED` | sap-rfc-monitor | After a confirm-gated RSARFCEX retry, the authoritative queue re-read still shows failed tRFC LUWs for the destination (UNCHANGED, or only REDUCED) — reported honestly, never as success. Usually a `TARGET_DOWN` / `AUTH` / `DATA` cause that must be fixed before a retry can drain the queue. |
+| `IDOC_SELECTION_UNBOUNDED` | sap-idoc | `find` / `triage` was invoked with no bound (status / message type / partner / date / docnum) — refused rather than scanning all of EDIDC. |
+| `IDOC_NOT_FOUND` | sap-idoc | `explain <DOCNUM>` named an IDoc that does not exist (EDIDC probe empty). |
+| `IDOC_REPROCESS_FAILED` | sap-idoc | After a confirm-gated reprocess (RBDMANI2/RBDAPP01/RSEOUT00), the authoritative EDIDS re-read shows one or more IDocs did NOT reach a success status — reported per-IDoc, never summarized as done. A DATA-class cause (e.g. posting period not open) must be fixed before a reprocess can succeed. |
+
+## Output determination (sap-project)
+
+| Class | Emitted by | Meaning |
+|---|---|---|
+| `OUTPUT_DOC_NOT_FOUND` | sap-output-diagnose | The `billing <VBELN>` / `po <EBELN>` document does not exist (VBRK/EKKO probe empty) — no diagnosis is produced. |
+| `OUTPUT_REISSUE_FAILED` | sap-output-diagnose | After a confirm-gated RSNAST00 re-issue, the authoritative NAST re-read still shows VSTAT=2 (processing failed) — reported with the fresh CMFP log excerpt, never as success. (An unmapped access key field or unreadable B-table is a COULD_NOT_CHECK finding, and a BRF+-managed document caps the verdict at GO_WITH_WARNINGS — neither is a FAILED class.) |
+
+## Testing & regression (sap-project)
+
+| Class | Emitted by | Meaning |
+|---|---|---|
+| `GM_BASELINE_NOT_FOUND` | sap-golden-master | `verify`/`rebase`/`show`/`delete` named an `<ID>` with no stored baseline. |
+| `GM_SYSTEM_MISMATCH` | sap-golden-master | `verify` ran against a different (SID, CLIENT) than the baseline was captured on — refused (an S4D golden never verifies against another system). |
+| `GM_VARIANT_DRIFT` | sap-golden-master | The report variant changed since capture (VARID version / change stamp differs) — `verify` refuses unless `--accept-variant-drift`. |
+| `GM_CAPTURE_INCOMPLETE` | sap-golden-master | A capture leg failed (job aborted, spool missing/deleted, SE16N returned no rows where the golden had them) — verdict `COULD_NOT_VERIFY`, never GO. |
+
+## Authorizations & users (sap-project)
+
+| Class | Emitted by | Meaning |
+|---|---|---|
+| `SU01_NON_DEV_REFUSED` | sap-su01 | A write mode was requested on a production client (T000 `CCCATEGORY=P`) or a non-modifiable one (`CCCORACTIV=3`) — refused; no override flag. |
+| `SU01_SELF_TARGET_REFUSED` | sap-su01 | `lock`/`delete`/`reset-password` targeted the pinned profile's own user — refused (self-lockout guard). |
+| `SU01_USER_EXISTS` | sap-su01 | `create` on a username already in USR02 — no BAPI call made. |
+| `SU01_USER_NOT_FOUND` | sap-su01 | `show`/`assign`/`lock`/`delete`/… on a username not in USR02. |
+| `SU01_ROLE_NOT_FOUND` | sap-su01 | `assign`/`unassign` named a role absent from AGR_DEFINE — refused before any write. |
+| `SU01_BAPI_ERROR` | sap-su01 | A BAPI_USER_* write returned type E/A (e.g. `01/498` missing S_USER_GRP, or a CUA-child block) — surfaced verbatim, never a silent partial. |
+| `SU01_VERIFY_MISMATCH` | sap-su01 | The BAPI RETURN was green but the authoritative USR02 / AGR_USERS re-read disagreed with the intent — reported as FAILED, never success. |
+| `AUTH_INPUT_INVALID` | sap-auth-diagnose | `check` was called with no authorization object (neither `--object` nor a parseable `--input` file) — no RFC made. |
+| `AUTH_USER_NOT_FOUND` | sap-auth-diagnose | The target user is absent from USR02 — nothing to diagnose. |
+| `AUTH_SU53_SCRAPE_FAILED` | sap-auth-diagnose | (next phase) The SU53 GUI scrape could not read a record on an unrecorded screen layout — `NEEDS_RECORDING`, never a fabricated "no failures". |
+| `AUTH_TRACE_NOT_PERMITTED` | sap-auth-diagnose | (next phase) `S_ADMI_FCD` missing — the STAUTHTRACE bracket refuses before touching the GUI. |
+| `AUTH_TRACE_UNSUPPORTED_RELEASE` | sap-auth-diagnose | (next phase) The trace result store `SUAUTHVALTRC` is absent (ECC 6) — trace mode refused loud with the ST01 disclosure. |
+| `AUTH_TRACE_STOP_FAILED` | sap-auth-diagnose | (next phase) The STAUTHTRACE stop did not verify off — the loudest failure; manual stop instructions emitted, never a silently-left-running trace. |
+| `ROLE_NOT_FOUND` | sap-explain-role | The named PFCG role is absent from AGR_DEFINE — near-miss `LIKE` candidates are listed; no dossier is written. |
+| `ROLE_READ_DENIED` | sap-explain-role | A **core** area (AGR_DEFINE / AGR_1251) returned an authorization error under the pinned user — the dossier cannot be built. A denied *holders* area alone stays SUCCESS + coverage=PARTIAL. |
+| `ROLE_DATA_TRUNCATED` | sap-explain-role | The AGR_1251 read hit `--max-rows` — the dossier renders with coverage=PARTIAL (`>N` auth rows), never as complete. |
+| `MODE_NOT_IMPLEMENTED` | sap-explain-role (+ future sap-project phase-2 modes) | A not-yet-built mode/phase was requested (e.g. `concept`) — refused loud, never a half-result. |
+| `AUTH_ROLE_NOT_FOUND` | sap-suim | `users --role=<R>` named a role absent from AGR_DEFINE — near-miss `LIKE` candidates listed; not an empty "nobody has it". |
+| `AUTH_TCODE_NOT_FOUND` | sap-suim | `users --tcode=<T>` named a transaction absent from TSTC (typo) — refused before an empty "nobody can run it". |
+| `AUTH_MATRIX_INVALID` | sap-suim | `critical` — the critical_auths.tsv matrix is missing or has a bad header (`NO_MATRIX`) — the scan cannot run; never a false "0 critical grants". |
+
+## Change history & audit (sap-project)
+
+| Class | Emitted by | Meaning |
+|---|---|---|
+| `CDH_CLASS_UNKNOWN` | sap-change-history | The business token did not resolve to a change-document class (not in the curated map, no `OBJECTCLAS:` bypass) — the curated tokens are listed, no RFC made. |
+| `CDH_NO_CHANGES` | sap-change-history | No change documents for the object/user/window (`headers` empty), OR the object class is not decodable (`decode` — the wrapper's `NO_POSITION_FOUND`/`DYNAMIC_CALL_FAILED`, handled fail-soft) — reported as "no changes / not change-doc-enabled", never "nothing changed". |
+| `CDH_WRAPPER_MISSING` | sap-change-history | `Z_GENERIC_RFC_WRAPPER_TBL` absent or not remote-enabled (FMODE≠R) — decode cannot run; points to `/sap-dev-init` (which owns the deploy consent). This skill never deploys. |
+| `CDH_DECODE_CAPPED` | sap-change-history | `user`/`window` decode fan-out hit `--decode-max`; the undecoded `(class,id)` remainder is registered `COVERAGE=COULD_NOT_CHECK`, never silently dropped. |
+
+## Transport of copies (sap-project)
+
+| Class | Emitted by | Meaning |
+|---|---|---|
+| `TOC_CREATE_FAILED` | sap-transport-copies | `TR_INSERT_REQUEST_WITH_TASKS` (type-T) via the wrapper returned no TRKORR, or the E070 re-read did not show `TRFUNCTION='T'` — no ToC created. |
+| `TOC_INCLUDE_FAILED` | sap-transport-copies | A `TR_COPY_COMM` source→ToC copy raised (e.g. source objects locked in another modifiable request) — reported per failing source, ToC left as-is. |
+| `TOC_UNION_MISMATCH` | sap-transport-copies | The ToC's E071 object list does not cover the union of the sources (+ their tasks) — every missing `(PGMID,OBJECT,OBJ_NAME)` is listed; release is refused. |
+| `TOC_RELEASE_BLOCKED` | sap-transport-copies | `--release` requested but the union was not verified clean (or the post-release E070 `TRSTATUS` is not R/O) — refused; `--force` + explicit yes overrides. |
+| `TOC_TARGET_INVALID` | sap-transport-copies | No `--target` and no `toc_default_target` — a ToC target is never guessed. |
+| `TOC_NOT_FOUND` | sap-transport-copies | `verify`/`include`/`release` named a TRKORR that is not a modifiable type-T request in E070. |
+
+## Test data & FI posting (sap-project)
+
+| Class | Emitted by | Meaning |
+|---|---|---|
+| `FIPOST_INPUT_INVALID` | sap-fi-post | The definition file failed local validation (missing HEADER field, duplicate ITEMNO, no AMOUNT, < 2 lines) — no RFC made. |
+| `FIPOST_UNBALANCED` | sap-fi-post | Debits ≠ credits for a currency (sum ≠ 0) — refused before the network round-trip. |
+| `FIPOST_CHECK_FAILED` | sap-fi-post | `BAPI_ACC_DOCUMENT_CHECK` returned type E/A (closed period, blocked/missing account, substitution, …) — the dry-run's structured messages are rendered; `post` never proceeds to POST. |
+| `FIPOST_POST_FAILED` | sap-fi-post | `BAPI_ACC_DOCUMENT_POST` returned E/A (or no OBJ_KEY) — the transaction was rolled back (`BAPI_TRANSACTION_ROLLBACK`), no document persisted. |
+| `FIPOST_VERIFY_FAILED` | sap-fi-post | POST + COMMIT reported success but the authoritative BKPF re-read found no document — reported as FAILED, never trusted from the BAPI echo. |
+| `TCD_SCENARIO_INVALID` | sap-tcd-chain | The O2C scenario file failed local validation (missing ORDER_HEADER org field, no sold-to AG partner, no items) — no RFC made. |
+| `TCD_CHAIN_STEP_FAILED` | sap-tcd-chain | A chain BAPI (order/delivery/GI/billing) returned type E/A — the transaction was rolled back; the verbatim BAPIRET2 (usually a customizing gap: shipping point, copy control, picking relevance) is the deliverable. The manifest is finalized PARTIAL. |
+| `TCD_CHAIN_VERIFY_FAILED` | sap-tcd-chain | A step's BAPI + COMMIT reported success but the authoritative VBFA re-read found no successor document after the backoff — a false success; the chain stops, never rendered as complete. |
+
+## Configuration compare (sap-project)
+
+| Class | Emitted by | Meaning |
+|---|---|---|
+| `CFG_SAME_IDENTITY` | sap-config-compare | LEFT (pinned) and RIGHT (`--against`) resolve to the same SID+client — there is nothing to compare; refused before any read. |
+| `CFG_OBJECT_NOT_FOUND` | sap-config-compare | The table/view exists on neither / only one side (DD02L + DD25L both empty) — the message names which side(s) miss it; no diff produced. |
+| `CFG_NO_COMMON_KEY` | sap-config-compare | The two sides share no comparable key column (or a client-dependent table keyed only on MANDT — single-row cross-system value compare is v1.5). |
+| `CFG_UNBOUNDED_READ` | sap-config-compare | A full read would exceed `--max-rows` and no `--where`/`--options` filter was given — refused with a suggested key-field filter; never silently capped. |
+
+## Transport sequencing & freeze audit (sap-project)
+
+| Class | Emitted by | Meaning |
+|---|---|---|
+| `SEQ_INPUT_INVALID` | sap-transport-sequencer | Empty TR list, or more than `--max` (hard cap 500) — refused before any read. |
+| `SEQ_TR_NOT_FOUND` | sap-transport-sequencer | A requested TR is absent from source E070 — hard error naming the missing TRs, unless `--skip-missing` (then a WARN finding per skipped TR). |
+| `SEQ_TARGET_UNREACHABLE` | sap-transport-sequencer | `--target` profile is ambiguous/unknown/unreachable — the user chooses continue-source-only (target rows `COULD_NOT_CHECK`, verdict capped) or abort; never a silent degrade. |
+| `FREEZE_WINDOW_UNBOUNDED` | sap-transport-sequencer | Freeze window is missing a bound or exceeds 92 days — refused before any read. |
+| `FREEZE_POLICY_INVALID` | sap-transport-sequencer | The freeze policy JSON is malformed (unparseable, bad date format) — refused. |
+
+## Health check (sap-project)
+
+| Class | Emitted by | Meaning |
+|---|---|---|
+| `HC_BASELINE_CORRUPT` | sap-health-check | The per-system baseline JSON could not be parsed (`{work_dir}\runtime\health\<SID>_<CLIENT>_baseline.json`) — fail loud rather than treat every finding as NEW; the operator reviews/repairs or `baseline reset`. |
+| `HC_NO_HISTORY` | sap-health-check | `--trend` (v1.5) invoked with fewer than 2 persisted snapshots — no fabricated dashboard; states that trend needs accumulated history. |
+
+## Document flow (sap-project)
+
+| Class | Emitted by | Meaning |
+|---|---|---|
+| `DOCFLOW_NOT_FOUND` | sap-doc-flow | The (ALPHA-padded) document key is in no SD header (VBAK/LIKP/VBRK all empty) — no chain produced. |
+| `DOCFLOW_AMBIGUOUS_KEY` | sap-doc-flow | The same number exists as more than one category — interactive category prompt (or, in `--evidence-dir` reader mode, skipped-with-reason so /sap-diagnose does not block). |
 
 Registered consumers: `/sap-log-analyze` (Top error_class section),
 `sap_error_hints.ps1 -Action record` (auto-record attribution), customer

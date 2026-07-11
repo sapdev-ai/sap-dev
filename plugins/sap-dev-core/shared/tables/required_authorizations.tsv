@@ -32,3 +32,59 @@ file_transfer_download	S_DATASET	ACTVT	33	Read app-server file via CG3Y; SPTH/S_
 sm12_list	S_ENQUE	ACTVT		Display enqueue locks (/sap-sm12 list, ENQUEUE_READ) — confirm exact ACTVT in SU21
 sm12_release	S_ENQUE	ACTVT		Delete foreign enqueue locks (/sap-sm12 release, ENQUE_DELETE) — confirm delete ACTVT in SU21
 sm12_liveness	S_RFC	RFC_NAME	SENQ|THFB	RFC access to enqueue + kernel user-list FGs (TH_SERVER_LIST / TH_USER_LIST) for the release liveness gate
+version_history	S_RFC	RFC_NAME	SVRS|SRTT|SDTX	RFC access to the version-store function groups (SVRS_GET_VERSION_DIRECTORY_46 / SVRS_GET_REPS_FROM_OBJECT) - confirm exact FGs in SU21
+version_history	S_TABU_DIS	ACTVT	03	RFC_READ_TABLE on VRSD/E070/E071 (version directory fallback + TR-status join)
+version_history	S_DEVELOP	ACTVT	03	Display repository-object source (SVRS/RPY reads) for diff and blame
+release_notes	S_RFC	RFC_NAME	SDTX|SRFC	RFC access for RFC_READ_TABLE + RFC_SYSTEM_INFO (/sap-release-notes inventory)
+release_notes	S_TABU_DIS	ACTVT	03	Display transport/package/DDIC tables (E070/E07T/E071/TADIR/TDEVC/TDEVCT/DF14T) (/sap-release-notes)
+interface_inventory	S_RFC	RFC_NAME	SDTX|SDIFRUNTIME|SEDI	RFC access for RFC_READ_TABLE / DDIF_FIELDINFO_GET / IDOCTYPE_READ_COMPLETE / RPY_FUNCTIONMODULE_READ (/sap-interface-inventory)
+interface_inventory	S_TABU_DIS	ACTVT	03	Display interface tables (RFCDES/EDP*/EDIFCT/TBD05/TFDIR/ENLFDIR/SPROXHDR/ICFSERVICE//IWFND/*/TBTC*) (/sap-interface-inventory)
+api_advisor	S_RFC	RFC_NAME	SDIFRUNTIME|SYST|RFC1|SDTX	RFC access for RFC_READ_TABLE / RPY_* / DOCU_GET / BAPI_MONITOR_GETLIST (discover harvest+detail) - confirm exact FGs in SU21
+api_advisor	S_TABU_DIS	ACTVT	03	RFC_READ_TABLE display on the catalog tables (TFDIR/TFTIT/FUPARAREF/FUNCT/SEOCLASS(TX)/ARS_W_API_STATE/DD02L)
+delivery_report	S_RFC	RFC_NAME	SDTX|SRFC	RFC access for RFC_READ_TABLE (E071/E070/E07T TR position) (/sap-delivery-report)
+delivery_report	S_TABU_DIS	ACTVT	03	Display transport tables E070/E071/E07T for TR pipeline position (/sap-delivery-report)
+golden_master	S_RFC	RFC_NAME	SDTX|SRFC	RFC access for RFC_READ_TABLE (VARID/DD03L/E070/E07T) + RFC_SYSTEM_INFO (/sap-golden-master)
+golden_master	S_TABU_DIS	ACTVT	03	Display VARID/DD03L/E070/E07T for fingerprint + key + TR-text reads (/sap-golden-master)
+rfc_monitor	S_RFC	RFC_NAME	ARFC|SQRFC|SDTX|SRFC	RFC access for RFC_READ_TABLE + queue inspectors (TRFC_QIN/QOUT_GET_CURRENT_QUEUES, TRFC_GET_QIN_INFO_DETAILS) (/sap-rfc-monitor queues) - confirm exact FGs in SU21
+rfc_monitor	S_TABU_DIS	ACTVT	03	RFC_READ_TABLE display on queue + destination tables (ARFCSSTATE/ARFCRSTATE/TRFCQIN/TRFCQOUT/TRFCQSTATE/QIWKTAB/RFCDES/RFCDOC/RFCSYSACL) (/sap-rfc-monitor)
+rfc_monitor	S_RFC_ADM	ACTVT	03	Display RFC destinations - SM59-equivalent read of the RFCDES/RFCSYSACL register (/sap-rfc-monitor destinations)
+su01	S_USER_GRP	ACTVT	01|02|05|06	Maintain users in the user group (/sap-su01 create/change/lock/delete)
+su01	S_USER_AGR	ACTVT	22	Assign/unassign roles to a user (/sap-su01 assign/unassign)
+su01	S_RFC	RFC_NAME	SUU_INTERFACE|SCUU|SDTX	RFC access for BAPI_USER_* + RFC_READ_TABLE (USR02/AGR_USERS/T000) (/sap-su01)
+fi_post	F_BKPF_BUK	ACTVT	01|03	Post/display FI documents in the company code (/sap-fi-post)
+fi_post	S_RFC	RFC_NAME	ACC4|ACC5|SDTX	RFC access for BAPI_ACC_DOCUMENT_* + RFC_READ_TABLE (BKPF/BSEG/T001) (/sap-fi-post)
+tcd_chain	V_VBAK_VKO	ACTVT	01	Create sales orders in the sales area (/sap-tcd-chain create-order)
+tcd_chain	V_LIKP_VST	ACTVT	01	Create outbound deliveries for the shipping point (/sap-tcd-chain create-delivery)
+tcd_chain	S_RFC	RFC_NAME	V45A|V50A|V60A|SDTX	RFC access for the O2C BAPIs + RFC_READ_TABLE (VBAK/VBFA) (/sap-tcd-chain)
+output_diagnose	S_RFC	RFC_NAME	SDTX|SDIFRUNTIME|SABE|SRFC	RFC access for RFC_READ_TABLE / DDIF_FIELDINFO_GET / BAPI_MESSAGE_GETDETAIL (/sap-output-diagnose) - confirm exact FGs in SU21
+output_diagnose	S_TABU_DIS	ACTVT	03	RFC_READ_TABLE display on output tables (NAST/CMFK/CMFP/T683S/T682I/T682Z/T685/TVFK/TNAPR/B*/VBRK/EKKO/VBPA) (/sap-output-diagnose)
+idoc	S_RFC	RFC_NAME	SDTX|EDIN|SRFC	RFC access for RFC_READ_TABLE on EDIDC/EDIDS/TEDS2 (/sap-idoc find/explain) - confirm exact FGs in SU21
+idoc	S_TABU_DIS	ACTVT	03	RFC_READ_TABLE display on IDoc tables (EDIDC/EDIDS/TEDS2/STACUST) (/sap-idoc)
+auth_diagnose	S_RFC	RFC_NAME	SUU5|SUSR|SDTX	RFC access for SUSR_USER_AUTH_FOR_OBJ_GET (runtime buffer read) + RFC_READ_TABLE (/sap-auth-diagnose) - confirm exact FGs in SU21
+auth_diagnose	S_TABU_DIS	ACTVT	03	RFC_READ_TABLE display on the correlation tables (AGR_USERS/AGR_1251/AGR_TEXTS/USR02/TOBJT) (/sap-auth-diagnose)
+explain_role	S_RFC	RFC_NAME	SDTX	RFC access for RFC_READ_TABLE on AGR_*/USR*/decode tables (/sap-explain-role) - confirm exact FGs in SU21
+explain_role	S_TABU_DIS	ACTVT	03	Display AGR_*/USR*/decode tables (auth groups SS for AGR_*, SC for USR02/USER_ADDR) (/sap-explain-role)
+change_history	S_RFC	RFC_NAME	SDTX|SYST|SCD0|SRFC	RFC access for RFC_READ_TABLE + Z_GENERIC_RFC_WRAPPER_TBL(CHANGEDOCUMENT_READ) (/sap-change-history) - confirm exact FGs in SU21
+change_history	S_TABU_DIS	ACTVT	03	Display change-doc + transport tables (CDHDR/TCDOB/TCDOBT/E070/E071/DD03L/DD04T) via RFC_READ_TABLE (/sap-change-history)
+change_history	S_SCD0	ACTVT	08	Display change documents - CHANGEDOCUMENT_READ may enforce it (verify in SU21; MICHAELLI has it fully on S4D)
+suim	S_RFC	RFC_NAME	SDTX	RFC access for RFC_READ_TABLE on AGR_*/USR*/UST*/TSTC (/sap-suim) - confirm exact FGs in SU21
+suim	S_TABU_DIS	ACTVT	03	Display AGR_*/USR02/UST04/AGR_1016/USREFUS/USER_ADDR/TSTC (auth groups SS/SC) (/sap-suim)
+transport_copies	S_TRANSPRT	ACTVT	01|02|43	Create/change/release transport requests + copies (/sap-transport-copies)
+transport_copies	S_TRANSPRT	TTYPE	CUST|DTRA|TASK	Request types incl. transport of copies (/sap-transport-copies)
+transport_copies	S_RFC	RFC_NAME	SDTX|STRK|SCTS_REQUEST	RFC access for RFC_READ_TABLE + Z_GENERIC_RFC_WRAPPER_TBL(TR_INSERT/TR_COPY_COMM/TR_RELEASE) (/sap-transport-copies) - confirm exact FGs in SU21
+transport_copies	S_TABU_DIS	ACTVT	03	Display transport tables E070/E071/E07T/E070C/TCESYST via RFC_READ_TABLE (/sap-transport-copies)
+scratch_run	S_DEVELOP	ACTVT	01|02|03|06	Create/change/display/delete the $TMP scratch program (/sap-scratch-run run, via /sap-se38)
+scratch_run	S_DEVELOP	OBJTYPE	PROG	Program object type for the scratch report (/sap-scratch-run)
+scratch_run	S_PROGRAM	P_ACTION	SUBMIT	Execute the scratch report (/sap-scratch-run run, via /sap-run-report)
+scratch_run	S_RFC	RFC_NAME	SDTX|SEUF|SUTL	RFC access for RPY_FUNCTIONMODULE_READ_NEW + the target FM (fm mode) + Z_GENERIC_RFC_WRAPPER_TBL (/sap-scratch-run) - confirm exact FGs in SU21
+config_compare	S_RFC	RFC_NAME	SDTX|SDIFRUNTIME	RFC access for RFC_READ_TABLE + DDIF_FIELDINFO_GET + RFC_SYSTEM_INFO on BOTH profiles (/sap-config-compare) - confirm exact FGs in SU21
+config_compare	S_TABU_DIS	ACTVT	03	Display the compared table/view + DDIC catalog DD02L/DD25L/DD26S/DD02T/DD04T + USR02 via RFC_READ_TABLE, on BOTH profiles (/sap-config-compare); add S_TABU_NAM where table auth group is denied
+sql_query	S_TABU_DIS	ACTVT	03	Display the queried tables (Engine A VIEW_AUTHORITY_CHECK per table; Engine B RFC_READ_TABLE) (/sap-sql-query)
+sql_query	S_RFC	RFC_NAME	SDTX|SDIFRUNTIME|Z_SQL_QUERY_RO	RFC access for RFC_READ_TABLE + DD02T/DD03 resolution + the Engine-A helper FG (/sap-sql-query) - confirm exact FGs in SU21
+sql_query	S_DEVELOP	ACTVT	01|02	Deploy the 3 helper objects on install (Z_SQL_QUERY_RO/ZSQLQ_CHUNK/ZSQLQ_CHUNK_TT) via /sap-se37 + /sap-se11 (/sap-sql-query install)
+transport_sequencer	S_RFC	RFC_NAME	SDTX	RFC access for RFC_READ_TABLE on the source (+ target with --target) (/sap-transport-sequencer) - confirm exact FGs in SU21
+transport_sequencer	S_TABU_DIS	ACTVT	03	Display E070/E070A/E071/E07T/ENLFDIR/TADIR/VRSD via RFC_READ_TABLE, source + target profile (/sap-transport-sequencer); S_TRANSPRT display provisional
+health_check	S_RFC	RFC_NAME	SDTX|SDIFRUNTIME|ARFC	RFC access for RFC_READ_TABLE + TRFC_QIN/QOUT_GET_CURRENT_QUEUES (/sap-health-check) - confirm exact FGs in SU21
+health_check	S_TABU_DIS	ACTVT	03	Display EDIDC/ARFCSSTATE/TSP01/TSP02/TBTCO/SNAP/E070 via RFC_READ_TABLE (/sap-health-check)
+doc_flow	S_RFC	RFC_NAME	SDTX	RFC access for RFC_READ_TABLE (/sap-doc-flow) - confirm exact FGs in SU21
+doc_flow	S_TABU_DIS	ACTVT	03	Display VBFA/VBAK/LIKP/VBRK/VBUK/BKPF/DD03L via RFC_READ_TABLE (/sap-doc-flow); add S_TABU_NAM where SD/FI auth group is denied

@@ -1,0 +1,5 @@
+# SE11 table-type definition for ZSQLQ_CHUNK_TT - STANDARD TABLE OF ZSQLQ_CHUNK.
+# Consumed by /sap-sql-query `install` (delegates to /sap-se11 create-tabletype).
+# Columns: TYPENAME<TAB>ROWTYPE<TAB>ACCESS<TAB>KEYKIND<TAB>DESCRIPTION
+TYPENAME	ROWTYPE	ACCESS	KEYKIND	DESCRIPTION
+ZSQLQ_CHUNK_TT	ZSQLQ_CHUNK	STANDARD	NON-UNIQUE	Result chunk table for Z_SQL_QUERY_RO

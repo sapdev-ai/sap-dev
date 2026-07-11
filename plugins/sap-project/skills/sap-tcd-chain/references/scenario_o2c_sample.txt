@@ -1,0 +1,29 @@
+# O2C scenario file for /sap-tcd-chain — tab-delimited SECTION<TAB>FIELD<TAB>VALUE.
+# (# comments and blank lines are ignored.) Order → delivery → goods issue → billing.
+# Replace the org path / sold-to / material with a config-complete combination that
+# exists in your target client — run `--dry-run` first (it TESTRUN-simulates the order
+# and preflights the master data), and read the BAPIRET2 the server returns.
+
+# --- sales order header (BAPI_SALESORDER_CREATEFROMDAT2 ORDER_HEADER_IN) ---
+ORDER_HEADER	DOC_TYPE	OR
+ORDER_HEADER	SALES_ORG	1000
+ORDER_HEADER	DISTR_CHAN	10
+ORDER_HEADER	DIVISION	00
+ORDER_HEADER	PURCH_NO_C	sapdev-tcd-test
+
+# --- partners (repeat the section suffix per partner) ---
+# ROLE AG = sold-to (required); WE = ship-to; RE = bill-to; RG = payer
+ORDER_PARTNER1	ROLE	AG
+ORDER_PARTNER1	NUMBER	0000100000
+
+# --- items (ORDER_ITEM_NN, repeatable; NN becomes the item number) ---
+ORDER_ITEM_01	MATERIAL	M-01
+ORDER_ITEM_01	QTY	2
+
+# --- delivery (BAPI_OUTB_DELIVERY_CREATE_SLS) ---
+# SHIP_POINT is optional; when blank, shipping-point determination applies.
+DELIVERY	SHIP_POINT	1000
+
+# --- billing (BAPI_BILLINGDOC_CREATEMULTIPLE) ---
+# leave DOC_TYPE blank to let copy control derive the billing type.
+BILLING	DOC_TYPE

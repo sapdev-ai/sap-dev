@@ -6,4 +6,5 @@ lock	sm12	sm13	"locked", "can't edit", "object is being processed by"
 interface	smq,slg1	sm21(manual),st22	IDoc / ALE / qRFC / tRFC / "stuck" (SMQ1/SMQ2/SM58 via smq reader), WE* tcodes, a DOCNUM
 odata	gateway	st22,slg1	OData / Fiori / "app error" / Gateway (/IWFND/ERROR_LOG via gateway preflight reader)
 performance	trace	sm37	"slow" / "timeout" - routed to /sap-trace (separate skill)
+business_doc	docflow,sm13,slg1	st22	a bare order/delivery/invoice number (VBELN) - /sap-doc-flow walks VBFA + FI, feeds evidence_docflow.json
 generic	st22	sm13,slg1,sm21(manual)	error with no tcode/job/object given

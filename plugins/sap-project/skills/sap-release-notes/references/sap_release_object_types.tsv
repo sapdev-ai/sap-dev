@@ -1,0 +1,111 @@
+# sap_release_object_types.tsv  -  E071 object-type label map for /sap-release-notes
+# Maps a transport-object (PGMID, OBJECT) pair to a human-readable label so the CAB
+# pack reads in business terms instead of raw 4-char codes. Lookup order in the
+# inventory engine: (1) exact (pgmid, object) match; (2) object-only match (pgmid '*');
+# (3) fall through to the RAW code (never an invented label).
+#
+# Curated from the standard R3TR / LIMU object-type universe incl. the S/4-era
+# RAP/CDS types (DDLS/DCLS/DDLX/SRVD/SRVB/BDEF). Unknown / new codes render raw by
+# design -- add a row here rather than guessing in code. Customer override:
+# {custom_url}\sap_release_object_types.tsv (same 3 columns, replaces this file).
+#
+# Cell separator is TAB. Lines starting with # and blank lines are skipped.
+pgmid	object	label
+R3TR	PROG	Program / report
+R3TR	FUGR	Function group
+R3TR	FUGS	Function group (with customer include)
+R3TR	CLAS	Class (global)
+R3TR	INTF	Interface (global)
+R3TR	TABL	Table / structure (DDIC)
+R3TR	VIEW	View (DDIC)
+R3TR	DTEL	Data element
+R3TR	DOMA	Domain
+R3TR	SHLP	Search help
+R3TR	TTYP	Table type
+R3TR	ENQU	Lock object
+R3TR	TYPE	Type group (type pool)
+R3TR	MSAG	Message class
+R3TR	TRAN	Transaction code
+R3TR	PARA	SPA/GPA parameter
+R3TR	DEVC	Package / development class
+R3TR	SUSO	Authorization object
+R3TR	SUSC	Authorization object class
+R3TR	NROB	Number range object
+R3TR	DDLS	CDS DDL source (Core Data Service)
+R3TR	DCLS	Access control (DCL / CDS role)
+R3TR	DDLX	Metadata extension (CDS)
+R3TR	SRVD	Service definition
+R3TR	SRVB	Service binding
+R3TR	BDEF	Behavior definition (RAP)
+R3TR	DRUL	Dependency rule (CDS)
+R3TR	STOB	Structured object (external view)
+R3TR	ENHO	Enhancement implementation
+R3TR	ENHS	Enhancement spot
+R3TR	ENHC	Composite enhancement implementation
+R3TR	ENSC	Composite enhancement spot
+R3TR	SFPF	Adobe form (interactive form)
+R3TR	SFPI	Adobe form interface
+R3TR	SSFO	SmartForm
+R3TR	SSST	SmartStyle
+R3TR	FORM	SAPscript form
+R3TR	STYL	SAPscript style
+R3TR	WDYN	Web Dynpro component
+R3TR	WDYA	Web Dynpro application
+R3TR	WAPA	BSP application
+R3TR	SICF	ICF service node
+R3TR	IARP	ABAP web report
+R3TR	IWSV	Gateway service (SEGW project)
+R3TR	IWSG	Gateway service group
+R3TR	IWMO	Gateway model
+R3TR	IWPR	Gateway project (SEGW)
+R3TR	SHI3	Area menu / menu tree
+R3TR	CHDO	Change document object
+R3TR	SOTS	OTR text (short)
+R3TR	SOTR	OTR text (long)
+R3TR	AUTH	Authorization default (SU22/SU24)
+R3TR	SXCI	Business Add-In (classic BAdI)
+R3TR	SXSD	BAdI definition (classic)
+R3TR	CNTE	Web Dynpro context
+R3TR	WFTD	Workflow task definition
+R3TR	WFTS	Workflow standard task
+R3TR	SCP1	Workflow template
+R3TR	TABU	Table contents (customizing)
+R3TR	VDAT	View data (customizing)
+R3TR	CDAT	Customizing table content
+R3TR	TDAT	System table content
+R3TR	TOBJ	Table maintenance / IMG object
+R3TR	OBJM	IMG activity object
+R3TR	CUS0	IMG activity
+R3TR	CUS1	IMG structure node
+R3TR	G4BA	SAP Gateway builder artifact
+R3TR	DF14	Application component
+R3TR	NSPC	Namespace
+R3TR	XPRA	After-import method (XPRA)
+LIMU	REPS	Report source
+LIMU	REPT	Report texts (selection texts)
+LIMU	FUNC	Function module
+LIMU	FUGR	Function group (main program)
+LIMU	METH	Class method
+LIMU	CINC	Class include (local types / test)
+LIMU	CPUB	Class definition (public section)
+LIMU	CPRI	Class definition (private section)
+LIMU	CPRO	Class definition (protected section)
+LIMU	CLSD	Class definition
+LIMU	TABD	Table definition (DDIC)
+LIMU	TABT	Table technical settings
+LIMU	INDX	Table index
+LIMU	XINX	Table secondary index
+LIMU	SQLT	Database table (technical)
+LIMU	DYNP	Screen (dynpro)
+LIMU	CUAD	GUI status / menu (CUA)
+LIMU	DOCT	Documentation (short text)
+LIMU	DOCV	Documentation (long text)
+LIMU	MESS	Message (single)
+LIMU	VARX	Report variant
+LIMU	ENHO	Enhancement implementation (part)
+LIMU	WDYV	Web Dynpro view
+LIMU	WDYC	Web Dynpro controller
+LIMU	WDYD	Web Dynpro component definition
+LIMU	DDLS	CDS DDL source (part)
+LIMU	SRVD	Service definition (part)
+LIMU	FUGT	Function group texts

@@ -1,0 +1,30 @@
+# sap_delivery_rag_rules.tsv  -  deterministic RAG derivation for /sap-delivery-report
+#
+# RAG is COMPUTED, never narrated. Each row maps an evidence signal to a RAG
+# contribution; a workstream's RAG is the WORST contribution across all its
+# objects' evidence (RED > AMBER > GREEN). Two hard floors are enforced in code
+# and CANNOT be relaxed by a customer override: (1) no evidence at all for a
+# workstream => AMBER (never GREEN); (2) any COULD_NOT_CHECK coverage => at least
+# AMBER. A customer may only TIGHTEN (e.g. make GO_WITH_WARNINGS = RED) via
+# {custom_url}\sap_delivery_rag_rules.tsv (same columns).
+#
+# signal_type: verdict | coverage | finding
+# Cell separator is TAB. Lines starting with # and blank lines are skipped.
+signal_type	value	rag
+verdict	NO_GO	RED
+verdict	FAIL	RED
+verdict	FAILED	RED
+verdict	GO_WITH_WARNINGS	AMBER
+verdict	WARN	AMBER
+verdict	GO	GREEN
+verdict	PASS	GREEN
+verdict	CLEAN	GREEN
+coverage	COULD_NOT_CHECK	AMBER
+coverage	CHECKED_FINDINGS	AMBER
+coverage	NOT_APPLICABLE	GREEN
+coverage	CHECKED_CLEAN	GREEN
+coverage	CHECKED	GREEN
+finding	BLOCKER	RED
+finding	HIGH	AMBER
+finding	MEDIUM	GREEN
+finding	LOW	GREEN
