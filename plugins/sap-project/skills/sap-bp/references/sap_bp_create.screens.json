@@ -1,0 +1,40 @@
+{
+  "schema": "sapdev.screenbaseline/1",
+  "vbs": "sap_bp_create.vbs",
+  "captured_on": {
+    "release": "",
+    "kernel": "",
+    "date": "",
+    "method": "static"
+  },
+  "checkpoints": [
+    {
+      "id": "initial",
+      "reach": { "okcode": "/nBP" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/tbar[0]/okcd",
+        "wnd[0]/tbar[1]/btn[29]"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "role_change_popup",
+      "reach": { "note": "conditional popup after selecting a non-default BP role on the Create screen" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]/usr/btnBUTTON_1"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "exit_confirm_popup",
+      "reach": { "note": "conditional data-loss confirm after /n navigation post-save" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]/usr/btnSPOP-OPTION1"
+      ],
+      "status": "pending_live"
+    }
+  ]
+}

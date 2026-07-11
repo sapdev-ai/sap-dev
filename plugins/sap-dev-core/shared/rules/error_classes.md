@@ -44,6 +44,7 @@ Contract:
 | `ATC_PLAN_ERRORS` | Run completed with plan/tool errors (`COUNT_PLNERR` > 0) — findings unreliable. |
 | `ATC_RESULT_PARSE_FAILED` | Priority columns unreadable on this release — gate refuses (never falls back to 0/0/0). |
 | `ATC_GATE_FAIL` | Findings at/below `MAX_PRIORITY` threshold — deploy blocked (the gate working as intended). |
+| `ATC_BASELINE_NOT_SUPPORTED` | `baseline record` / `exemptions` / `--use-baseline` requested on a system with SAP_BASIS < 7.51 (the SATC baseline infrastructure is absent) — the baseline mode refuses and the normal gate runs unchanged. Release-gated live: S/4HANA 1909 = SAP_BASIS 754 (supported, `SATC_CI_EXEMPT` present); ECC 6 = 731 (not supported). |
 
 ## ABAP Unit (`/sap-run-abap-unit`, `/sap-gen-abap-unit`)
 
@@ -126,6 +127,16 @@ Contract:
 | `FILE_SOURCE_MISSING` | Source file unreadable — "Cannot open file" Information popup (`SAPMSDYP/10`); OS errno text in `error_msg` (driver exit 5). |
 | `FILE_LIST_RFC_UNAVAILABLE` | `list`/`exists` could not reach RFC (NCo missing, logon failed) — transfer modes remain usable; run `/sap-doctor` rfc group. |
 | `FILE_VERIFY_MISMATCH` | Post-transfer verification failed (BIN size/hash mismatch, or `exists` probe cannot find the just-uploaded target). |
+
+## Enqueue locks (`/sap-sm12`)
+
+| Class | Meaning |
+|---|---|
+| `LOCK_OWNER_LIVE` | Release refused: the lock owner still has a session on an application server (liveness gate returned LIVE). A live owner's lock is never released. |
+| `LOCK_LIVENESS_UNVERIFIED` | Release refused: owner death could not be proven (RFC error, the multi-instance `TH_SYSTEMWIDE_USER_LIST` leg failed, or an unparseable server/user list). COULD_NOT_CHECK is treated as unsafe — never released. |
+| `LOCK_NOT_FOUND` | The selected lock matched no current enqueue entry (it may have cleared itself) — nothing to release. |
+| `LOCK_DELETE_FAILED` | `ENQUE_DELETE` ran but the authoritative re-read still sees the lock (typically a missing `S_ENQUE` delete authorization). |
+| `LOCK_WRAPPER_MISSING` | `release` needs `Z_GENERIC_RFC_WRAPPER_TBL` (for `ENQUE_DELETE` + the multi-instance liveness leg) and it is not deployed — run `/sap-dev-init`. `list` is unaffected. |
 
 Registered consumers: `/sap-log-analyze` (Top error_class section),
 `sap_error_hints.ps1 -Action record` (auto-record attribution), customer

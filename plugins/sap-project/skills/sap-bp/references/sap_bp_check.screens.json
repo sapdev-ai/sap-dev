@@ -1,0 +1,31 @@
+{
+  "schema": "sapdev.screenbaseline/1",
+  "vbs": "sap_bp_check.vbs",
+  "captured_on": {
+    "release": "",
+    "kernel": "",
+    "date": "",
+    "method": "static"
+  },
+  "checkpoints": [
+    {
+      "id": "initial",
+      "reach": { "okcode": "/nBP" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/tbar[0]/okcd",
+        "wnd[0]/tbar[1]/btn[17]"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "open_dialog",
+      "reach": { "note": "Open BP dialog after pressing tbar[1]/btn[17] (Shift+F5) on the BP screen" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]/usr/ctxtBUS_JOEL_MAIN-OPEN_NUMBER"
+      ],
+      "status": "pending_live"
+    }
+  ]
+}

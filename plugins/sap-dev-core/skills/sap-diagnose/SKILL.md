@@ -4,17 +4,18 @@ description: |
   Incident triage orchestrator for SAP support. From a single anchor (time window,
   user, transaction, background job, business-object key, or a known short-dump)
   it fans out across its read-only evidence readers — the internal RFC set (SM13
-  update-task failures, SM12 locks, SLG1 application log, SM37 jobs) plus the GUI
-  dump reader /sap-st22 — correlates the evidence into incident clusters, and
+  update-task failures, SM12 locks, SLG1 application log, SM37 jobs, SMQ tRFC/qRFC
+  queues, Gateway/OData error-log preflight) plus the GUI dump reader /sap-st22 —
+  correlates the evidence into incident clusters, and
   produces ranked root-cause hypotheses with a recommended fix path. Pass --reader
-  <name> (sm13 | sm12 | slg1 | sm37 | st22) to run one reader standalone and just
-  print its evidence. PURE READ-ONLY: never writes to SAP; lock/update remediation
-  is surfaced as manual SM12 / SM13 steps. With --fix it hands a custom-code-defect
+  <name> (sm13 | sm12 | slg1 | sm37 | smq | gateway | st22) to run one reader standalone and just
+  print its evidence. PURE READ-ONLY: never writes to SAP; lock remediation is
+  delegated to /sap-sm12 release, stuck-update remediation to manual SM13. With --fix it hands a custom-code-defect
   top hypothesis to /sap-fix-incident (the gated, write-capable companion) —
   diagnose itself still writes nothing. Safe to point at production.
   Prerequisites: a saved /sap-login profile (RFC password); SAP NCo 3.1 (32-bit);
   an active SAP GUI session for the ST22 leg.
-argument-hint: "[<natural-language incident>] [--user U] [--tcode T] [--program P] [--job J] [--dump KEY] [--object TYPE:KEY] [--date today|YYYYMMDD] [--time HH:MM] [--window MIN] [--sources a,b] [--reader sm13|sm12|slg1|sm37|st22] [--depth quick|standard|deep] [--remediate] [--fix] [--connection PROFILE] [--report] [--out PATH]"
+argument-hint: "[<natural-language incident>] [--user U] [--tcode T] [--program P] [--job J] [--dump KEY] [--object TYPE:KEY] [--date today|YYYYMMDD] [--time HH:MM] [--window MIN] [--sources a,b] [--reader sm13|sm12|slg1|sm37|smq|gateway|st22] [--depth quick|standard|deep] [--remediate] [--fix] [--connection PROFILE] [--report] [--out PATH]"
 ---
 
 # SAP Incident Diagnosis Orchestrator
@@ -23,9 +24,9 @@ You triage a SAP incident the way a senior support consultant does — but in
 parallel, with full cross-source correlation. Take one anchor, fan out across
 the read-only readers, merge their evidence into incident clusters, and report
 ranked root-cause hypotheses plus the next concrete command. You NEVER modify
-the SAP system; custom-code fixes are handed to `/sap-fix-incident` (gated), and
-lock/update remediation is surfaced as manual SM12 / SM13 operator steps (the
-readers are read-only — no automated release/reprocess exists).
+the SAP system; custom-code fixes are handed to `/sap-fix-incident` (gated), lock release to
+`/sap-sm12 release` (its own liveness gate + typed confirm), and stuck-update
+remediation to manual SM13 steps (the diagnose readers are read-only).
 
 Task: $ARGUMENTS
 
@@ -45,13 +46,15 @@ Task: $ARGUMENTS
 | `<SKILL_DIR>/references/sap_diagnose_correlate.ps1` | *(helper)* | deterministic graph + clustering. |
 | `<SKILL_DIR>/references/diagnose_evidence_schema.json` | *(schema)* | evidence contract every reader emits. |
 | `<SKILL_DIR>/references/diagnose_source_matrix.tsv` | *(table)* | anchor-signal → reader set. |
-| `<SKILL_DIR>/references/sap_diagnose_reader_lib.ps1` | `%%DIAG_READER_LIB_PS1%%` | Reader helpers (anchor, read-table, evidence emit) — dot-sourced by the four RFC reader scripts below. |
+| `<SKILL_DIR>/references/sap_diagnose_reader_lib.ps1` | `%%DIAG_READER_LIB_PS1%%` | Reader helpers (anchor, read-table, evidence emit) — dot-sourced by the six RFC reader scripts below. |
 | `<SKILL_DIR>/references/sap_sm37_read.ps1` | *(reader)* | Background-job reader (TBTCO). |
 | `<SKILL_DIR>/references/sap_sm13_read.ps1` | *(reader)* | Update-task failure reader (VBHDR + VBERROR). |
 | `<SKILL_DIR>/references/sap_sm12_read.ps1` | *(reader)* | Lock-entry reader (ENQUEUE_READ). |
 | `<SKILL_DIR>/references/sap_slg1_read.ps1` | *(reader)* | Application-log reader (BALHDR). |
+| `<SKILL_DIR>/references/sap_smq_read.ps1` | *(reader)* | tRFC + qRFC reader (ARFCSSTATE narrow; TRFCQOUT/TRFCQIN aggregated per queue). |
+| `<SKILL_DIR>/references/sap_gateway_read.ps1` | *(reader)* | Gateway/OData error-log preflight (NOT_APPLICABLE vs COULD_NOT_CHECK; full read owned by /sap-gateway-service). |
 
-**Evidence readers.** The four RFC readers (SM13 / SM12 / SLG1 / SM37) are
+**Evidence readers.** The six RFC readers (SM13 / SM12 / SLG1 / SM37 / SMQ / GATEWAY) are
 **internal to this skill** — the `references/sap_*_read.ps1` scripts above, run
 directly in Step 4 (they were formerly the standalone `/sap-sm13` … `/sap-sm37`
 skills, folded in here to shrink the catalogue). The **GUI dump reader stays a
@@ -110,7 +113,7 @@ C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypas
 > failure class as the SE01-create timezone bug.
 
 > **Standalone single-reader mode (`--reader <name>`).** When `--reader` names
-> one reader (`sm13` | `sm12` | `slg1` | `sm37` | `st22`), **skip source
+> one reader (`sm13` | `sm12` | `slg1` | `sm37` | `smq` | `gateway` | `st22`), **skip source
 > selection (Step 3)**: resolve the anchor (Steps 1–2), run just that one reader
 > with the Step 4 mechanics, print its evidence summary, and STOP — no
 > correlation, clustering, or hypotheses (Steps 5–8 are not run). This replaces
@@ -123,15 +126,15 @@ Read `references/diagnose_source_matrix.tsv`, pick the reader set by the
 strongest anchor signal, honor `--sources` and `--depth` (quick = top-3; deep =
 all). Echo `SOURCES_SELECTED: ...`.
 
-> **Not-yet-available readers.** The matrix lists some sources that have **no
-> reader skill yet** — `sm21` (system log), `queues` (qRFC/tRFC SMQ1/SMQ2), and
-> `gw_log` (Gateway/OData). These are marked `(manual)` in the TSV. Do **not**
-> try to invoke them via the Skill tool. Instead, name the manual transaction in
-> the report's `next_actions` (e.g. "run **SM21** for the window", "check
-> **SMQ1/SMQ2** for stuck queues", "check **/IWFND/ERROR_LOG**") so the operator
-> collects that evidence by hand. Only the internal RFC readers (`sm13`, `sm12`,
-> `slg1`, `sm37`) and the `st22` GUI reader skill (plus `trace`, a separate
-> skill) are available today.
+> **Not-yet-available readers.** The matrix lists one source that still has **no
+> reader** — `sm21` (system log), marked `(manual)` in the TSV. Do **not** try to
+> invoke it via the Skill tool; name it in the report's `next_actions` (e.g. "run
+> **SM21** for the window") so the operator collects that evidence by hand. The
+> internal RFC readers (`sm13`, `sm12`, `slg1`, `sm37`, `smq`, `gateway`) and the
+> `st22` GUI reader skill (plus `trace`, a separate skill) are available today.
+> The `smq` reader covers qRFC/tRFC (SMQ1/SMQ2/SM58); the `gateway` reader is a
+> present/absent preflight for the OData error log — it returns NOT_APPLICABLE off
+> a Gateway hub and COULD_NOT_CHECK where the full read needs `/sap-gateway-service`.
 
 ## Step 4 — Collect Evidence (fan-out)
 
@@ -147,7 +150,7 @@ For each selected RFC source, materialize its reader script and run it under
 `%%SAP_*%%` credential tokens literal so `Connect-SapRfc` fills them from the
 pinned connection profile. The four readers share one signature
 (`-AnchorJson <path> -OutFile <path> [-TopN <n>]`), so the block below is
-identical per source — swap `<src>` ∈ { `sm13`, `sm12`, `slg1`, `sm37` }:
+identical per source — swap `<src>` ∈ { `sm13`, `sm12`, `slg1`, `sm37`, `smq`, `gateway` }:
 
 ```powershell
 $ps = [IO.File]::ReadAllText('<SKILL_DIR>\references\sap_<src>_read.ps1', [Text.Encoding]::UTF8)
@@ -209,16 +212,16 @@ confirm_by, refute_by, recommended_action }`. Hard rules:
 | custom-code defect | *(closed loop)* `/sap-fix-incident --incident <out>` — auto-chained by `--fix` (Step 8.5); or manually `/sap-explain-object <type> <name>` → `/sap-se38\|37\|24` fix |
 | config-missing | name the IMG/config table; verify read-only via `/sap-se16n` |
 | data-defect | point at the record (read-only `/sap-se16n`) |
-| lock-contention | *(manual — operator-performed)* open **SM12** (`/nSM12`), find the reported row, confirm with the lock owner, then **Lock Entry → Delete** by hand. The SM12 reader leg is **read-only** — there is no automated `--release`. |
+| lock-contention | **delegate to `/sap-sm12 release --user=<owner> [--table=<T>]`** — it re-reads the lock, proves the owner has no session on any application server (liveness gate), requires typed confirmation, deletes via `ENQUE_DELETE`, and verifies by re-read; it refuses if the owner is live or liveness is unprovable. (The diagnose SM12 *reader* leg itself stays read-only.) |
 | stuck update | *(manual — operator-performed)* open **SM13** (`/nSM13`), find the failed record, confirm with the update owner, then **Repeat Update / Delete** by hand. The SM13 reader leg is **read-only** — there is no automated `--reprocess`. |
 
 The orchestrator performs no write itself. With `--fix` it delegates the
 custom-code path to `/sap-fix-incident`, which owns its own confirmation gate
-(Rule 2) and guard rails. For lock/update contention there is **no automated
-remediation** — the sm12/sm13 readers are read-only, so `--remediate` surfaces
-the **manual SM12 / SM13 steps above** (which the operator performs by hand)
-rather than invoking a dequeue/reprocess. Diagnose never mutates SAP directly
-under any flag.
+(Rule 2) and guard rails. For **lock** contention `--remediate` points at
+`/sap-sm12 release` (which owns the liveness gate + typed confirmation and does
+the delete); for **stuck updates** there is still no automated remediation — the
+sm13 reader is read-only, so `--remediate` surfaces the **manual SM13 steps
+above**. Diagnose itself never mutates SAP directly under any flag.
 
 ## Step 8 — Emit Outputs
 

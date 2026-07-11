@@ -60,7 +60,11 @@
 
 param(
     [switch]$CreateNew,
-    [string]$Description = ""
+    [string]$Description = "",
+    # K = Workbench (default), W = Customizing. Passed by /sap-transport-request
+    # when --type customizing; drives the CTS_API_CREATE_CHANGE_REQUEST CATEGORY
+    # (K/W verified on S/4HANA 1909, 2026-06-07). Verify-only calls ignore it.
+    [ValidateSet("K", "W")][string]$RequestType = "K"
 )
 
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
@@ -295,7 +299,8 @@ if ($bNeedCreate -and $normalizedMode -eq "GUI") {
 # object assignment, so a task-less Workbench request is fully usable (verified).
 # Try the modern names first, fall back to legacy on RfcInvalidParameterException.
 if ($bNeedCreate) {
-    Write-Host "INFO: Creating new workbench transport request (sap_dev_mode=$normalizedMode)..."
+    $reqKind = if ($RequestType -eq "W") { "customizing" } else { "workbench" }
+    Write-Host "INFO: Creating new $reqKind transport request (sap_dev_mode=$normalizedMode)..."
     # Description: built by the CALLER per rule_of_tr_description /
     # tr_description_template (tr_resolution.md section 3) and passed via
     # -Description. The historical literal remains ONLY as a last-resort
@@ -309,8 +314,8 @@ if ($bNeedCreate) {
     $sCreateError = ""
 
     foreach ($variant in @(
-        @{ Desc = "DESCRIPTION";  Cat = "CATEGORY";     CatVal = "K" },
-        @{ Desc = "REQUEST_TEXT"; Cat = "REQUEST_TYPE"; CatVal = "K" }
+        @{ Desc = "DESCRIPTION";  Cat = "CATEGORY";     CatVal = $RequestType },
+        @{ Desc = "REQUEST_TEXT"; Cat = "REQUEST_TYPE"; CatVal = $RequestType }
     )) {
         try {
             $fnCreate = $g_dest.Repository.CreateFunction("CTS_API_CREATE_CHANGE_REQUEST")

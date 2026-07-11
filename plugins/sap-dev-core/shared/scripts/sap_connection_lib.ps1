@@ -2088,6 +2088,7 @@ function Clear-SapBannerCache {
 
 $script:SapPerConnectionDevKeys = @(
     'sap_dev_transport_request',     # Phase 4.3
+    'sap_dev_customizing_request',   # Wave 0 T1-A -- separate task default for --type customizing (E070 TRFUNCTION=W)
     'sap_dev_package',               # Phase 4.3
     'sap_dev_function_group',        # Phase 4.3
     'sap_dev_mode',                  # Phase 4.4 -- GUI/RFC/BDC; system capability varies

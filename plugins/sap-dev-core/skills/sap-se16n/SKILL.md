@@ -9,9 +9,14 @@ description: |
   set of fields; if no SELECT list is given, all fields are returned. Detects
   the "no values found" path and writes a marker file instead of an empty
   download. Typical use: dump rows from any SAP table for inspection or as
-  reference data for development.
-  Prerequisites: Active SAP GUI session (use /sap-login first).
-argument-hint: "<TABLE> [field=value ...] [select=F1,F2,...]"
+  reference data for development. Snapshot modes add a table-state assertion
+  primitive: `snapshot save <name>` captures a query result under
+  {artifact_dir}\snapshots; `snapshot diff <a> <b>` row-diffs two snapshots on
+  declared key columns (ignoring volatile columns) via the shared keyed-diff
+  engine — ADDED/REMOVED/CHANGED/SAME; `snapshot list` enumerates them.
+  Prerequisites: Active SAP GUI session (use /sap-login first). `snapshot diff` /
+  `snapshot list` are pure-local and need no SAP session.
+argument-hint: "<TABLE> [field=value ...] [select=F1,F2,...]  |  snapshot save <name> <TABLE> [filters] --keys=K1,K2 [--ignore=V1,V2]  |  snapshot diff <a> <b> [--keys=..] [--ignore=..]  |  snapshot list"
 ---
 
 # SAP SE16N Table Query Skill
@@ -23,6 +28,11 @@ arbitrary number of filter fields and values can be specified.
 
 Task: $ARGUMENTS
 
+**Mode dispatch.** If the first token is `snapshot`, go to **Snapshot Modes**
+(below): `save` runs the normal query flow (Steps 0–6) then captures the result;
+`diff` / `list` are pure-local and skip the SAP query. Any other first token is
+the **normal query flow** (Steps 0–6, default — unchanged).
+
 ---
 
 ## Shared Resources
@@ -31,6 +41,8 @@ Task: $ARGUMENTS
 |---|---|
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/skill_operating_rules.md` | Mandatory operating rules |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/language_independence_rules.md` | GUI-scripting language independence — identify by component ID + DDIC field name, status-bar checks via `MessageType` codes (S/W/E/I/A), VKey instead of menu-text, no branching on `.Text`/`.Tooltip`/window titles |
+| `<SKILL_DIR>/references/sap_se16n_snapshot.ps1` | Snapshot `save`/`diff`/`list` (pure-local); the diff delegates to the shared keyed-diff engine. |
+| `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_keyed_diff_lib.ps1` | The ONE keyed row-diff engine (`Get-SapKeyedDiff` / `Write-SapKeyedDiffTsv`), shared with /sap-config-compare + /sap-compare `--table-content`. |
 
 ---
 
@@ -281,6 +293,37 @@ Report back to the user:
 - For NO_DATA: the SAP status bar text from the marker file
 
 ---
+
+## Snapshot Modes (table-state assertions)
+
+Pure-local aside from `save`'s underlying query. Resolve `{artifact_dir}` (default
+`{work_dir}\artifacts`) in Step 0 and set `{SNAP_ROOT}` = `{artifact_dir}\snapshots`.
+Helper: `references/sap_se16n_snapshot.ps1`; diff engine: the shared
+`sap_keyed_diff_lib.ps1`.
+
+### `snapshot save <name> <TABLE> [filters] --keys=K1,K2 [--ignore=V1,V2] [select=...]`
+1. Run the **normal query flow** (Steps 0–6) for `<TABLE>` + filters to produce the
+   TSV at `{RUN_TEMP}\se16n_<TABLE>.txt`. Ensure the `--keys` (and any `--ignore`
+   volatile) columns are in the `select=` list so they are present to diff on.
+2. Capture it (refuses a `QUERY_FAILED` / `NO_DATA` export — fix the query first):
+   ```bash
+   powershell -NoProfile -ExecutionPolicy Bypass -File "<SKILL_DIR>\references\sap_se16n_snapshot.ps1" -Action save -SnapshotRoot "{SNAP_ROOT}" -Name "<name>" -DataTsv "{RUN_TEMP}\se16n_<TABLE>.txt" -Table "<TABLE>" -Filters "<filters>" -KeyColumns "K1,K2" -IgnoreColumns "V1,V2" -Sid "<SID>" -Client "<client>"
+   ```
+   Report the `STATUS: SAVED …` line.
+
+### `snapshot diff <a> <b> [--keys=..] [--ignore=..]`
+Pure-local — no SAP session. Keys/ignore default to the snapshots' saved metadata when omitted:
+```bash
+powershell -NoProfile -ExecutionPolicy Bypass -File "<SKILL_DIR>\references\sap_se16n_snapshot.ps1" -Action diff -SnapshotRoot "{SNAP_ROOT}" -Left "<a>" -Right "<b>" -KeyColumns "K1,K2" -IgnoreColumns "V1,V2" -KeyedDiffLib "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_keyed_diff_lib.ps1"
+```
+Surface the `KEYED_DIFF: added=.. removed=.. changed=.. same=..` line and the `diff_<a>_vs_<b>.tsv` path; register it via `Register-SapArtifact -Kind diff`. A `schema_drift=` / `dup_keys=` tail is a data-quality flag to report, never hide. It refuses a cross-table diff.
+
+### `snapshot list`
+```bash
+powershell -NoProfile -ExecutionPolicy Bypass -File "<SKILL_DIR>\references\sap_se16n_snapshot.ps1" -Action list -SnapshotRoot "{SNAP_ROOT}"
+```
+
+> **SE16H aggregation (`agg`) — deferred.** The planned `agg <TABLE> --group-by --sum --count` mode drives transaction **SE16H** (`RK_SE16H`, present on both releases) and needs a one-time `/sap-gui-probe --record` of the SE16H outline grid before it can ship; until then, aggregate by downloading with the query flow and grouping locally. Tracked as the remaining T1-E increment.
 
 ## Final — Log End
 

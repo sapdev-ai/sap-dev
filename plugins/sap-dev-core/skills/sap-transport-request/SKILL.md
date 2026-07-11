@@ -11,11 +11,16 @@ description: |
   Honours rule_of_tr_description for the description text. An unverifiable
   or non-modifiable candidate TR is re-prompted per the policy loop —
   never silently replaced by a freshly created TR.
+  Resolves Workbench requests by default, or Customizing requests (E070
+  TRFUNCTION='W') when called with --type customizing (used by /sap-sm30 and
+  /sap-pfcg) — Customizing candidates are additionally validated for request
+  class and client (E070C-CLIENT = the pinned client), and use a separate
+  sap_dev_customizing_request default so one task can hold a TR of each type.
   Prerequisites: SAP profile saved via /sap-login (RFC password required).
   SAP NCo 3.1 (32-bit, .NET 4.0) in GAC for RFC paths; active SAP GUI session
   (use /sap-login first) is additionally required when way_to_get_transport_request=CREATE_NEW
   delegates creation to /sap-se01 (GUI).
-argument-hint: "[transport-request-number] [OBJECT_TYPE=<...>] [OBJECT_DESCRIPTION=<...>]"
+argument-hint: "[transport-request-number] [--type workbench|customizing] [OBJECT_TYPE=<...>] [OBJECT_DESCRIPTION=<...>]"
 ---
 
 # SAP Transport Request Skill
@@ -92,6 +97,7 @@ Parse `$ARGUMENTS`:
 | Token | Meaning |
 |---|---|
 | A `<SID>K<digits>` token | Caller-supplied TR number override (rare; `DEFAULT`/`ASK` policies still apply on top) |
+| `--type workbench\|customizing` | Request class to resolve/create. Default `workbench` (E070 `TRFUNCTION='K'`). `customizing` (aliases `cust`, `W`) resolves a Customizing request (`TRFUNCTION='W'`) — see the **Request type** note below. |
 | `OBJECT_TYPE=<...>` | Object type the caller is deploying (`REPORT`, `TABLE`, `FM`, `CLASS`, `MSGCLASS`, …). Forwarded to `/sap-se01` for description rendering. |
 | `OBJECT_DESCRIPTION=<...>` | Object name being deployed. Forwarded to `/sap-se01`. |
 
@@ -101,10 +107,32 @@ Read from the merged sap-dev-core `userConfig` (per `shared/rules/settings_looku
 |---|---|
 | `way_to_get_transport_request` | `DEFAULT` |
 | `sap_dev_transport_request` | (blank) |
+| `sap_dev_customizing_request` | (blank) — used instead of `sap_dev_transport_request` when `--type customizing` |
 | `sap_dev_mode` | `GUI` |
 
 Validate `way_to_get_transport_request`. Allowed: `DEFAULT`, `ASK`,
 `CREATE_NEW`. Anything else → fall back to `DEFAULT` and warn the user.
+
+### Request type (`--type`) — Workbench (default) vs Customizing
+
+Default `workbench`. When `--type customizing` (aliases `cust`, `W`) is passed,
+this run targets a **Customizing** request and the steps below change
+consistently — **workbench mode is unchanged (backward-compatible default)**:
+
+- **Default/persist key** is `sap_dev_customizing_request` (a separate task
+  default), NOT `sap_dev_transport_request`, so one task can hold one TR of each
+  type at once. Wherever Steps 1a / 4 say `sap_dev_transport_request`, read and
+  write `sap_dev_customizing_request` instead.
+- **Validation** (Step 1b) additionally requires the candidate's
+  `TRFUNCTION = 'W'` AND `E070C-CLIENT = the pinned client`. A wrong request
+  class (a Workbench `K` request) or a foreign client is treated exactly like
+  "not modifiable" → re-prompt per the policy loop, **never** silently replaced.
+- **Creation** passes the type through: GUI Create Path → `/sap-se01 create C`;
+  RFC/BDC Create Path → the PS1 `-RequestType W` (`CATEGORY=W`).
+
+`TRFUNCTION` codes: `K` = Workbench, `W` = Customizing (E070; verified on
+S/4HANA 1909 + ECC 6). `E070C` (fields `TRKORR, CLIENT, TARCLIENT, …`) carries a
+Customizing request's source client — identical layout on both releases.
 
 ---
 
@@ -158,9 +186,11 @@ caller. Do NOT fall through to Steps 2-4 from the GUI branch.
 
 #### GUI branch (when `sap_dev_mode = GUI`, the default)
 
-1. Invoke `/sap-se01` with the request type left to default (W) plus the
-   forwarded `OBJECT_TYPE=` and `OBJECT_DESCRIPTION=` arguments.
-   `/sap-se01` honours `rule_of_tr_description` for the text.
+1. Invoke `/sap-se01 create <TYPE>` — `<TYPE>` = `W` for `--type workbench`
+   (default) or `C` for `--type customizing` — plus the forwarded `OBJECT_TYPE=`
+   and `OBJECT_DESCRIPTION=` arguments. `/sap-se01` honours
+   `rule_of_tr_description` for the text and maps `C` to the SE01 Customizing
+   radio (`radKO042-REQ_CUST_W`).
 2. Capture the new TR number from `/sap-se01`'s output (`RESULT_TR:` line).
 3. Apply the persistence policy from Step 1a (`DEFAULT` saves automatically;
    `ASK` asks once; `CREATE_NEW` does NOT save).
@@ -179,7 +209,9 @@ caller. Do NOT fall through to Steps 2-4 from the GUI branch.
    and `%%SAP_DEV_MODE%%` set to `RFC` (or `BDC`) so the PS1's guardrail
    permits creation, and pass the description built in item 1 via the
    `-Description` argument at execution (Step 3) — the PS1 falls back to a
-   generic literal only when `-Description` arrives empty.
+   generic literal only when `-Description` arrives empty. For `--type
+   customizing`, also pass `-RequestType W` so the RFC creator makes a
+   Customizing request (`CATEGORY=W`); workbench omits it (PS1 defaults `K`).
 
 ### Mid-session policy change
 
@@ -222,6 +254,24 @@ Parse the resulting `{RUN_TEMP}\se16n_E070.txt`:
 The `E070-TRSTATUS` lookup is a pure read against an SAP standard table and
 does not require any write authorisation; the only prerequisite is the
 active SAP GUI session that `/sap-se16n` itself depends on.
+
+**Customizing-mode extra checks (`--type customizing` only).** Before accepting
+a `TRSTATUS = D`/`L` candidate:
+
+1. **Request class** — the `TRFUNCTION` you already selected must be `W`. If it
+   is `K`, tell the user "`<candidate>` is a Workbench request, not Customizing"
+   and re-prompt per the Step 1a policy loop (do NOT accept; do NOT auto-create).
+2. **Client match** — read the request's client:
+   ```
+   /sap-se16n TABLE=E070C WHERE: TRKORR=<candidate> SELECT: TRKORR CLIENT Output file={RUN_TEMP}\se16n_E070C.txt
+   ```
+   `CLIENT` must equal the pinned profile's client. Mismatch → "`<candidate>`
+   belongs to client `<CLIENT>`, not `<pinned>`" → re-prompt. `ROWS=0` (no E070C
+   row) → the client is unconfirmable: warn `COULD_NOT_CHECK client` and ask the
+   user whether to proceed (never silently pass). Workbench mode skips both.
+   (In `sap_dev_mode` RFC/BDC, read `E070`/`E070C` with a direct `RFC_READ_TABLE`
+   instead — both are directly readable; the verify PS1 confirms modifiability
+   and this gate is applied on top.)
 
 ### RFC / BDC branch (when `sap_dev_mode` ∈ {`RFC`, `BDC`})
 
@@ -308,9 +358,10 @@ C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypas
 ```
 
 On the **create** route (Step 1a Create Path RFC/BDC branch — `THE_TR` set
-empty), append the description built per `rule_of_tr_description`:
+empty), append the description built per `rule_of_tr_description` (and, for
+`--type customizing`, `-RequestType W`):
 ```bash
-C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_tr_run.ps1" -Description "<built description>"
+C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_tr_run.ps1" -Description "<built description>" [-RequestType W]
 ```
 (`-CreateNew` may additionally be passed to make the create intent explicit;
 an empty TR input already implies it.) On the **verify** route (`THE_TR`

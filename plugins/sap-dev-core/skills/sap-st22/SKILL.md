@@ -10,11 +10,14 @@ description: |
   consumes to root-cause a dump); deep is strictly additive — a deep failure
   degrades to partial/skipped and never loses the list-level evidence. Component
   IDs vary by release: the reader tries candidates and degrades to a clean
-  skipped/partial with a /sap-gui-probe --record hint. Usually invoked by /sap-diagnose;
-  runs standalone.
+  skipped/partial with a /sap-gui-probe --record hint. After scraping, it
+  fingerprints each dump (SHA1 of exception|program[|include|line]) into a
+  team-shareable recurrence ledger and prints a NEW / KNOWN_RECURRING / GONE
+  delta (--no-fingerprint opts out; best-effort, never changes the verdict).
+  Usually invoked by /sap-diagnose; runs standalone.
   Prerequisites: active SAP GUI session (/sap-login first); RZ11
   sapgui/user_scripting = TRUE.
-argument-hint: "[--anchor PATH] [--user U] [--date today|YYYYMMDD] [--window MIN] [--session PATH] [--out PATH] [--top-n N] [--deep] [--dump-key KEY] [--max-deep N]"
+argument-hint: "[--anchor PATH] [--user U] [--date today|YYYYMMDD] [--window MIN] [--session PATH] [--out PATH] [--top-n N] [--deep] [--dump-key KEY] [--max-deep N] [--no-fingerprint]"
 ---
 
 # SAP ST22 Dump Reader (Diagnose, GUI)
@@ -33,6 +36,7 @@ Task: $ARGUMENTS
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/language_independence_rules.md` | *(rule)* | Address controls by ID; status via MessageType; VKey navigation; no text branching. |
 | `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_attach_lib.vbs` | `%%ATTACH_LIB_VBS%%` | Parallel-safe session attach (`AttachSapSession`). |
 | `<SKILL_DIR>/references/sap_st22_read.vbs` | *(reader)* | ST22 navigation + dump-list scrape → evidence JSON. |
+| `<SKILL_DIR>/references/sap_st22_fingerprint.ps1` | *(local)* | Dump fingerprint + recurrence ledger (`{custom_url}\ops_kb\dump_fingerprints.tsv`); NEW/KNOWN_RECURRING/GONE delta. Pure-local, best-effort. |
 | `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_log_helper.ps1` | *(lib)* | start/end logging. |
 
 ---
@@ -40,9 +44,9 @@ Task: $ARGUMENTS
 ## Step 0 — Resolve Work Directory
 
 ```bash
-powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('WORK_DIR=' + (Get-SapWorkDir))"
+powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('WORK_DIR=' + (Get-SapWorkDir)); Write-Output ('CUSTOM_URL=' + (Get-SapSettingValue 'custom_url' ((Get-SapWorkDir) + '\custom')))"
 ```
-Set `{WORK_TEMP}` = `{work_dir}\temp`; `{RUN_DIR}` = a fresh `{WORK_TEMP}\diagnose\<run>` (or the orchestrator's run dir when `--anchor` points into it).
+Set `{WORK_TEMP}` = `{work_dir}\temp`; `{RUN_DIR}` = a fresh `{WORK_TEMP}\diagnose\<run>` (or the orchestrator's run dir when `--anchor` points into it). Parse `{custom_url}` from the `CUSTOM_URL=` line — the fingerprint ledger (Step 2.5) lives at `{custom_url}\ops_kb\dump_fingerprints.tsv`.
 
 Set `{RUN_TEMP}` = the per-run scratch dir (`Get-SapRunTemp` mints + creates `{work_dir}\temp\run_<id>`):
 ```bash
@@ -111,6 +115,18 @@ C:\Windows\SysWOW64\cscript.exe //NoLogo "{RUN_DIR}\st22_run.vbs"
 
 (32-bit `cscript` is mandatory — SAP GUI Scripting COM is 32-bit. Never `cmd /c`.)
 
+## Step 2.5 — Fingerprint + Recurrence Ledger (best-effort)
+
+Unless `--no-fingerprint` was passed **or** the reader returned `status=skipped`
+(no evidence to fingerprint), fold this run's dumps into the recurrence ledger.
+Pure-local, best-effort — it NEVER changes the reader verdict:
+
+```bash
+powershell -NoProfile -ExecutionPolicy Bypass -File "<SKILL_DIR>\references\sap_st22_fingerprint.ps1" -EvidenceFile "{RUN_DIR}\evidence_st22.json" -LedgerPath "{custom_url}\ops_kb\dump_fingerprints.tsv"
+```
+
+Parse the machine lines — `FINGERPRINT: <fp> precision=<deep|list> status=<NEW|KNOWN_RECURRING> count=<n> …`, `GONE: <fp> days=<n> …`, and the final `STATUS: OK new=<n> recurring=<m> gone=<g> …` — and surface them in Step 3. A `STATUS: SKIP …` line means the step no-op'd (evidence missing / ledger IO error): report nothing and continue. `--deep` runs produce the finer `precision=deep` grain (exception|program|include|line); list-level runs produce `precision=list`.
+
 ## Step 3 — Report
 Parse `EVIDENCE: source=ST22 status=ok events=<n> deep=<n> ...` +
 `evidence_st22.json`. If `status=skipped`, report the reason (likely "grid not
@@ -124,6 +140,14 @@ found — run /sap-gui-probe --record on ST22"). In `--deep` mode, each event ma
   level; recommend a `/sap-gui-probe --record` pass on the ST22 dump-detail screen for
   this release. **Never report `partial` as "no defect found."**
 - `skipped` — could not re-open the dump from the list.
+
+**Recurrence (from Step 2.5).** Report the NEW vs KNOWN_RECURRING split plus any
+GONE (not-seen-in-N-days) fingerprints — e.g. "3 dumps: 1 NEW (`MESSAGE_TYPE_X`
+in ZFOO), 2 KNOWN_RECURRING (first seen 2026-06-30, total 11)". A KNOWN_RECURRING
+with a high `total` is a chronic dump worth escalating; a NEW dump inside a
+release window is a regression signal. The ledger persists at
+`{custom_url}\ops_kb\dump_fingerprints.tsv` for `/sap-diagnose --kb match`,
+`/sap-health-check` trend, and `/sap-evidence-pack`.
 
 ## Final — Log End
 
@@ -152,6 +176,10 @@ powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_
 - **Call-stack / chosen-variables** parsing (the `call_stack` / `chosen_variables`
   arrays in `dump_detail`) is the next deep increment; v1 deep leaves them empty.
 - **Requires an active GUI session** and `sapgui/user_scripting = TRUE`.
+- **Fingerprint ledger is best-effort + workstation-dated.** `first_seen` /
+  `last_seen` use the workstation date (local bookkeeping, not an SAP timestamp);
+  a missing evidence file or ledger IO error surfaces as `STATUS: SKIP …` and
+  never fails the reader. `--no-fingerprint` skips Step 2.5 entirely.
 - **Modal SAP GUI Security dialog** suspends scripting; if a file-IO dialog
   appears, the orchestrator's sidecar pattern applies (this reader does no file
   IO inside SAP, so it normally won't trigger it).

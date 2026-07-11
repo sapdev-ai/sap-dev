@@ -29,3 +29,6 @@ file_transfer_upload	S_TCODE	TCD	CG3Z	Upload file to application server (/sap-fi
 file_transfer_upload	S_DATASET	ACTVT	34	Write app-server file via CG3Z; SPTH/S_PATH may further restrict paths
 file_transfer_download	S_TCODE	TCD	CG3Y	Download file from application server (/sap-file-transfer download)
 file_transfer_download	S_DATASET	ACTVT	33	Read app-server file via CG3Y; SPTH/S_PATH may further restrict paths
+sm12_list	S_ENQUE	ACTVT		Display enqueue locks (/sap-sm12 list, ENQUEUE_READ) — confirm exact ACTVT in SU21
+sm12_release	S_ENQUE	ACTVT		Delete foreign enqueue locks (/sap-sm12 release, ENQUE_DELETE) — confirm delete ACTVT in SU21
+sm12_liveness	S_RFC	RFC_NAME	SENQ|THFB	RFC access to enqueue + kernel user-list FGs (TH_SERVER_LIST / TH_USER_LIST) for the release liveness gate
