@@ -47,10 +47,10 @@
 
 | 插件 | 技能 | 它为你提供什么 |
 |---|---|---|
-| **sap-dev-core** | 52 个 + `abap-developer` 代理 | 登录与连接库、传输处理、ABAP 工作台（SE38/SE37/SE24/SE11/SE91/SE16N/SE01/…）、ATC 质量门禁、ABAP-Unit 运行器、激活、诊断（ST22/SM13/SM12/SLG1/SM37）、报表与后台作业执行、PC ↔ 应用服务器文件传输、交付保障，以及向 QAS/PRD 的 **STMS** 导入。 |
-| **sap-gen-code** | 8 个 | **规格 → ABAP** 流水线：读取设计文档（Excel/Word/PDF）、校验它、生成贴合你项目的 ABAP，并将结果与实时系统对照校验。 |
-| **sap-migrate** | 7 个 + `cc-migration-engineer` 代理 | 以受跟踪的"战役"（campaign）形式进行的 S/4HANA 自定义代码迁移。 |
-| **sap-tcd** | 3 个 | 业务事务自动化：BP、MM01/02/03、VA01/02/03。 |
+| **sap-dev-core** | 61 个 + `abap-developer` 代理 | 登录与连接库、传输处理、ABAP 工作台（SE38/SE37/SE24/SE11/SE91/SE16N/SE01/…）、ATC 质量门禁、ABAP-Unit 运行器、激活、诊断（ST22/SM13/SM12/SLG1/SM37）、报表与后台作业执行、PC ↔ 应用服务器文件传输、交付保障，以及向 QAS/PRD 的 **STMS** 导入。 |
+| **sap-gen-code** | 12 个 | **规格 → ABAP** 流水线：读取设计文档（Excel/Word/PDF）、校验它、生成贴合你项目的 ABAP，并将结果与实时系统对照校验。 |
+| **sap-migrate** | 10 个 + `cc-migration-engineer` 代理 | 以受跟踪的"战役"（campaign）形式进行的 S/4HANA 自定义代码迁移。 |
+| **sap-project** | 40 个 + `sap-consultant` 代理 | 功能/运维交付：测试数据（BP、物料、销售订单）、权限与角色、事件与接口诊断、发布与传输运维、配置比较、健康检查、回归测试。已并入原 sap-tcd 的技能。 |
 
 ### 它**不是**什么
 
@@ -201,7 +201,7 @@ SAP Service Marketplace 下载。你需要的是 **32 位、.NET Framework 4.0**
 ```text
 /plugin install sap-gen-code@sap-dev      # spec → ABAP generation
 /plugin install sap-migrate@sap-dev       # S/4HANA custom-code migration
-/plugin install sap-tcd@sap-dev           # BP / MM01 / VA01 automation
+/plugin install sap-project@sap-dev       # functional / operations delivery, test data
 ```
 
 > ℹ️ **每条 `/plugin install` 命令只装一个插件** —— 上面那几行请逐条运行。
@@ -1026,6 +1026,15 @@ top 错误类别）。
 | `sap-call-bdc` / `sap-update-addon` | BDC 重放 / 附加表维护 |
 | `sap-gui-probe` / `sap-gui-inspect` / `sap-gui-skill-scaffold` | 技能编写 & GUI 健壮性工具（`--record` 为手动捕获；黄金屏幕漂移 → `/sap-doctor --screens`）|
 | `sap-log-analyze` / `sap-error-kb` | 日志汇总 / 常见错误知识库 |
+| `sap-se14` | 调整 / 激活 DDIC 数据库对象（DB 工具） |
+| `sap-sm12` | 锁条目（SM12）查看 |
+| `sap-sql-query` | 通过 RFC 的只读 SQL SELECT |
+| `sap-version-history` | 仓库对象版本历史 |
+| `sap-git` | 将仓库对象序列化到 git 工作树（确定性快照） |
+| `sap-forms` | SmartForms / SAPscript / Adobe 表单的清点 + 解析 |
+| `sap-vofm` | VOFM 例程（需求 / 公式） |
+| `sap-scratch-run` | 运行临时 ABAP 代码片段 |
+| `sap-api-advisor` | 为某任务推荐已发布的 API（BAPI / RFC / CDS） |
 
 ### sap-gen-code（规格 → ABAP）
 
@@ -1039,17 +1048,28 @@ top 错误类别）。
 | `sap-gen-abap-unit` | 为既有对象生成 ABAP Unit 测试并在实机上运行到全绿（缝隙分析、有界修复循环） |
 | `sap-gen-cds` | 不用 ADT，通过 RFC 生成并部署 CDS 视图（7.50–7.54 经典 DDL，7.55+ 视图实体） |
 | `sap-review-abap` | 对 ABAP 对象 / 本地文件做 AI 语义 + 安全代码评审（仅建议） |
+| `sap-docs-estimate` | 从抽取的规格估算开发工作量 |
+| `sap-gen-idoc-handler` | 生成入站 IDoc 处理器（处理代码 + FM） |
+| `sap-gen-rap` | 生成 RAP 业务对象（行为 + 投影视图） |
+| `sap-gen-test-plan` | 生成并用 RFC 校验功能测试计划 |
 
 *（`sap-check-abap` / `sap-fix-abap` 已移入 sap-dev-core —— 见上表。）*
 
 ### sap-migrate（S/4HANA 自定义代码迁移）
 
 `sap-cc-campaign`、`sap-cc-inventory`、`sap-cc-usage`、`sap-cc-analyze`、
-`sap-cc-triage`（含 `--learn` 飞轮）、`sap-cc-remediate`、`sap-cc-decommission`。
+`sap-cc-triage`（含 `--learn` 飞轮）、`sap-cc-remediate`、`sap-cc-decommission`、
+`sap-cc-cloud-readiness`、`sap-spau-triage`（SPAU 修改调整）、`sap-exit-modernize`（客户出口 → BAdI）。
 
-### sap-tcd（业务事务）
+### sap-project（功能 / 运维交付） —— 随附 `sap-consultant` 代理
 
-`sap-bp`、`sap-mm01`、`sap-va01`。
+- *测试数据 & 回归* — `sap-bp`、`sap-mm01`、`sap-va01`、`sap-tcd-chain`（无界面 O2C 单据链）、`sap-fi-post`、`sap-golden-master`、`sap-mass-load`、`sap-test-replay`
+- *事件 & 接口诊断* — `sap-doc-flow`、`sap-output-diagnose`、`sap-idoc`、`sap-rfc-monitor`、`sap-change-history`、`sap-sost`、`sap-workflow`、`sap-gateway-service`、`sap-interface-inventory`
+- *权限 & 用户* — `sap-auth-diagnose`、`sap-suim`、`sap-explain-role`、`sap-su01`（仅 DEV）、`sap-pfcg`、`sap-auth-requirements`
+- *发布 & 传输运维* — `sap-release-notes`、`sap-delivery-report`、`sap-transport-copies`、`sap-transport-sequencer`、`sap-refresh-verify`、`sap-cutover-runbook`、`sap-retrofit`、`sap-note-status`
+- *配置 & 定制* — `sap-config-compare`、`sap-img-find`、`sap-sm30`、`sap-translate`（SE63）、`sap-sm35`（批输入）
+- *健康 & 数据* — `sap-health-check`、`sap-data-volume`
+- *Fiori & 文档* — `sap-fiori-flp-audit`、`sap-user-guide`
 
 ---
 

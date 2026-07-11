@@ -1,0 +1,10 @@
+{
+  "schema": "sapdev.kpmeta/1",
+  "kp_version": "2026.07-seed",
+  "snapshot_date": "2026-07-11",
+  "source": "curated seed (PARTIAL) -- not a full SAP cloudification-repository export",
+  "forbidden_ruleset": "forbidden_statements.tsv",
+  "cloud_repo": "cloudification_repository.json",
+  "stale_after_days": 180,
+  "note": "Replace cloudification_repository.json with a full export of SAP's public cloudification repository to raise coverage. The scanner treats any object/API absent from the repo as 'unknown' (counted, never a blocker), so a partial pack never manufactures a false blocker -- but a TIER_1_READY object whose API refs are 'unknown' is reported PARTIAL coverage, never a clean pass. See README.md for the customer override + update path."
+}

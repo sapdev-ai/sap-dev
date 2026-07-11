@@ -1,0 +1,15 @@
+{
+  "schema": "sapdev.screenbaseline/1",
+  "vbs": "sap_replay_exec.vbs",
+  "captured_on": { "release": "S4HANA_1909", "kernel": "754", "date": "2026-07-11", "method": "static-seed" },
+  "note": "Generic interpreter - depends ONLY on the SAP GUI main-window generics below; TARGET screens are scenario DATA (guard program/dynpro per step), NOT baselined here. Scenario screen drift surfaces at run time as REPLAY_ERROR:GUARD -> re-record via /sap-gui-probe + /sap-test-replay init.",
+  "checkpoints": [
+    {
+      "id": "main_window_generics",
+      "reach": "attached session, any transaction",
+      "identity": { "program": "*", "dynpro": "*" },
+      "required_ids": [ "wnd[0]", "wnd[0]/sbar", "wnd[0]/tbar[0]/okcd" ],
+      "status": "pending_live"
+    }
+  ]
+}

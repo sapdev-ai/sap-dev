@@ -30,9 +30,9 @@ The plugin that owns `userConfig` is almost always `sap-dev-core`:
 Path resolution from a skill at `plugins/<plugin>/skills/<skill>/`:
 - For skills inside **`sap-dev-core`**: go 2 levels up from `<SKILL_DIR>` to
   the plugin root, then `settings.json` / `settings.local.json`.
-- For skills inside **`sap-gen-code`** or **`sap-tcd`** (cross-plugin):
-  go 3 levels up to `plugins/`, then into `sap-dev-core/`, then the
-  filename.
+- For skills inside **`sap-gen-code`**, **`sap-project`**, or
+  **`sap-migrate`** (cross-plugin): go 3 levels up to `plugins/`, then into
+  `sap-dev-core/`, then the filename.
 
 ## Per-connection exception (Phase 4.3+)
 

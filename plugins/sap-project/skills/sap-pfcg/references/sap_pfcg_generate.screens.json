@@ -1,0 +1,39 @@
+{
+  "schema": "sapdev.screenbaseline/1",
+  "vbs": "sap_pfcg_generate.vbs",
+  "captured_on": {
+    "release": "ECC6 731 / S4 identical",
+    "kernel": "",
+    "date": "2026-07-11",
+    "method": "drive"
+  },
+  "checkpoints": [
+    {
+      "id": "auth_tab",
+      "reach": { "note": "Change Role screen 300, Authorizations tab (tabpTAB5) after Role > Change (mbar/menu[0]/menu[1])" },
+      "identity": { "program": "SAPLPRGN_TREE", "dynpro": "0300" },
+      "required_ids": [
+        "wnd[0]/usr/tabsTABSTRIP1/tabpTAB5"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "auth_editor",
+      "reach": { "note": "Auth editor after Change Authorization Data (btnPROFIL1); may pass the SAPLSUPV template popup (wnd[1]/tbar[0]/btn[19])" },
+      "identity": { "program": "SAPMSSY0", "dynpro": "0120" },
+      "required_ids": [
+        "wnd[0]/tbar[1]/btn[17]"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "profile_name_popup",
+      "reach": { "note": "Profile-name popup after Generate (tbar[1]/btn[17])" },
+      "identity": { "program": "SAPLSUPRN", "dynpro": "0670" },
+      "required_ids": [
+        "wnd[1]/tbar[0]/btn[0]"
+      ],
+      "status": "pending_live"
+    }
+  ]
+}

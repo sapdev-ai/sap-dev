@@ -1,0 +1,13 @@
+table	area	header_table	date_field	arch_object	ecc_physical_cluster	note
+BALDAT	application_log	BALHDR	ALDATE	BC_SBAL		Application log data (grows silently when SLG1 logs are never cleaned)
+BALHDR	application_log		ALDATE	BC_SBAL		Application log header
+EDID4	idoc	EDIDC	CREDAT	IDOC	EDI40	IDoc data segments (CLUSTER on ECC -> physical size on EDI40)
+EDIDC	idoc		CREDAT	IDOC		IDoc control records
+CDPOS	change_docs	CDHDR	UDATE	CHANGEDOCU	CDCLS	Change document items (CLUSTER on ECC -> physical size on CDCLS)
+CDHDR	change_docs		UDATE	CHANGEDOCU		Change document headers
+DBTABLOG	table_logging		LOGDATE	BC_DBLOGS		Table change logs (rec/client logging) - often unbounded
+SWWLOGHIST	workflow		LOGHIST_DATE	WORKITEM		Workflow step history
+SWWWIHEAD	workflow		WI_CD	WORKITEM		Workflow work-item header
+EDIDS	idoc		CREDAT	IDOC		IDoc status records
+APQD	batch_input			BC_BDCLM	VARIDATA	Batch-input session data (CLUSTER)
+SRRELROLES	relations			SREL_LINKS		Object relationship roles (grows with archiving links)

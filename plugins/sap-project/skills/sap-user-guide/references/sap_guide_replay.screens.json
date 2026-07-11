@@ -1,0 +1,15 @@
+{
+  "schema": "sapdev.screenbaseline/1",
+  "vbs": "sap_guide_replay.vbs",
+  "captured_on": { "release": "S4HANA_1909", "kernel": "754", "date": "2026-07-11", "method": "static-seed" },
+  "note": "Single-action replay executor - target screens come from the recorded probe folder (per-step step_NN_post.json), NOT baselined here. It depends only on the main-window generic below; a scenario's screen drift surfaces at run time as REPLAY_DIVERGED pointing at a /sap-gui-probe re-record.",
+  "checkpoints": [
+    {
+      "id": "main_window_generic",
+      "reach": "attached session, replaying one recorded action",
+      "identity": { "program": "*", "dynpro": "*" },
+      "required_ids": [ "wnd[0]" ],
+      "status": "pending_live"
+    }
+  ]
+}

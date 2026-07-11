@@ -1,0 +1,4 @@
+ERROR: ambiguous type ZDTEL_3
+ERROR: missing reference table
+WARNING: naming deviation
+WARNING: check length

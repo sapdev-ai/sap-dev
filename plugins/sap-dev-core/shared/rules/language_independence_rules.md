@@ -312,7 +312,7 @@ checker's `LOCALE_LITERAL_EXEMPT` where they trip the curated-literal gate):
 Bulk migration completed via `tools/migrate_session_lock.py` — see that
 script's `RETROFITS` dict for the per-file boundaries (lock anchor +
 release anchor) used at retrofit time. **20 files retrofitted** across
-SE38 / SE37 / SE24 / SE11 / sap-tcd. The script is idempotent: re-running
+SE38 / SE37 / SE24 / SE11 / sap-project (test-data skills). The script is idempotent: re-running
 it is safe (skips files that already contain `TryLockSession`).
 
 Still pending (not retrofitted):
@@ -321,7 +321,7 @@ Still pending (not retrofitted):
 |---|---|
 | `sap-se91/references/sap_se91_check.vbs` (when extended to write) | Currently read-only; defer until it gains a write path |
 | `sap-se11/references/sap_se11_*_update.vbs` (9 files) | Not in the original explicit backlog. Same shape as the matching `*_create.vbs`; retrofit when next touched, or extend `tools/migrate_session_lock.py` `RETROFITS` and re-run |
-| `sap-tcd/skills/*/references/sap_*_update.vbs` (3 files) | Same as SE11 updates above |
+| `sap-project/skills/{sap-bp,sap-mm01,sap-va01}/references/sap_*_update.vbs` (3 files) | Same as SE11 updates above |
 
 To retrofit additional files:
 

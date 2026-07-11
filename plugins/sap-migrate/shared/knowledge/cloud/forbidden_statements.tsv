@@ -1,0 +1,29 @@
+rule_id	pattern	tier_impact	category	note
+NATIVE_SQL	^EXEC\s+SQL\b	T3	native-sql	Native SQL (EXEC SQL) is not permitted in ABAP Cloud; use Open SQL / released CDS.
+CALL_SCREEN	^CALL\s+SCREEN\b	T3	dynpro	Classic dynpro (CALL SCREEN) has no ABAP Cloud equivalent; UI is Fiori/RAP.
+SET_SCREEN	^SET\s+SCREEN\b	T3	dynpro	Dynpro flow control; not available in ABAP Cloud.
+LEAVE_SCREEN	^LEAVE\s+(TO\s+)?SCREEN\b	T3	dynpro	Dynpro flow control; not available in ABAP Cloud.
+CALL_TRANSACTION	^CALL\s+TRANSACTION\b	T3	dynpro-bdc	CALL TRANSACTION (screen/BDC) is not released for ABAP Cloud.
+LEAVE_TO_TRANSACTION	^LEAVE\s+TO\s+TRANSACTION\b	T3	dynpro-bdc	Transaction chaining is not available in ABAP Cloud.
+SUBMIT_REPORT	^SUBMIT\b	T3	submit	SUBMIT of a classic report is not permitted; expose logic as a released API/class.
+OPEN_DATASET	^OPEN\s+DATASET\b	T3	file-io	Application-server file access is not permitted in ABAP Cloud.
+READ_DATASET	^READ\s+DATASET\b	T3	file-io	Application-server file access is not permitted in ABAP Cloud.
+TRANSFER_DATASET	^TRANSFER\b	T3	file-io	TRANSFER writes to an application-server file; not permitted in ABAP Cloud.
+CLOSE_DATASET	^CLOSE\s+DATASET\b	T3	file-io	Application-server file access is not permitted in ABAP Cloud.
+DELETE_DATASET	^DELETE\s+DATASET\b	T3	file-io	Application-server file access is not permitted in ABAP Cloud.
+EXPORT_DB_CLUSTER	^EXPORT\b[^.]*\bTO\s+DATABASE\b	T3	cluster-db	INDX-style cluster persistence is not released for ABAP Cloud.
+IMPORT_DB_CLUSTER	^IMPORT\b[^.]*\bFROM\s+DATABASE\b	T3	cluster-db	INDX-style cluster persistence is not released for ABAP Cloud.
+SET_PF_STATUS	^SET\s+PF-STATUS\b	T3	classic-ui	Classic GUI status is a dynpro concept; no ABAP Cloud equivalent.
+SET_TITLEBAR	^SET\s+TITLEBAR\b	T3	classic-ui	Classic GUI titlebar is a dynpro concept; no ABAP Cloud equivalent.
+WRITE_LIST_SLASH	^WRITE\s*:?\s*/	T3	classic-list	Classic list output (WRITE / new-line marker) has no ABAP Cloud equivalent.
+WRITE_LIST_BARE	^WRITE\s+(?![^.]*\bTO\b)[A-Za-z(]	T3	classic-list	WRITE of an operand with no TO emits to a classic list (WRITE ... TO assignment is fine, and is not flagged).
+ULINE	^ULINE\b	T3	classic-list	Classic list drawing (ULINE); no ABAP Cloud equivalent.
+NEW_PAGE	^NEW-PAGE\b	T3	classic-list	Classic list paging (NEW-PAGE); no ABAP Cloud equivalent.
+NEW_LINE	^NEW-LINE\b	T3	classic-list	Classic list output (NEW-LINE); no ABAP Cloud equivalent.
+FORMAT_LIST	^FORMAT\b	T3	classic-list	Classic list formatting (FORMAT COLOR/INTENSIFIED); no ABAP Cloud equivalent.
+GENERATE_SUBPOOL	^GENERATE\s+SUBROUTINE\s+POOL\b	T3	dynamic-gen	Runtime code generation is not permitted in ABAP Cloud.
+INSERT_REPORT	^INSERT\s+REPORT\b	T3	dynamic-gen	Runtime program creation is not permitted in ABAP Cloud.
+UPDATE_DB	^UPDATE\s+[\w/]+\s+(SET|FROM)\b	T3	direct-dml	Direct UPDATE of a database table; ABAP Cloud requires released write APIs / EML.
+DELETE_DB	^DELETE\s+FROM\s+[\w/]+	T3	direct-dml	Direct DELETE FROM a database table; ABAP Cloud requires released write APIs / EML.
+INSERT_DB	^INSERT\s+(INTO\s+)?[\w/]+\s+(VALUES|FROM)\b	T3	direct-dml	Direct INSERT into a database table; ABAP Cloud requires released write APIs / EML.
+MODIFY_DB	^MODIFY\s+[\w/]+\s+FROM\s+(TABLE|@)	T3	direct-dml	Direct MODIFY of a database table; ABAP Cloud requires released write APIs / EML.

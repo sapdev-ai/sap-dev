@@ -1,0 +1,22 @@
+field	code	label	verdict	confidence
+# CWB note status decode map for /sap-note-status.
+# CWBNTSTAT (CWBNTCUST-NTSTATUS) and CWBPRSTAT (CWBNTCUST-PRSTATUS) are CHAR1 domains
+# with NO fixed values (probed S4D+EC2 2026-07-11: DD01L VALEXI blank, DD07L empty) --
+# SNOTE decodes them via program constants, not DDIC. This map is a curated best-effort
+# decode; the RAW code is always shown alongside. confidence: DOCUMENTED (standard SNOTE
+# status, stable across releases) | INFERRED (widely-used meaning, confirm in SNOTE) |
+# UNKNOWN (meaning not asserted -- verdict stays raw). Customer-overridable.
+NTSTATUS	I	Completely implemented	IMPLEMENTED	DOCUMENTED
+NTSTATUS	E	Incompletely implemented	INCOMPLETE	DOCUMENTED
+NTSTATUS	N	Can be implemented (not implemented)	NOT_IMPLEMENTED	DOCUMENTED
+NTSTATUS	O	Obsolete	OBSOLETE	DOCUMENTED
+NTSTATUS	V	Obsolete version implemented	OBSOLETE	DOCUMENTED
+NTSTATUS	A	Cannot be implemented	CANNOT_BE_IMPLEMENTED	INFERRED
+NTSTATUS	R	Can be reset / de-implementable	NOT_IMPLEMENTED	INFERRED
+NTSTATUS	-	Undefined implementation status	UNKNOWN_STATUS	DOCUMENTED
+PRSTATUS	E	Implemented completely	IMPLEMENTED	INFERRED
+PRSTATUS	N	Not implemented	NOT_IMPLEMENTED	INFERRED
+PRSTATUS	O	Obsolete	OBSOLETE	INFERRED
+PRSTATUS	V	Obsolete version	OBSOLETE	INFERRED
+PRSTATUS	U	Undefined	UNKNOWN_STATUS	INFERRED
+PRSTATUS	-	None / not set	UNKNOWN_STATUS	DOCUMENTED

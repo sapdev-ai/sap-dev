@@ -1,0 +1,52 @@
+# effort_bands.tsv - maps (program_type x complexity class) to a WIDE published effort band (person-days),
+# plus named drivers and DECLARED uplift factors. Override at {custom_url}\effort_bands.tsv.
+# kind=SPEC rows: keyed (program_type, class); kind=LEDGER rows: keyed (tier, object_type) for --ledger mode.
+# uplift_* are multipliers ON TOP of the build band (total = build * (1 + uplift_test + uplift_integration +
+# uplift_functional)); they are DECLARED guesses until calibration and always shown in the assumptions register.
+kind	key1	key2	band_low_pd	band_high_pd	uplift_test	uplift_integration	uplift_functional	drivers
+SPEC	report	XS	0.5	2	0.4	0.1	0.15	single report, few fields
+SPEC	report	S	2	5	0.4	0.15	0.2	report + selection screen + light logic
+SPEC	report	M	5	12	0.5	0.2	0.25	multi-table report, branching logic
+SPEC	report	L	12	28	0.5	0.3	0.3	complex report, many tables + interfaces
+SPEC	report	XL	28	60	0.6	0.4	0.35	large report suite, heavy integration
+SPEC	dialog	XS	1	3	0.5	0.15	0.2	tiny module pool
+SPEC	dialog	S	3	8	0.5	0.2	0.25	dialog transaction, few screens
+SPEC	dialog	M	8	20	0.6	0.25	0.3	multi-screen dialog + validations
+SPEC	dialog	L	20	45	0.6	0.35	0.35	complex dialog app
+SPEC	dialog	XL	45	90	0.7	0.45	0.4	large dialog suite
+SPEC	fm	XS	0.5	2	0.4	0.15	0.15	single function module
+SPEC	fm	S	2	5	0.4	0.2	0.2	FM group, light logic
+SPEC	fm	M	5	12	0.5	0.25	0.25	FM group + RFC + DDIC
+SPEC	fm	L	12	26	0.5	0.3	0.3	complex FM group / API
+SPEC	fm	XL	26	55	0.6	0.4	0.35	large API layer
+SPEC	interface	XS	1	4	0.5	0.3	0.2	single simple interface
+SPEC	interface	S	4	10	0.5	0.4	0.25	interface + mapping + error handling
+SPEC	interface	M	10	24	0.6	0.5	0.3	multi-partner interface
+SPEC	interface	L	24	50	0.6	0.6	0.35	complex integration
+SPEC	interface	XL	50	100	0.7	0.7	0.4	integration platform work
+SPEC	enhancement	XS	0.5	2	0.4	0.2	0.2	single exit/BAdI impl
+SPEC	enhancement	S	2	6	0.5	0.25	0.25	enhancement + logic
+SPEC	enhancement	M	6	14	0.5	0.3	0.3	multi-point enhancement
+SPEC	enhancement	L	14	30	0.6	0.35	0.35	complex enhancement set
+SPEC	enhancement	XL	30	65	0.6	0.45	0.4	pervasive enhancement
+SPEC	unknown	XS	0.5	3	0.5	0.2	0.25	type undetermined - band widened
+SPEC	unknown	S	3	9	0.5	0.25	0.3	type undetermined - band widened
+SPEC	unknown	M	9	22	0.6	0.3	0.35	type undetermined - band widened
+SPEC	unknown	L	22	48	0.6	0.4	0.4	type undetermined - band widened
+SPEC	unknown	XL	48	95	0.7	0.5	0.45	type undetermined - band widened
+LEDGER	R1	PROG	0.25	1	0.3	0.1	0.1	mechanical remediation (auto-fixable)
+LEDGER	R1	CLAS	0.25	1	0.3	0.1	0.1	mechanical remediation
+LEDGER	R1	FUGR	0.25	1	0.3	0.1	0.1	mechanical remediation
+LEDGER	R1	TABL	0.5	1.5	0.3	0.1	0.1	mechanical DDIC change
+LEDGER	R2	PROG	1	3	0.4	0.2	0.15	guided remediation with recipe
+LEDGER	R2	CLAS	1	3	0.4	0.2	0.15	guided remediation
+LEDGER	R2	FUGR	1	3	0.4	0.2	0.15	guided remediation
+LEDGER	R2	TABL	1	2.5	0.4	0.15	0.15	guided DDIC remediation
+LEDGER	R3	PROG	3	8	0.5	0.3	0.25	manual analysis + rework
+LEDGER	R3	CLAS	3	8	0.5	0.3	0.25	manual rework
+LEDGER	R3	FUGR	3	8	0.5	0.3	0.25	manual rework
+LEDGER	R3	TABL	2	6	0.5	0.25	0.25	manual DDIC rework
+LEDGER	R4	PROG	8	20	0.6	0.4	0.4	redesign / re-implement
+LEDGER	R4	CLAS	8	20	0.6	0.4	0.4	redesign
+LEDGER	R4	FUGR	8	20	0.6	0.4	0.4	redesign
+LEDGER	R4	TABL	5	14	0.6	0.35	0.4	data model redesign

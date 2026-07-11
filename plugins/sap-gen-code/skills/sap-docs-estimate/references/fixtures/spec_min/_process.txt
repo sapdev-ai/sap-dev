@@ -1,0 +1,3 @@
+Read source table ZFOO
+Loop over rows
+Write ALV grid

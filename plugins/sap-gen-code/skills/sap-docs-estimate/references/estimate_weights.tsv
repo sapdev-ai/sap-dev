@@ -1,0 +1,22 @@
+# estimate_weights.tsv - per-signal complexity weights for /sap-docs-estimate (deterministic scorer).
+# score = SUM(signal_count * weight). Override the whole file at {custom_url}\estimate_weights.tsv.
+# source_file = the spec work-folder file the signal is counted from; count_mode = how rows are counted.
+# Weights are rough structural proxies (person-day-ish); the bands they map to are deliberately WIDE and
+# every report is labelled uncalibrated until record-actuals + calibrate (v1.5) tighten them.
+signal	source_file	count_mode	weight	note
+ddic_domain	_domains.txt	lines	0.3	each domain defined
+ddic_dataelement	_dataElements.txt	lines	0.2	each data element
+ddic_table	_tables.txt	lines	1.5	each DDIC table/structure (high - activation + keys)
+ddic_tabledata	table_data_	files	0.5	each table_data_*.txt seed file
+process_step	_process.txt	steps	0.8	each numbered/bulleted process step
+process_branch	_process.txt	branch_kw	0.6	each branch keyword (if/case/when/loop/check/otherwise/else)
+screen_field	_selection_definition.txt	lines	0.15	each selection field
+screen_present	_selection_screen_layout.png	presence	2.0	a selection screen exists at all
+interface_point	_interface.txt	lines	2.5	each interface contract line (RFC/IDoc/file/proxy)
+file_mapping_field	_file_mapping_in.txt|_file_mapping_out.txt	lines	0.1	each mapped field (in+out)
+test_errmsg	_errorMsgs.txt	lines	0.3	each error message (each needs a provoking test)
+test_golden	_golden.txt	lines	0.5	each golden test case
+test_textelem	_textElements.txt	lines	0.05	each text element (translation surface)
+deps	_deps.txt	lines	0.4	each declared dependency
+ambiguity_error	check_result_ddic.txt|check_result_process.txt	err_rows	3.0	each ERROR row in a docs-check result (real rework risk)
+ambiguity_warning	check_result_ddic.txt|check_result_process.txt	warn_rows	1.0	each WARNING row in a docs-check result

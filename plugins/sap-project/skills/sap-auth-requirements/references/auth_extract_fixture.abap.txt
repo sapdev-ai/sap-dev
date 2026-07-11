@@ -1,0 +1,23 @@
+REPORT zauth_fixture.
+DATA lv_act TYPE activ_auth.
+CONSTANTS c_tcd TYPE tcode VALUE 'VA02'.
+* explicit literal
+AUTHORITY-CHECK OBJECT 'S_TCODE'
+  ID 'TCD' FIELD 'SE38'.
+lv_act = '02'.
+" explicit variable traced to literal
+AUTHORITY-CHECK OBJECT 'ZMY_OBJ'
+  ID 'ACTVT' FIELD lv_act
+  ID 'BUKRS' FIELD p_bukrs.
+* DUMMY + literal
+AUTHORITY-CHECK OBJECT 'S_DEVELOP' ID 'DEVCLASS' DUMMY ID 'ACTVT' FIELD '03'.
+CALL TRANSACTION 'VA01' WITHOUT AUTHORITY-CHECK.
+CALL TRANSACTION c_tcd.
+SUBMIT zreport_x WITH sel = 1 AND RETURN.
+SUBMIT (lv_dynprog) AND RETURN.
+OPEN DATASET lv_file FOR INPUT IN TEXT MODE.
+CALL FUNCTION 'BAPI_USER_GET_DETAIL' DESTINATION 'RFCDEST' EXPORTING username = sy-uname.
+UPDATE ztcust FROM ls_row.
+DELETE FROM mara WHERE matnr = lv_matnr.
+LOOP AT lt_tab INTO ls_row.
+ENDLOOP.

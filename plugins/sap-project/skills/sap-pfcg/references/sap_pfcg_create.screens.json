@@ -1,0 +1,32 @@
+{
+  "schema": "sapdev.screenbaseline/1",
+  "vbs": "sap_pfcg_create.vbs",
+  "captured_on": {
+    "release": "ECC6 731 / S4 identical",
+    "kernel": "",
+    "date": "2026-07-11",
+    "method": "drive"
+  },
+  "checkpoints": [
+    {
+      "id": "initial",
+      "reach": { "okcode": "/nPFCG" },
+      "identity": { "program": "SAPLPRGN_TREE", "dynpro": "0121" },
+      "required_ids": [
+        "wnd[0]/usr/ctxtAGR_NAME_NEU",
+        "wnd[0]/mbar/menu[0]/menu[0]/menu[0]"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "role_detail",
+      "reach": { "note": "Create Role detail screen 300 after Role > Create > Role (mbar/menu[0]/menu[0]/menu[0])" },
+      "identity": { "program": "SAPLPRGN_TREE", "dynpro": "0300" },
+      "required_ids": [
+        "wnd[0]/usr/txtS_AGR_TEXTS-TEXT",
+        "wnd[0]/tbar[0]/btn[11]"
+      ],
+      "status": "pending_live"
+    }
+  ]
+}

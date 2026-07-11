@@ -122,7 +122,7 @@ error_class map: `SU01_NON_DEV_REFUSED` / `SU01_SELF_TARGET_REFUSED` / `SU01_USE
 - **v1:** create / show / assign / unassign / lock / unlock / reset-password / delete /
   cleanup — all pure RFC, verified by re-read, DEV-only.
 - **Phase 2 (v1.5):** `verify <USER> --tcode` role-verification-by-execution (second
-  `/sap-login` profile as the test user → drive sap-tcd → SU53 evidence via
+  `/sap-login` profile as the test user → drive a test transaction (`/sap-bp`, `/sap-mm01`, `/sap-va01`) → SU53 evidence via
   `/sap-auth-diagnose su53`).
 - **DEV-only** hard refusal on a **production** client (T000 `CCCATEGORY=P`) or a
   non-modifiable client (`CCCORACTIV=3`); no override flag. Test/Customizing clients are

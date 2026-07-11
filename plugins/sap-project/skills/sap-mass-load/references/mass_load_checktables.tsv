@@ -1,0 +1,13 @@
+field	table	keyfield	note
+# Key-existence check tables for /sap-mass-load validate. Override at {custom_url}\mass_load_checktables.tsv.
+# A mapped input column whose target DDIC field is listed here is verified to exist before execute.
+MATNR	MARA	MATNR	material master
+WERKS	T001W	WERKS	plant
+KUNNR	KNA1	KUNNR	customer
+LIFNR	LFA1	LIFNR	vendor
+BUKRS	T001	BUKRS	company code
+ZTERM	T052	ZTERM	terms of payment
+MTART	T134	MTART	material type
+MEINS	T006	MSEHI	unit of measure
+VKORG	TVKO	VKORG	sales organization
+WAERS	TCURC	WAERS	currency

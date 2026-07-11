@@ -1,0 +1,22 @@
+{
+  "schema": "sapdev.screenbaseline/1",
+  "vbs": "sap_forms_sf_download.vbs",
+  "captured_on": { "release": "S4HANA_1909", "kernel": "754", "date": "2026-07-11", "method": "static-seed" },
+  "note": "SMARTFORMS Utilities->Download menu position is release-specific and MUST be recorded per release with /sap-gui-probe --record; until then the driver emits FORMS: NEEDS_RECORDING for the download-menu step rather than guessing. The initial-screen dependency (SSFSCREEN-FNAME) is seeded below.",
+  "checkpoints": [
+    {
+      "id": "smartforms_initial",
+      "reach": "/nSMARTFORMS entry screen",
+      "identity": { "program": "SAPMSSFO", "dynpro": "*" },
+      "required_ids": [ "wnd[0]/usr/ctxtSSFSCREEN-FNAME", "wnd[0]/tbar[0]/okcd" ],
+      "status": "pending_live"
+    },
+    {
+      "id": "utilities_download_menu",
+      "reach": "SMARTFORMS Utilities menu -> Download (recorded findById via %%MENU_PATH%%)",
+      "identity": { "program": "SAPMSSFO", "dynpro": "*" },
+      "required_ids": [ "wnd[1]/usr/ctxtDY_PATH", "wnd[1]/usr/ctxtDY_FILENAME" ],
+      "status": "pending_live"
+    }
+  ]
+}

@@ -103,6 +103,27 @@ Contract:
 | `CC_INVENTORY_EMPTY` / `CC_ANALYZE_EMPTY` / `CC_REMEDIATE_EMPTY` / `CC_TRIAGE_NO_FINDINGS` / `CC_LEARN_NO_FINDINGS` / `CC_USAGE_NO_INVENTORY` / `CC_DECOMMISSION_EMPTY` | Phase ran but had nothing to do — surfaced as a distinct class so "empty" is never mistaken for "done". |
 | `CC_DECOMMISSION_GATE_BLOCKED` | `/sap-cc-decommission plan` refused because `decommission_signoff` is not APPROVED (exit 3) — a physical retirement can never run unsigned. |
 | `CC_REMEDIATE_GATE_BLOCKED` | `/sap-cc-remediate record` held progress at a gate (exit 3): `dryrun_review` not APPROVED, or the ABAP-Unit gate held ≥1 object back from VERIFIED under `unit_gate=BLOCK`. |
+| `CC_NOT_S4` | `/sap-cc-cloud-readiness` refused a non-S/4 pinned profile (cloud distance applies only to S/4; ECC/EC2 is pointed to `/sap-cc-analyze`). Never probes or scans. |
+| `CC_SCOPE_EMPTY` | `/sap-cc-cloud-readiness scan` resolved an empty scope (no `decision=REMEDIATE` rows / empty `--objects`) — surfaced so "nothing to scan" is never rendered a clean result. |
+| `CC_KP_MISSING` | The cloud knowledge pack (`forbidden_statements.tsv` / `cloudification_repository.json`) could not be resolved under `{custom_url}\knowledge\cloud\` or the shipped pack. |
+| `CC_SOURCE_READ_FAILED` | Every **scannable** object in the scope was unreadable over RFC (infra error) — a partial failure instead stays per-object `COULD_NOT_CHECK` and the run continues. |
+| `CC_SCAN_BAD_INPUT` | The cloud download/scan helper rejected its inputs (missing scope/source dir, malformed coverage file). |
+
+## SPAU/SPDD triage (`/sap-spau-triage`)
+
+| Class | Meaning |
+|---|---|
+| `SPAU_WORKLIST_READ_FAILED` | The SMODILOG modification-log page failed mid-scan — no partial worklist TSV is registered (never a truncated list presented as complete). |
+| `SPAU_VERSION_READ_FAILED` | An `SVRS_*` version-directory / source call raised on a requested `--deep`/`inspect` entry — that entry degrades to `coverage=COULD_NOT_CHECK`, the scan still completes. |
+
+## Function-exit modernization (`/sap-exit-modernize`)
+
+| Class | Meaning |
+|---|---|
+| `EXIT_RESOLVE_FAILED` | The input does not resolve to a function exit — not an `EXIT_*` FM, or MODSAP has no `TYP='E'` row for it. |
+| `EXIT_NO_SAFE_TARGET` | /sap-enhancement-advisor found no released enhancement interface / new BAdI / classic BAdI — only implicit points or standard modification remain; translate/deploy refuse. |
+| `EXIT_TRANSLATE_BLOCKED` | translate was invoked after an `EXIT_NO_SAFE_TARGET` analyze verdict — nothing is generated. |
+| `EXIT_SCOPE_UNSUPPORTED` | The component is a screen (`S`) / table (`C_*`) / menu exit — out of the function-exit v1 scope, refused loud (v2). |
 
 ## Delivery assurance & quality skills
 
@@ -138,6 +159,46 @@ Contract:
 | `CDS_INSTALLER_MISSING` | Installer FM `Z_CDS_DDL_INSTALL` absent or not Remote-Enabled (FMODE != R) — run the Step 3 bootstrap. |
 | `CDS_ACTIVATE_FAILED` | DDL source saved but activation raised (syntax / DDIC error) — the generated SQL view was not produced. |
 
+## RAP generation (`/sap-gen-rap`)
+
+| Class | Meaning |
+|---|---|
+| `RAP_RELEASE_UNSUPPORTED` | Target SAP_BASIS < 7.54 or no RAP infrastructure (zero `R3TR BDEF` rows) — RAP does not exist here; the skill stops (use `/sap-gen-abap` + `/sap-gen-cds`). S/4-only by design. |
+| `RAP_MANUAL_STEP_PENDING` | `deploy` (v1.5) paused for an ADT-only step (BDEF paste / SRVD+SRVB create+publish) that was not confirmed done — the run ends verdict PARTIAL, never a false COMPLETE. *(Reserved: `deploy` is not yet implemented; `generate`/`package`/`verify` emit only `RAP_RELEASE_UNSUPPORTED`, `OBJECT_NAMING_VIOLATION`, `RFC_LOGON_FAILED`.)* |
+
+## Test plan generation (`/sap-gen-test-plan`)
+
+| Class | Meaning |
+|---|---|
+| `TESTPLAN_INPUT_INCOMPLETE` | Input parsed but a mandatory section is missing (`_process.txt` absent/empty, or a banner-less degraded file) — the plan cannot be derived faithfully. |
+| `TESTPLAN_RENDER_FAILED` | Template fill or xlsx emission failed (anthropic-skills:xlsx unavailable falls back to md with a WARN, not this class). |
+
+## IDoc handler generation (`/sap-gen-idoc-handler`)
+
+| Class | Meaning |
+|---|---|
+| `IDOC_TYPE_NOT_FOUND` | `IDOCTYPE_READ_COMPLETE` raised OBJECT_UNKNOWN / returned no segments for the basic type — cannot generate a decode loop. |
+| `IDOC_MAPPING_INVALID` | The mapping spec has an unknown `rule` token, a missing `target`, or references a segment not in the IDoc type's tree — fail loud, nothing generated. |
+| `IDOC_WIRING_INCOMPLETE` | `verify-wiring` verdict is UNWIRED/PARTIAL — the WE57/BD51/WE42 rows the handler needs are missing (the operator TODO list, not a hard failure). |
+
+## Git backend (`/sap-git`)
+
+| Class | Meaning |
+|---|---|
+| `GIT_NOT_INSTALLED` | `git` is not in PATH — the whole skill is unusable (fix: winget install Git.Git). |
+| `GIT_REPO_DIRTY` | The target repo worktree has uncommitted changes — snapshot/diff refuse rather than risk the user's edits (and to keep diff's `reset --hard` provably safe). |
+| `GIT_COMMIT_FAILED` | `git commit` returned non-zero (identity/hook/permission) — nothing was recorded. |
+| `SNAPSHOT_EMPTY_SCOPE` | The PACKAGE/TR/object-list resolved to zero serializable objects. |
+| `SNAPSHOT_SERIALIZE_FAILED` | The serializer aborted before writing the manifest (RFC drop mid-scan) — no partial snapshot is committed. |
+
+## Forms (`/sap-forms`)
+
+| Class | Meaning |
+|---|---|
+| `FORMS_NOT_FOUND` | The named SmartForm/SAPscript/Adobe form does not exist (STXFADM/TADIR probe empty) — exit 1, no artifact. |
+| `FORMS_EXPORT_INVALID` | A downloaded export could not be parsed (SmartForm XML not well-formed / not `<SMARTFORM>`-rooted, or an RSTXSCRP file with no ITF structures) — never a silent success. |
+| `FORMS_NAST_CHANNEL_REFUSED` | `test-print nast` on a non-print channel (NACHA!=1: EDI/mail/fax) without the typed `REPROCESS` confirmation, or a wildcard/missing OBJKY — refused (re-emitting real output is gated). |
+
 ## File transfer (`/sap-file-transfer`)
 
 | Class | Meaning |
@@ -166,6 +227,18 @@ Contract:
 | `VH_NO_VERSIONS` | The object's version store is empty (versions are written only on release/generation, so a freshly built object legitimately has none) — reported honestly, never rendered as "no differences". |
 | `VH_VERSION_NOT_FOUND` | A requested `VERSNO` is not in the version store (out of range) — `SVRS_GET_REPS_FROM_OBJECT` returned no source for it. |
 | `VH_TYPE_UNSUPPORTED` | The resolved object is a class / interface — per-include class versioning is v2; v1 supports programs / includes / function modules only. |
+
+## VOFM routines (`/sap-vofm`)
+
+| Class | Meaning |
+|---|---|
+| `VOFM_RANGE_VIOLATION` | `create`/`update` requested for a routine number outside the customer range (600–999) — editing an SAP-numbered routine is a modification, refused (no `--force`). |
+| `VOFM_SSCR_KEY_REQUIRED` | The VOFM object-key (SSCR) popup fired and the user declined to supply the key — the skill never sources/caches SSCR keys; the create aborts with the include name to register. |
+| `VOFM_REGEN_STALE` | Post-write authoritative verify found the routine registered (TFRM) + include active but **not** wired into the frame include — RV80HGEN did not take; fails loud, never a false green. |
+| `VOFM_TYPE_UNVERIFIED` | The requested `<type>` resolved to a `verified=NO` VOFM group (copy-requirements / data-transfer / output / …) whose frame + customer prefix are not yet confirmed — refused with the valid list, never guessed. |
+
+*(The read modes `list`/`check`/`explain` emit only the generic `RFC_LOGON_FAILED`. The
+first three classes above are emitted by the `create`/`update`/`regen` write modes — NEEDS_RECORDING, deferred to a `/sap-gui-probe` session — and are reserved here per the same-commit rule so the write phase adds no new taxonomy.)*
 
 ## Release management & delivery (sap-project)
 
@@ -288,12 +361,119 @@ Contract:
 | `HC_BASELINE_CORRUPT` | sap-health-check | The per-system baseline JSON could not be parsed (`{work_dir}\runtime\health\<SID>_<CLIENT>_baseline.json`) — fail loud rather than treat every finding as NEW; the operator reviews/repairs or `baseline reset`. |
 | `HC_NO_HISTORY` | sap-health-check | `--trend` (v1.5) invoked with fewer than 2 persisted snapshots — no fabricated dashboard; states that trend needs accumulated history. |
 
+## Post-refresh verify (sap-project)
+
+| Class | Emitted by | Meaning |
+|---|---|---|
+| `REFRESH_IDENTITY_MISMATCH` | sap-refresh-verify | The connected SID/client does not match the expectations config — the run aborts before auditing so it can never sign off the wrong (possibly production) box. |
+| `REFRESH_CONFIG_MISSING` | sap-refresh-verify | No expectations config for this (SID,client) — the skill refuses to audit rather than guess a landscape; `init-config` scaffolds one. |
+| `REFRESH_CONFIG_INVALID` | sap-refresh-verify | The config parsed but a required key is absent (`sid`/`client`/`expected_logsys`) — named in the message. |
+
+## Mass data load (sap-project)
+
+| Class | Emitted by | Meaning |
+|---|---|---|
+| `MASS_LOAD_CLIENT_REFUSED` | sap-mass-load | The target client is production (T000 CCCATEGORY='P') or T000 was unreadable — a NON-OVERRIDABLE stop (never assume non-production). |
+| `MASS_LOAD_TARGET_UNSUPPORTED` | sap-mass-load | The `--target-bapi` is not remote-enabled (FMODE blank) or not found — v1 refuses, pointing at the v1.5 wrapper path. |
+| `MASS_LOAD_MAPPING_UNAPPROVED` | sap-mass-load | execute was requested without an operator-approved mapping, or the mapping is empty. |
+| `MASS_LOAD_STALE_DRYRUN` | sap-mass-load | The input-file hash drifted from the snapshot, or the dry-run is missing / BLOCKED / older than the mapping. |
+| `MASS_LOAD_ROW_CAP` | sap-mass-load | Row count exceeds the `--max-rows` cap (default 1000 BAPI / 200 BDC) — re-confirm to raise. |
+
+## User guide (sap-project)
+
+| Class | Emitted by | Meaning |
+|---|---|---|
+| `GUIDE_INPUT_INVALID` | sap-user-guide | The input is not a usable /sap-gui-probe run folder (no `sap_gui_probe_run.json` / no `step_NN_action.json`). |
+| `REPLAY_DIVERGED` | sap-user-guide | During `--with-screens` replay the live screen (program/dynpro) did not match the recorded sidecar — the walkthrough stops with partial captures + an honesty note, never a wrong-screen action or a false-complete guide. |
+
+## Test replay (sap-project)
+
+| Class | Emitted by | Meaning |
+|---|---|---|
+| `REPLAY_SCENARIO_INVALID` | sap-test-replay | The scenario failed lint — unbound token, missing guard, or a tcode/checkpoint-field that does not exist. Nothing is replayed. |
+| `REPLAY_GUARD_MISMATCH` | sap-test-replay | After an action the screen identity (program/dynpro) did not reach the step's guard within the timeout — the replay broke, NOT a regression (distinct from a FAIL). |
+| `REPLAY_UNEXPECTED_POPUP` | sap-test-replay | A `wnd[1]` popup appeared whose discriminator is not in the step's `popups[]` — the interpreter refuses to guess a disposition. |
+| `REPLAY_CAPTURE_FAILED` | sap-test-replay | A message checkpoint's `MessageParameter` capture could not be read (GUI-patch variance) — the dependent later steps cannot run. |
+| `REPLAY_ASSERT_FAILED` | sap-test-replay | A checkpoint (field/message/table) did not match — a scenario FAIL (a real regression), kept strictly distinct from the REPLAY_* "replay broke" classes. |
+
+## Fiori FLP audit (sap-project)
+
+| Class | Emitted by | Meaning |
+|---|---|---|
+| `FLP_NOT_PRESENT` | sap-fiori-flp-audit | `/UI2/PB_C_PAGE` is absent — not an FLP-enabled system (or spaces-only); a loud stop, never an empty-but-green audit. |
+| `FLP_USER_NOT_FOUND` | sap-fiori-flp-audit | `user`/`full` target user does not exist (BAPI_USER + USR02 both empty). |
+| `FLP_CONTENT_READ_DENIED` | sap-fiori-flp-audit | An AGR_*/USR02 read was authorization-denied — the affected area renders COULD_NOT_CHECK + Coverage=PARTIAL, never silently empty. (The /UI2 Page-Builder persistence being un-RFC-readable is a technical COULD_NOT_CHECK carried in the findings, not this class.) |
+| `FLP_DATA_TRUNCATED` | sap-fiori-flp-audit | A paginated read hit `--max-rows` — the audit is marked PARTIAL rather than presented as complete. |
+
 ## Document flow (sap-project)
 
 | Class | Emitted by | Meaning |
 |---|---|---|
 | `DOCFLOW_NOT_FOUND` | sap-doc-flow | The (ALPHA-padded) document key is in no SD header (VBAK/LIKP/VBRK all empty) — no chain produced. |
 | `DOCFLOW_AMBIGUOUS_KEY` | sap-doc-flow | The same number exists as more than one category — interactive category prompt (or, in `--evidence-dir` reader mode, skipped-with-reason so /sap-diagnose does not block). |
+
+## Data volume (sap-project)
+
+| Class | Emitted by | Meaning |
+|---|---|---|
+| `DATAVOL_COUNT_FAILED` | sap-data-volume | `EM_GET_NUMBER_OF_ENTRIES` returned `-1` (table not found / count failed) for ≥1 in-scope table AND `--strict` is set — the row is tri-state COUNT_FAILED (never a fake 0); without `--strict` it is reported per-row and the run still succeeds. |
+| `DATAVOL_PARSE_FAILED` | sap-data-volume | The `--physical` RSTABLESIZE spool could not be parsed into a physical size (layout differs by DB/release) — the physical column degrades to COULD_NOT_CHECK; only fails the run under `--strict`. |
+
+## Cutover runbook (sap-project)
+
+| Class | Emitted by | Meaning |
+|---|---|---|
+| `CUTOVER_PARSE_FAILED` | sap-cutover-runbook (init) | The runbook parse produced zero steps, or commit failed a structural check (duplicate ids, unresolved dependency, no checkpoint) — the plan is not written. |
+| `CUTOVER_CURATION_PENDING` | sap-cutover-runbook (record/report/checkpoint) | An operational verb ran before `init --commit` — curation is a hard gate, not advice; nothing proceeds until the curated draft is committed. |
+| `CUTOVER_LEDGER_NOT_FOUND` | sap-cutover-runbook | No committed `cutover.json` exists at `{artifact_dir}\cutover\<id>\` for the given cutover id. |
+| `CUTOVER_STEP_UNKNOWN` | sap-cutover-runbook (record) | The step id (or event verb) is not in the committed plan — no event appended. |
+| `CUTOVER_DEP_CYCLE` | sap-cutover-runbook (commit) | The step dependency graph contains a cycle — the offending edge is named; the plan is refused. |
+| `CUTOVER_AUTO_NOT_ALLOWED` | sap-cutover-runbook (run, v2) | `run` was requested on a MANUAL / off-whitelist step or one whose `auto_ok` is not YES — auto-execution refused. |
+
+## Docs estimate (sap-gen-code)
+
+| Class | Emitted by | Meaning |
+|---|---|---|
+| `EST_INPUT_MISSING` | sap-docs-estimate (score/batch/ledger) | No scoreable inputs found in the work folder (or the triage/batch path is empty) — nothing estimated, no files written. |
+| `EST_LEDGER_IO` | sap-docs-estimate (record-actuals) | The estimate ledger is unreadable/corrupt or the append failed — no silent state change. |
+| `EST_ID_UNKNOWN` | sap-docs-estimate (record-actuals) | `record-actuals` referenced an `estimate_id` with no ESTIMATE row — refused, no orphan actual written. |
+| `EST_CALIBRATION_INSUFFICIENT` | sap-docs-estimate (calibrate, v1.5) | Fewer than `--min-pairs` (default 8) ESTIMATE↔ACTUAL pairs — calibration refused with an explicit cold-start message; no fake multipliers. |
+
+## Retrofit (sap-project)
+
+| Class | Emitted by | Meaning |
+|---|---|---|
+| `RETRO_LEDGER_IO` | sap-retrofit | The retrofit workspace/ledger is missing or unreadable (`{work_dir}\retrofit\<project>\` not initialized, or a bad `--workspace`). |
+| `RETRO_LEDGER_CONFLICT` | sap-retrofit (set-state) | A ledger state-machine violation — e.g. `apply`/`APPLIED` on a row that is not GREEN/APPROVED, or an unknown object/state. No transition applied. |
+| `RETRO_CLASSIFY_INCOMPLETE` | sap-retrofit (classify) | An evidence source (VRSD/E071) or /sap-compare could not be read mid-classify — the row stays HARVESTED rather than get a guessed verdict (never a false GREEN). |
+| `RETRO_APPLY_VERIFY_FAILED` | sap-retrofit (apply) | After deploying a GREEN object, the post-deploy /sap-compare re-check was not identical — the row is VERIFY_FAILED and the batch is marked FAILED, never silently green. |
+
+## Wave-3 skills (sap-project + sap-dev-core)
+
+| Class | Emitted by | Meaning |
+|---|---|---|
+| `NOTE_INPUT_INVALID` | sap-note-status | No/invalid note number (non-numeric or >10 digits) — nothing queried. |
+| `NOTE_NO_RFC_PROFILE` | sap-note-status | No saved profile has an RFC password / all target systems unreachable — matrix cannot be built. |
+| `WF_WI_NOT_FOUND` | sap-workflow (explain/act) | The workitem id does not exist in SWWWIHEAD. |
+| `WF_ACT_INVALID_STATE` | sap-workflow (act) | The requested verb is refused for the WI's state (restart needs ERROR; cancel refused on COMPLETED/CANCELLED; forward needs a dialog WI + --to) — refused BEFORE the confirm prompt. |
+| `WF_ACT_FAILED` | sap-workflow (act) | The WAPI call returned rc<>0, OR rc=0 but the authoritative SWWWIHEAD.WI_STAT re-read shows no change (never a false success). |
+| `WF_DEFINITION_NOT_FOUND` | sap-workflow (explain) | No active SWDSHEADER version for the WS task. |
+| `AUTHREQ_SOURCE_UNREADABLE` | sap-auth-requirements (derive) | Object source could not be read over RFC (and no --source-files given). |
+| `AUTHREQ_EXTRACT_FAILED` | sap-auth-requirements (derive) | The offline extractor produced no rows file. |
+| `SM35_RFC_UNAVAILABLE` | sap-sm35 (list) | RFC down — session list cannot be read (no silent empty list). |
+| `SM35_SESSION_NOT_FOUND` / `SM35_LOG_NOT_FOUND` / `SM35_PROCESS_TIMEOUT` / `SM35_RERUN_SOURCE_MISSING` | sap-sm35 | Session absent / no TemSe log / process poll exceeded --wait / rerun source BDC file absent (never reconstructs from APQD). |
+| `SOST_SELECTION_EMPTY` / `SOST_RESEND_FAILED` | sap-sost (resend, v1.5) | Resend selection resolved to 0 rows / the GUI resend did not flip the status on re-read. |
+| `IMG_LAYOUT_UNKNOWN` / `IMG_HARVEST_INCOMPLETE` / `IMG_CACHE_STALE` / `IMG_CACHE_MISSING` / `IMG_ACTIVITY_NOT_FOUND` / `IMG_LAUNCH_NO_TARGET` / `IMG_LAUNCH_FAILED` | sap-img-find | Harvest layout drift / core table 0 rows / cache older than TTL (WARN) / cache absent / activity not in cache / launch has no tcode+object (INFO) / launch nav failed. |
+| `TRANSLATE_EMPTY_SCOPE` / `TRANSLATE_LENGTH_OVERFLOW` / `TRANSLATE_VERIFY_MISMATCH` / `LXE_WRITE_FAILED` | sap-translate | Empty scope / a proposed translation exceeds the hard length (refused) / post-write RFC re-read differs / the LXE write FM failed. |
+| `SE14_DELETE_PATH_REFUSED` / `SE14_CONVERSION_RUNNING` / `SE14_QCM_DATA_AT_RISK` / `SE14_UNSUPPORTED_TABCLASS` / `SE14_ADJUST_FAILED` | sap-se14 | Delete-data variant refused (v1 no override) / running conversion blocks writes / QCM shadow holds data on release-lock / non-TRANSP table / adjust GUI failed. |
+| `GW_NOT_INSTALLED` / `GW_BACKEND_ONLY` / `GW_SERVICE_NOT_FOUND` / `GW_ERRLOG_GUI_ONLY` | sap-gateway-service | No Gateway hub / hub is on another system (IW_BEP only) / unknown service / SU_ERRLOG is not RFC-readable so errors need the GUI scrape. |
+| `SM30_NO_MAINT_DIALOG` / `SM30_TWO_STEP_UNSUPPORTED` / `SM30_CLUSTER_UNSUPPORTED` / `SM30_CLIENT_NOT_MODIFIABLE` / `SM30_DELETE_UNSUPPORTED` / `SM30_VERIFY_MISMATCH` / `SM30_NO_BASE_TABLE` / `PREREAD_UNFILTERED` | sap-sm30 | No TVDIR entry / two-step view (v1) / SM34 cluster / client locked / delete refused / post-write re-read delta / view has no base table / pre-read could not apply the view WHERE (WARN). |
+| `AUTH_CLIENT_NOT_MODIFIABLE` / `PFCG_ROLE_EXISTS` / `PFCG_VERIFY_MISMATCH` / `PFCG_GENERATE_FAILED` / `PFCG_NEEDS_RECORDING` | sap-pfcg | Client locked / create on an existing role / AGR_* re-read delta / SUPC left 0 auth rows / unknown PFCG/SUPC layout (never guess-click). |
+
+`NEEDS_RECORDING` (reused) covers the ships-unrecorded GUI legs of sap-sm35 (log scrape), sap-sost
+(resend), sap-img-find (SM30/SM34 launch), sap-translate (SE63), sap-se14 (adjust/unlock),
+sap-gateway-service (errors --deep), sap-sm30 (table-control), and sap-pfcg (create/menu/generate)
+until captured via `/sap-gui-probe --record`.
 
 Registered consumers: `/sap-log-analyze` (Top error_class section),
 `sap_error_hints.ps1 -Action record` (auto-record attribution), customer

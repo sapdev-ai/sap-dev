@@ -1,0 +1,33 @@
+{
+  "schema": "sapdev.screenbaseline/1",
+  "vbs": "sap_gateway_errlog_deep.vbs",
+  "captured_on": {
+    "release": "S/4HANA 1909",
+    "kernel": "754",
+    "date": "2026-07-11",
+    "method": "drive"
+  },
+  "checkpoints": [
+    {
+      "id": "errlog_monitor",
+      "reach": { "okcode": "/n/IWFND/ERROR_LOG" },
+      "identity": { "program": "/IWFND/SUTIL_LOG", "dynpro": "0100" },
+      "required_ids": [
+        "wnd[0]/usr/cntlGUI_AREA/shellcont/shell/shellcont[0]/shell",
+        "wnd[0]/usr/cntlGUI_AREA/shellcont/shell/shellcont[1]/shell",
+        "wnd[0]/tbar[1]/btn[6]"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "reselect_popup",
+      "reach": { "note": "press Re-Select wnd[0]/tbar[1]/btn[6] (F6) from errlog_monitor -> opens the 'Select Error Log Entries' modal (screen 200). Modal program is a best guess (/IWFND/SUTIL_LOG) -- confirm live via /sap-doctor --screens." },
+      "identity": { "program": "/IWFND/SUTIL_LOG", "dynpro": "0200" },
+      "required_ids": [
+        "wnd[1]/usr/ctxtIP_FDAT",
+        "wnd[1]/tbar[0]/btn[0]"
+      ],
+      "status": "pending_live"
+    }
+  ]
+}

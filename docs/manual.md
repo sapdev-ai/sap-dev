@@ -46,10 +46,10 @@ two standard interfaces SAP already ships:
 
 | Plugin | Skills | What it gives you |
 |---|---|---|
-| **sap-dev-core** | 52 + `abap-developer` agent | Login & connection store, transport handling, the ABAP Workbench (SE38/SE37/SE24/SE11/SE91/SE16N/SE01/…), the ATC quality gate, ABAP-Unit runner, activation, diagnosis (ST22/SM13/SM12/SLG1/SM37), report & background-job execution, PC ↔ app-server file transfer, delivery assurance, and **STMS** import to QAS/PRD. |
-| **sap-gen-code** | 8 | The **spec → ABAP** pipeline: read a design doc (Excel/Word/PDF), validate it, generate ABAP tailored to your project, and validate the result against the live system. |
-| **sap-migrate** | 7 + `cc-migration-engineer` agent | S/4HANA custom-code migration as a tracked campaign. |
-| **sap-tcd** | 3 | Business transaction automation: BP, MM01/02/03, VA01/02/03. |
+| **sap-dev-core** | 61 + `abap-developer` agent | Login & connection store, transport handling, the ABAP Workbench (SE38/SE37/SE24/SE11/SE91/SE16N/SE01/…), the ATC quality gate, ABAP-Unit runner, activation, diagnosis (ST22/SM13/SM12/SLG1/SM37), report & background-job execution, PC ↔ app-server file transfer, delivery assurance, and **STMS** import to QAS/PRD. |
+| **sap-gen-code** | 12 | The **spec → ABAP** pipeline: read a design doc (Excel/Word/PDF), validate it, generate ABAP tailored to your project, and validate the result against the live system. |
+| **sap-migrate** | 10 + `cc-migration-engineer` agent | S/4HANA custom-code migration as a tracked campaign. |
+| **sap-project** | 40 + `sap-consultant` agent | Functional / operations delivery: test data (BP, Material, Sales Order), authorizations & roles, incident & interface diagnosis, release & transport ops, config compare, health checks, regression testing. Absorbed the former sap-tcd skills. |
 
 ### What it is **not**
 
@@ -205,7 +205,7 @@ need them:
 ```text
 /plugin install sap-gen-code@sap-dev      # spec → ABAP generation
 /plugin install sap-migrate@sap-dev       # S/4HANA custom-code migration
-/plugin install sap-tcd@sap-dev           # BP / MM01 / VA01 automation
+/plugin install sap-project@sap-dev       # functional / operations delivery, test data
 ```
 
 > ℹ️ Install **one plugin per `/plugin install` command** — run the lines above
@@ -1074,6 +1074,15 @@ p50/p95 duration, top error classes).
 | `sap-call-bdc` / `sap-update-addon` | BDC replay / add-on table maintenance |
 | `sap-gui-probe` / `sap-gui-inspect` / `sap-gui-skill-scaffold` | Skill-authoring & GUI robustness tooling (`--record` captures by hand; golden-screen drift → `/sap-doctor --screens`) |
 | `sap-log-analyze` / `sap-error-kb` | Log summary / frequently-errors knowledge base |
+| `sap-se14` | Adjust / activate a DDIC database object (DB utility) |
+| `sap-sm12` | Lock-entry (SM12) inspection |
+| `sap-sql-query` | Read-only SQL SELECT over RFC |
+| `sap-version-history` | Repository-object version history |
+| `sap-git` | Serialize repository objects to a git working tree (deterministic snapshots) |
+| `sap-forms` | Inventory + parse SmartForms / SAPscript / Adobe forms |
+| `sap-vofm` | VOFM routines (requirements / formulas) |
+| `sap-scratch-run` | Run an ad-hoc ABAP snippet |
+| `sap-api-advisor` | Recommend the released API (BAPI / RFC / CDS) for a task |
 
 ### sap-gen-code (spec → ABAP)
 
@@ -1087,17 +1096,29 @@ p50/p95 duration, top error classes).
 | `sap-gen-abap-unit` | Generate ABAP Unit tests for an existing object and run them to green on the live system (seam analysis, bounded fix loop) |
 | `sap-gen-cds` | Generate + deploy a CDS view over RFC without ADT (classic DDL on 7.50–7.54, view entities on 7.55+) |
 | `sap-review-abap` | AI semantic + security code review of an ABAP object or local file (advisory) |
+| `sap-docs-estimate` | Estimate development effort from an extracted spec |
+| `sap-gen-idoc-handler` | Generate an inbound IDoc handler (process code + FM) |
+| `sap-gen-rap` | Generate a RAP business object (behaviour + projection) |
+| `sap-gen-test-plan` | Generate + RFC-validate a functional test plan |
 
 *(`sap-check-abap` / `sap-fix-abap` moved to sap-dev-core — see the table above.)*
 
 ### sap-migrate (S/4HANA custom-code migration)
 
 `sap-cc-campaign`, `sap-cc-inventory`, `sap-cc-usage`, `sap-cc-analyze`,
-`sap-cc-triage` (incl. `--learn` flywheel), `sap-cc-remediate`, `sap-cc-decommission`.
+`sap-cc-triage` (incl. `--learn` flywheel), `sap-cc-remediate`, `sap-cc-decommission`,
+`sap-cc-cloud-readiness`, `sap-spau-triage` (SPAU note adjustment),
+`sap-exit-modernize` (customer exit → BAdI).
 
-### sap-tcd (business transactions)
+### sap-project (functional / operations delivery) — ships the `sap-consultant` agent
 
-`sap-bp`, `sap-mm01`, `sap-va01`.
+- *Test data & regression* — `sap-bp`, `sap-mm01`, `sap-va01`, `sap-tcd-chain` (headless O2C chain), `sap-fi-post`, `sap-golden-master`, `sap-mass-load`, `sap-test-replay`
+- *Incident & interface diagnosis* — `sap-doc-flow`, `sap-output-diagnose`, `sap-idoc`, `sap-rfc-monitor`, `sap-change-history`, `sap-sost`, `sap-workflow`, `sap-gateway-service`, `sap-interface-inventory`
+- *Authorizations & users* — `sap-auth-diagnose`, `sap-suim`, `sap-explain-role`, `sap-su01` (DEV-only), `sap-pfcg`, `sap-auth-requirements`
+- *Release & transport ops* — `sap-release-notes`, `sap-delivery-report`, `sap-transport-copies`, `sap-transport-sequencer`, `sap-refresh-verify`, `sap-cutover-runbook`, `sap-retrofit`, `sap-note-status`
+- *Config & customizing* — `sap-config-compare`, `sap-img-find`, `sap-sm30`, `sap-translate` (SE63), `sap-sm35` (batch input)
+- *Health & data* — `sap-health-check`, `sap-data-volume`
+- *Fiori & docs* — `sap-fiori-flp-audit`, `sap-user-guide`
 
 ---
 

@@ -1,0 +1,10 @@
+type_key	grpze	description	frame_include	customer_prefix	standard_prefixes	form_pattern	customer_range	main_program	verified
+pricing-req	PBED	Pricing: requirement (KOBED/KOBEV)	RV61ANNN	RV61A	LV61A,FV61A	KOBED_###/KOBEV_###	600-999	SAPLV61A	YES
+cond-base	PFRA	Pricing: condition base-value formula	RV63ANNN	RV63A	FV63A,LV63A	FRM_KOND_BASIS_###	600-999	SAPLV61A	YES
+cond-value	PFRM	Pricing: condition value formula	RV64ANNN	RV64A	FV64A,LV64A	FRM_KONDI_WERT_###	600-999	SAPLV61A	YES
+copy-req-order	FBED	Copying requirement: sales document	FV45CNNN	RV45C	FV45C	KOBED_###	600-999	SAPFV45C	NO
+copy-data-order	FDAT	Data transfer: sales document	FV45CNNN	RV45C	FV45C	DATEN_KOPIEREN_###	600-999	SAPFV45C	NO
+copy-req-billing	ABED	Copying requirement: billing document	RV60ANNN	RV60A	FV60A	KOBED_###	600-999	SAPLV60A	NO
+copy-data-billing	ADAT	Data transfer: billing document	RV60ANNN	RV60A	FV60A	DATEN_KOPIEREN_###	600-999	SAPLV60A	NO
+copy-req-delivery	LBED	Copying requirement: delivery	RV50ANNN	RV50A	FV50A	KOBED_###	600-999	SAPLV50A	NO
+copy-data-delivery	LDAT	Data transfer: delivery	RV50ANNN	RV50A	FV50A	DATEN_KOPIEREN_###	600-999	SAPLV50A	NO

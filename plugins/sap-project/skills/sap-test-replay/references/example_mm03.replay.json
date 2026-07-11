@@ -1,0 +1,23 @@
+{
+  "schema": "sapdev.replay/1",
+  "name": "mm03_display_material",
+  "tcode": "MM03",
+  "recorded_release": "S4HANA_1909",
+  "recorded_on": "2026-07-11",
+  "case_id": "MM03_DISPLAY",
+  "steps": [
+    {
+      "action": { "id": "wnd[0]/usr/ctxtRMMG1-MATNR", "verb": "set", "value": "%%MATERIAL%%" },
+      "guard": { "program": "SAPLMGMM", "dynpro": "0060", "timeout_s": 30 }
+    },
+    {
+      "action": { "id": "wnd[0]/tbar[0]/btn[0]", "verb": "press", "value": "" },
+      "guard": { "program": "SAPLMGMM", "dynpro": "0070", "timeout_s": 30 },
+      "popups": [ { "discriminator": "wnd[1]/usr/tblSAPLMGMMTC_VIEW", "disposition": "confirm" } ],
+      "checkpoints": [
+        { "type": "message", "expected_id": "M3", "expected_number": "816", "expected_type": "S" },
+        { "type": "table", "table": "MARA", "field": "MATNR", "keyfield": "MATNR", "expected": "%%MATERIAL%%" }
+      ]
+    }
+  ]
+}

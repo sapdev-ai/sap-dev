@@ -1,0 +1,19 @@
+unit_type	field	max_len	note
+# Hard per-unit length limits for /sap-translate (SE63 silently truncates overlong entries).
+# On first run per system the DDIC-derived limits are cross-checked live via DDIF_FIELDINFO_GET;
+# a mismatch prefers the live value and warns. POOL_I uses the per-row harvested TEXTPOOL-LENGTH.
+POOL_R	title	70	program title (text pool id R)
+POOL_S	seltext	30	selection text (text pool id S)
+POOL_I	symbol	8	text symbol (id I) -- per-row harvested TEXTPOOL-LENGTH is authoritative
+POOL_H	heading	70	list heading (id H/T)
+MSG	text	73	message text (T100-TEXT)
+DTEL_DDTEXT	ddtext	60	data element long text
+DTEL_REPTEXT	reptext	55	data element heading
+DTEL_SCRTEXT_S	scrtext_s	10	field label short
+DTEL_SCRTEXT_M	scrtext_m	20	field label medium
+DTEL_SCRTEXT_L	scrtext_l	40	field label long
+TABL_DDTEXT	ddtext	60	table/structure description
+FIELD_DDTEXT	ddtext	60	direct-type field label (DD03T)
+DOMA_DDTEXT	ddtext	60	domain description
+DD07_DDTEXT	ddtext	60	domain fixed-value text
+VIEW_DDTEXT	ddtext	60	view description

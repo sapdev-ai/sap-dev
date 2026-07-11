@@ -1,0 +1,7 @@
+target	release_marker	severity	advisory
+# Semantic advisories keyed on (target BAPI, server_release_marker). Shown in the plan/execute gate.
+# release_marker '*' = any release. Override at {custom_url}\mass_load_target_advisories.tsv.
+BAPI_BUPA_CREATE_FROM_DATA	S4HANA_*	WARN	BP creation via BAPI is CVI-patchy on S/4 - prefer a BDC recording or the v2 GUI loop; proceed only with explicit acknowledgment
+BAPI_CUSTOMER_CHANGEFROMDATA1	*	WARN	covers central data only; company-code payment terms usually need an XD02 BDC recording
+BAPI_MATERIAL_SAVEDATA	*	INFO	requires paired X-structures (PLANTDATA/PLANTDATAX ...) - the mapping must set the X-flag for every changed field
+BAPI_SALESORDER_CREATEFROMDAT2	*	INFO	multi-item documents need --group-by (v1.5); v1 loads one order header per row only

@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Removed
+
+- **`sap-tcd` plugin deleted** (its deprecation cycle is complete). The three
+  test-data skills — `/sap-bp`, `/sap-mm01`, `/sap-va01` — have shipped
+  byte-identical in **`sap-project`** since the wave-1 scaffold; `sap-tcd` was a
+  DEPRECATED shim kept for one transition cycle. Removed the `plugins/sap-tcd/`
+  directory, its `marketplace.json` entry, and its references across the README,
+  installation guide, and EN/JA/ZH manuals (the plugin table / install list /
+  dir tree now list `sap-project` in its place). Marketplace counts drop to
+  **4 plugins / 122 skills**. Users on the old plugin: install `sap-project`
+  (the successor) and uninstall `sap-tcd`.
+
 ### Fixed
 
 - **`sap_login.vbs` no longer silently terminates the session on the

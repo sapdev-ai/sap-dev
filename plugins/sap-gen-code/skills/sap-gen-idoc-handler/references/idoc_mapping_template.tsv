@@ -1,0 +1,13 @@
+segment	segment_field	target	rule	sample_value	note
+# One row per IDoc-segment field you want mapped to the target BAPI. Fill and pass to
+# /sap-gen-idoc-handler generate <this-file> --idoctype <BASICTYPE> --bapi <BAPI_NAME>.
+#   segment       = IDoc segment type (e.g. E1MARAM) - must exist in the idoc type's tree
+#   segment_field = the field inside that segment (e.g. MATNR)
+#   target        = the BAPI parameter path it maps to (e.g. HEADDATA-MATERIAL)
+#   rule          = MOVE | CONST | FIXED | SKIP   (MOVE = copy; CONST/FIXED = literal in sample_value; SKIP = ignore)
+#   sample_value  = value used to seed the ABAP Unit test EDIDD (and the literal for CONST/FIXED)
+#   note          = free text for the reviewer
+E1MARAM	MATNR	HEADDATA-MATERIAL	MOVE	000000000000000023	material number
+E1MARAM	MTART	CLIENTDATA-MATL_TYPE	MOVE	FERT	material type
+E1MAKTM	SPRAS	MATERIALDESCRIPTION-LANGU	MOVE	E	description language
+E1MAKTM	MAKTX	MATERIALDESCRIPTION-MATL_DESC	MOVE	Test material	description text

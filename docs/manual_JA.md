@@ -47,10 +47,10 @@
 
 | プラグイン | スキル | 提供するもの |
 |---|---|---|
-| **sap-dev-core** | 52 + `abap-developer` エージェント | ログイン & 接続ストア、移送処理、ABAP ワークベンチ（SE38/SE37/SE24/SE11/SE91/SE16N/SE01/…）、ATC 品質ゲート、ABAP Unit ランナー、有効化、診断（ST22/SM13/SM12/SLG1/SM37）、レポート & バックグラウンドジョブ実行、PC ↔ アプリケーションサーバーのファイル転送、デリバリーアシュアランス、QAS/PRD への **STMS** インポート。 |
-| **sap-gen-code** | 8 | **仕様 → ABAP** パイプライン: 設計書（Excel/Word/PDF）の読み込み、検証、プロジェクトに合わせた ABAP 生成、実システムに対する生成結果の検証。 |
-| **sap-migrate** | 7 + `cc-migration-engineer` エージェント | S/4HANA カスタムコード移行を追跡可能なキャンペーンとして実施。 |
-| **sap-tcd** | 3 | 業務トランザクションの自動化: BP、MM01/02/03、VA01/02/03。 |
+| **sap-dev-core** | 61 + `abap-developer` エージェント | ログイン & 接続ストア、移送処理、ABAP ワークベンチ（SE38/SE37/SE24/SE11/SE91/SE16N/SE01/…）、ATC 品質ゲート、ABAP Unit ランナー、有効化、診断（ST22/SM13/SM12/SLG1/SM37）、レポート & バックグラウンドジョブ実行、PC ↔ アプリケーションサーバーのファイル転送、デリバリーアシュアランス、QAS/PRD への **STMS** インポート。 |
+| **sap-gen-code** | 12 | **仕様 → ABAP** パイプライン: 設計書（Excel/Word/PDF）の読み込み、検証、プロジェクトに合わせた ABAP 生成、実システムに対する生成結果の検証。 |
+| **sap-migrate** | 10 + `cc-migration-engineer` エージェント | S/4HANA カスタムコード移行を追跡可能なキャンペーンとして実施。 |
+| **sap-project** | 40 + `sap-consultant` エージェント | 機能・運用デリバリー: テストデータ（BP、品目、受注）、権限とロール、インシデント・インターフェース診断、リリース・移送運用、構成比較、ヘルスチェック、回帰テスト。旧 sap-tcd のスキルを統合。 |
 
 ### これは何**ではない**か
 
@@ -208,7 +208,7 @@ SAP Service Marketplace から自分でダウンロードしてください。**
 ```text
 /plugin install sap-gen-code@sap-dev      # spec → ABAP generation
 /plugin install sap-migrate@sap-dev       # S/4HANA custom-code migration
-/plugin install sap-tcd@sap-dev           # BP / MM01 / VA01 automation
+/plugin install sap-project@sap-dev       # functional / operations delivery, test data
 ```
 
 > ℹ️ **`/plugin install` コマンド 1 つにつき 1 プラグイン** をインストールしてください —
@@ -1082,6 +1082,15 @@ p50/p95 の所要時間、上位エラークラス）。
 | `sap-call-bdc` / `sap-update-addon` | BDC 再生 / アドオンテーブルメンテナンス |
 | `sap-gui-probe` / `sap-gui-inspect` / `sap-gui-skill-scaffold` | スキル作成 & GUI 堅牢性ツール（`--record` は手動キャプチャ、ゴールデンスクリーン差分 → `/sap-doctor --screens`）|
 | `sap-log-analyze` / `sap-error-kb` | ログ要約 / 頻出エラーナレッジベース |
+| `sap-se14` | DDIC データベースオブジェクトの調整 / 有効化（DB ユーティリティ） |
+| `sap-sm12` | ロックエントリ（SM12）の確認 |
+| `sap-sql-query` | RFC 経由の読み取り専用 SQL SELECT |
+| `sap-version-history` | リポジトリオブジェクトのバージョン履歴 |
+| `sap-git` | リポジトリオブジェクトを git 作業ツリーへシリアライズ（決定的スナップショット） |
+| `sap-forms` | SmartForms / SAPscript / Adobe フォームのインベントリ + 解析 |
+| `sap-vofm` | VOFM ルーチン（要件 / 数式） |
+| `sap-scratch-run` | アドホック ABAP スニペットを実行 |
+| `sap-api-advisor` | タスクに適したリリース済み API（BAPI / RFC / CDS）を推奨 |
 
 ### sap-gen-code（仕様 → ABAP）
 
@@ -1095,17 +1104,28 @@ p50/p95 の所要時間、上位エラークラス）。
 | `sap-gen-abap-unit` | 既存オブジェクトの ABAP Unit テストを生成し、ライブシステム上でグリーンになるまで実行（シーム分析、上限付き修正ループ） |
 | `sap-gen-cds` | ADT なしで CDS ビューを RFC 経由で生成・デプロイ（7.50–7.54 はクラシック DDL、7.55+ はビューエンティティ） |
 | `sap-review-abap` | ABAP オブジェクト / ローカルファイルの AI セマンティック + セキュリティレビュー（助言のみ） |
+| `sap-docs-estimate` | 抽出した仕様から開発工数を見積り |
+| `sap-gen-idoc-handler` | インバウンド IDoc ハンドラーを生成（処理コード + FM） |
+| `sap-gen-rap` | RAP ビジネスオブジェクトを生成（動作 + 投影ビュー） |
+| `sap-gen-test-plan` | 機能テスト計画を生成 + RFC で検証 |
 
 *（`sap-check-abap` / `sap-fix-abap` は sap-dev-core へ移動 — 上の表を参照。）*
 
 ### sap-migrate（S/4HANA カスタムコード移行）
 
 `sap-cc-campaign`、`sap-cc-inventory`、`sap-cc-usage`、`sap-cc-analyze`、
-`sap-cc-triage`（`--learn` フライホイール含む）、`sap-cc-remediate`、`sap-cc-decommission`。
+`sap-cc-triage`（`--learn` フライホイール含む）、`sap-cc-remediate`、`sap-cc-decommission`、
+`sap-cc-cloud-readiness`、`sap-spau-triage`（SPAU ノート調整）、`sap-exit-modernize`（顧客拡張 → BAdI）。
 
-### sap-tcd（業務トランザクション）
+### sap-project（機能 / 運用デリバリー） — `sap-consultant` エージェントを同梱
 
-`sap-bp`、`sap-mm01`、`sap-va01`。
+- *テストデータ & 回帰* — `sap-bp`、`sap-mm01`、`sap-va01`、`sap-tcd-chain`（ヘッドレス O2C チェーン）、`sap-fi-post`、`sap-golden-master`、`sap-mass-load`、`sap-test-replay`
+- *インシデント & インターフェース診断* — `sap-doc-flow`、`sap-output-diagnose`、`sap-idoc`、`sap-rfc-monitor`、`sap-change-history`、`sap-sost`、`sap-workflow`、`sap-gateway-service`、`sap-interface-inventory`
+- *権限 & ユーザー* — `sap-auth-diagnose`、`sap-suim`、`sap-explain-role`、`sap-su01`（DEV 限定）、`sap-pfcg`、`sap-auth-requirements`
+- *リリース & 移送運用* — `sap-release-notes`、`sap-delivery-report`、`sap-transport-copies`、`sap-transport-sequencer`、`sap-refresh-verify`、`sap-cutover-runbook`、`sap-retrofit`、`sap-note-status`
+- *構成 & カスタマイジング* — `sap-config-compare`、`sap-img-find`、`sap-sm30`、`sap-translate`（SE63）、`sap-sm35`（バッチインプット）
+- *ヘルス & データ* — `sap-health-check`、`sap-data-volume`
+- *Fiori & ドキュメント* — `sap-fiori-flp-audit`、`sap-user-guide`
 
 ---
 

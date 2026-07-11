@@ -1,0 +1,20 @@
+# runbook_column_map.tsv - synonym map from customer runbook column headings to the canonical
+# cutover step schema. First column = canonical field; remaining = case-insensitive heading
+# synonyms (matched as a normalized, punctuation-stripped substring). Override the whole file
+# at {custom_url}\runbook_column_map.tsv. Add JP/DE headings as extra synonyms per row.
+canonical	synonyms
+id	step	step no	no	nr	seq	task id	#	item
+phase	phase	stage	wave	block	section	group
+text	task	description	activity	action	step description	details	what
+step_type	type	kind	category	step type
+system	system	sid	target	target system	env	environment
+owner	owner	who	responsible	team	assignee	resource
+planned_start	planned start	start	plan start	scheduled	planned	eta start
+planned_duration	duration	dur	minutes	mins	elapsed	planned duration	est
+depends_on	depends	depends on	pred	predecessor	after	dependency	prereq
+checkpoint	checkpoint	gate	milestone	decision point	quality gate
+auto_ok	auto	automate	auto ok	auto-exec	can automate
+trkorr	transport	tr	trkorr	request	transport request
+jobname	job	jobname	job name	batch job
+table	table	tablename	table name
+where	where	filter	condition	selection

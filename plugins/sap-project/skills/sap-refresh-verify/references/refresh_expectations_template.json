@@ -1,0 +1,14 @@
+{
+  "_help": "Post-refresh expectations for ONE (SID,client). Copy to {custom_url}\\refresh_expectations_<SID>_<CLIENT>.json and fill. The skill REFUSES to audit without this (it never guesses a landscape).",
+  "sid": "<SID>",
+  "client": "<CLIENT>",
+  "expected_logsys": "<SIDCLNT###  the CORRECT post-BDLS logical system for this client>",
+  "expected_client_role": "T",
+  "prd_host_patterns": ["<prd-app-server-hostname-substring>", "<prd-fqdn-substring>"],
+  "prd_logsys_patterns": ["<PRDCLNT###>"],
+  "rfc_allow": ["<destinations that legitimately point at PRD, exact names>"],
+  "job_allow": ["SAP_*", "BR_*", "RDDIMPDP*"],
+  "user_allow": ["DDIC", "SAP*", "<named service/admin users allowed to stay unlocked>"],
+  "lock_policy": "ALL_DIALOG_LOCKED",
+  "queue_backlog_is": "FAIL"
+}

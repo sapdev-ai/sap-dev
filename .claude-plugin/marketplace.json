@@ -11,8 +11,8 @@
   "metadata": {
     "version": "0.7.2",
     "last_updated": "2026-07-09",
-    "total_plugins": 5,
-    "total_skills": 97,
+    "total_plugins": 4,
+    "total_skills": 123,
     "categories": [
       "tooling"
     ]
@@ -44,7 +44,9 @@
         "./skills/sap-file-transfer",
         "./skills/sap-fix-abap",
         "./skills/sap-fix-incident",
+        "./skills/sap-forms",
         "./skills/sap-function-group",
+        "./skills/sap-git",
         "./skills/sap-gui-inspect",
         "./skills/sap-gui-probe",
         "./skills/sap-gui-skill-scaffold",
@@ -58,6 +60,7 @@
         "./skills/sap-scratch-run",
         "./skills/sap-se01",
         "./skills/sap-se11",
+        "./skills/sap-se14",
         "./skills/sap-se16n",
         "./skills/sap-se19",
         "./skills/sap-se21",
@@ -79,6 +82,7 @@
         "./skills/sap-transport-request",
         "./skills/sap-update-addon",
         "./skills/sap-version-history",
+        "./skills/sap-vofm",
         "./skills/sap-where-used-list"
       ],
       "agents": [
@@ -141,11 +145,15 @@
       "skills": [
         "./skills/sap-docs-check",
         "./skills/sap-docs-convert",
+        "./skills/sap-docs-estimate",
         "./skills/sap-docs-extract",
         "./skills/sap-docs-layout",
         "./skills/sap-gen-abap",
         "./skills/sap-gen-abap-unit",
         "./skills/sap-gen-cds",
+        "./skills/sap-gen-idoc-handler",
+        "./skills/sap-gen-rap",
+        "./skills/sap-gen-test-plan",
         "./skills/sap-review-abap"
       ],
       "version": "0.7.2",
@@ -196,13 +204,35 @@
         "./skills/sap-config-compare",
         "./skills/sap-transport-sequencer",
         "./skills/sap-health-check",
-        "./skills/sap-doc-flow"
+        "./skills/sap-doc-flow",
+        "./skills/sap-data-volume",
+        "./skills/sap-cutover-runbook",
+        "./skills/sap-retrofit",
+        "./skills/sap-note-status",
+        "./skills/sap-workflow",
+        "./skills/sap-refresh-verify",
+        "./skills/sap-auth-requirements",
+        "./skills/sap-sm35",
+        "./skills/sap-fiori-flp-audit",
+        "./skills/sap-sost",
+        "./skills/sap-img-find",
+        "./skills/sap-translate",
+        "./skills/sap-mass-load",
+        "./skills/sap-gateway-service",
+        "./skills/sap-sm30",
+        "./skills/sap-test-replay",
+        "./skills/sap-pfcg",
+        "./skills/sap-user-guide"
+      ],
+      "agents": [
+        "./agents/sap-consultant.md"
       ],
       "version": "0.7.2",
       "category": "tooling",
       "keywords": [
         "authorizations",
         "business-partner",
+        "consultant-agent",
         "config-compare",
         "functional",
         "idoc",
@@ -220,30 +250,6 @@
       "license": "GPL-3.0"
     },
     {
-      "name": "sap-tcd",
-      "description": "DEPRECATED — merged into the sap-project plugin. Its skills (/sap-bp, /sap-mm01, /sap-va01) now ship in sap-project; install sap-project instead. This entry remains for a transition period and will be removed in a future release. NOTE: if you have BOTH sap-tcd and sap-project installed you will see duplicate skill names (/sap-bp, /sap-mm01, /sap-va01) — uninstall sap-tcd to resolve. Requires sap-dev-core.",
-      "source": "./plugins/sap-tcd/",
-      "skills": [
-        "./skills/sap-bp",
-        "./skills/sap-mm01",
-        "./skills/sap-va01"
-      ],
-      "version": "0.7.2",
-      "category": "tooling",
-      "keywords": [
-        "bp",
-        "business-partner",
-        "material-master",
-        "mm01",
-        "sales-order",
-        "sap",
-        "transaction",
-        "va01",
-        "vbscript"
-      ],
-      "license": "GPL-3.0"
-    },
-    {
       "name": "sap-migrate",
       "description": "S/4HANA custom-code migration engine. Runs a brownfield custom-code conversion as a tracked campaign: /sap-cc-campaign owns the campaign workspace, state ledger, dashboard, and next-step orchestration; downstream skills inventory custom (Z/Y) objects, flag unused code for decommission from usage data, run the S/4HANA-readiness ATC, triage findings into remediation tiers, and auto-remediate mechanical changes on a sandbox. Companion to sap-dev-core (install that first). Keywords: S/4HANA migration, custom code migration, brownfield conversion, ATC S4HANA_READINESS, simplification database, decommission, SPDD, SPAU, remediation campaign",
       "source": "./plugins/sap-migrate/",
@@ -254,7 +260,10 @@
         "./skills/sap-cc-analyze",
         "./skills/sap-cc-triage",
         "./skills/sap-cc-remediate",
-        "./skills/sap-cc-decommission"
+        "./skills/sap-cc-decommission",
+        "./skills/sap-spau-triage",
+        "./skills/sap-exit-modernize",
+        "./skills/sap-cc-cloud-readiness"
       ],
       "agents": [
         "./agents/cc-migration-engineer.md"

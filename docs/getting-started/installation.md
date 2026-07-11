@@ -47,7 +47,7 @@ environment) and prints an actionable FIX per failing check.
 /plugin install sap-dev-core@sap-dev   # foundation (required)
 /plugin install sap-gen-code@sap-dev   # spec -> ABAP generation (optional)
 /plugin install sap-migrate@sap-dev    # S/4HANA custom-code migration (optional)
-/plugin install sap-tcd@sap-dev        # BP / MM01 / VA01 automation (optional)
+/plugin install sap-project@sap-dev    # functional / operations delivery, test data (optional)
 ```
 
 > Claude Code does not currently accept several plugins in a single `/plugin install`,
@@ -217,7 +217,7 @@ Companion to `sap-dev-core` (install that first). Ships the `cc-migration-engine
 | `sap-cc-remediate` | Remediates triaged R1 objects on the sandbox only, after a mandatory dry-run review — the one sap-migrate skill that writes to SAP |
 | `sap-cc-decommission` | EXECUTES the retirement of unused custom objects a campaign flagged — physically deletes behind a hard signed gate and a per-object safety chain (`plan` builds the worklist, `apply` deletes); `/sap-cc-usage` only flags |
 
-### Business Process Automation (`sap-tcd`)
+### Business Process Automation (`sap-project`)
 
 | Skill | Description |
 |-------|-------------|

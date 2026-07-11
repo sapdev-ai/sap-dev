@@ -1,0 +1,11 @@
+{
+  "_comment": "Thresholds for /sap-cutover-runbook checkpoint --health. Override at {custom_url}\\cutover_health.json. Each probe: warn/crit row-count thresholds. A count >= crit -> HIGH finding; >= warn -> MEDIUM; else INFO. An unreachable probe is COULD_NOT_CHECK and caps the verdict at GO_WITH_WARNINGS.",
+  "dumps":        { "warn": 1,   "crit": 20,   "label": "ABAP short dumps since cutover start (SNAP)" },
+  "updates":      { "warn": 50,  "crit": 500,  "label": "pending update records (VBHDR)" },
+  "qrfc_in":      { "warn": 1,   "crit": 100,  "label": "inbound qRFC queue entries (TRFCQIN)" },
+  "qrfc_out":     { "warn": 1,   "crit": 100,  "label": "outbound qRFC queue entries (TRFCQOUT)" },
+  "trfc":         { "warn": 1,   "crit": 200,  "label": "pending/failed tRFC LUWs (ARFCSSTATE)" },
+  "batch_input":  { "warn": 1,   "crit": 50,   "label": "batch-input sessions (APQI)" },
+  "locks":        { "warn": 20,  "crit": 200,  "label": "enqueue locks (ENQUE_READ)" },
+  "imports":      { "warn": 1,   "crit": 1,    "label": "transport imports running (TRBAT)" }
+}
