@@ -1,0 +1,58 @@
+{
+  "schema": "sapdev.screenbaseline/1",
+  "vbs": "sap_se16h_agg.vbs",
+  "captured_on": {
+    "release": "S4HANA_1909",
+    "kernel": "754",
+    "date": "2026-07-11",
+    "method": "live"
+  },
+  "checkpoints": [
+    {
+      "id": "initial",
+      "reach": { "okcode": "/nSE16H" },
+      "identity": { "program": "SAPLSE16N", "dynpro": "100" },
+      "required_ids": [
+        "wnd[0]/tbar[0]/okcd",
+        "wnd[0]/usr/ctxtGD-TAB",
+        "wnd[0]/usr/txtGD-MAX_LINES",
+        "wnd[0]/usr/tblSAPLSE16NSELFIELDS_TC",
+        "wnd[0]/tbar[1]/btn[8]"
+      ],
+      "status": "captured"
+    },
+    {
+      "id": "field_list_outline",
+      "reach": { "note": "field list + outline controls populated after Enter on table name; the [col,row] cell ids below are the row-0 representatives of the columns the VBS drives -- higher rows are reached by scrolling the TC verticalScrollbar (verified live to 30 rows)" },
+      "identity": { "program": "SAPLSE16N", "dynpro": "100" },
+      "required_ids": [
+        "wnd[0]/usr/tblSAPLSE16NSELFIELDS_TC/txtGS_SELFIELDS-FIELDNAME[13,0]",
+        "wnd[0]/usr/tblSAPLSE16NSELFIELDS_TC/chkGS_SELFIELDS-GROUP_BY[8,0]",
+        "wnd[0]/usr/tblSAPLSE16NSELFIELDS_TC/cmbGS_SELFIELDS-AGGREGATE[12,0]",
+        "wnd[0]/usr/tblSAPLSE16NSELFIELDS_TC/ctxtGS_SELFIELDS-LOW[2,0]"
+      ],
+      "status": "captured"
+    },
+    {
+      "id": "result_grid",
+      "reach": { "note": "grouped result ALV after Enter (PAI) + F8 execute (tbar[1]/btn[8]); read via GridView ColumnOrder + GetCellValue -- LINE_INDEX column is the implicit per-group count" },
+      "identity": { "program": "SAPLSE16N", "dynpro": "200" },
+      "required_ids": [
+        "wnd[0]/usr/cntlRESULT_LIST/shellcont/shell",
+        "wnd[0]/sbar"
+      ],
+      "status": "captured"
+    },
+    {
+      "id": "multi_select_popup",
+      "reach": { "note": "multi-value FILTER popup via btnPUSH on a criteria row (wnd[1]); shares SE16N's SAPLSE16NMULTI_TC control set. Dependency documented; not exercised in the aggregation drive runs, so left pending_live." },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[1]/usr/tblSAPLSE16NMULTI_TC/ctxtGS_MULTI_SELECT-LOW[1,0]",
+        "wnd[1]/tbar[0]/btn[0]",
+        "wnd[1]/tbar[0]/btn[8]"
+      ],
+      "status": "pending_live"
+    }
+  ]
+}

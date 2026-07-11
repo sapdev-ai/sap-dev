@@ -30,8 +30,11 @@ Task: $ARGUMENTS
 
 **Mode dispatch.** If the first token is `snapshot`, go to **Snapshot Modes**
 (below): `save` runs the normal query flow (Steps 0–6) then captures the result;
-`diff` / `list` are pure-local and skip the SAP query. Any other first token is
-the **normal query flow** (Steps 0–6, default — unchanged).
+`diff` / `list` are pure-local and skip the SAP query. If the first token is
+`agg`, go to **Aggregation Mode (SE16H)** — server-side GROUP BY + MIN/MAX/AVG +
+per-group count, a separate SAP flow (transaction SE16H) that does NOT run
+Steps 3–6. Any other first token is the **normal query flow** (Steps 0–6,
+default — unchanged).
 
 ---
 
@@ -42,6 +45,7 @@ the **normal query flow** (Steps 0–6, default — unchanged).
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/skill_operating_rules.md` | Mandatory operating rules |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/language_independence_rules.md` | GUI-scripting language independence — identify by component ID + DDIC field name, status-bar checks via `MessageType` codes (S/W/E/I/A), VKey instead of menu-text, no branching on `.Text`/`.Tooltip`/window titles |
 | `<SKILL_DIR>/references/sap_se16n_snapshot.ps1` | Snapshot `save`/`diff`/`list` (pure-local); the diff delegates to the shared keyed-diff engine. |
+| `<SKILL_DIR>/references/sap_se16h_agg.vbs` | `agg` mode — drives SE16H (program `SAPLSE16N`, advanced screen) for server-side GROUP BY + MIN/MAX/AVG; reads the grouped ALV via the GridView API (no export dialog). Tokens: `%%TABLE_NAME%%`, `%%PARAMS_FILE%%`, `%%OUTPUT_FILE%%`, `%%MAX_GROUPS%%`, `%%MIN_COUNT%%`, `%%SESSION_PATH%%`, `%%ATTACH_LIB_VBS%%`. |
 | `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_keyed_diff_lib.ps1` | The ONE keyed row-diff engine (`Get-SapKeyedDiff` / `Write-SapKeyedDiffTsv`), shared with /sap-config-compare + /sap-compare `--table-content`. |
 
 ---
@@ -323,7 +327,88 @@ Surface the `KEYED_DIFF: added=.. removed=.. changed=.. same=..` line and the `d
 powershell -NoProfile -ExecutionPolicy Bypass -File "<SKILL_DIR>\references\sap_se16n_snapshot.ps1" -Action list -SnapshotRoot "{SNAP_ROOT}"
 ```
 
-> **SE16H aggregation (`agg`) — deferred.** The planned `agg <TABLE> --group-by --sum --count` mode drives transaction **SE16H** (`RK_SE16H`, present on both releases) and needs a one-time `/sap-gui-probe --record` of the SE16H outline grid before it can ship; until then, aggregate by downloading with the query flow and grouping locally. Tracked as the remaining T1-E increment.
+## Aggregation Mode (SE16H)
+
+`agg <TABLE> --group-by=F1[,F2…] [--avg=A] [--min=B] [--max=C] [--count] [--sum=D] [--filter FIELD OP VALUE …] [--max-groups=N] [--min-count=M]`
+
+Pushes the aggregation **down to the database** via transaction SE16H (program
+`SAPLSE16N`, the "General Table Display" advanced screen) so the raw rows are
+never downloaded. Drives `references/sap_se16h_agg.vbs`, which ticks GROUP BY on
+the `--group-by` fields, sets the aggregate combo on each `--avg`/`--min`/`--max`
+field, executes, and reads the grouped ALV directly through the GridView API — so
+**no ALV export dialog fires, hence no SAP GUI Security file-IO prompt**.
+
+**Capability — verified live (S/4HANA 1909, SAP_BASIS 754, 2026-07-11):** SE16H's
+per-field aggregate combo offers **only `MIN` / `MAX` / `AVG`**. There is **no
+Sum/Total** in the combo on this build, across CHAR / NUMC / INT / CURR fields and
+whether or not a GROUP BY is active. **COUNT is implicit** — a grouped result
+always carries a `LINE_INDEX` ("Number of Entries") column, which `--count` simply
+surfaces (it is always present; the flag only documents intent).
+
+- **`--sum` is NOT server-side here.** SE16H cannot sum. Route `--sum=<field>` to a
+  **local-aggregation fallback**: run the **normal query flow** (Steps 0–6) for
+  `<TABLE>` + the same `--group-by`/`--filter` (with the sum field + group keys in
+  `select=`), then sum locally per group — and **print the raw row count with an
+  explicit "summed locally over N downloaded rows (server-side SUM unavailable in
+  SE16H)" warning**, since a large table means a large download. Never silently
+  approximate SUM from `AVG × COUNT` (SQL AVG is rounded → wrong for currency).
+
+**Flow:**
+
+1. **Parse args.** Collect `--group-by` (comma list), the aggregate specs
+   (`--avg`/`--min`/`--max` → field:func with func ∈ MIN/MAX/AVG), `--filter`
+   triples, `--max-groups` (default `100000`), `--min-count` (grouping minimum).
+   If `--sum` is present, peel it off and handle it via the local fallback above
+   (the SE16H run still handles any MIN/MAX/AVG/group asked alongside it).
+2. **Write the params file** `{RUN_TEMP}\se16h_agg_params.txt` (system codepage),
+   sections introduced by the literal lines `GROUP` / `AGG` / `FILTER`:
+   ```
+   GROUP
+   WERKS
+   BWART
+   AGG
+   MENGE	AVG
+   FILTER
+   BWART	EQ	101
+   ```
+   (`AGG` rows are `FIELD<TAB>FUNC`; `FILTER` rows are `FIELD<TAB>OP<TAB>value…`
+   with SE16N operators EQ/NE/GT/LT/GE/LE/BT/NB/CP/NP/IN.)
+3. **Fill + run the VBS** (same token/encoding idiom as Step 4 of the normal flow —
+   resolve `$sessionPath`, set `$env:SAPDEV_SESSION_PATH`, write UTF-16LE, run
+   32-bit cscript):
+   ```powershell
+   $c = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_se16h_agg.vbs', [System.Text.Encoding]::UTF8)
+   $c = $c -replace '%%TABLE_NAME%%','<TABLE>'
+   $c = $c -replace '%%PARAMS_FILE%%','{RUN_TEMP}\se16h_agg_params.txt'
+   $c = $c -replace '%%OUTPUT_FILE%%','{RUN_TEMP}\se16h_agg_<TABLE>.txt'
+   $c = $c -replace '%%MAX_GROUPS%%','100000'
+   $c = $c -replace '%%MIN_COUNT%%',''
+   $c = $c -replace '%%SESSION_PATH%%', $sessionPath
+   $c = $c -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
+   $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
+   [System.IO.File]::WriteAllText('{RUN_TEMP}\sap_se16h_agg_run.vbs', $c, [System.Text.UnicodeEncoding]::new($false,$true))
+   ```
+   ```bash
+   C:/Windows/SysWOW64/cscript.exe //NoLogo '{RUN_TEMP}\sap_se16h_agg_run.vbs'
+   ```
+4. **Parse the last stdout lines** and report:
+   - `SE16H_AGG: table=.. groups=<n> cols=<c> truncated=<0|1> group_by=[..] agg=[..]`
+     then `ROWS=<n>` then `STATUS: OK` — the grouped TSV is at the output path
+     (columns = group dims + aggregated measures + `LINE_INDEX` count). Register it
+     via `Register-SapArtifact -Kind agg`.
+   - **`truncated=1`** ⇒ the group set was capped at `--max-groups`; **say so
+     explicitly** (some groups are missing — raise `--max-groups` for the full set).
+     `GD-MAX_LINES` caps the number of returned GROUPS, not the input: every
+     returned aggregate is still computed over the whole table, but excess groups
+     are dropped, so a silent partial pass is never acceptable.
+   - `STATUS: TABLE_NOT_FOUND` / `FIELD_NOT_FOUND` / `AGG_NOT_APPLICABLE`
+     (field type rejects the func, or a SUM/COUNT reached the VBS) / `NO_RESULT_GRID`
+     — surface the specific failure; do not read any of these as "0 groups".
+   - `STATUS: COULD_NOT_CHECK reason=SE16H_outline_controls_absent` (or
+     `_selection_screen_absent`) — SE16H or its outline model is unavailable on this
+     release/auth. Do **not** fail silently: offer the `--sum`-style local-
+     aggregation fallback (download via the normal flow, group locally, warn on row
+     count) for the whole request.
 
 ## Final — Log End
 
@@ -381,12 +466,38 @@ Older releases label `[1,0]` as "Spreadsheet". The VBS walks the radios at
 runtime and matches `Tab` or `preadsheet` substrings, then falls back to
 `[1,0]`. File dialog: `wnd[1]/usr/ctxtDY_PATH` and `wnd[1]/usr/ctxtDY_FILENAME`.
 
+### SE16H (`agg` mode) — same TC, different columns
+
+Transaction **SE16H** shares program `SAPLSE16N` but its selection-field table
+control (`wnd[0]/usr/tblSAPLSE16NSELFIELDS_TC`) exposes MORE columns than SE16N,
+so the column indices differ — captured live on S/4HANA 1909, kernel 754:
+
+| Col | ID prefix | Purpose |
+|---|---|---|
+| 2 | `ctxtGS_SELFIELDS-LOW` | From value (filter) |
+| 3 | `ctxtGS_SELFIELDS-HIGH` | To value (filter) |
+| 4 | `btnPUSH` | Multi-select popup launcher |
+| 6 | `chkGS_SELFIELDS-MARK` | Output column checkbox |
+| 8 | `chkGS_SELFIELDS-GROUP_BY` | **Group-by checkbox** |
+| 10 | `chkGS_SELFIELDS-ORDER_BY` | Order-by checkbox |
+| 12 | `cmbGS_SELFIELDS-AGGREGATE` | **Aggregate combo** — keys `MIN`/`MAX`/`AVG` (no SUM) |
+| 13 | `txtGS_SELFIELDS-FIELDNAME` | **Technical field name** (col 6 in plain SE16N) |
+
+Selection-screen scalars: table `wnd[0]/usr/ctxtGD-TAB`, returned-group cap
+`wnd[0]/usr/txtGD-MAX_LINES`, grouping minimum `wnd[0]/usr/txtGD-MIN_COUNT`.
+Execute `wnd[0]/tbar[1]/btn[8]` (F8) → result ALV `wnd[0]/usr/cntlRESULT_LIST/shellcont/shell`
+(read via `ColumnOrder` + `GetCellValue`; the `LINE_INDEX` column is the implicit
+per-group count). The field-list TC scrolls (verified to 30 rows); the VBS pages
+`verticalScrollbar` to reach fields past the visible ~14.
+
 ---
 
 ## Limitations
 
-- The skill does not support sort orders, aggregations, or saved variants —
-  use SE16N directly in the SAP GUI for those.
+- The normal query flow does not support sort orders or saved variants — use
+  SE16N directly for those. **Aggregation** is supported via **`agg` mode**
+  (SE16H: GROUP BY + MIN/MAX/AVG + per-group count); **SUM is not server-side in
+  SE16H** and falls back to a local sum over a full download (row-count warning).
 - The `SELECT` list filters output columns by toggling MARK checkboxes; column
   ordering in the output file follows SAP's natural ordering, not the order in
   the SELECT list.
