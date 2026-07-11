@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.8.0] — 2026-07-11
+
 ### Removed
 
 - **`sap-tcd` plugin deleted** (its deprecation cycle is complete). The three
@@ -13,7 +15,7 @@ All notable changes to this project will be documented in this file.
   directory, its `marketplace.json` entry, and its references across the README,
   installation guide, and EN/JA/ZH manuals (the plugin table / install list /
   dir tree now list `sap-project` in its place). Marketplace counts drop to
-  **4 plugins / 122 skills**. Users on the old plugin: install `sap-project`
+  **4 plugins / 123 skills**. Users on the old plugin: install `sap-project`
   (the successor) and uninstall `sap-tcd`.
 
 ### Fixed

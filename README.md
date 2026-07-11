@@ -11,7 +11,7 @@ via SAP NCo); there is no macOS/Linux path.
 
 Project home: <https://sapdev.ai>
 
-## Available Plugins (4 plugins · 123 skills · 3 agents · v0.7.2)
+## Available Plugins (4 plugins · 123 skills · 3 agents · v0.8.0)
 
 | Plugin | Skills | Description |
 |--------|--------|-------------|
@@ -88,7 +88,7 @@ skills outside sap-dev-core are tagged with their plugin):
   - *Health & data* — `sap-health-check`, `sap-data-volume`
   - *Fiori & docs* — `sap-fiori-flp-audit`, `sap-user-guide`
 
-## Current Limitations (v0.7.2)
+## Current Limitations (v0.8.0)
 
 Honest list of shipped-but-bounded functionality — these fail **loud**, not
 silent:
