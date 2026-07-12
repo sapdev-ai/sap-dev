@@ -33,7 +33,8 @@ Task: $ARGUMENTS
 | File | Token / call | Purpose |
 |---|---|---|
 | `<SKILL_DIR>/references/sap_se14_check_rfc.ps1` | `-Table` | RFC consistency battery + verdict (also the write-mode post-verify) |
-| `<SKILL_DIR>/references/sap_se14_adjust.vbs` · `sap_se14_unlock.vbs` | GUI | SAPMSGTB drivers (save-data-only / conversion recovery) — `NEEDS_RECORDING` until captured |
+| `<SKILL_DIR>/references/sap_se14_adjust.vbs` | GUI (`%%TABLE%%`·`%%OUTPUT_FILE%%`·`%%SESSION_PATH%%`·`%%ATTACH_LIB_VBS%%`·`%%SESSION_LOCK_VBS%%`) | SAPMSGTB save-data-only adjust driver — **recorded + live-verified end-to-end on S4D (S/4HANA 1909) 2026-07-12** |
+| `<SKILL_DIR>/references/sap_se14_unlock.vbs` | GUI | SAPMSGTB conversion-recovery driver — `NEEDS_RECORDING` until captured (CONVERSION_TERMINATED cannot be safely manufactured) |
 | `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_rfc_lib.ps1` · `sap_connection_lib.ps1` · `sap_attach_lib.vbs` · `sap_session_lock.vbs` | libs | RFC + Tier-3 attach + session lock |
 | `/sap-activate-object` · `/sap-run-report` (RADPROTA) · `/sap-se16n` · `/sap-dev-status` | sub-skills | Plain reactivate / full log (v1.5) / raw dumps / wrapper preflight |
 
@@ -71,11 +72,49 @@ found OR COULD_NOT_CHECK -> `SE14_QCM_DATA_AT_RISK`, refused in v1).
 
 **CONFIRM** (mandatory yes/no): adjust -> "I will ACTIVATE AND ADJUST table `<T>` on
 `<SID>/<CLIENT>` via the SAVE-DATA path (data preserved). Proceed?"; unlock/continue -> equivalent.
-On no -> `SKIPPED`. Then generate the VBS from the reference (UTF-8 read -> token substitute ->
-UTF-16 LE BOM), select variant via `sap_select_vbs_variant.ps1`, run via 32-bit cscript. **Structural
-delete-data rail:** the VBS asserts the save-data radio's component ID exists AND `.Selected=True`
-before the adjust press, and never `.Select`s the delete-data radio; an unknown layout ->
-`SE14: NEEDS_RECORDING` (record via `/sap-gui-probe --record`), never a guessed radio.
+On no -> `SKIPPED`.
+
+**`unlock` stays `NEEDS_RECORDING`** (the conversion-recovery controls only materialize in a
+CONVERSION_TERMINATED state, which cannot be safely manufactured — see Scope). Running
+`sap_se14_unlock.vbs` echoes `SE14: NEEDS_RECORDING` and exits 3; report it and stop (never a
+guessed click).
+
+**`adjust`** — substitute the 5 tokens and run the recorded save-data-only driver via **32-bit
+cscript**. Mirror the parallel-safe attach contract (set `SAPDEV_SESSION_PATH`, keep the base
+`{WORK_TEMP}` for `Get-SapCurrentSessionPath`, write the runtime VBS to `{RUN_TEMP}`, UTF-16 LE BOM):
+
+```powershell
+$shared = '<SAP_DEV_CORE_SHARED_DIR>\scripts'
+. "$shared\sap_connection_lib.ps1"
+$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
+$vbs = [IO.File]::ReadAllText('<SKILL_DIR>\references\sap_se14_adjust.vbs', [Text.Encoding]::UTF8)
+$vbs = $vbs.Replace('%%TABLE%%',            '<T>')                        # upper-cased table name
+$vbs = $vbs.Replace('%%OUTPUT_FILE%%',      '{RUN_TEMP}\se14_adjust.json')
+$vbs = $vbs.Replace('%%SESSION_PATH%%',     '')                          # or the --session value
+$vbs = $vbs.Replace('%%ATTACH_LIB_VBS%%',   "$shared\sap_attach_lib.vbs")
+$vbs = $vbs.Replace('%%SESSION_LOCK_VBS%%', "$shared\sap_session_lock.vbs")
+[IO.File]::WriteAllText('{RUN_TEMP}\se14_adjust_run.vbs', $vbs, [System.Text.UnicodeEncoding]::new($false, $true))
+```
+
+```bash
+C:\Windows\SysWOW64\cscript.exe //NoLogo "{RUN_TEMP}\se14_adjust_run.vbs"
+```
+
+Parse the `SE14:` / `STATUS:` lines (and read `{RUN_TEMP}\se14_adjust.json` =
+`{"table","op":"adjust","save_data":true,"status","sbar"}`):
+- `STATUS: OK` (exit 0) -> proceed to Step 5 post-verify — the sbar `S` is only the first-pass
+  signal; the RFC re-read is authoritative.
+- `STATUS: SE14_SDATA_NOT_DEFAULT` (exit 1) -> the save-data rail was not confirmable; **refuse**
+  (the driver never pressed adjust).
+- `STATUS: SE14_ADJUST_FAILED` (exit 1) -> sbar `E`/`A`; surface the echoed sbar text as the
+  diagnostic only.
+- `SE14: NEEDS_RECORDING step=<label>` (exit 3) -> unknown screen/popup at a decision point;
+  record via `/sap-gui-probe --record`, never a guessed click.
+
+**Structural delete-data rail:** the VBS asserts the save-data radio's component ID
+(`radRSGTB-SDATA`) exists AND `.Selected=True` before the adjust press, only READS `radRSGTB-DDATA`
+to assert it is not selected, and never `.Select`s the delete-data radio; an unconfirmable rail ->
+`SE14_SDATA_NOT_DEFAULT`, an unknown layout -> `SE14: NEEDS_RECORDING` — never a guessed radio.
 
 ## Step 5 — Post-verify + Register
 
@@ -86,8 +125,10 @@ no TBATG, QCM gone) yields SUCCESS; GUI status text alone never does. `Register-
 ## Final — Log End
 
 Log end (`SUCCESS`/`FAILED`/`SKIPPED` + error_class). Error classes: `SE14_DELETE_PATH_REFUSED`,
-`SE14_CONVERSION_RUNNING`, `SE14_QCM_DATA_AT_RISK`, `SE14_UNSUPPORTED_TABCLASS`, `SE14_ADJUST_FAILED`;
-reused `RFC_LOGON_FAILED` / `GUI_TIMEOUT` / `GUI_LAYOUT_UNKNOWN`.
+`SE14_CONVERSION_RUNNING`, `SE14_QCM_DATA_AT_RISK`, `SE14_UNSUPPORTED_TABCLASS`, `SE14_ADJUST_FAILED`,
+`SE14_SDATA_NOT_DEFAULT` (save-data rail not confirmable — adjust refused); reused `NEEDS_RECORDING`
+(unknown adjust screen/popup, or the whole `unlock` leg) / `RFC_LOGON_FAILED` / `GUI_TIMEOUT` /
+`GUI_LAYOUT_UNKNOWN`.
 
 ---
 
@@ -103,9 +144,28 @@ reused `RFC_LOGON_FAILED` / `GUI_TIMEOUT` / `GUI_LAYOUT_UNKNOWN`.
   "inactive".
 - **adjust/unlock are GUI-only, confirm-gated writes** (no RFC path — `DDIF_TABL_ACTIVATE` is
   FMODE-blank and doesn't drive conversion control). The **delete-data path is structural, not
-  gated**: no VBS code path selects that radio, and the save-data radio is asserted by component ID
-  before the adjust press. The SAPMSGTB control IDs need a one-time `/sap-gui-probe --record` capture
-  per release (`NEEDS_RECORDING` until then) — done at install time, never guessed.
+  gated**: no VBS code path selects that radio (`radRSGTB-DDATA` is only ever READ, to assert it is
+  not selected), and the save-data radio (`radRSGTB-SDATA`) is asserted present AND `.Selected` by
+  component ID before the adjust press — an unconfirmable save-data rail refuses with
+  `SE14_SDATA_NOT_DEFAULT` (adjust never pressed). The **adjust** SAPMSGTB control IDs are now
+  recorded + live-verified (see next bullet); **unlock** stays `NEEDS_RECORDING` until captured —
+  never guessed.
+- **adjust captured + live-verified end-to-end on S4D (S/4HANA 1909) 2026-07-12 — two honest
+  caveats.** The full save-data contract was exercised live: SE14 initial (SAPMSGTB 100) ->
+  DB-utility screen 400 save-data rail (`radRSGTB-SDATA` asserted `.Selected`, `radRSGTB-DDATA` only
+  read as not-selected) -> `btnRSGTB-CNVTA` ("Activate and adjust database") -> the "Execute online:"
+  confirm popup (`wnd[1]/usr/btnBUTTON_1` = Yes, SAPLSPO1 500) -> sbar `S` "executed successfully".
+  **(a)** It ran against a **CONSISTENT** scratch table, so the conversion was a **no-op
+  re-conversion**, not a real data-preserving conversion of an `ADJUST_NEEDED` table — every control
+  ID, the confirm popup and the success verdict are real and were pressed live; only the "pending DB
+  work" precondition was absent (a real `ADJUST_NEEDED` needs data + an incompatible structure change
+  SAP defers to SE14 — not manufactured this session). The control contract is **state-independent**
+  (the SE14 screens are identical whether the table is CONSISTENT or ADJUST_NEEDED), so the recorded
+  driver is valid; SUCCESS is still gated by the authoritative Step-5 RFC re-read, never the sbar
+  alone. **(b)** **`unlock` stays `NEEDS_RECORDING`** — its unlock / continue-adjustment /
+  restart-conversion controls only materialize in a **CONVERSION_TERMINATED** state, which cannot be
+  safely manufactured (it requires a running DB conversion deliberately killed mid-flight on a shared
+  dev system); it needs SAP's built-in Script Recorder against a genuinely terminated conversion.
 - **No TR** — SE14 adjustment is a DB-level operation, not a repository change (documented to preempt
   reviewers). No new Z object; the wrapper is never auto-deployed.
 - `/sap-se11` auto-chains `/sap-se14 check <TABLE>` after a failed table activation (read-only, safe)

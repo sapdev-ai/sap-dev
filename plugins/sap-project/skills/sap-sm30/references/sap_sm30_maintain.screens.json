@@ -1,0 +1,43 @@
+{
+  "schema": "sapdev.screenbaseline/1",
+  "vbs": "sap_sm30_maintain.vbs",
+  "captured_on": {
+    "release": "S/4HANA 1909",
+    "kernel": "754",
+    "date": "2026-07-12",
+    "method": "live recording (sap-gui-probe drive)"
+  },
+  "checkpoints": [
+    {
+      "id": "sm30_initial",
+      "reach": { "okcode": "/nSM30" },
+      "identity": { "program": "SAPMSVMA", "dynpro": "0100" },
+      "required_ids": [
+        "wnd[0]/usr/ctxtVIEWNAME",
+        "wnd[0]/usr/btnUPDATE_PUSH"
+      ],
+      "status": "captured"
+    },
+    {
+      "id": "sm30_overview",
+      "reach": { "note": "From sm30_initial set wnd[0]/usr/ctxtVIEWNAME=<view> then press Maintain (wnd[0]/usr/btnUPDATE_PUSH) -> generated one-step overview. NOTE: the program is the PER-VIEW generated SAPL<AREA>, so it varies by view -- this baseline records the proving view ZSAPDEV_SM30 whose area SAPLZSMDEVAI / overview dynpro 0010 was captured live; the driver never hardcodes it (it discovers the sole GuiTableControl by TYPE and maps columns by the DD27S FIELDNAME in each cell id). /sap-doctor --screens must supply a view to reach this checkpoint." },
+      "identity": { "program": "SAPLZSMDEVAI", "dynpro": "0010" },
+      "required_ids": [
+        "wnd[0]/tbar[1]/btn[5]",
+        "wnd[0]/usr/btnVIM_POSI_PUSH",
+        "wnd[0]/usr/txtVIM_POSITION_INFO"
+      ],
+      "status": "captured"
+    },
+    {
+      "id": "sm30_position_popup",
+      "reach": { "note": "From sm30_overview press Position (wnd[0]/usr/btnVIM_POSI_PUSH) -> SAPLSPO4 'Another entry' popup (screen 0300). The captured SVALD-VALUE cell row index (here [0,21]) is view/layout-specific -- the driver discovers the SVALD-VALUE key cell(s) generically and fills them in key order, so it never depends on the literal [0,21]." },
+      "identity": { "program": "SAPLSPO4", "dynpro": "0300" },
+      "required_ids": [
+        "wnd[1]/usr/sub:SAPLSPO4:0300/ctxtSVALD-VALUE[0,21]",
+        "wnd[1]/tbar[0]/btn[0]"
+      ],
+      "status": "captured"
+    }
+  ]
+}

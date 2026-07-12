@@ -1,0 +1,44 @@
+{
+  "schema": "sapdev.screenbaseline/1",
+  "vbs": "sap_se14_adjust.vbs",
+  "captured_on": {
+    "release": "S/4HANA 1909",
+    "kernel": "754",
+    "date": "2026-07-12",
+    "method": "live recording (sap-gui-probe drive)"
+  },
+  "checkpoints": [
+    {
+      "id": "se14_initial",
+      "reach": { "okcode": "/nSE14" },
+      "identity": { "program": "SAPMSGTB", "dynpro": "0100" },
+      "required_ids": [
+        "wnd[0]/usr/ctxtRSGTB-OBJNAME",
+        "wnd[0]/usr/radRSGTB-TAB",
+        "wnd[0]/usr/btnBEARBEITEN"
+      ],
+      "status": "captured"
+    },
+    {
+      "id": "se14_dbutil",
+      "reach": { "note": "enter a transparent table in ctxtRSGTB-OBJNAME on se14_initial and press Edit (btnBEARBEITEN) -> DB-utility screen 400. radRSGTB-SDATA (save-data) is asserted .Selected; radRSGTB-DDATA (delete-data) is only READ, never selected." },
+      "identity": { "program": "SAPMSGTB", "dynpro": "0400" },
+      "required_ids": [
+        "wnd[0]/usr/radRSGTB-SDATA",
+        "wnd[0]/usr/radRSGTB-DDATA",
+        "wnd[0]/usr/btnRSGTB-CNVTA"
+      ],
+      "status": "captured"
+    },
+    {
+      "id": "se14_exec_confirm",
+      "reach": { "note": "press 'Activate and adjust database' (btnRSGTB-CNVTA) on se14_dbutil -> 'Execute online:' confirm popup (SAPLSPO1 screen 500). btnBUTTON_1 = Yes, btnBUTTON_2 = No." },
+      "identity": { "program": "SAPLSPO1", "dynpro": "0500" },
+      "required_ids": [
+        "wnd[1]/usr/btnBUTTON_1",
+        "wnd[1]/usr/btnBUTTON_2"
+      ],
+      "status": "captured"
+    }
+  ]
+}
