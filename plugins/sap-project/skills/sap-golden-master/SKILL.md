@@ -52,8 +52,11 @@ and golden file hashes; `golden\<leg>.raw.txt` / `.norm.txt`; per-verify `runs\<
 
 ## Step 0 — Resolve Directories
 
-Resolve `work_dir` + `{RUN_TEMP}` (canonical one-liner) and `golden_master_dir` via
-`Get-SapSettingValue 'golden_master_dir' "{work_dir}\golden_masters"`. Start logging
+Resolve `work_dir` + `{RUN_TEMP}` (canonical one-liner — `sap_connection_lib.ps1` is dot-sourced
+there — with `Write-Output ('RUN_TEMP=' + (Get-SapRunTemp))` appended) and `golden_master_dir` via
+`Get-SapSettingValue 'golden_master_dir' "{work_dir}\golden_masters"`. `{RUN_TEMP}` = the
+per-run scratch dir holding the log state file; mint it once here and reuse (re-minting breaks
+the `-Action end` state-file lookup). Start logging
 (`sap_log_helper.ps1`, state `{RUN_TEMP}\sap_golden_master_run.json`).
 
 ## Step 1 — Parse Arguments & Dispatch

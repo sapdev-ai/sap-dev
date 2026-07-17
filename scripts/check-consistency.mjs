@@ -8,8 +8,8 @@
 //   - metadata.total_skills != actual sum across plugins
 //   - metadata.total_plugins != number of plugin entries
 //   - SKILL.md references an implementation file (references/..., <SKILL_DIR>/...,
-//     <SAP_DEV_CORE_SHARED_DIR>/...) that does not exist on disk (the two
-//     review-verified ghosts in KNOWN_MISSING_REFERENCES emit WARN instead)
+//     <SAP_DEV_CORE_SHARED_DIR>/...) that does not exist on disk (entries in
+//     KNOWN_MISSING_REFERENCES emit WARN instead; the allowlist is currently empty)
 //   - Shipped .ps1/.vbs contains a non-ASCII byte without a UTF-8 BOM
 //     (promoted from WARN on 2026-07-02 once the tree reached zero offenders)
 //   - SKILL.md passes {RUN_TEMP} to Get-SapCurrentSessionPath -WorkTemp

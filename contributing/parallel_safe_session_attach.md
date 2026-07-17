@@ -146,17 +146,20 @@ $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 
 ## Exempt files (intentionally NOT migrated)
 
-These four files in `plugins/sap-dev-core/shared/scripts/` use their own attach logic by design. Do not migrate them, and do not add new files to this list without a clear reason:
+These files use their own attach logic by design; the authoritative set is `TIER3_EXEMPT_VBS` in `sap-dev/scripts/check-consistency.mjs` (matched by basename, wherever the file lives — `shared/scripts/` or a skill's `references/`). Do not migrate them, and do not add new files to this list without a clear reason:
 
-| File | Why exempt |
-|---|---|
-| `sap_login.vbs` | Bootstrap. Runs BEFORE SAPGUI is guaranteed to be running — `AttachSapSession` assumes the engine is already alive. |
-| `sap_check_gui_login_status.vbs` | Single-purpose pre-flight probe; structured differently. |
-| `sap_gui_security_warmup.vbs` | One-shot dialog warmup at `/sap-dev-init` Step 1b. Runs before any user task. |
-| `sap_login_capture_active_session.vbs` | Captures the just-logged-in session as part of the `/sap-login` bootstrap. |
-| `sap_gui_object_details.vbs` | Has its own `findById(SESSION_PATH)` from the Phase-1 sentinel-collision fix. Uses the `Chr(37)` sentinel idiom to detect unsubstituted tokens. |
-| `sap_gui_probe_action.vbs` | Resolves session from the action-JSON `"session"` field (different contract: per-action explicit pin). |
-| `sap_attach_lib.vbs` | The helper itself. |
+| File | Location | Why exempt |
+|---|---|---|
+| `sap_login.vbs` | `shared/scripts/` | Bootstrap. Runs BEFORE SAPGUI is guaranteed to be running — `AttachSapSession` assumes the engine is already alive. |
+| `sap_check_gui_login_status.vbs` | `shared/scripts/` | Single-purpose pre-flight probe; structured differently. |
+| `sap_gui_security_warmup.vbs` | `shared/scripts/` | One-shot dialog warmup at `/sap-dev-init` Step 1b. Runs before any user task. |
+| `sap_login_capture_active_session.vbs` | `skills/sap-login/references/` | Captures the just-logged-in session as part of the `/sap-login` bootstrap. |
+| `sap_gui_object_details.vbs` | `skills/sap-gui-inspect/references/` | Has its own `findById(SESSION_PATH)` from the Phase-1 sentinel-collision fix. Uses the `Chr(37)` sentinel idiom to detect unsubstituted tokens. |
+| `sap_gui_probe_action.vbs` | `skills/sap-gui-probe/references/` | Resolves session from the action-JSON `"session"` field (different contract: per-action explicit pin). |
+| `sap_attach_lib.vbs` | `shared/scripts/` | The helper itself. |
+| `sap_close_connection.vbs` | `skills/sap-login/references/` | Connection-level close-by-path helper (login family); takes a `/app/con[N]` path directly, no session attach. |
+| `sap_screen_check_probe.vbs` | `skills/sap-doctor/references/` | Generic golden-screen inspector; self-resolves `SESSION_PATH` via the `Chr(37)` sentinel like `sap_gui_object_details.vbs`, so it follows neither the attach contract nor the baseline gate. |
+| `sap_se38_content_verify.vbs` | `skills/sap-se38/references/` | Pure `ExecuteGlobal` function library — no session attach, no engine bind; paths arrive via `%%CONTENT_VERIFY_PS1%%`. Skill-private, so it lives in `references/` per the CLAUDE.md placement rule. |
 
 If you write a new bootstrap-style file that legitimately needs custom attach, add it to `TIER3_EXEMPT_VBS` in `sap-dev/scripts/check-consistency.mjs` with an inline comment.
 
@@ -187,7 +190,7 @@ segments no longer exist — both gates were promoted to hard errors on
 2026-07-10 once their counts ratcheted to zero, so violations now FAIL the
 run instead of appearing in the OK line.)
 
-On failure, the script lists each non-conforming file with a specific reason. The check covers (2026-07-02: grown from seven to eleven conditions):
+On failure, the script lists each non-conforming file with a specific reason. The check covers (2026-07-03: grown from seven to twelve conditions; the checker's header comment in `scripts/check-consistency.mjs` is the authoritative list):
 
 1. Legacy `For Each oCandidate In oApp.Children` (and its variant patterns) → must not appear in non-exempt operational VBS.
 2. VBS with `Const SESSION_PATH` but no `%%ATTACH_LIB_VBS%%` include → the helper will be undefined at runtime.
@@ -200,6 +203,7 @@ On failure, the script lists each non-conforming file with a specific reason. Th
 9. SKILL.md that invokes bare `cscript` (without the `C:\Windows\SysWOW64\` prefix — SAP GUI COM needs the 32-bit host) or any `wscript` (blocks with a MsgBox per `WScript.Echo`) → **hard error** (promoted from WARN on 2026-07-10 once the bare-invocation count ratcheted to zero).
 10. `references/*.vbs` line that branches on translated GUI text — `InStr(...)` against a curated English literal ("resulted in errors", "locked", "Initial Screen", ...) or an `LCase(<title>) = "..."` compare — outside comments/`WScript.Echo` → **hard error** (promoted from WARN on 2026-07-10; documented multi-locale matchers are exempted via `LOCALE_LITERAL_EXEMPT` — see `shared/rules/language_independence_rules.md`).
 11. Shipped `.ps1`/`.vbs` (skills' `references/` + sap-dev-core `shared/scripts/`) containing a non-ASCII byte without a UTF-8 BOM → **hard error** (promoted from WARN on 2026-07-02 once the tree reached zero offenders; use `--`/`->` in comments and `ChrW()` for runtime non-ASCII).
+12. A file in `sap-dev-core/shared/scripts` not mentioned in CLAUDE.md's "Current Shared Files" table → **hard error** (added 2026-07-03; the reverse direction — a shared script shrunk to a single same-plugin consumer with no shared-side wiring — draws a shared-placement WARN, exceptions via `SHARED_PLACEMENT_ALLOWLIST`).
 
 ---
 

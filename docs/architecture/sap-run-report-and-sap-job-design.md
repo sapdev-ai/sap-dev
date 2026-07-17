@@ -163,16 +163,15 @@ skills/sap-run-report/
   references/
     sap_sa38_run.vbs            # FG (F8) + BG (F9) driver; %%MODE%% token
     sap_sa38_run.screens.json   # golden-screen baseline
-    sap_variant_rfc.ps1         # RS_VARIANT_* via generic wrapper (→ shared/ on /sap-job)
+    sap_variant_rfc.ps1         # (planned only — never built; variant set went GUI via sap_sa38_variant.vbs, see §1.2/§3.4)
     sap_run_report_rfc.ps1      # Phase B: calls Z_RUN_REPORT + TBTCO/TBTCP poll
-  .claude-plugin/plugin.json    # per-skill manifest
 ```
 
 ### 2.5 SKILL.md step-by-step
 
 **Step 0 — Resolve Work Directory.** Standard env-aware one-liner (`Get-SapWorkDir` +
 `Get-SapRunTemp`); `{RUN_TEMP}` for all generated scratch, `{WORK_TEMP}` only for
-`Get-SapCurrentSessionPath -WorkTemp`. (Copy from `sap-run-abop-unit` Step 0.)
+`Get-SapCurrentSessionPath -WorkTemp`. (Copy from `sap-run-abap-unit` Step 0.)
 
 **Step 0.5 — Start Logging.** `sap_log_helper.ps1 -Action start -StateFile
 {RUN_TEMP}\sap_run_report_run.json -Skill sap-run-report -ParamsJson
@@ -402,7 +401,7 @@ EC2:** aborting a live job there (needs a flaky ECC clipboard-paste fixture depl
 is identical and every component is EC2-verified.
 
 **Registration checklist (per new skill):**
-- [ ] `skills/<skill>/SKILL.md` + `.claude-plugin/plugin.json`
+- [ ] `skills/<skill>/SKILL.md`
 - [ ] entry in `sap-dev/.claude-plugin/marketplace.json`
 - [ ] `references/*.screens.json` baseline for every driving VBS (CI coverage gate)
 - [ ] Tier-3 attach tokens in every VBS (CI `check-consistency.mjs`)
@@ -416,9 +415,12 @@ is identical and every component is EC2-verified.
 ---
 
 ## 5. Open decisions to confirm
-1. **D3** — background default vs foreground default. (Recommend background: capturable.)
-2. **D5** — build `Z_RUN_REPORT` in Phase B, or drive SA38-F9 GUI-only and defer the FM?
-3. **D2** — confirm `/sap-run-report` over `/sap-sa38`.
+1. **D3** — background default vs foreground default. STILL OPEN / DEFERRED (see §4 Phase B):
+   shipped with foreground default, background opt-in via `--background`; the flip to
+   background-default is a deliberate deferred behavior change.
+2. **D5** — ✅ RESOLVED (2026-07-09): `Z_RUN_REPORT` built and deployed in Phase B
+   (see §4 Phase B; `references/Z_RUN_REPORT.abap`, dev-init Step 8c).
+3. **D2** — ✅ RESOLVED (2026-07-09): shipped as `/sap-run-report` (see §4 Phase A).
 4. Variant **set** — ✅ RESOLVED (2026-07-09): implemented via GUI Save-as-Variant with
    heuristic `--values` fill (`sap_sa38_variant.vbs`, verified S4D create/overwrite/delete).
    An RFC SELNAME-based `RS_CREATE_VARIANT` fast-path remains a future option.

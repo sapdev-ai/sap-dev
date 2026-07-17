@@ -218,24 +218,22 @@ the user declines or wants changes, stop (or loop back to Step 2.5).
 
 ---
 
-## Step 3 — Read SAP Connection Parameters
+## Step 3 — Resolve SAP Connection Parameters
 
-Read SAP connection parameters from the merged sap-dev-core settings (per `shared/rules/settings_lookup.md` — `settings.local.json` overrides `settings.json` per-key on the `.value` field):
+Connection parameters are **not** read or filled in by this skill. The six
+`%%SAP_*%%` tokens (`%%SAP_SERVER%%`, `%%SAP_SYSNR%%`, `%%SAP_CLIENT%%`,
+`%%SAP_USER%%`, `%%SAP_PASSWORD%%`, `%%SAP_LANGUAGE%%`) are deliberately
+substituted with **empty strings** in Step 4; at runtime `Connect-SapRfc`
+(`sap_rfc_lib.ps1`) treats the empty tokens as "needs fallback" and fills them
+from the AI session's pinned connection profile in
+`{work_dir}\runtime\connections.json` (saved via `/sap-login`, password
+DPAPI-encrypted at rest).
 
-| Setting key | Maps to | Example |
-|---|---|---|
-| `sap_application_server` | `%%SAP_SERVER%%` | `10.0.0.1` |
-| `sap_system_number` | `%%SAP_SYSNR%%` | `00` |
-| `sap_client` | `%%SAP_CLIENT%%` | `100` |
-| `sap_user` | `%%SAP_USER%%` | `DEVELOPER` |
-| `sap_password` | `%%SAP_PASSWORD%%` | *(masked)* |
-| `sap_language` | `%%SAP_LANGUAGE%%` | `EN` |
+**If no connection profile is pinned for this AI session**, ask the user to run
+`/sap-login` first — never collect connection values or a password in chat.
 
-**If settings are not configured**, ask the user to provide the values and suggest
-they configure settings.json for future use.
-
-At the end of this step, you must have all 9 values: Server, SysNr, Client, User, Password,
-Language, Transaction Code, Display Mode, Update Mode, plus the BDC file path from Step 2.
+At the end of this step, you must have: Transaction Code, Display Mode,
+Update Mode, plus the BDC file path from Step 2.
 
 ---
 
@@ -311,7 +309,7 @@ carry it as `STATUS: <verdict>`:
 |---|---|---|
 | `E/A message(s) in MESS_TAB` | The transaction rejected the posting (see `MSG: TYPE=... ID=... NUMBER=...` lines) | Fix the recording data for this system (field values, dates per user DATFM, existing keys) and re-run |
 | `unsubstituted %%tokens%% in BDC data` | A template recording was run without Step 2.5 | Substitute the tokens into a `{RUN_TEMP}` copy (Step 2.5), re-run |
-| `RFC connection failed` | Wrong server/credentials | Verify SAP connection details in settings.json |
+| `RFC connection failed` | Wrong server/credentials | Verify the pinned connection profile (re-run `/sap-login`) |
 | `NCo 3.1 not found in GAC_32` | SAP NCo 3.1 not installed for .NET 4.0 32-bit | Install SAP NCo 3.1 for .NET 4.0 (32-bit) per SAP Note |
 | `BDC file not found` | File path wrong or moved | Verify BDC file exists in `bdc/` folder |
 | `No valid BDC records` | Malformed SHDB file | Re-download from SHDB transaction |
@@ -370,7 +368,7 @@ Suggested `<CLASS>`: `BDC_FAILED`, `BDC_FILE_NOT_FOUND`, `RFC_LOGON_FAILED`.
 
 ## Security Note
 
-The generated `.ps1` file contains the SAP password in plain text. It is deleted
-automatically after execution. The result file does NOT contain credentials.
-Connection parameters are stored in settings.json. The password field is marked as
-`sensitive` and masked in the Claude Code UI.
+The generated `.ps1` contains no credentials — `Connect-SapRfc` resolves them at
+runtime from the AI session's pinned profile. Connection parameters are stored in
+`{work_dir}\runtime\connections.json` (saved via `/sap-login`) with the password
+DPAPI-encrypted at rest. The result file does NOT contain credentials.

@@ -26,4 +26,6 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
 
 claude --plugin-dir (Join-Path $repoRoot 'plugins\sap-dev-core') `
-       --plugin-dir (Join-Path $repoRoot 'plugins\sap-gen-code') @args
+       --plugin-dir (Join-Path $repoRoot 'plugins\sap-gen-code') `
+       --plugin-dir (Join-Path $repoRoot 'plugins\sap-migrate') `
+       --plugin-dir (Join-Path $repoRoot 'plugins\sap-project') @args

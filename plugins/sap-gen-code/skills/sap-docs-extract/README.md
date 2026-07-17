@@ -83,9 +83,12 @@ After extract completes, chain into:
 
 ## Limitations
 
-- Sheet identification relies on Japanese keywords (表紙, ドメイン・データエレメント,
-  テーブル定義, etc.). For non-Japanese specs, sheet matching may be incomplete
-  — feature in roadmap.
+- For `.xlsx` inputs, parsing is driven entirely by the workbook's
+  `(Meta) Layout` sheet (localized sheet names are supported through the meta
+  sheet); a workbook without one aborts with a hint to run
+  `/sap-docs-layout bootstrap`. Heuristic section detection (headings,
+  well-known keywords) applies only to `.docx` / `.pdf` inputs and may be
+  incomplete there.
 - Existing output files are overwritten without prompting. If you've manually
   edited `_*.txt` files, save them elsewhere before re-running extract.
 

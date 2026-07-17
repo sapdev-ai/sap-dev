@@ -111,8 +111,9 @@ One baseline per driving VBS, named `<vbs-stem>.screens.json`, beside the VBS in
 
 ## Seeded baselines
 
-Coverage **126/127** (seeded 2026-07-03 at 120/121, held at full-minus-one as
-new driving VBS shipped with their baselines; the only gap is
+Coverage is **full-minus-one** (seeded 2026-07-03 at 120/121, held as new
+driving VBS shipped with their baselines; the current N/M figure is printed in
+the `check-consistency.mjs` OK line; the only gap is
 `sap_stms_import.vbs`, deliberately unbaselined until its PLACEHOLDER control
 IDs are calibrated via `/sap-gui-probe --record` — a baseline would freeze placeholder
 text). Every driving VBS now ships a multi-checkpoint seed: `method: static`,

@@ -56,13 +56,15 @@ deployment.
 ## Step 0 — Resolve Work Dir + Custom URL
 
 ```bash
-powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('WORK_DIR=' + (Get-SapWorkDir)); Write-Output ('CUSTOM_URL=' + (Get-SapSettingValue 'custom_url' ((Get-SapWorkDir) + '\custom')))"
+powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('WORK_DIR=' + (Get-SapWorkDir)); Write-Output ('CUSTOM_URL=' + (Get-SapSettingValue 'custom_url' ((Get-SapWorkDir) + '\custom'))); Write-Output ('RUN_TEMP=' + (Get-SapRunTemp))"
 ```
 
 `{CAMPAIGN_DIR}` = `{work_dir}\migrations\{campaign-id}` when `--campaign` is given;
 outputs land in `{CAMPAIGN_DIR}\cloud\`. Standalone (no `--campaign`): use
-`Get-SapArtifactDir` for the scope key. Set `{RUN_TEMP}` for logging + the download
-cache.
+`Get-SapArtifactDir` for the scope key. Set `{RUN_TEMP}` = the `RUN_TEMP=` value printed
+above (`Get-SapRunTemp` mints + creates the per-run scratch dir holding the log state
+file) — for logging + the download cache; mint it once here and reuse (re-minting breaks
+the `-Action end` state-file lookup).
 
 ## Step 0.5 — Start Logging
 

@@ -74,7 +74,7 @@ errors is COULD_NOT_CHECK, never a false PRESENT. Done.
 ## Step 3 — generate: metadata
 
 ```bash
-C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File "<SKILL_DIR>\references\sap_idoc_type_read.ps1" -IdocType <BT> [-CimType <EXT>] -OutFile "{WORK}\<name>_idoc_segments.tsv" -SharedDir "<SAP_DEV_CORE_SHARED_DIR>"
+C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File "<SKILL_DIR>\references\sap_idoc_type_read.ps1" -IdocType <BT> [-CimType <EXT>] -OutFile "{RUN_TEMP}\<name>_idoc_segments.tsv" -SharedDir "<SAP_DEV_CORE_SHARED_DIR>"
 ```
 
 `IDOC_TYPE_NOT_FOUND` -> abort. Cross-check every mapping-spec segment against the tree — a spec

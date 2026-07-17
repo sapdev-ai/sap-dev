@@ -198,7 +198,7 @@ Write `{RUN_TEMP}\sap_se51_update_run.ps1`:
 $content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_se51_update.vbs', [System.Text.Encoding]::UTF8)
 $content = $content -replace '%%PROGRAM_NAME%%','THE_PROGRAM_NAME'
 $content = $content -replace '%%SCREEN_NUMBER%%','THE_SCREEN_NUMBER'
-$content = $content -replace '%%LOG_FILE%%','{WORK_TEMP}\\sap_se51_update.log'
+$content = $content -replace '%%LOG_FILE%%','{RUN_TEMP}\sap_se51_update.log'
 $content = $content -replace '%%FOREGROUND_GUARD_PS1%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_gui_foreground_guard.ps1'
 # Phase 3.5 session-attach plumbing.
 $sessionPath = ''
@@ -257,7 +257,7 @@ $content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_se51_create
 $content = $content -replace '%%PROGRAM_NAME%%','THE_PROGRAM_NAME'
 $content = $content -replace '%%SCREEN_NUMBER%%','THE_SCREEN_NUMBER'
 $content = $content -replace '%%SCREEN_SHORT_TEXT%%','THE_SHORT_TEXT'
-$content = $content -replace '%%LOG_FILE%%','{WORK_TEMP}\\sap_se51_create.log'
+$content = $content -replace '%%LOG_FILE%%','{RUN_TEMP}\sap_se51_create.log'
 $content = $content -replace '%%FOREGROUND_GUARD_PS1%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_gui_foreground_guard.ps1'
 # Phase 3.5 session-attach plumbing.
 $sessionPath = ''

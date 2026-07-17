@@ -12,7 +12,7 @@ This skill automates the screen (dynpro) deployment lifecycle via SE51:
 - **Save & Activate**: Saves and activates in one pass
 - **Login Required**: Use `/sap-login` first to establish SAP GUI session
 - **Centralized Login**: Connection parameters stored in sap-dev-core settings.json
-- **Transport Handling**: Dismisses transport request dialog with Local Object or Enter
+- **Transport Handling**: TR resolved via `/sap-transport-request` (per `way_to_get_transport_request`); the VBS fills the resolved TR into the KO008 popup and aborts loud when a TR is required but missing — it never silently presses Local Object
 
 ## Auto-Trigger Keywords
 
@@ -43,14 +43,19 @@ This skill activates when discussing:
 
 ```
 sap-se51/
-├── SKILL.md                        # Main skill file (step-by-step workflow)
-├── README.md                       # This file (keywords for discoverability)
+├── SKILL.md                          # Main skill file (step-by-step workflow)
+├── README.md                         # This file (keywords for discoverability)
 └── references/
-    ├── sap_se51_login.vbs          # VBScript: login to SAP GUI
-    ├── sap_se51_check.vbs          # VBScript: check if screen exists (SE51 Display)
-    ├── sap_se51_create.vbs         # VBScript: create new screen in SE51 (wscript.exe)
-    └── sap_se51_update.vbs         # VBScript: update existing screen in SE51 (wscript.exe)
+    ├── sap_se51_check.vbs            # VBScript: check if screen exists (SE51 Display)
+    ├── sap_se51_create.vbs           # VBScript: create new screen in SE51 (wscript.exe)
+    ├── sap_se51_update.vbs           # VBScript: update existing screen in SE51 (wscript.exe)
+    ├── sap_se51_add_element.vbs      # VBScript: add layout elements (alphanumeric Layout Editor)
+    ├── sap_se51_layout_rebuild.vbs   # VBScript: rebuild a screen layout from an element spec
+    └── *.screens.json                # Golden-screen baselines (one per driving VBS)
 ```
+
+Login is centralized in `/sap-login` (shared `sap_login.vbs`); this skill attaches to
+the existing session.
 
 ## Usage
 

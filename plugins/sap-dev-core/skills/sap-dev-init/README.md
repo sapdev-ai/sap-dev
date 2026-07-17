@@ -35,7 +35,9 @@ Run this **once** after installing the sap-dev-core plugin.
 /sap-dev-init
 ```
 
-No arguments — everything is read from `sap-dev-core/settings.json`.
+No arguments — values resolve via the merged settings chain (env var →
+`settings.local.json` → `userconfig.json` → `settings.json`) plus the pinned
+connection's `dev_defaults` in `{work_dir}\runtime\connections.json`.
 
 Conversational forms:
 
@@ -47,17 +49,26 @@ Conversational forms:
 
 - SAP GUI installed (for GUI mode)
 - SAP NCo 3.1 in GAC (for RFC mode)
-- SAP connection parameters configured in `sap-dev-core/settings.json`
-  (`sap_application_server`, `sap_system_number`, `sap_client`, `sap_user`,
-  `sap_password`)
+- SAP connection profile saved via `/sap-login` (multi-profile store at
+  `{work_dir}\runtime\connections.json`, passwords DPAPI-encrypted)
 - Authorisation to create packages, function groups, and programs in the
   target client
 
-## What gets persisted to settings.json
+## What gets persisted (Connection-scoped, in connections.json dev_defaults)
+
+Standing dev defaults are written Connection-scoped into
+`connections.json[pinned-profile].dev_defaults` (at
+`{work_dir}\runtime\connections.json`) via
+`sap_dev_default.ps1 -Action set -Key <k> -Scope Connection`:
 
 - `sap_dev_transport_request` — the new TR
 - `sap_dev_package` — the new or validated package
 - `sap_dev_function_group` — the new or validated function group
+- TR-policy keys asked in Step 2a: `way_to_get_transport_request`,
+  `rule_of_tr_description`, `tr_description_template`
+
+The one global-layer write is `sap_gui_security_warmup_done` (via
+`/update-config` to `userconfig.json`).
 
 ## Version
 

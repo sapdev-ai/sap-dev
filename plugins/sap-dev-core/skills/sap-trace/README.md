@@ -40,12 +40,12 @@ line `HOTSPOTS=3`.
 |---|---|
 | `SKILL.md` | Orchestration: arg parsing, GUI export, analyzer call, reporting |
 | `references/sap_trace.ps1` | Offline analyzer (normalize → rank → map → report → JSON) |
-| `references/sap_trace_st05.vbs` | GUI: display + export ST05 summarized SQL trace (PH_* placeholders) |
-| `references/sap_trace_sat.vbs` | GUI: open + export a SAT measurement hit list (PH_* placeholders) |
+| `references/sap_trace_st05.vbs` | GUI: display + export ST05 summarized SQL trace (recorded IDs, S/4HANA 1909) |
+| `references/sap_trace_sat.vbs` | GUI: open + export a SAT measurement hit list (recorded IDs, S/4HANA 1909) |
 | `references/fixtures/st05_summarized_sample.txt` | Fixture for the offline self-test |
 | `../../shared/tables/perf_antipattern_map.tsv` | signal → rule → fix map (customer-overridable) |
 
-The GUI templates ship with **recorded-ID placeholders** (`PH_*`). Capture them
-once per SAP release with `/sap-gui-probe` and fill them in
-before using `--source`. The ALV-export block is reused from `/sap-se16n` and is
-already complete.
+The GUI templates ship with **real component IDs captured live on S4D /
+S/4HANA 1909 (2026-06-03)** — no placeholders to fill before using `--source`.
+Re-record with `/sap-gui-probe` only if a later release moves a control. The
+ALV-export block is reused from `/sap-se16n` and is already complete.

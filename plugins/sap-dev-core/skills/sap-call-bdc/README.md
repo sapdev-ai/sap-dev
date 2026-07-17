@@ -8,7 +8,7 @@ This skill automates BDC (Batch Data Communication) execution in SAP:
 
 - **SHDB recordings**: Record in SHDB, download, place in `bdc/` folder, run skill
 - **Command-style invocation**: `/sap-call-bdc MM01` — just pass the transaction code
-- **Centralized credentials**: Reads connection parameters from sap-dev-core settings.json
+- **Centralized credentials**: Connection parameters resolve from the AI session's pinned profile in `{work_dir}\runtime\connections.json` (saved via `/sap-login`)
 - **32-bit PowerShell execution**: Runs via `SysWOW64\WindowsPowerShell\v1.0\powershell.exe` for SAP NCo 3.1 in the 32-bit GAC
 - **RFC connection**: Connects via SAP NCo 3.1 (sapnco.dll / sapnco_utils.dll)
 - **Full BDCMSGCOLL output**: All 13 message fields written to tab-delimited result file
@@ -38,7 +38,8 @@ sap-call-bdc/
 ├── README.md                          # This file
 ├── bdc/                               # SHDB recording files
 │   ├── bdc_recording_MM01.txt         # Example: MM01 Create Material
-│   └── bdc_recording_BP.txt           # Example: BP Business Partner
+│   ├── bdc_recording_BP.txt           # Example: BP Business Partner
+│   └── bdc_recording_SE21.txt         # Parameterized %%TOKEN%% template: SE21 Create Package
 └── references/
     └── sap_bdc_transaction.ps1        # PowerShell template (used by skill)
 ```
@@ -70,7 +71,7 @@ Or ask conversationally:
 - Windows with 32-bit PowerShell at `C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe`
 - SAP user with S_RFC and S_TCODE authorizations
 - Login Required: Use `/sap-login` first
-- Centralized Login: Connection parameters stored in sap-dev-core settings.json
+- Centralized Login: Connection parameters resolve from the AI session's pinned profile in `{work_dir}\runtime\connections.json` (saved via `/sap-login`, password DPAPI-encrypted at rest)
 
 ## Version
 

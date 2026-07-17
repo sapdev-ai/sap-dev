@@ -44,14 +44,23 @@ This skill activates when discussing:
 
 ```
 sap-se24/
-├── SKILL.md                        # Main skill file (step-by-step workflow)
-├── README.md                       # This file (keywords for discoverability)
+├── SKILL.md                              # Main skill file (step-by-step workflow)
+├── README.md                             # This file (keywords for discoverability)
 └── references/
-    ├── sap_se24_login.vbs          # VBScript: login to SAP GUI
-    ├── sap_se24_check.vbs          # VBScript: check if class exists (SE24 Display)
-    ├── sap_se24_create.vbs         # VBScript: create new class shell in SE24
-    └── sap_se24_update.vbs         # VBScript: update existing class in SE24 (upload source)
+    ├── sap_se24_check.vbs                # VBScript: check if class exists (SE24 Display)
+    ├── sap_se24_create.vbs               # VBScript: create new class shell in SE24
+    ├── sap_se24_update.vbs               # VBScript: update existing class in SE24 (upload source)
+    ├── sap_se24_check_and_download.vbs   # VBScript: syntax-check + download source (check-and-fix mode)
+    ├── sap_se24_change_props.vbs         # VBScript: change class properties (description / status / category)
+    ├── sap_se24_delete.vbs               # VBScript: delete a class (irreversible; confirmed first)
+    ├── sap_se24_test_classes.vbs         # VBScript: upload local test classes (CCAU include)
+    ├── sap_se24_rfc_install.ps1          # PowerShell: headless class-source deploy via Z_CLASS_SOURCE_INSTALL (RFC)
+    ├── Z_CLASS_SOURCE_INSTALL.abap       # ABAP: installer FM source for the RFC deploy path
+    └── *.screens.json                    # Golden-screen baselines (one per driving VBS)
 ```
+
+Login is centralized in `/sap-login` (shared `sap_login.vbs`); this skill attaches to
+the existing session.
 
 ## Usage
 

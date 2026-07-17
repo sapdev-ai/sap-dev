@@ -7,7 +7,7 @@ NB, CP, NP, IN), with single value, range (BT), or multi-value (IN) selection.
 
 ## Skill Overview
 
-1. Read sap-dev-core's settings.json to resolve the work directory
+1. Resolve the work directory via the env-aware settings helper (`Get-SapWorkDir` — never a direct settings.json read)
 2. Build a side-channel **PARAMS_FILE** (tab-delimited) with two sections:
    - `SELECT` — output column FIELDNAMEs (empty = all fields)
    - `FILTER` — `<FIELDNAME><TAB><OP><TAB><VAL1>[<TAB><VAL2>...]` rows
@@ -17,7 +17,11 @@ NB, CP, NP, IN), with single value, range (BT), or multi-value (IN) selection.
 5. The VBS opens SE16N, scrolls the field-selection table control to locate
    each filter field by its FIELDNAME (col 6), sets values, runs F8, then
    exports the ALV result list via "Spreadsheet" (tab-delimited)
-6. Output file appears at `{WORK_TEMP}\se16n_<TABLE>.txt`
+6. Output file appears at `{RUN_TEMP}\se16n_<TABLE>.txt` (per-run scratch dir)
+
+Additional modes (see SKILL.md): `snapshot save|diff|list` — table-state assertion
+via the shared keyed-diff engine — and `agg` — server-side GROUP BY / MIN/MAX/AVG/
+COUNT via SE16H.
 
 ## PARAMS_FILE Format
 
@@ -74,7 +78,7 @@ Conversational forms:
 Query: `Country (LAND1) ∈ {CN, JP}` AND `Currency (WAERS) = CNY`, output all
 fields.
 
-`{WORK_TEMP}\se16n_params.txt`:
+`{RUN_TEMP}\se16n_params.txt`:
 ```
 SELECT
 FILTER
@@ -84,7 +88,7 @@ WAERS	EQ	CNY
 
 Expected: at most a handful of rows (the China company codes whose default
 currency is CNY). `ROWS=<n>` printed on the last line; output written to
-`{WORK_TEMP}\se16n_T001.txt` with the standard T001 header line.
+`{RUN_TEMP}\se16n_T001.txt` with the standard T001 header line.
 
 ## Prerequisites
 
@@ -94,8 +98,8 @@ currency is CNY). `ROWS=<n>` printed on the last line; output written to
 
 ## Limitations
 
-- No sort / aggregation / saved variant support — use SE16N interactively for
-  those
+- No sort / saved variant support — use SE16N interactively for those
+  (aggregation is available via the `agg` mode, which drives SE16H)
 - Output column order follows SAP's natural ordering, not the SELECT list order
 - Cluster / pooled tables that SE16N rejects produce `NO_DATA` with the SAP
   status text — pass this back to the user verbatim

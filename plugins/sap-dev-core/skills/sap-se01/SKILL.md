@@ -891,7 +891,7 @@ Suggested `<CLASS>`: `TR_CREATE_FAILED`, `TR_RESOLUTION_FAILED`, `GUI_TIMEOUT`.
 | `AS4DATE` | Last-changed date (`YYYYMMDD`) |
 | `AS4TIME` | Last-changed time (`HHMMSS`) |
 | `STRKORR` | Parent request (empty for top-level requests, populated for tasks) |
-| `AS4TEXT` | Short description |
+| `AS4TEXT` | Short description — lives in **`E07T`** `(TRKORR, LANGU, AS4TEXT)`, NOT in `E070`; join on `TRKORR` (see Step 5) |
 
 ---
 

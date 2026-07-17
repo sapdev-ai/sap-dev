@@ -641,7 +641,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "Remove-Item -Force -Erro
 **Run only when at least one of these is true:**
 
 - The password was just typed by the operator this turn (i.e. not
-  read from `settings.json`).
+  read from the stored connection profile).
 - The stored `sap_password` is plaintext (Step 2a emitted the
   pass-through warning) and the operator wants to upgrade it.
 - The stored value was DPAPI-encrypted but on a different user /
@@ -650,7 +650,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "Remove-Item -Force -Erro
 
 **Ask the operator explicitly** before persisting — never auto-save:
 
-> Save the password to `settings.json` (DPAPI-encrypted, bound to
+> Save the password to your connection profile in
+> `{work_dir}\runtime\connections.json` (DPAPI-encrypted, bound to
 > your Windows user account)? **yes** to save, anything else to skip.
 
 If the operator says yes, encrypt and persist:
@@ -663,21 +664,19 @@ If the operator says yes, encrypt and persist:
 #    → stdout: dpapi:AQAAAN...
 ```
 
-Capture the `dpapi:` line and write it to `settings.json` via
-`/update-config` (or by direct edit of the `userConfig.sap_password.value`
-field). Both produce the same on-disk result; `/update-config` is the
-preferred path because it preserves JSON formatting:
-
-```
-/update-config userConfig.sap_password = "dpapi:AQAAAN..."
-```
+Capture the `dpapi:` line and hold it for Step 6.5 — pass it to
+`sap_login_select.ps1 -Action finalize` as `-NewPasswordDpapi` so it is
+saved on this connection's profile in `{work_dir}\runtime\connections.json`.
+Finalize is the only persistence path downstream code reads; do not
+write the ciphertext anywhere else (the legacy `sap_password` settings
+key is ignored after the one-shot Step 0.7 import — see Step 2c).
 
 **DO NOT** echo the plaintext back to the user, and do not write the
 plaintext to any log. The shared `sap_log_lib.ps1` already redacts
 `sap_password` by key name; with DPAPI in place, the value at rest is
 no longer the secret either.
 
-### What happens if I copy `settings.json` to another machine?
+### What happens if I copy `connections.json` to another machine?
 
 The `dpapi:` ciphertext is bound to the **Windows user account on
 this machine**. On another machine (or another Windows account), the
@@ -685,7 +684,7 @@ decrypt step in 2a will fail with `sap_dpapi: decrypt failed (wrong
 Windows user / different machine / corrupted ciphertext)`. The skill
 will then prompt for the password fresh, and the operator can re-save
 on that new machine. This is the desired property: a leaked
-`settings.json` is useless without the matching Windows profile.
+`connections.json` is useless without the matching Windows profile.
 
 ---
 
@@ -890,10 +889,12 @@ automatic, scoped correctly, and has no external setup requirement.
 
 ## Security Note
 
-**At rest** — `sap_password` in `settings.json` is stored DPAPI-encrypted
+**At rest** — `sap_password` on the connection profile in
+`{work_dir}\runtime\connections.json` (legacy: a migrated `userconfig.json`
+/ `settings.local.json` value) is stored DPAPI-encrypted
 (`dpapi:<base64>`) under the CurrentUser scope. Decryption is bound to
 the Windows user account on the machine that performed the encryption;
-a copied `settings.json` is useless on another machine. See Step 2a
+a copied `connections.json` is useless on another machine. See Step 2a
 (decrypt-on-read) and Step 5b (encrypt-on-save). Plaintext values are
 still accepted for backward compatibility but trigger a warning that
 prompts the operator to re-save.

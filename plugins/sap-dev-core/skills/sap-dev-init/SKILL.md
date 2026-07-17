@@ -99,7 +99,7 @@ For each step below, pick the **first skill in the active fallback chain** for w
 | Task | GUI variant | RFC variant | BDC variant |
 |---|---|---|---|
 | Create / verify transport request | `/sap-se01` | `/sap-transport-request` | *(none)* |
-| Create / verify package | *(none)* | *(none)* | `/sap-se21` |
+| Create / verify package | `/sap-se21` | *(none)* | *(none)* |
 | Create / verify function group | `/sap-function-group` (GUI sub-flow) | `/sap-function-group` (RFC sub-flow) | *(none)* |
 | Create / update DDIC domain | `/sap-se11` | *(none)* | *(none)* |
 | Create / update DDIC data element | `/sap-se11` | *(none)* | *(none)* |
@@ -111,7 +111,7 @@ For each step below, pick the **first skill in the active fallback chain** for w
 Examples:
 - `sap_dev_mode = GUI`, task "Create transport request" → choose `/sap-se01` (GUI exists).
 - `sap_dev_mode = RFC`, task "Create transport request" → choose `/sap-transport-request` (RFC exists).
-- `sap_dev_mode = RFC`, task "Create package" → only BDC exists in the chain after RFC → choose `/sap-se21`.
+- `sap_dev_mode = RFC`, task "Create package" → no RFC or BDC variant exists, fall back to GUI → choose `/sap-se21`.
 - `sap_dev_mode = BDC`, task "Create function group" → no BDC, fall back to RFC → choose `/sap-function-group`.
 
 Record the selected skills in a small "plan" block before executing, so the user can see which path will be taken:
@@ -598,7 +598,7 @@ stop and show the error to the user.
 Run the **package skill chosen in the Step 0 plan** to ensure the development package exists.
 
 Only one implementation currently exists:
-- **`/sap-se21`** (BDC mode): RFC check on TDEVC, then BDC creation via `sap-call-bdc` if missing. Reused for all `sap_dev_mode` values until a GUI or RFC variant is added.
+- **`/sap-se21`** (GUI mode): RFC check on TDEVC, then GUI-scripted creation via SE21 if missing. Reused for all `sap_dev_mode` values until an RFC or BDC variant is added.
 
 ### Resolve the package name
 

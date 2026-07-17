@@ -196,7 +196,7 @@ Claude: [Uses sap-se38]
 | `sap-trace` | Analyzes an already-recorded SAP performance trace (ST05 / SAT or an imported file), ranks hotspots, flags anti-patterns, and proposes fixes — read-only |
 | `sap-transport-readiness` | Release gate for a transport request: RFC structural checks (unreleased tasks, inactive objects, local objects) rolled up to GO / GO_WITH_WARNINGS / NO-GO — read-only |
 | `sap-transport-request` | Single entry point that resolves a modifiable SAP transport request per the `way_to_get_transport_request` policy |
-| `sap-update-addon` | Inserts, updates, or deletes records in SAP add-on tables (Y/Z prefix) via SM30, SE16, or `ZCMRUPDATE_ADDON_TABLE` |
+| `sap-update-addon` | Inserts or updates records in SAP add-on tables (Y/Z prefix) via SM30, SE16, or `ZCMRUPDATE_ADDON_TABLE`; DELETE is refused on all paths (drive SM30 manually) |
 | `sap-version-history` | The same-system time axis: list version directories, diff any two versions (or active-vs-last-released), and blame over a capped version window — read-only, pure RFC |
 | `sap-vofm` | VOFM routine registry (read-only v1): list / check / resolve registered routines per group and detect registered-but-not-wired gaps in the frame include |
 | `sap-where-used-list` | Runs SAP's Where-Used List for any repository object across SE11, SE38, SE37, SE24, and SE91 |

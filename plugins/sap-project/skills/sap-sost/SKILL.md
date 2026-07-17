@@ -38,7 +38,10 @@ Task: $ARGUMENTS
 
 ## Step 0 — Directories + Logging
 
-Resolve `work_dir` + `{RUN_TEMP}` (canonical one-liner). Start logging (`sap_log_helper.ps1`,
+Resolve `work_dir` + `{RUN_TEMP}` (canonical one-liner — `sap_connection_lib.ps1` is dot-sourced
+there — with `Write-Output ('RUN_TEMP=' + (Get-SapRunTemp))` appended). `{RUN_TEMP}` = the
+per-run scratch dir holding the log state file; mint it once here and reuse (re-minting breaks
+the `-Action end` state-file lookup). Start logging (`sap_log_helper.ps1`,
 state `{RUN_TEMP}\sap_sost_run.json`). Pinned RFC profile via `/sap-login`.
 
 ## Step 1 — Parse & Dispatch
@@ -79,8 +82,9 @@ sends" pattern — surface it explicitly.
 
 ## Step 5 — resend (v1.5, confirm-gated GUI)
 
-No RFC resend FM exists (probed). resend drives transaction SOST via a recorded VBS
-(`sap_sost_resend.vbs`, `NEEDS_RECORDING` until captured with `/sap-gui-probe --record`) behind a
+No RFC resend FM exists (probed). resend drives transaction SOST via a to-be-recorded VBS
+(`sap_sost_resend.vbs` — not yet shipped: emit `NEEDS_RECORDING` and capture it once with
+`/sap-gui-probe --record`) behind a
 confirm gate (typed confirmation for >25 messages or a production client), then an authoritative
 SOST re-read verifies the status flip; `--kick` submits RSCONN01 via /sap-run-report (its own gate).
 
@@ -109,7 +113,8 @@ Log end (`SUCCESS`/`FAILED`/`SKIPPED` + error_class). Error classes: `SOST_SELEC
   W=wait, S,I=sent). `trace` groups by the SOST object id; recipient matching is best-effort on the
   MSGV variables (the exact recipient address lives in SOOS/address objects — a v1.5 join).
 - **resend has no RFC path** (SX_OBJECT_RESEND / SX_SNDREC_RESEND exist on neither release) — it is
-  a confirm-gated recorded GUI drive, shipped `NEEDS_RECORDING` (v1.5). v1 is read-only.
+  a confirm-gated GUI drive planned for v1.5; the VBS is not yet shipped (`NEEDS_RECORDING` — capture
+  with `/sap-gui-probe --record`). v1 is read-only.
 - **Data volume:** SOST grows unbounded — a default 7-day window + `--max` ROWCOUNT cap (500) +
   explicit narrow field lists keep reads under the RFC_READ_TABLE 512-byte row limit.
 - **v1.5:** resend GUI capture; `trace --body` (SO_DOCUMENT_READ_API1); /sap-diagnose source-matrix

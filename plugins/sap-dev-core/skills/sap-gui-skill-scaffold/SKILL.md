@@ -515,14 +515,18 @@ powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_
 
 **`-TtlSeconds 1800` is INTENTIONAL** for the scaffolder. The broker's default TTL is 600s (10 min), which is fine for typical Tier 3 skill runs but tight for parallel scaffolder batches — each sub-agent probe can take 7-9 min, and the scaffolder waits for the SLOWEST of 4 before releasing. The default 600s TTL routinely fires on batches that take longer than 10 min wall-clock, dropping entries before release can fire. The release call then returns `NOT_FOUND: task=... entry was here but dropped by reactive cleanup` instead of `RELEASED:` — idempotent but misleading. Bumping to 1800s (30 min) gives generous margin over the longest expected probe runtime.
 
-**`-PinFile` is REQUIRED** — without a connection resolver, multi-connection
-setups (any operator with two or more SAP Logon entries attached) get
-`DENIED: ambiguous target: N connections attached and no resolver supplied`
-on the very first acquire. The pin file from Step 0.7 has already pinned
-`{PINNED_CONNECTION}`, so passing it routes every probe to the same
-connection the operator authorised. If you ever need to scaffold across
-connections, swap `-PinFile` for `-ConnectionPath "{PINNED_CONNECTION}"`
-(same effect, no file read).
+**No `-PinFile` is needed (Phase 4.1+)** — the broker auto-resolves this
+AI session's pinned connection via `Get-SapAiSessionId` + the
+`ai_sessions` map in `session_registry.json`. Step 0.7 guarantees that
+pin exists before Step 2 runs, so multi-connection setups route every
+probe to `{PINNED_CONNECTION}` automatically. If an acquire ever returns
+`DENIED: ambiguous target: N connections attached and no resolver
+supplied`, the AI-session pin is missing/orphaned — re-run Step 0.7 (or
+`/sap-login`) to re-pin. To deliberately scaffold against a DIFFERENT
+connection than the pin, pass `-ConnectionPath "<other /app/con[N]>"`
+**plus `-ForceUnpin`** — the broker enforces the pin after resolution
+and DENIEs a cross-pin acquire without it; alternatively re-pin via
+`/sap-login --switch`.
 
 **`-OwnerPid 0` is INTENTIONAL** for the scaffolder. Each tool call from the
 orchestrator (Claude) spawns a transient `pwsh.exe` process whose PID dies

@@ -7,8 +7,8 @@ SAP GUI Scripting login automation for opening connections and logging into SAP 
 This skill provides automation for SAP GUI login operations including:
 
 - **Login Popup**: GUI popup window for entering login details when no credentials are provided
-- **Centralized Settings**: Reads connection parameters from sap-dev-core settings.json
-- **Auto-Login**: Fills in credentials automatically from settings.json
+- **Multi-Profile Connection Store**: Reads connection profiles from `{work_dir}\runtime\connections.json` (passwords DPAPI-encrypted at rest); legacy settings.json keys are migrated once on first run
+- **Auto-Login**: Fills in credentials automatically from the saved connection profile
 - **Auto-Start**: Launch SAP Logon if not running
 - **Manual Login Fallback**: Wait up to 5 minutes for manual login when no password provided
 - **Session Reuse**: Detect and reuse existing SAP GUI sessions
@@ -25,7 +25,7 @@ This skill activates when discussing:
 
 ### Login & Credentials
 - SAP login, SAP credentials, SAP password
-- auto-login, settings.json, connection parameters
+- auto-login, connections.json, connection parameters
 - client number, SAP user, logon language
 
 ### Scripting
@@ -67,7 +67,7 @@ Ask about any SAP GUI login automation topic:
 ## Version
 
 - Skill Version: 1.1.0
-- Last Updated: 2026-03-29
+- Last Updated: 2026-07-17
 
 ## License
 

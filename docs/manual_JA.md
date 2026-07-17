@@ -354,9 +354,9 @@ setx SAPDEV_AI_WORK_DIR "D:\sapdev"
    構造 `ZCMST_RFC_PARAM`、テーブルタイプ `ZCMCT_RFC_PARAM`。
 8. **汎用 RFC ラッパー FM** `Z_GENERIC_RFC_WRAPPER_TBL`（リモート対応としてマーク） —
    ツールキットが RFC 非対応の関数モジュールを RFC 経由で安全に呼び出せるようにします。
-9. **レポートランナー FM** `Z_RUN_REPORT`（リモート対応。ベストエフォート） —
-   `/sap-run-report` と `/sap-job schedule` が使うヘッドレスなバックグラウンド実行の高速パス。
-10. **ユーティリティプログラム** `ZCMRUPDATE_ADDON_TABLE` — `/sap-update-addon` が使用します。
+9. **ユーティリティプログラム** `ZCMRUPDATE_ADDON_TABLE` — `/sap-update-addon` が使用します。
+10. **レポートランナー FM** `Z_RUN_REPORT`（リモート対応。ベストエフォート） —
+    `/sap-run-report` と `/sap-job schedule` が使うヘッドレスなバックグラウンド実行の高速パス。
 
 **TR ポリシー**（`way_to_get_transport_request`）について尋ねられたら、1 つ選びます:
 
@@ -457,7 +457,8 @@ Brief は `/sap-docs-extract`、`/sap-gen-abap`（必須コンテキスト）、
 /sap-docs-extract C:\work\design\CustomerUpload.xlsx
 ```
 
-入力は `.xlsx` / `.docx` / `.doc` / `.pdf`、既存の作業フォルダ、または `_raw.txt` です。
+入力は `.xlsx` / `.docx` / `.pdf`、既存の作業フォルダ、または `_raw.txt` です
+（レガシーのバイナリ `.doc` はサポートされません — まず Word で `.docx` として保存してください）。
 作業フォルダを作成し、ドキュメントを型付きテキストファイルにダンプします — 最も重要なもの:
 
 | ファイル | 内容 |
@@ -550,9 +551,12 @@ AUTHORITY-CHECK の配置、メッセージクラス、コメント言語。
   （パラメーター名、セクション、必須フラグ、型の互換性、構造フィールド）。幻覚パラメーターを
   SE37 到達前に捕捉します。
 - **syntax** — ヘッドレスのコンパイラーレベル構文チェック（RFC 経由の `EDITOR_SYNTAX_CHECK`）。
-  GUI アップロード前にオフラインで実構文エラーを捕捉します。自己完結プログラムで実行され、
-  インクルード / FM フラグメント / クラスプールでは `SYNTAX_COULD_NOT_CHECK` を報告します
-  （それらはデプロイスキルの Ctrl+F2 でインコンテキスト検証されます）。
+  GUI アップロード前にオフラインで実構文エラーを捕捉します。自己完結プログラムはそのまま
+  チェックされ、FM フラグメント / クラス・インターフェースプールはエンジンの `-Wrap` モードで
+  挿入前に**本体**をベストエフォートでチェックします（検出結果は元ファイルの行番号に
+  マップされます）。モデル化できないほど複雑なシグネチャや単独のインクルードのみ
+  `SYNTAX_COULD_NOT_CHECK` に退避し、それらはデプロイスキルの Ctrl+F2 で
+  インコンテキスト検証されます。
 
 自動修正可能なものが見つかった場合は修正ツールを実行します（最初にタイムスタンプ付きの
 `.bak` が書き込まれます）:
@@ -873,8 +877,9 @@ Customer Brief を読み、そこから `MODE_*` フラグを設定し、`/sap-*
 
 **実際の完全なプロンプト。** 実際には 1 行よりも豊富な指示を与えます —
 エージェントは各句をステップまたは `MODE_*` フラグにマッピングします。実際のビルド
-プロンプトは次のようになります（この仕様はリポジトリに同梱されているので、そのまま
-実行できます）:
+プロンプトは次のようになります（ここで使っている仕様は、同梱のワークブックテンプレート
+`plugins/sap-dev-core/shared/templates/spec_template.xlsx` を記入したものです —
+自分の仕様に置き換えてください）:
 
 > *以下の設計書に基づいて、**abap-developer** を使って対応するプログラムを作成し、*
 > ***S4D** システムにデプロイしてください。*
@@ -893,7 +898,7 @@ Customer Brief を読み、そこから `MODE_*` フラグを設定し、`/sap-*
 >
 > *見つかった問題を記録してください。*
 >
-> `C:\Work\Dev\ClaudeCodeDev\sapdev-ai\marketing\Sample\spec_MaterialUpload_EN.xlsx`
+> `C:\sapdev\design_docs\spec_MaterialUpload_EN.xlsx`
 
 エージェントが各指示をどう読むか:
 

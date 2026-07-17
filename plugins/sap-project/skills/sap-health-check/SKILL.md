@@ -46,12 +46,14 @@ writes only local state but changes future verdicts → plain confirm first.
 ## Step 0 — Resolve Work Directory, OUT, Baseline
 
 ```bash
-powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('WORK_DIR=' + (Get-SapWorkDir)); Write-Output ('STAMP=' + (Get-Date -Format 'yyyyMMddHHmmss'))"
+powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('WORK_DIR=' + (Get-SapWorkDir)); Write-Output ('STAMP=' + (Get-Date -Format 'yyyyMMddHHmmss')); Write-Output ('RUN_TEMP=' + (Get-SapRunTemp))"
 ```
 
 Resolve the pinned connection's SID+client (from the profile / an `IDENT` line). Set
-`{RUN_TEMP}`; `{OUT}` = `Get-SapArtifactDir -ScopeKey SYS_<SID>_<CLIENT> -Skill
-sap-health-check`. **Baseline file (Bucket A, durable — NOT temp):**
+`{RUN_TEMP}` = the `RUN_TEMP=` value printed above (`Get-SapRunTemp` mints + creates the
+per-run scratch dir holding the log state file; mint it once here and reuse — re-minting
+breaks the `-Action end` state-file lookup); `{OUT}` = `Get-SapArtifactDir -ScopeKey
+SYS_<SID>_<CLIENT> -Skill sap-health-check`. **Baseline file (Bucket A, durable — NOT temp):**
 `{work_dir}\runtime\health\<SID>_<CLIENT>_baseline.json`.
 
 ## Step 0.5 — Start Logging

@@ -1,13 +1,15 @@
 # SAP Update Add-on Table Skill
 
-Inserts, updates, or deletes records in SAP add-on tables (Y/Z prefix).
-Automatically detects the best maintenance method available for the table
-and routes to the appropriate transaction.
+Inserts or updates records in SAP add-on tables (Y/Z prefix); DELETE is not
+automated on any method path (refused before touching data — drive SM30
+manually for row deletion). Automatically detects the best maintenance method
+available for the table and routes to the appropriate transaction.
 
 ## Skill Overview
 
-1. Parse: table name + data file (CSV / TSV) + optional operation
-   (`INSERT` / `UPDATE` / `DELETE`)
+1. Parse: table name + data file (UTF-8, TAB-delimited text, one header line)
+   + optional operation (`INSERT` / `UPDATE`; `DELETE` is refused with
+   exit 1 on all three methods)
 2. Detect the best method via RFC:
    - **(a) SM30** — if a maintenance view exists (preferred)
    - **(b) SE16** — if `DD02L-MAINFLAG = 'X'` (direct table maintenance allowed)
@@ -19,23 +21,23 @@ and routes to the appropriate transaction.
 
 ## Auto-Trigger Keywords
 
-- `update addon table`, `insert into Z table`, `delete from Y table`
+- `update addon table`, `insert into Z table`
+- `delete from Y table` — triggers the skill, which **refuses** DELETE and
+  points to manual SM30
 - `maintain table`, `load data into ZHK*`
 - `populate ZHKFIXEDVALS`, `update ZHK_CONFIG`
 
 ## Usage
 
 ```text
-/sap-update-addon ZHKFIXEDVALS C:\data\fixedvals.csv
-/sap-update-addon ZHK_CONFIG C:\data\config.csv UPDATE
-/sap-update-addon ZHK_CONFIG C:\data\stale.csv DELETE
+/sap-update-addon ZHKFIXEDVALS C:\data\fixedvals.txt
+/sap-update-addon ZHK_CONFIG C:\data\config.txt UPDATE
 ```
 
 Conversational forms:
 
-- "Load `C:\data\fixedvals.csv` into ZHKFIXEDVALS"
+- "Load `C:\data\fixedvals.txt` into ZHKFIXEDVALS"
 - "Update ZHK_CONFIG with the new rows from this file"
-- "Delete the entries listed in stale.csv from ZHK_CONFIG"
 
 ## Prerequisites
 
@@ -51,8 +53,12 @@ Conversational forms:
   the skill operating rules)
 - Maximum row count per call ~10000 (SAP GUI scripting throughput limit;
   split larger loads)
-- Data file must use the table's exact field order (no header-driven mapping
-  yet — feature in roadmap)
+- The data file's header line carries the target field names (uppercase,
+  MANDT excluded); columns are mapped by header name, not position, on all
+  three methods. The PROG (`ZCMRUPDATE_ADDON_TABLE`) method additionally
+  requires the header to list ALL non-MANDT fields of the table (exact set,
+  any order) — a column-count or missing-field mismatch fails loud before
+  any row is written
 - Data file must be **UTF-8**, TAB-delimited, with one header line (all three
   methods — PROG / SE16 / SM30 — read UTF-8)
 - **Classic ECC 6.0 + S/4HANA:** the `ZCMRUPDATE_ADDON_TABLE` (PROG) fallback is
@@ -61,7 +67,7 @@ Conversational forms:
   path uses `tbar[1]/btn[5]` on the SE16 initial screen — the **same** button on
   both releases (the old "S/4 = btn[18]" assumption was wrong) — and is
   live-verified end-to-end on both. The SM30 path still needs a maintenance
-  view; SE16 *DELETE* is a stub on all releases (use SM30 or delete manually).
+  view; SE16 *DELETE* is a stub on all releases (drive SM30 manually).
 - **PROG selection-screen labels:** `ZCMRUPDATE_ADDON_TABLE` assigns its
   selection texts (アップロード / ダウンロード / テーブル名 / ファイルパス) at
   runtime in `INITIALIZATION` via the release-independent `%_<name>_%_app_%-text`

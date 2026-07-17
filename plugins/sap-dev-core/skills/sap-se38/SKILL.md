@@ -902,10 +902,13 @@ C:\Windows\SysWOW64\cscript.exe //NoLogo {RUN_TEMP}\sap_se38_change_attrs_run.vb
 
 ### Behaviour Notes
 
-- The Attributes screen is opened by selecting the **Attributes** radio
-  (`radRS38M-FUNC_HEAD`) on the SE38 initial screen, then pressing
-  **Change** (`btnCHAP`). This opens a modal dialog (`wnd[1]`) with the
-  attribute fields.
+- The program is opened in the **source editor** (Source Code radio
+  `radRS38M-FUNC_EDIT` + **Change** `btnCHAP`); the attributes modal dialog
+  (`wnd[1]`) is then opened via **Goto -> Attributes**
+  (`wnd[0]/mbar/menu[2]/menu[0]`). After editing, Continue returns to the
+  editor, where the VBS **Saves (`sendVKey 11`) and Activates (`sendVKey 27`)**
+  so the change persists (see "How it persists" above — the old `FUNC_HEAD`
+  radio + Change path was a false success).
 - **Original-language popup is conditional.** SAPLSETX
   ("Different original and logon languages", fingerprint
   `wnd[1]/usr/ctxtRSETX-MASTERLANG`) only appears when the logon language
@@ -919,7 +922,7 @@ C:\Windows\SysWOW64\cscript.exe //NoLogo {RUN_TEMP}\sap_se38_change_attrs_run.vb
   | Title | `wnd[1]/usr/txtRS38M-REPTI` |
   | Status | `wnd[1]/usr/cmbTRDIR-RSTAT` (set via `.Key`) |
   | Type | `wnd[1]/usr/cmbTRDIR-SUBC` (set via `.Key`) |
-  | Save | `wnd[1]/tbar[0]/btn[0]` |
+  | Continue (back to editor) | `wnd[1]/tbar[0]/btn[0]` — Save is `wnd[0]` `sendVKey 11` afterwards |
   | Cancel | `wnd[1]` `sendVKey 12` |
 - **Post-save TR popup.** After Save, SAP may prompt for a Workbench
   request via `wnd[1]/usr/ctxtKO008-TRKORR`. The VBS fills it with

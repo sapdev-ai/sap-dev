@@ -42,7 +42,10 @@ Task: $ARGUMENTS
 
 ## Step 0 — Directories + Logging
 
-Resolve `work_dir` + `{RUN_TEMP}` (canonical one-liner). Start logging (`sap_log_helper.ps1`,
+Resolve `work_dir` + `{RUN_TEMP}` (canonical one-liner — `sap_connection_lib.ps1` is dot-sourced
+there — with `Write-Output ('RUN_TEMP=' + (Get-SapRunTemp))` appended). `{RUN_TEMP}` = the
+per-run scratch dir holding the log state file; mint it once here and reuse (re-minting breaks
+the `-Action end` state-file lookup). Start logging (`sap_log_helper.ps1`,
 state `{RUN_TEMP}\sap_sm30_run.json`). Pinned RFC profile; GUI session for add/update.
 
 ## Step 1 — Parse & Dispatch
@@ -113,8 +116,8 @@ stdout `SM30: view=<v> mode=<m> rows=<n>` + `STATUS: <status>` and read `{RUN_TE
 (`status`, `rows_written`, `messages[]`): `STATUS: NEEDS_RECORDING` (with `SM30: NEEDS_RECORDING
 step=<label>`) = the live screen diverged from the captured contract -> re-record via `/sap-gui-probe
 --record`; `SM30_TR_REQUIRED` -> resolve a Customizing TR and retry; `SM30_KEY_NOT_FOUND` -> the update
-key is absent (no upsert); `SM30_SAVE_FAILED` -> the save sbar returned E/A. Then **verify** via
-`sap_sm30_read.ps1 -Action verify`-style re-read filtered to the written keys — verdict from the
+key is absent (no upsert); `SM30_SAVE_FAILED` -> the save sbar returned E/A. Then **verify** via a
+`sap_sm30_read.ps1 -Action preread` re-read filtered (`-Where`) to the written keys — verdict from the
 re-read ONLY; any delta -> `SM30_VERIFY_MISMATCH`.
 
 ## Step 6 — Register

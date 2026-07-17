@@ -45,10 +45,13 @@ to /sap-run-report, which asks its **own** Rule-5 confirm — this skill never p
 ## Step 0 — Resolve Work Directory, OUT, Snapshot Dir
 
 ```bash
-powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('WORK_DIR=' + (Get-SapWorkDir)); Write-Output ('STAMP=' + (Get-Date -Format 'yyyyMMddHHmmss'))"
+powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('WORK_DIR=' + (Get-SapWorkDir)); Write-Output ('STAMP=' + (Get-Date -Format 'yyyyMMddHHmmss')); Write-Output ('RUN_TEMP=' + (Get-SapRunTemp))"
 ```
 
-Resolve the pinned connection's SID+client. Set `{RUN_TEMP}`; `{OUT}` = `Get-SapArtifactDir
+Resolve the pinned connection's SID+client. Set `{RUN_TEMP}` = the `RUN_TEMP=` value printed
+above (`Get-SapRunTemp` mints + creates the per-run scratch dir holding the log state file;
+mint it once here and reuse — re-minting breaks the `-Action end` state-file lookup);
+`{OUT}` = `Get-SapArtifactDir
 -ScopeKey SYS_<SID>_<CLIENT> -Skill sap-data-volume`. **Snapshot dir (Bucket A, durable — NOT
 temp):** `{work_dir}\cache\data_volume\<SID>_<CLIENT>` (the engine derives the real SID+client
 live from RFC_SYSTEM_INFO / USR02, so pass this dir and it self-creates).
@@ -161,6 +164,7 @@ powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_
 - **Residence times** have no generic cross-object table — v1 takes `--residence-days` /
   `--residence-file` and says so; without a decodable TAANA distribution the "% older than
   residence" stays COULD_NOT_CHECK.
-- **Not yet:** `analyze` (schedule a TAANA analysis via a recorded TAANA GUI leg — v1.5,
-  ships NEEDS_RECORDING until captured); `archive-run` (SARA write/delete — v2, refused in
-  v1); DB02 physical-size GUI export (release/DB-specific — NEEDS_RECORDING extension point).
+- **Not yet:** `analyze` (schedule a TAANA analysis via a to-be-recorded TAANA GUI leg —
+  v1.5; no VBS ships yet: emit `NEEDS_RECORDING` and capture it once via
+  `/sap-gui-probe --record`); `archive-run` (SARA write/delete — v2, refused in v1); DB02
+  physical-size GUI export (release/DB-specific — NEEDS_RECORDING extension point).

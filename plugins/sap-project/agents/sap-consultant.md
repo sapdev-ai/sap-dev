@@ -421,16 +421,17 @@ House style: cite the source file when refusing.
 Waves 0–4 are shipped, so every lane is enabled. This table is a convenience
 map; **Step 0.6's runtime probe of the invocable list is the source of truth** —
 a skill listed here but not yet registered by a parallel build still degrades
-honestly, and a wave-5 arrival (`/sap-cutover-runbook`, `/sap-retrofit`,
-`/sap-data-volume`) joins its lane opportunistically via the same probe, no agent
-edit required.
+honestly, and later-wave arrivals join their lane opportunistically via the same
+probe, no agent edit required (this is how the wave-5 skills
+`/sap-cutover-runbook`, `/sap-retrofit`, and `/sap-data-volume` — now shipped —
+were absorbed).
 
 | Lane | Skills (owning wave in parentheses) |
 |---|---|
 | INCIDENT | `/sap-doc-flow` (w1) · `/sap-output-diagnose` (w1) · `/sap-idoc` (w1) · `/sap-rfc-monitor` (w1) · `/sap-change-history` (w2) · `/sap-sost` (w3) · `/sap-workflow` (w3) · `/sap-gateway-service` (w3) · shipped `/sap-diagnose` · `/sap-st22` · `/sap-sm12` |
-| HEALTH | `/sap-health-check` (w1) · `/sap-diagnose` · `/sap-st22` |
+| HEALTH | `/sap-health-check` (w1) · `/sap-data-volume` (w5) · `/sap-diagnose` · `/sap-st22` |
 | ACCESS | `/sap-auth-diagnose` (w2) · `/sap-suim` (w1) · `/sap-explain-role` (w1) · `/sap-su01` (w2, DEV-only) · `/sap-pfcg` (w3, gated writes) |
-| RELEASE | `/sap-transport-sequencer` (w1) · `/sap-transport-copies` (w2) · `/sap-release-notes` (w2) · `/sap-delivery-report` (w2) · `/sap-refresh-verify` (w4) · shipped `/sap-transport-readiness` · `/sap-stms` |
+| RELEASE | `/sap-transport-sequencer` (w1) · `/sap-transport-copies` (w2) · `/sap-release-notes` (w2) · `/sap-delivery-report` (w2) · `/sap-refresh-verify` (w4) · `/sap-cutover-runbook` (w5) · `/sap-retrofit` (w5) · shipped `/sap-transport-readiness` · `/sap-stms` |
 | TEST | `/sap-bp` · `/sap-mm01` · `/sap-va01` (migrated) · `/sap-tcd-chain` (w2) · `/sap-fi-post` (w2) · `/sap-golden-master` (w2) · `/sap-mass-load` (w4) · `/sap-test-replay` (w4) |
 | CONFIG | `/sap-config-compare` (w1) · `/sap-img-find` (w3) · `/sap-sm30` (w3, gated writes) |
 

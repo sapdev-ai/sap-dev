@@ -104,7 +104,7 @@ silent:
 - `/sap-stms` import ships with two uncalibrated checkbox IDs
   (immediate / leave-in-queue) — it refuses (`STMS_NOT_CALIBRATED`) until one
   `/sap-gui-probe --record` pass on your release wires them.
-- Golden-screen baseline coverage is 126/127 driving scripts (1 unbaselined),
+- Golden-screen baseline coverage is 135/136 driving scripts (1 unbaselined),
   but most are `pending_live` static seeds — drift detection is fully armed for a
   script only after a `/sap-doctor --screens` pass verifies its control-ID
   identity live on your release.

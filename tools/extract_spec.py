@@ -20,7 +20,7 @@ from openpyxl.utils import column_index_from_string
 from PIL import Image as PILImage
 
 if len(sys.argv) < 2:
-    raise SystemExit("usage: test_extract_simulation.py <spec.xlsx>")
+    raise SystemExit("usage: extract_spec.py <spec.xlsx>")
 SPEC = Path(sys.argv[1]).resolve()
 if not SPEC.exists():
     raise SystemExit(f"not found: {SPEC}")

@@ -9,7 +9,8 @@ description: |
   TADIR) and emits one parseable line per artefact plus a summary
   STATUS line.
   Auto-invokable as a pre-flight from any sap-dev skill — exit code
-  0 = healthy, 1 = gaps, 2 = RFC failure.
+  0 = healthy, 1 = gaps, 2 = RFC failure, 3 = config mismatch (anchor
+  gate — destructive callers must refuse).
   Pure read-only; never modifies the SAP system.
   Prerequisites: SAP NCo 3.1 (32-bit, .NET 4.0) in GAC.
 argument-hint: "[--quiet]"
@@ -233,8 +234,9 @@ cmd /c del "{RUN_TEMP}\sap_dev_status_run.ps1"
 powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_dev_status_run.json" -Status SUCCESS -ExitCode 0
 ```
 
-(For exit codes 1/2, set `-Status FAILED -ExitCode <code>` with
-`-ErrorClass DEV_STATUS_GAPS` or `RFC_LOGON_FAILED`.)
+(For exit codes 1/2/3, set `-Status FAILED -ExitCode <code>` with
+`-ErrorClass DEV_STATUS_GAPS` (exit 1 and 3 — the config-mismatch anchor
+gate is reported under the same class) or `RFC_LOGON_FAILED` (exit 2).)
 
 ---
 

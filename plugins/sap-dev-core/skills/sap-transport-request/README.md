@@ -40,6 +40,7 @@ flows.
 /sap-transport-request
 /sap-transport-request S4DK900123
 /sap-transport-request OBJECT_TYPE=PROGRAM OBJECT_DESCRIPTION="ZHKR001"
+/sap-transport-request --type customizing
 ```
 
 Conversational forms:
@@ -71,8 +72,12 @@ Final result is truncated/compressed to the 60-character SE01 limit.
 
 ## Limitations
 
-- Workbench requests only — Customizing requests require explicit
-  `/sap-se01 C` invocation by the user
+- Resolves Workbench requests by default; pass `--type customizing` to
+  resolve Customizing requests (E070 `TRFUNCTION='W'`) instead — used by
+  `/sap-sm30` and `/sap-pfcg`. Customizing candidates are additionally
+  validated for request class and client (`E070C-CLIENT` = the pinned
+  client), and use the separate `sap_dev_customizing_request` default so
+  one task can hold a TR of each type
 - Mid-session policy changes ("from now on, always ask") are persisted
   immediately to `way_to_get_transport_request` and honoured for the rest of
   the session

@@ -11,7 +11,7 @@ This skill automates table maintenance dialog generation via SE54:
 - **Object Directory**: Handles object directory entry popups for FUGR and TOBJ objects
 - **Login Required**: Use `/sap-login` first to establish SAP GUI session
 - **Centralized Login**: Connection parameters stored in sap-dev-core settings.json
-- **Transport Handling**: Saves object directory entries with Local Object ($TMP) by default
+- **Transport Handling**: TR resolved via `/sap-transport-request` (per `way_to_get_transport_request`); the generate VBS fills the resolved TR into the KO008 popup and fails closed (`ABORT_EMPTY_TR`, exit 1) when SAP prompts for a transport but none was supplied — it never silently presses Local Object
 
 ## Auto-Trigger Keywords
 
@@ -43,10 +43,13 @@ sap-se54/
 ├── SKILL.md                          # Main skill file (step-by-step workflow)
 ├── README.md                         # This file (keywords for discoverability)
 └── references/
-    ├── sap_se54_login.vbs            # VBScript: login to SAP GUI
     ├── sap_se54_check.vbs            # VBScript: check if maintenance dialog exists
-    └── sap_se54_generate.vbs         # VBScript: generate the maintenance dialog
+    ├── sap_se54_generate.vbs         # VBScript: generate the maintenance dialog
+    └── *.screens.json                # Golden-screen baselines (one per driving VBS)
 ```
+
+Login is centralized in `/sap-login` (shared `sap_login.vbs`); this skill attaches to
+the existing session.
 
 ## Usage
 

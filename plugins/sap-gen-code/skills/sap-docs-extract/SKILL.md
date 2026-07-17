@@ -40,7 +40,7 @@ Task: $ARGUMENTS
 **Resolve `work_dir` via the env-aware helper** — do NOT take `work_dir` from a direct `settings.json` read (that ignores the `SAPDEV_AI_WORK_DIR` env var and `userconfig.json`). Use the `WORK_DIR=` value printed by:
 
 ```bash
-powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('WORK_DIR=' + (Get-SapWorkDir))"
+powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('WORK_DIR=' + (Get-SapWorkDir)); Write-Output ('RUN_TEMP=' + (Get-SapRunTemp))"
 ```
 
 The settings note below still applies to the OTHER keys.
@@ -58,6 +58,12 @@ Set `{WORK_TEMP}` = `{work_dir}\temp`. Ensure it exists:
 ```bash
 cmd /c if not exist "{WORK_TEMP}" mkdir "{WORK_TEMP}"
 ```
+
+Set `{RUN_TEMP}` = the `RUN_TEMP=` value printed above (`Get-SapRunTemp`
+mints + creates a fresh per-run dir `{work_dir}\temp\run_<id>`) — the per-run
+scratch dir holding the log state file. Mint it once here and reuse the same
+value in Step 0.5 and Final — do not call `Get-SapRunTemp` again later (each
+call mints a NEW dir, and the `-Action end` state-file lookup would miss).
 
 ---
 

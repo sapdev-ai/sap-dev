@@ -32,7 +32,10 @@ gate / authz / unit-test decisions.
      CDS views per release)
    - Authz hooks (`AUTHORITY-CHECK` for declared S_* objects)
    - **Real FM signatures from Step 4 take precedence over training-data guesses**
-6. Write the generated source to `{doc_name}.abap` in the work folder
+6. Offer to save, then write the generated source to `Z<PROGRAM_ID>.abap` in
+   the work folder, plus sibling `Z<PROGRAM_ID>.deps.txt` /
+   `.traceability.txt` / `.messages.txt` / `.text_elements.txt` files (and
+   `Z<PROGRAM_ID>_TEST.abap` when unit tests are on)
 
 ## Auto-Trigger Keywords
 
@@ -89,10 +92,12 @@ After generation completes, chain into:
   through validation, fix, ATC, and human review before deploying.
 - Stub methods are emitted with `" TODO: Implement` markers for any flow
   step the spec describes only at a high level.
-- Customer Brief is currently authoritative — if it's missing, the skill
-  falls back to defaults documented in
-  `<sap-dev-core>/shared/templates/customer_brief.md` (defaults aimed at
-  S/4HANA 2023, OOP-first, namespace `Z*`).
+- Customer Brief is currently authoritative — if it's missing or empty, the
+  skill asks before continuing and, on confirmation, falls back to safe
+  defaults (classic ABAP, FORM routines, no unit tests, `$TMP` package).
+  Fill out `<sap-dev-core>/shared/templates/customer_brief.md` and save it
+  to `{custom_url}\customer_brief.md` to get release-aware modern ABAP /
+  OOP / ABAP Unit generation.
 
 ## Version
 

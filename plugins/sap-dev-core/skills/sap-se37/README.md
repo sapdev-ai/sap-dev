@@ -6,13 +6,14 @@ Deploy ABAP function module source code to SAP via SE37 using SAP GUI Scripting.
 
 This skill automates the function module deployment lifecycle via SE37:
 
-- **Create or Update**: Automatically detects whether the function module exists (SE16N on TFDIR) and runs the appropriate flow
-- **Source Upload**: Uploads FM body source from a local file or pasted code via SE37's "Upload from local file" menu on the Source code tab
+- **Create or Update**: Automatically detects whether the function module exists (SE37 Display probe via `sap_se37_check.vbs` — `ctxtRS38L-NAME` + `FUNC_TAB_STRIP`) and runs the appropriate flow
+- **Source Upload**: Pastes the FM body source into the Source-code editor via the Windows clipboard + SendKeys, behind the OS foreground guard + session lock (the Utilities > Upload menu is S/4-only — its path does not exist on NW 7.31/ECC6)
 - **Create Dialog**: Sets function group and short text for new function modules
 - **Syntax Check & Activate**: Runs syntax check, saves, and activates in one pass
+- **Secondary Modes**: check-and-fix, change-attributes, reassign-function-group, and delete on an existing FM (see SKILL.md)
 - **Login Required**: Use `/sap-login` first to establish SAP GUI session
 - **Centralized Login**: Connection parameters stored in sap-dev-core settings.json
-- **Transport Handling**: Dismisses transport request dialog with Local Object or Enter
+- **Transport Handling**: TR resolved via `/sap-transport-request` (per `way_to_get_transport_request`); the VBS fills the resolved TR into `ctxtKO008-TRKORR` and aborts with ERROR (exit 1) when a TR popup appears with TRANSPORT empty — it never silently presses Local Object
 
 ## Auto-Trigger Keywords
 
@@ -31,7 +32,7 @@ This skill activates when discussing:
 
 ### Function Module Existence
 - TFDIR, function module exists, check function module
-- SE16N, table browser, FM lookup
+- SE37 Display, Function Builder lookup
 
 ### SAP GUI Scripting
 - SAP GUI Scripting, VBScript, cscript
@@ -42,14 +43,22 @@ This skill activates when discussing:
 
 ```
 sap-se37/
-├── SKILL.md                        # Main skill file (step-by-step workflow)
-├── README.md                       # This file (keywords for discoverability)
+├── SKILL.md                              # Main skill file (step-by-step workflow)
+├── README.md                             # This file (keywords for discoverability)
 └── references/
-    ├── sap_se37_login.vbs          # VBScript: login to SAP GUI
-    ├── sap_se37_check.vbs          # VBScript: check if FM exists (SE16N/TFDIR)
-    ├── sap_se37_create.vbs         # VBScript: create new FM in SE37
-    └── sap_se37_update.vbs         # VBScript: update existing FM in SE37
+    ├── sap_se37_check.vbs                # VBScript: check if FM exists (SE37 Display probe)
+    ├── sap_se37_create.vbs               # VBScript: create new FM in SE37
+    ├── sap_se37_update.vbs               # VBScript: update existing FM (clipboard + SendKeys paste)
+    ├── sap_se37_check_and_download.vbs   # VBScript: syntax-check + download source (check-and-fix mode)
+    ├── sap_se37_change_attrs.vbs         # VBScript: change FM attributes (short text / processing type)
+    ├── sap_se37_reassign_fugr.vbs        # VBScript: reassign FM to another function group
+    ├── sap_se37_delete.vbs               # VBScript: delete an FM (irreversible; confirmed first)
+    ├── sap_rfc_fm_insert.ps1             # PowerShell: headless RFC deploy via RPY_FUNCTIONMODULE_INSERT
+    └── *.screens.json                    # Golden-screen baselines (one per driving VBS)
 ```
+
+Login is centralized in `/sap-login` (shared `sap_login.vbs`); this skill attaches to
+the existing session.
 
 ## Usage
 
@@ -64,13 +73,13 @@ Invoke with a function module name and source:
 
 - SAP GUI for Windows installed
 - SAP GUI Scripting enabled (client + server side)
-- SAP user with authorization for SE37, SE16N, and function module activation
-- Target function group must already exist (create via SE37: Goto > Function Groups > Create Group)
+- SAP user with authorization for SE37 and function module activation
+- Target function group must already exist (create it via `/sap-function-group`)
 
 ## Version
 
 - Skill Version: 1.0.0
-- Last Updated: 2026-03-30
+- Last Updated: 2026-07-17
 
 ## License
 

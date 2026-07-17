@@ -12,7 +12,7 @@ description: |
   imports). v1 is read-only toward SAP (reads only); `run` auto-execution is v2. Prerequisites:
   /sap-login profiles (one per system named in the plan); SAP NCo 3.1 (32-bit). No Z-object,
   no dev-init — safe to point at a PRD/QAS cutover target.
-argument-hint: "init <runbook.xlsx|.tsv> [--commit --cutover <id>]  |  record <id> <step> <start|done|fail|skip|block|reopen> [--verify]  |  report <id> [--live]  |  checkpoint <id> <name> [--health]"
+argument-hint: "init <runbook.xlsx|.docx|.tsv> [--commit --cutover <id>]  |  record <id> <step> <start|done|fail|skip|block|reopen> [--verify]  |  report <id> [--live]  |  checkpoint <id> <name> [--health]"
 ---
 
 # SAP Cutover Runbook — Tracker-First, Evidence-Stamped
@@ -47,10 +47,13 @@ That is the point — do not relocate it under `{RUN_TEMP}`.
 ## Step 0 — Resolve Work Dir + Ledger Root
 
 ```bash
-powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_artifact_lib.ps1'; Write-Output ('WORK_DIR=' + (Get-SapWorkDir))"
+powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_artifact_lib.ps1'; Write-Output ('WORK_DIR=' + (Get-SapWorkDir)); Write-Output ('RUN_TEMP=' + (Get-SapRunTemp))"
 ```
 
-Ledger dir `{LEDGER}` = `{artifact_dir}\cutover\<cutover-id>`. Set `{RUN_TEMP}` for scratch.
+Ledger dir `{LEDGER}` = `{artifact_dir}\cutover\<cutover-id>`. Set `{RUN_TEMP}` = the
+`RUN_TEMP=` value printed above (`Get-SapRunTemp` mints + creates the per-run scratch dir
+holding the log state file) — for scratch; mint it once here and reuse (re-minting breaks
+the `-Action end` state-file lookup).
 
 ## Step 0.5 — Start Logging
 

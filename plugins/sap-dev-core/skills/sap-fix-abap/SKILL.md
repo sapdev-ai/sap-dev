@@ -52,6 +52,12 @@ ensure it exists:
 cmd /c if not exist "{WORK_TEMP}" mkdir "{WORK_TEMP}"
 ```
 
+Set `{RUN_TEMP}` = the per-run scratch dir (`Get-SapRunTemp` mints + creates `{work_dir}\temp\run_<id>`):
+```bash
+powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('RUN_TEMP=' + (Get-SapRunTemp))"
+```
+Per the CLAUDE.md "Two-bucket temp model" write this skill's `_run.json` state under `{RUN_TEMP}`; keep `{WORK_TEMP}` (base) only for `Get-SapCurrentSessionPath -WorkTemp`.
+
 ---
 
 ## Step 0.5 — Start Logging
@@ -402,4 +408,4 @@ This skill is part of the ABAP quality pipeline:
 1. **sap-gen-abap** — generates ABAP source code
 2. **sap-check-abap** — validates code quality ← run this first
 3. **sap-fix-abap** ← you are here — applies automatic fixes
-4. **abap-deploy** — deploys to SAP system
+4. **abap-deploy** — deploys to SAP system (sap-se38 / sap-se37 / sap-se24 / sap-se11 / sap-se91)

@@ -216,15 +216,14 @@ Consequences for a desktop-primary developer:
 
 ## Recommended launcher
 
-Add `scripts/run-local.ps1` so the dev session is one command:
+The repo ships `scripts/run-local.ps1` — launch a dev session with one command:
 
 ```powershell
-# scripts/run-local.ps1 — run Claude with the local plugins live (in-place)
-# Usage:  pwsh ./scripts/run-local.ps1
-# Then, in-session: edit .ps1/.vbs -> just re-invoke; edit SKILL.md frontmatter -> /reload-plugins
-claude --plugin-dir "$PSScriptRoot\..\plugins\sap-dev-core" `
-       --plugin-dir "$PSScriptRoot\..\plugins\sap-gen-code" @args
+pwsh ./scripts/run-local.ps1        # extra args pass through to claude
 ```
+
+The script's header documents usage and the in-session reload rules (edit
+`.ps1`/`.vbs` -> just re-invoke; edit SKILL.md frontmatter -> `/reload-plugins`).
 
 Run it from a terminal even if you normally use the desktop app — see above.
 
@@ -272,5 +271,8 @@ Run it from a terminal even if you normally use the desktop app — see above.
 
 Blast radius was small as predicted: reads/writes funnel through
 `sap_settings_lib.ps1` (the sole chokepoint) plus `Get-SapWorkDir` in
-`sap_connection_lib.ps1`. The VBS helper and the inline resolver in
-`sap_log_lib.vbs` remain on the old two-file model pending the VBS fix above.
+`sap_connection_lib.ps1`. The inline resolver in
+`sap_log_lib.vbs` remains on the old two-file model (settings.json +
+settings.local.json, no userconfig.json tier); there is no VBS settings
+library — per the note above, VBS receives resolved values from its
+PowerShell wrapper.

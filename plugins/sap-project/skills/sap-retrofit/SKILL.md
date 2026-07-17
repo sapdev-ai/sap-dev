@@ -50,10 +50,13 @@ find the ledger) — never under `{RUN_TEMP}`.
 ## Step 0 — Resolve Work Dir + Workspace
 
 ```bash
-powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('WORK_DIR=' + (Get-SapWorkDir))"
+powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('WORK_DIR=' + (Get-SapWorkDir)); Write-Output ('RUN_TEMP=' + (Get-SapRunTemp))"
 ```
 
-`{WS}` = `{work_dir}\retrofit\<project>`. Set `{RUN_TEMP}` for logging state.
+`{WS}` = `{work_dir}\retrofit\<project>`. Set `{RUN_TEMP}` = the `RUN_TEMP=` value printed
+above (`Get-SapRunTemp` mints + creates the per-run scratch dir holding the log state file) —
+for logging state; mint it once here and reuse (re-minting breaks the `-Action end`
+state-file lookup).
 
 ## Step 0.5 — Start Logging
 

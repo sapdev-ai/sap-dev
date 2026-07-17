@@ -5,20 +5,27 @@ reverse dependency order, asks for confirmation per artefact, and
 skips anything the operator has extended (function group with extra
 FMs, package with extra Z* objects) unless `--force` is set.
 
-The transport request is **not** deleted by default — other work may
-live in it. Settings.json keys are preserved unless `--settings` is
-passed.
+Deleted artefacts are unassigned from their transport request(s)
+(`/sap-se01 remove-objects`) so their name-locks are freed; a request
+that ends up empty is then deleted even on the default path, while a
+request still holding other work is always kept. `--reset` (or legacy
+`--force`) force-deletes the dev TR after showing its E071 contents.
+Settings.json keys are preserved unless `--settings` is passed
+(`--reset` implies it).
 
 ## Skill Overview
 
 1. Pre-flight via `/sap-dev-status` to learn what's actually there.
 2. Walk reverse dependency order:
    1. Wrapper FM `Z_GENERIC_RFC_WRAPPER_TBL`
-   2. Table type `ZCMCT_RFC_PARAM`, then structure `ZCMST_RFC_PARAM`
+   2. Table type `ZCMCT_RFC_PARAM`, then structure `ZCMST_RFC_PARAM`,
+      then data element `ZCMDE_RFCVAL`, then domain `ZCMD_RFCVAL`
    3. Utility program `ZCMRUPDATE_ADDON_TABLE`
    4. Function group (skip if it has extra FMs)
    5. Package (skip if it has extra TADIR children)
-   6. Transport request (left alone unless `--force`)
+   6. Transport request — dev-init entries cleared; deleted if it ends
+      up empty, kept if other work remains (force-deleted under
+      `--reset`/`--force` after confirmation)
 3. Post-flight via `/sap-dev-status` and report a before/after diff.
 4. Optionally clear `sap_dev_*` settings keys.
 
@@ -40,8 +47,15 @@ passed.
 /sap-dev-clean --dry-run
 /sap-dev-clean --force --settings
 
-# Reset (clean then init):
+# Full truly-clean reset (implies --force + --settings, deletes the dev TR)
+/sap-dev-clean --reset
+
+# Reset (clean then init) — conservative:
 /sap-dev-clean
+/sap-dev-init
+
+# Reset (clean then init) — full:
+/sap-dev-clean --reset
 /sap-dev-init
 ```
 
@@ -59,8 +73,10 @@ failure surface as a hypothetical merged skill, with the bonus that
 
 ## Limitations
 
-- TR deletion is opt-in and risky; operator must read the E071 child
-  list and confirm.
+- An emptied dev TR is deleted automatically on the default path;
+  deleting a NON-empty dev TR requires `--reset` (or legacy `--force`)
+  and the operator must read the E071 child list and confirm — a TR
+  holding non-dev-init objects is refused.
 - Conservative guards stop at the first user object inside an
   otherwise-clean container — use `--force` to override after reading
   the dry-run.

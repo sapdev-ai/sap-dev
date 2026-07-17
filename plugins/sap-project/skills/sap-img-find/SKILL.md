@@ -42,7 +42,10 @@ Task: $ARGUMENTS
 
 ## Step 0 — Directories + Logging
 
-Resolve `work_dir` + `{RUN_TEMP}` (canonical one-liner). Resolve `img_cache_dir` (default
+Resolve `work_dir` + `{RUN_TEMP}` (canonical one-liner — `sap_connection_lib.ps1` is dot-sourced
+there — with `Write-Output ('RUN_TEMP=' + (Get-SapRunTemp))` appended). `{RUN_TEMP}` = the
+per-run scratch dir holding the log state file; mint it once here and reuse (re-minting breaks
+the `-Action end` state-file lookup). Resolve `img_cache_dir` (default
 `{work_dir}\cache\img_index`) via `sap_settings_lib.ps1`; the per-system cache is
 `{img_cache_dir}\<SID>_<client>\`. Start logging (`sap_log_helper.ps1`).
 
@@ -87,8 +90,9 @@ Resolve target: generated `TCODE` from the index (priority 1) -> `/n<tcode>`; el
 object -> SM30/SM34 in **Display**; else print the manual SPRO path (`IMG_LAUNCH_NO_TARGET`, INFO).
 **CONFIRM gate:** "Open IMG activity `<ID>` (`<text>`) via `<tcode|SM30 obj>` on `<SID>/<client>`?
 The skill only NAVIGATES, never saves. (yes/no)". The tcode path drives `/n<tcode>` and verifies
-arrival via `session.Info.Transaction`; the SM30/SM34 fallback VBS ships `NEEDS_RECORDING` (record
-once via `/sap-gui-probe --record`). On no -> `SKIPPED`.
+arrival via `session.Info.Transaction`; the SM30/SM34 fallback VBS is not yet shipped
+(to-be-recorded): emit `NEEDS_RECORDING` and capture it once via `/sap-gui-probe --record`.
+On no -> `SKIPPED`.
 
 ## Step 7 — Register
 

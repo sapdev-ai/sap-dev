@@ -37,7 +37,7 @@ per-workbook source of truth that `/sap-docs-extract` reads.
 ```text
 /sap-docs-layout inspect      C:\path\to\spec_template.xlsx
 /sap-docs-layout bootstrap    C:\path\to\spec_template.xlsx
-/sap-docs-layout add-column   C:\path\to\spec_template.xlsx --section ddic_dataelements --name AUTHGROUP --after LABEL_LONG --type CHAR --length 12
+/sap-docs-layout add-column   C:\path\to\spec_template.xlsx --section ddic_dataelements --name AUTHGROUP --after LABEL_LONG [--source-header <text>] [--required] [--transform trim]
 /sap-docs-layout rename-sheet C:\path\to\spec_template.xlsx --section cover --to "封面"
 /sap-docs-layout validate     C:\path\to\spec_template.xlsx --dry-parse
 ```

@@ -12,7 +12,7 @@ This skill automates the message class lifecycle via SE91:
 - **Update Flow**: Opens in Change mode, updates message texts, and saves
 - **Login Required**: Use `/sap-login` first to establish SAP GUI session
 - **Centralized Login**: Connection parameters stored in sap-dev-core settings.json
-- **Transport Handling**: Dismisses transport request dialog with Local Object or Enter
+- **Transport Handling**: TR resolved via `/sap-transport-request` (per `way_to_get_transport_request`); the VBS fills the resolved TR into the KO008 popup and aborts loud when a TR is required but missing — it never silently presses Local Object
 
 ## Auto-Trigger Keywords
 
@@ -42,11 +42,16 @@ sap-se91/
 ├── SKILL.md                        # Main skill file (step-by-step workflow)
 ├── README.md                       # This file (keywords for discoverability)
 └── references/
-    ├── sap_se91_login.vbs          # VBScript: login to SAP GUI
     ├── sap_se91_check.vbs          # VBScript: check if message class exists
     ├── sap_se91_create.vbs         # VBScript: create new message class
-    └── sap_se91_update.vbs         # VBScript: update messages in existing class
+    ├── sap_se91_update.vbs         # VBScript: update messages in existing class
+    ├── sap_se91_change_props.vbs   # VBScript: change message class header attributes
+    ├── sap_se91_check_messages.ps1 # PowerShell: RFC duplicate-message-text check on T100
+    └── *.screens.json              # Golden-screen baselines (one per driving VBS)
 ```
+
+Login is centralized in `/sap-login` (shared `sap_login.vbs`); this skill attaches to
+the existing session.
 
 ## Usage
 

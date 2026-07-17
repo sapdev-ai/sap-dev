@@ -55,6 +55,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_
 ```
 Then `sap_log_helper.ps1 -Action start -StateFile {RUN_TEMP}\sap_test_replay_run.json`.
 
+`{OUT}` = `Get-SapArtifactDir -ScopeKey TCODE_<tcode> -Skill sap-test-replay` (from
+`sap_artifact_lib.ps1`; creates the dir) — the artifact output dir the Step 5 roll-up
+writes to and registers.
+
 ## Step 1 — Parse Args + init/lint
 
 `run` | `lint` | `init`. `init` (pure local) turns a probe/scaffold folder into a scenario skeleton

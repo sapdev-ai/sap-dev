@@ -229,7 +229,7 @@ default classify on the next campaign matches more findings by message id.
 
 ## Limitations / Known gaps (draft)
 
-- **Seed pack coverage.** The shipped pack has 12 patterns (3 ACTIVE, 9 DRAFT
+- **Seed pack coverage.** The shipped pack has 13 patterns (3 ACTIVE, 10 DRAFT
   — see `shared/knowledge/catalog.tsv` / `manifest.json`). Findings outside
   those patterns come back UNMATCHED (→ REVIEW) — expected
   early; the pack grows via its flywheel (real `detect_message_ids` + new

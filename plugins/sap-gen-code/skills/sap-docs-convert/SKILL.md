@@ -56,7 +56,7 @@ Task: $ARGUMENTS
 **Resolve `work_dir` via the env-aware helper** — do NOT take `work_dir` from a direct `settings.json` read (that ignores the `SAPDEV_AI_WORK_DIR` env var and `userconfig.json`). Use the `WORK_DIR=` value printed by:
 
 ```bash
-powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('WORK_DIR=' + (Get-SapWorkDir))"
+powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('WORK_DIR=' + (Get-SapWorkDir)); Write-Output ('RUN_TEMP=' + (Get-SapRunTemp))"
 ```
 
 The settings note below still applies to the OTHER keys.
@@ -77,7 +77,11 @@ Locate the rules file (priority order — first hit wins):
 If no rules file is found, abort with:
 > "No spec_conversion_rules.tsv found. Either pass the path as the 2nd argument, drop one in {custom_url}, or use the default at sap-dev-core/shared/tables/."
 
-Also set `{WORK_TEMP}` = `{work_dir}\temp` (used below for the log state file).
+Also set `{WORK_TEMP}` = `{work_dir}\temp` (base dir only) and `{RUN_TEMP}` =
+the `RUN_TEMP=` value printed above (`Get-SapRunTemp` mints + creates a fresh
+per-run dir `{work_dir}\temp\run_<id>`) — the per-run scratch dir holding the
+Step 0.5 / Step 6 log state file. Mint it once here and reuse the same value
+below — do not call `Get-SapRunTemp` again in a later step.
 
 ---
 

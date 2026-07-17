@@ -180,16 +180,20 @@ SJIS *lead* byte that eats the closing `"`. Build runtime non-ASCII with **`ChrW
    nothing reads it as UTF-8 and its `FSO.OpenTextFile` includes use Unicode
    mode. Prefer `ChrW()` over a BOM.
 
-**Glyph-in-comment exception (deliberate).** A non-ASCII glyph MAY appear in a
-*comment* to document the character a `ChrW()` runtime literal builds — as
-`sap_syntax_check_lib.vbs` and `sap_atc_check_run_status.vbs` do, e.g.
+**Glyph-in-comment exception (retired 2026-07-02).** While the guard was still
+a WARN, a non-ASCII glyph was tolerated in a *comment* to document the
+character a `ChrW()` runtime literal builds — as `sap_syntax_check_lib.vbs` and
+`sap_atc_check_run_status.vbs` once did, e.g.
 `Dim JA_ERROR : JA_ERROR = ChrW(&H30A8) & ChrW(&H30E9) & ChrW(&H30FC)  ' エラー = error`.
-The *runtime* string stays ASCII; only the comment carries the glyph. Trade-off:
-a `.vbs` with glyph comments can never be *cleared* from the guard — cscript
-forbids a UTF-8 BOM and UTF-16 LE isn't the guard's opt-in, so ASCII-only is the
-sole guard-clean path for a `.vbs`. Such a file therefore stays an informational
-warning permanently. Use it only where the glyph genuinely aids the reader
-(localized SAP text that's being matched); keep ordinary comments ASCII.
+The *runtime* string was always ASCII; only the comment carried the glyph —
+and because a `.vbs` can never be guard-cleared while keeping one (cscript
+forbids a UTF-8 BOM and UTF-16 LE isn't the guard's opt-in), such files sat as
+permanent informational warnings. When the guard was promoted to a **hard
+error** on 2026-07-02, those glyph comments were transliterated to ASCII
+instead (e.g. `' rokku = lock`) — both files named above are pure ASCII today.
+Do NOT add new glyph comments: any non-ASCII byte in a committed `.vbs`/`.ps1`
+without a UTF-8 BOM now fails CI. Document the character in a transliterated
+ASCII comment instead.
 
 ## Why not UTF-16 everywhere
 

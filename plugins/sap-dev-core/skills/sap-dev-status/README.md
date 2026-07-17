@@ -28,7 +28,8 @@ auto-invoke as a pre-flight from any other sap-dev skill.
 ```
 
 Prints a per-artefact line plus a summary. Returns exit code 0 (all
-ok), 1 (gaps), or 2 (RFC failure).
+ok), 1 (gaps), 2 (RFC failure), or 3 (config mismatch — dev defaults
+disagree with the wrapper-FM anchor; `/sap-dev-clean` refuses).
 
 ## Composition
 

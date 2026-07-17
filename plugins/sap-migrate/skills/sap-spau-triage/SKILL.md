@@ -166,7 +166,7 @@ paths. An empty worklist is `SUCCESS`, not an error.
   before resetting". The classifier refuses to emit a class without a rationale.
 - **Not yet validated:** end-to-end classification ACCURACY against a real post-upgrade
   worklist (the dev box has redundant note-mods, not a live SPAU adjustment queue) — the
-  README marks the skill BETA/advisory until the pre-GA gate (>=50 entries, >=90% of HIGH
+  skill is BETA/advisory until the pre-GA gate (>=50 entries, >=90% of HIGH
   reset-candidates confirmed by a human expert, zero HIGH refuted) passes on a project system.
 - **Deferred:** `route` (v1.5, /sap-enhancement-advisor merge); `compare --against` cross-system
   (v2); GUI navigation assist (v2 — needs per-release recordings, SPAU_UI_START vs RSUMOD04).

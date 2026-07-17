@@ -3,7 +3,7 @@
   "version": "0.8.0",
   "private": true,
   "scripts": {
-    "validate": "./scripts/validate-json-schemas.sh",
+    "validate": "npm run validate:marketplace && npm run check:consistency",
     "validate:marketplace": "ajv validate -s schemas/marketplace.schema.json -d .claude-plugin/marketplace.json --strict=false -c ajv-formats --all-errors",
     "check:consistency": "node scripts/check-consistency.mjs",
     "lint:abap": "node scripts/lint-abap-contract.mjs --selftest",

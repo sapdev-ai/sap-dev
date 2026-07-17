@@ -6,7 +6,7 @@ it stalled** — read-only over RFC, no VA03/VL03N/VF03/FB03 hopping.
 ```
 /sap-doc-flow <DOCNO>                          # auto-detect category
 /sap-doc-flow order|delivery|invoice <DOCNO>   # explicit
-   [--max-nodes N] [--json] [--no-narrative] [--evidence-dir <RUN_DIR>] [--connection PROFILE]
+   [--max-nodes N] [--no-narrative] [--evidence-dir <RUN_DIR>] [--connection PROFILE]
 ```
 
 ## What it does

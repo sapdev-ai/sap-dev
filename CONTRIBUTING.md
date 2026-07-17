@@ -54,7 +54,7 @@ sap-dev/
 
 1. Pick a name. **Every skill must be prefixed with `sap-`** (kebab-case, single
    dashes, no duplicate prefixes). Reuse an existing sub-namespace where one
-   fits — `sap-docs-*`, `sap-check-*` / `sap-fix-*`, `sap-rfc-wrapper-*`,
+   fits — `sap-docs-*`, `sap-check-*` / `sap-fix-*`, `sap-cc-*`,
    `sap-gui-*`, `sap-se##*`. See `CLAUDE.md` § Skill Naming Convention.
 2. Create the directory under `plugins/<plugin>/skills/<skill-name>/`.
 3. Add `SKILL.md` (the AI-facing instructions) and `README.md` (discovery

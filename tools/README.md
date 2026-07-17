@@ -6,7 +6,7 @@ the plugins.
 
 | Script | Purpose |
 |---|---|
-| `build_spec_template.py` | Build the canonical `spec_template.xlsx` from scratch — 17 content sheets + a hidden `(Meta) Layout` sheet that maps each section to its output file. Bilingual: `--lang EN` (default) writes `spec_template.xlsx`; `--lang JA` writes `spec_template_JA.xlsx`. |
+| `build_spec_template.py` | Build the canonical `spec_template.xlsx` from scratch — 17 content sheets + a `(Meta) Layout` sheet that maps each section to its output file (left visible in the committed templates so reviewers can inspect it; `/sap-docs-layout` sets it to hidden in production). Bilingual: `--lang EN` (default) writes `spec_template.xlsx`; `--lang JA` writes `spec_template_JA.xlsx`. |
 | `spec_translations.py` | Translation strings used by `build_spec_template.py`. Single source of truth for sheet names, headers, banner text, and README content per language. Adding a third language = add a `"ZH": {...}` entry to each dict; no other code changes needed. |
 
 ## Dependencies
@@ -63,8 +63,9 @@ Edit `tools/build_spec_template.py`:
    `tools/spec_translations.py` for every supported language.
 5. Rebuild for every language: `for lang in EN JA; do python tools/build_spec_template.py --lang $lang; done`.
 
-See `CLAUDE.md` § *Adding a new sheet* for the full checklist (including
-downstream wiring of `/sap-docs-extract` and `/sap-gen-abap`).
+The steps above are the full checklist. Remember the downstream wiring: the
+`/sap-docs-extract` and `/sap-gen-abap` skills consume the new section's output
+file — update their SKILL.md handling of the section-to-file mapping to match.
 
 
 ## Reference implementations

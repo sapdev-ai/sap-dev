@@ -1298,6 +1298,8 @@ P1/P2/P3 if left unchecked.
     Weight/volume → `marmdata`/`marmdatax`; an unplaceable item gets a
     `" TODO:` comment, never a silent drop. (Rule §27 — silent data loss;
     cross-ref §22/§24. Caught the `*57` BRGEW drop, 2026-06-07.)
+
+If any box cannot be checked, rewrite the offending line(s)
 and re-walk. Do not ship the file with any unchecked box — the
 post-deploy ATC gate (`/sap-atc`) will fail at `MAX_PRIORITY=2` for
 findings #1, #2, #8; warn for #3-#6. Findings #7 and #10 are

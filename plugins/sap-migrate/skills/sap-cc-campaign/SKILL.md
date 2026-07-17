@@ -207,6 +207,8 @@ STATE: <STATE> | COUNT: <n>
 ...
 TIER: <R1|R2|R3|R4|-> | COUNT: <n>
 METRIC: decommission_savings_pct | VALUE: <n>
+METRIC: retired_without_remediation_pct | VALUE: <n> (-1 = n/a: decommission has not run yet)
+INFO: retired physically=<n> flagged_decommission=<n> (...)   (retirement audit)
 METRIC: atc_clean_pct | VALUE: <n>          (-1 = n/a: nothing remediated yet)
 METRIC: auto_fix_rate_pct | VALUE: <n>      (-1 = n/a: no R1 apply attempts yet)
 INFO: auto_fix_rate attempts=<n> auto=<a> excluded=<k> (...)   (denominator audit)
@@ -319,7 +321,8 @@ Sandbox <sandbox_profile>   Remote-ATC <check_system_profile>   Phase: <phase>
 ## Key metrics
 | Metric | Value |
 |--------|-------|
-| Decommission savings | <n>% (objects retired without remediation) |
+| Decommission savings (flagged) | <n>% (objects flagged for retirement) |
+| Physically retired | <n>% (<r> confirmed-gone via /sap-cc-decommission; n/a until it runs) |
 | ATC-clean after remediation | <n>% | n/a |
 | Auto-fix rate (R1 mechanical) | <n>% (<auto>/<total> objects rewritten by rule) |
 | Unresolved findings (need human triage) | <n>% (<unmatched>/<total> findings UNMATCHED) |
@@ -334,7 +337,7 @@ Sandbox <sandbox_profile>   Remote-ATC <check_system_profile>   Phase: <phase>
 ```
 
 The helper also emits parseable lines the orchestrator can surface:
-`METRIC: <name> | VALUE: <int>` (four metrics; `-1` = n/a),
+`METRIC: <name> | VALUE: <int>` (five metrics; `-1` = n/a),
 `PATTERN: <pattern> | COUNT: <n>`, `UNRESOLVED: <message_id> | COUNT: <n>`, and
 `SIGNOFF: gate=<g> status=<APPROVED|PENDING|REJECTED> owner=<o> date=<d>`.
 
@@ -491,11 +494,15 @@ CLI: `-Action <init|status|report|next|signoff> -CampaignDir <abs-path>
 [-SignoffStatus <APPROVED|PENDING|REJECTED>] [-Note <t>]`.
 Emits parseable lines (one fact per line, `KEY: value | KEY: value`) — `STATE:`,
 `TIER:`, `DECISION:`, `METRIC:` (names `decommission_savings_pct`,
-`atc_clean_pct`, `auto_fix_rate_pct`, `unmatched_findings_pct`; `-1` = n/a),
+`retired_without_remediation_pct`, `atc_clean_pct`, `auto_fix_rate_pct`,
+`unmatched_findings_pct`; `-1` = n/a),
 `INFO:` (`auto_fix_rate attempts=<n> auto=<a> excluded=<k> …` — the audit line
-for the auto-fix denominator), `PATTERN:`, `UNRESOLVED:`, `SIGNOFF:`, `NEXT:`,
+for the auto-fix denominator — plus the always-emitted
+`retired physically=<n> flagged_decommission=<n> …` audit line and, when
+`drift\drift.tsv` exists, `drift touched=<n> reanalyze=<r> …`), `PATTERN:`, `UNRESOLVED:`, `SIGNOFF:`, `NEXT:`,
 `INIT:`/`EXISTED:`/`REPORT:` — followed by a single `STATUS:` summary line. Exit codes `0` ok / `1` gaps (e.g.
-empty ledger) / `2` error (bad/missing workspace, missing `--gate`). It performs
+empty ledger) / `2` error (bad/missing workspace, missing `--gate`) / `3`
+blocked (human gate not APPROVED, `next` only). It performs
 no SAP I/O. Keep the line grammar stable — the subcommands and `/sap-log-analyze`
 parse it.
 
@@ -508,6 +515,7 @@ parse it.
 | `0` | Success (`INIT` / `EXISTED` / `STATUS` / `REPORT` / `NEXT` emitted). |
 | `1` | Campaign not found, or ledger empty / pipeline gap that needs the recommended next skill. |
 | `2` | Bad arguments, invalid campaign id, or workspace I/O failure. |
+| `3` | Human gate not APPROVED — `next` held (`BLOCKED`). |
 
 ---
 
@@ -521,10 +529,14 @@ parse it.
   exists. The R2–R4 remediation tiers and some sap-cc-* skills are still
   evolving — so `next` recommends `MANUAL` once the R1 / decommission work is
   exhausted.
-- **Sign-off is a governance record, not an enforcement gate.** `signoff`
-  records who approved a gate for the dashboard; it does not unblock `next`
-  (the operator still approves interactively). The `report` dashboard cross-
-  references `human_gates` against `signoffs[]` so unrecorded gates show PENDING.
+- **Sign-off is both the governance record and the enforcement input.** `next`
+  refuses (`BLOCKED`, exit `3`) to release the analyze step until `scope_signoff`
+  is APPROVED via the `signoff` subcommand, and `sap_cc_remediate.ps1 -Action
+  record` refuses forward progress until `dryrun_review` is APPROVED — recording
+  the APPROVED sign-off is what unblocks the held step (gates are per-campaign
+  toggles under `campaign.json.human_gates`, default ON). The `report` dashboard
+  cross-references `human_gates` against `signoffs[]` so unrecorded gates show
+  PENDING.
 - **Migration brief shipped.** `migration_brief.md` (+ `migration_brief_sample.md`)
   ships in `shared/templates`; `init` reads it, or runs brief-less from CLI flags
   (absent fields recorded blank rather than failing). The `_JA` variant is

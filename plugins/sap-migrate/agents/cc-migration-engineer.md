@@ -222,4 +222,3 @@ NEXT STEPS
    hand — let the skills advance it.
 5. **Halt early on ambiguity.** Missing brief, missing usage export, unrecorded
    ATC, profile mismatch → STOP and ask. A confirmed pause beats a bad deploy.
-```

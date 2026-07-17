@@ -15,7 +15,7 @@ sap-dev/
 │   │   └── skills/           # Skill definitions for this plugin
 │   │       └── <skill-name>/
 │   │           ├── SKILL.md  # Main skill instructions
-│   │           └── README.md # Skill discovery and metadata
+│   │           └── README.md # Optional human-facing docs (not used for discovery)
 ├── schemas/
 │   ├── marketplace.schema.json # Validation for marketplace.json
 │   └── plugin.schema.json      # Validation for plugin.json
@@ -23,7 +23,7 @@ sap-dev/
 
 ## Marketplace System
 
-The marketplace is defined by a root-level `marketplace.json` file. This file acts as a catalog, listing all plugins available in the repository and their constituent skills.
+The marketplace is defined by the `marketplace.json` file under the repo-root `.claude-plugin/` directory. This file acts as a catalog, listing all plugins available in the repository and their constituent skills.
 
 ### Registry (`marketplace.json`)
 The registry provides:
@@ -38,9 +38,9 @@ Each plugin contains its own `plugin.json` in a `.claude-plugin` subdirectory. T
 
 ## Skill Discovery
 
-Skills are discovered by Claude Code based on the `SKILL.md` content and the associated `README.md` keywords.
-- **SKILL.md**: Contains the expert instructions and tool usage patterns for the skill.
-- **README.md**: Used for indexing and providing context to the AI about when to trigger the skill.
+Skills are discovered by Claude Code from the `SKILL.md` YAML frontmatter (`name` + `description`).
+- **SKILL.md**: Contains the frontmatter used for discovery/triggering plus the expert instructions and tool usage patterns for the skill.
+- **README.md**: Optional human-facing documentation; plays no role in skill discovery or triggering (57 of the 123 skills ship without one).
 
 ## Validation
 

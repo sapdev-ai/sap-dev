@@ -340,9 +340,9 @@ setx SAPDEV_AI_WORK_DIR "D:\sapdev"
    `ZCMST_RFC_PARAM`、表类型 `ZCMCT_RFC_PARAM`。
 8. **通用 RFC 包装 FM** `Z_GENERIC_RFC_WRAPPER_TBL`（标记为 remote-enabled）——
    让工具集能够安全地通过 RFC 调用非 RFC 函数模块。
-9. **报表运行器 FM** `Z_RUN_REPORT`（remote-enabled；尽力而为）—— 供 `/sap-run-report`
-   和 `/sap-job schedule` 使用的无头后台运行快速路径。
-10. **工具程序** `ZCMRUPDATE_ADDON_TABLE` —— 供 `/sap-update-addon` 使用。
+9. **工具程序** `ZCMRUPDATE_ADDON_TABLE` —— 供 `/sap-update-addon` 使用。
+10. **报表运行器 FM** `Z_RUN_REPORT`（remote-enabled；尽力而为）—— 供 `/sap-run-report`
+    和 `/sap-job schedule` 使用的无头后台运行快速路径。
 
 当被问到 **TR 策略**（`way_to_get_transport_request`）时，选一个：
 
@@ -439,8 +439,9 @@ setx SAPDEV_AI_WORK_DIR "D:\sapdev"
 /sap-docs-extract C:\work\design\CustomerUpload.xlsx
 ```
 
-输入可以是 `.xlsx` / `.docx` / `.doc` / `.pdf`、一个已有的工作文件夹，或一个
-`_raw.txt`。它会创建一个工作文件夹，并把文档转储成分类的文本文件 —— 你最关心的那些：
+输入可以是 `.xlsx` / `.docx` / `.pdf`、一个已有的工作文件夹，或一个 `_raw.txt`
+（不支持旧式二进制 `.doc` —— 请先在 Word 中另存为 `.docx`）。它会创建一个工作文件夹，
+并把文档转储成分类的文本文件 —— 你最关心的那些：
 
 | 文件 | 内容 |
 |---|---|
@@ -523,8 +524,10 @@ AUTHORITY-CHECK 的放置位置、你的消息类，以及注释语言。
 - **fm** —— 通过 RFC 把每一个 `CALL FUNCTION` 与**真实**的 FM 签名对照校验（参数名、所属节、
   必填标志、类型兼容性、结构字段），在臆造参数撞到 SE37 之前抓住它。
 - **syntax** —— 无头的编译器级语法检查（通过 RFC 的 `EDITOR_SYNTAX_CHECK`），在任何 GUI
-  上传之前离线抓住真实语法错误。对自包含程序执行；对 include / FM 片段 / 类池会报告
-  `SYNTAX_COULD_NOT_CHECK`（它们由部署技能的 Ctrl+F2 在上下文中校验）。
+  上传之前离线抓住真实语法错误。对自包含程序直接执行；FM 片段 / 类池、接口池则通过引擎的
+  `-Wrap` 模式在插入前对**主体**做尽力而为的检查（发现项按行号映射回原文件）。仅当签名
+  复杂到无法建模、或是裸 include 时才退化为 `SYNTAX_COULD_NOT_CHECK` —— 这些情况由部署
+  技能的 Ctrl+F2 在上下文中校验。
 
 如果发现可自动修复的问题，运行修复器（会先写一个带时间戳的 `.bak`）：
 
@@ -830,8 +833,9 @@ READINESS: tr=DEVK900123 verdict=GO_WITH_WARNINGS block=0 warn=2 info=1 objects=
 "它做了什么、为什么"的踪迹。
 
 **一个真实、完整的提示。** 实践中你给出的指令会比一行更丰富 —— 代理会把每个子句映射到
-一个步骤或一个 `MODE_*` 标志。一个真实的构建提示长这样（这份规格就随仓库附带，所以你
-可以原样运行它）：
+一个步骤或一个 `MODE_*` 标志。一个真实的构建提示长这样（这里用的规格是基于随插件附带的
+工作簿模板 `plugins/sap-dev-core/shared/templates/spec_template.xlsx` 填写而成的 ——
+请换成你自己的规格）：
 
 > *请基于以下设计文档使用 **abap-developer** 创建对应的程序，并将其部署到 **S4D**
 > 系统。*
@@ -848,7 +852,7 @@ READINESS: tr=DEVK900123 verdict=GO_WITH_WARNINGS block=0 warn=2 info=1 objects=
 >
 > *记录发现的任何问题。*
 >
-> `C:\Work\Dev\ClaudeCodeDev\sapdev-ai\marketing\Sample\spec_MaterialUpload_EN.xlsx`
+> `C:\sapdev\design_docs\spec_MaterialUpload_EN.xlsx`
 
 代理如何解读每一条指令：
 

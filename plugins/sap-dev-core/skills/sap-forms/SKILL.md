@@ -16,7 +16,7 @@ description: |
   campaigns. test-print delegates to /sap-run-report + /sap-sp02. Read-only except the confirm-gated
   report executions; no new Z objects. Prerequisites: pinned RFC profile via /sap-login; NCo 3.1
   (32-bit); a GUI session for the download modes; /sap-dev-init only for the v1.5 wrapper-FM enrichment.
-argument-hint: "inventory [--type all|smartforms|sapscript|adobe] [--namespace Z,Y | --all] [--packages ..] [--usage-days N] [--no-usage] | download smartform <N> | download sapscript <N> | inspect adobe <N> | explain <kind> <N> [--spec] | test-print driver <PROG>"
+argument-hint: "inventory [--type all|smartforms|sapscript|adobe] [--namespace Z,Y | --all] [--packages ..] [--usage-days N] [--no-usage] | download smartform <N> | download sapscript <N> | inspect adobe <N> | explain <kind> <N> [--spec] | test-print driver <PROG> | test-print nast <KAPPL> <KSCHL> <OBJKY>"
 ---
 
 # SAP Forms Skill
@@ -52,6 +52,10 @@ GUI VBS; **you** narrate the tree and the scope evidence.
 powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('WORK_DIR=' + (Get-SapWorkDir)); Write-Output ('RUN_TEMP=' + (Get-SapRunTemp))"
 ```
 Then `sap_log_helper.ps1 -Action start -StateFile {RUN_TEMP}\sap_forms_run.json`.
+
+`{OUT}` = `Get-SapArtifactDir -ScopeKey SYS_<SID>_<CLIENT> -Skill sap-forms` (from
+`sap_artifact_lib.ps1`; creates the dir) — the artifact output dir Step 3A writes to
+and Step 4 registers.
 
 ## Step 1 — Parse Args + Backend
 
@@ -133,7 +137,7 @@ Print one `FORMS:` verdict line per mode + paths.
   session; the SMARTFORMS menu position is release-specific and ships **NEEDS_RECORDING**-guarded
   (record via /sap-gui-probe, set `%%MENU_PATH%%`) rather than guessing. This session verified the
   RFC inventory / Adobe-inspect / offline-parse paths, not a live GUI download.
-- **Deferred:** `test-print nast` NACHA!=1 typed gate (v1.5); wrapper-FM enrichment in `explain`
+- **Deferred:** wrapper-FM enrichment in `explain`
   (v1.5); `patch smartform` text-node/condition edits (v2). EC2 shares the identical path (RSTXSCRP /
   RSNAST00 / SAPMSSFO probed identical; DOCTL is CLUSTER on ECC handled by DOCU_GET elsewhere); EC2 was
   unavailable this session for the ECC re-confirm.

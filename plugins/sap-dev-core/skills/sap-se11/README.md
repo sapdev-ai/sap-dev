@@ -12,7 +12,7 @@ This skill automates the full ABAP Dictionary object lifecycle via SE11:
 - **Full Lifecycle**: Create → define fields/properties → technical settings → save → activate
 - **Login Required**: Use `/sap-login` first to establish SAP GUI session
 - **Centralized Login**: Connection parameters stored in sap-dev-core settings.json
-- **Transport Handling**: Dismisses transport request dialog with Local Object (F7) or Enter
+- **Transport Handling**: TR resolved via `/sap-transport-request` (per `way_to_get_transport_request`); the VBS fills the resolved TR into the KO008 popup and aborts loud when a TR is required but missing — it never silently presses Local Object
 - **Enhancement Category**: Automatically handles enhancement category popup on first activation
 
 ## Auto-Trigger Keywords
@@ -67,7 +67,6 @@ sap-se11/
 ├── SKILL.md                              # Main skill file (step-by-step workflow)
 ├── README.md                             # This file (keywords for discoverability)
 └── references/
-    ├── sap_se11_login.vbs                # VBScript: login to SAP GUI
     ├── sap_se11_check.vbs                # VBScript: check if DDIC object exists (universal)
     ├── sap_se11_table_create.vbs         # VBScript: create database table
     ├── sap_se11_table_update.vbs         # VBScript: update database table
@@ -86,8 +85,19 @@ sap-se11/
     ├── sap_se11_lockobject_create.vbs    # VBScript: create lock object
     ├── sap_se11_lockobject_update.vbs    # VBScript: update lock object
     ├── sap_se11_typegroup_create.vbs     # VBScript: create type group
-    └── sap_se11_typegroup_update.vbs     # VBScript: update type group
+    ├── sap_se11_typegroup_update.vbs     # VBScript: update type group
+    ├── sap_se11_delete.vbs               # VBScript: delete a DDIC object (Shift+F2 from the initial screen)
+    ├── sap_se11_change_package.vbs       # VBScript: change the object directory entry (package)
+    ├── sap_se11_set_enh_category.vbs     # VBScript: set the table enhancement category
+    ├── sap_se11_check_domains.ps1        # PowerShell: RFC batch-check that referenced domains exist (DD01L)
+    ├── sap_se11_check_dataelements.ps1   # PowerShell: RFC batch-check that referenced data elements exist (DD04L)
+    ├── sap_se11_normalize_def.ps1        # PowerShell: sanity-check / auto-repair a .def definition file
+    ├── sap_se11_verify_active.ps1        # PowerShell: RFC post-deploy verification (object ACTIVE)
+    └── *.screens.json                    # Golden-screen baselines (one per driving VBS)
 ```
+
+Login is centralized in `/sap-login` (shared `sap_login.vbs`); this skill attaches to
+the existing session.
 
 ## Usage
 

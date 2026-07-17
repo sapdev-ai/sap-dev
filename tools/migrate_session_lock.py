@@ -182,19 +182,21 @@ RETROFITS = {
     },
 
     # TCD — multi-tab business-process input. Release anchor: "Check result".
-    "sap-tcd/skills/sap-bp/references/sap_bp_create.vbs": {
+    # (These skills moved from the retired sap-tcd plugin into sap-project,
+    # 2026-07-11 — same files, byte-identical, already retrofitted.)
+    "sap-project/skills/sap-bp/references/sap_bp_create.vbs": {
         "lock_anchor": r"^' ------ 3\. Navigate to BP and Create",
         "release_anchor": r"^' ------ \d+\. Check result",
         "section_label": "BP multi-tab input + save",
         "verify_label": "result check is read-only",
     },
-    "sap-tcd/skills/sap-mm01/references/sap_mm01_create.vbs": {
+    "sap-project/skills/sap-mm01/references/sap_mm01_create.vbs": {
         "lock_anchor": r"^' ------ 3\.",
         "release_anchor": r"^' ------ \d+\. Check result",
         "section_label": "MM01 multi-view input + save",
         "verify_label": "result check is read-only",
     },
-    "sap-tcd/skills/sap-va01/references/sap_va01_create.vbs": {
+    "sap-project/skills/sap-va01/references/sap_va01_create.vbs": {
         "lock_anchor": r"^' ------ 3\.",
         "release_anchor": r"^' ------ \d+\. Check result",
         "section_label": "VA01 sales-order input + save",

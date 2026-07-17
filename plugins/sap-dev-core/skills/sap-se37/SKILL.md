@@ -1592,15 +1592,14 @@ active window before assuming it didn't appear.
 
 ---
 
-## Upload Menu Path Note
+## Upload Mechanism Note (historical)
 
-The source upload menu path (`menu[3]/menu[9]/menu[3]/menu[0]`) was recorded on
-SAP GUI 7.60 / S/4HANA 1909. Menu indices **may differ** by SAP release
-and logon language. If the upload step fails:
-1. Open SE37 in your SAP system and navigate to the Source code tab
-2. Use SAP Logon > Help > Scripting Recorder and Playback
-3. Record the "Upload from local file" menu action
-4. Note the menu path from the recording and update the VBS template
+The Utilities > Upload menu path (`menu[3]/menu[9]/menu[3]/menu[0]`, recorded on
+SAP GUI 7.60 / S/4HANA 1909) was **abandoned 2026-06-22**: the menu is S/4-only and
+does not exist on NW 7.31 / ECC6. Source upload now pastes into the Source-code
+editor via the Windows clipboard + SendKeys behind the OS foreground guard (see
+Step 5a and the "Could not place source on clipboard" / foreground-guard rows in
+the troubleshooting table).
 
 ---
 

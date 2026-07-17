@@ -349,9 +349,9 @@ checks what exists and only creates what's missing. It performs, in order:
    `ZCMST_RFC_PARAM`, table type `ZCMCT_RFC_PARAM`.
 8. **Generic RFC wrapper FM** `Z_GENERIC_RFC_WRAPPER_TBL` (marked remote-enabled) —
    lets the toolkit call non-RFC function modules safely over RFC.
-9. **Report-runner FM** `Z_RUN_REPORT` (remote-enabled; best-effort) — the headless
-   background-run fast-path used by `/sap-run-report` and `/sap-job schedule`.
-10. **Utility program** `ZCMRUPDATE_ADDON_TABLE` — used by `/sap-update-addon`.
+9. **Utility program** `ZCMRUPDATE_ADDON_TABLE` — used by `/sap-update-addon`.
+10. **Report-runner FM** `Z_RUN_REPORT` (remote-enabled; best-effort) — the headless
+    background-run fast-path used by `/sap-run-report` and `/sap-job schedule`.
 
 When asked about **TR policy** (`way_to_get_transport_request`), pick one:
 
@@ -453,8 +453,9 @@ and hand-edit at any stage.
 /sap-docs-extract C:\work\design\CustomerUpload.xlsx
 ```
 
-Input can be a `.xlsx` / `.docx` / `.doc` / `.pdf`, an existing work folder, or a
-`_raw.txt`. It creates a work folder and dumps the document into typed text files —
+Input can be a `.xlsx` / `.docx` / `.pdf`, an existing work folder, or a `_raw.txt`
+(legacy binary `.doc` is not supported — save it as `.docx` in Word first). It
+creates a work folder and dumps the document into typed text files —
 the ones you'll care about most:
 
 | File | Contents |
@@ -547,9 +548,12 @@ dimension; a new `syntax` dimension was added):
   RFC (parameter names, sections, mandatory flags, type compatibility, structure
   fields). Catches a hallucinated parameter before it ever hits SE37.
 - **syntax** — a headless compiler-level check (`EDITOR_SYNTAX_CHECK` over RFC) that
-  catches real syntax errors offline, before any GUI upload. Runs for self-contained
-  programs; for an include / FM fragment / class pool it reports `SYNTAX_COULD_NOT_CHECK`
-  (those are syntax-checked in-context by the deploy skill's Ctrl+F2).
+  catches real syntax errors offline, before any GUI upload. Self-contained programs
+  are checked directly; an FM fragment or a class/interface pool gets a best-effort
+  pre-insert **body** check via the engine's `-Wrap` mode (findings are line-mapped
+  back to the original file). Only a bare include, or a fragment whose signature is
+  too complex to model, degrades to `SYNTAX_COULD_NOT_CHECK` — those are
+  syntax-checked in-context by the deploy skill's Ctrl+F2.
 
 If it finds something auto-fixable, run the fixer (a timestamped `.bak` is written
 first):
@@ -869,7 +873,8 @@ you can read the next morning.
 
 **A real, complete prompt.** In practice you give richer instructions than one line —
 the agent maps each clause to a step or a `MODE_*` flag. A real build prompt looks like
-this (this exact spec ships in the repo, so you can run it as-is):
+this (the spec here is a filled-in copy of the shipped workbook template
+`plugins/sap-dev-core/shared/templates/spec_template.xlsx` — substitute your own):
 
 > *Please create the corresponding program using **abap-developer** based on the
 > following design document and deploy it to the **S4D** system.*
@@ -888,7 +893,7 @@ this (this exact spec ships in the repo, so you can run it as-is):
 >
 > *Record any issues found.*
 >
-> `C:\Work\Dev\ClaudeCodeDev\sapdev-ai\marketing\Sample\spec_MaterialUpload_EN.xlsx`
+> `C:\sapdev\design_docs\spec_MaterialUpload_EN.xlsx`
 
 How the agent reads each instruction:
 

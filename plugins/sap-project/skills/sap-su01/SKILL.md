@@ -40,7 +40,10 @@ Task: $ARGUMENTS
 
 ## Step 0 — Resolve Directories + Logging
 
-Resolve `work_dir` + `{RUN_TEMP}` (canonical one-liner). Start logging
+Resolve `work_dir` + `{RUN_TEMP}` (canonical one-liner — `sap_connection_lib.ps1` is dot-sourced
+there — with `Write-Output ('RUN_TEMP=' + (Get-SapRunTemp))` appended). `{RUN_TEMP}` = the
+per-run scratch dir holding the log state file; mint it once here and reuse (re-minting breaks
+the `-Action end` state-file lookup). Start logging
 (`sap_log_helper.ps1`, state `{RUN_TEMP}\sap_su01_run.json`). Resolve settings:
 `su01_user_prefix` (default `ZTEST_`), `su01_default_user_type` (`A`), `su01_valid_days` (`30`).
 

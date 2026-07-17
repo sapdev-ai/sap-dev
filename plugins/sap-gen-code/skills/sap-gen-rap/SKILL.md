@@ -53,7 +53,10 @@ a DDIC read + verify re-reads); no writes, no TR.
 
 ## Step 0 / 0.5 — Work Dir + Logging
 
-Resolve `work_dir`/`{RUN_TEMP}`/`{custom_url}` (house one-liner), then
+Resolve `work_dir`/`{RUN_TEMP}`/`{custom_url}` (house one-liner — `sap_connection_lib.ps1` is
+dot-sourced there — with `Write-Output ('RUN_TEMP=' + (Get-SapRunTemp))` appended; `{RUN_TEMP}` =
+the per-run scratch dir holding the log state file — mint it once here and reuse, re-minting
+breaks the `-Action end` state-file lookup), then
 `sap_log_helper.ps1 -Action start` (state `{RUN_TEMP}\sap_gen_rap_run.json`).
 
 ## Step 1 — Mode Dispatch

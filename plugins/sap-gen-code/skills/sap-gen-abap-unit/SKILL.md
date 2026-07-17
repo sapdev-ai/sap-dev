@@ -64,11 +64,14 @@ the Skill tool, never re-implement): `/sap-check-abap`, `/sap-transport-request`
 ## Step 0 — Resolve Work Directory
 
 ```bash
-powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('WORK_DIR=' + (Get-SapWorkDir)); Write-Output ('CUSTOM_URL=' + (Get-SapSettingValue 'custom_url' ((Get-SapWorkDir) + '\custom')))"
+powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('WORK_DIR=' + (Get-SapWorkDir)); Write-Output ('CUSTOM_URL=' + (Get-SapSettingValue 'custom_url' ((Get-SapWorkDir) + '\custom'))); Write-Output ('RUN_TEMP=' + (Get-SapRunTemp))"
 ```
 
 Settings reads/writes follow `<SAP_DEV_CORE_SHARED_DIR>/rules/settings_lookup.md`.
-Set `{WORK_TEMP}` = `{work_dir}\temp`, `{OUT}` = `{WORK_TEMP}\aunit_gen\{OBJECT}`.
+Set `{WORK_TEMP}` = `{work_dir}\temp`, `{OUT}` = `{WORK_TEMP}\aunit_gen\{OBJECT}`,
+and `{RUN_TEMP}` = the `RUN_TEMP=` value printed above (`Get-SapRunTemp` mints +
+creates a fresh per-run dir `{work_dir}\temp\run_<id>` — holds the log state
+file; mint once here and reuse the same value in Step 0.5 and Final).
 
 ```bash
 cmd /c if not exist "{OUT}" mkdir "{OUT}"

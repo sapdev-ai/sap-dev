@@ -26,11 +26,20 @@ Contract:
 | Class | Emitted by | Meaning |
 |---|---|---|
 | `RFC_LOGON_FAILED` | any RFC-using skill (today: sap-enhancement-advisor, sap-impact-analysis, sap-transport-readiness, RFC preflights) | NCo connect/logon to the pinned profile failed (bad creds, unreachable endpoint, NCo missing). |
+| `RFC_ERROR` | any RFC-using skill (today: sap-api-advisor, sap-auth-requirements, sap-config-compare, sap-gateway-service, sap-release-notes, sap-sm12, sap-sost, sap-version-history, sap-workflow) | An RFC read / FM call failed AFTER a successful connect (call-level raise, mid-run network drop, unreadable table) — the post-logon sibling of `RFC_LOGON_FAILED`. |
 | `TR_RESOLUTION_FAILED` | deploy skills' Step 1b (`/sap-transport-request` delegation) | No modifiable transport request could be resolved under the active `way_to_get_transport_request` policy. |
 | `TR_NOT_MODIFIABLE` | reserved (canonical name; use for a supplied TR that exists but is released/foreign) | The named TR cannot take new objects. |
+| `TR_UNVERIFIED` | /sap-transport-request (Steps 1b/4) + deploy skills' Step 1b delegation | Candidate TR status could not be verified (`Z_GENERIC_RFC_WRAPPER_TBL` missing or a transient RFC error) — status UNKNOWN, nothing created; the caller re-prompts per the policy loop, never treats it as not-found. |
+| `TR_NOT_FOUND` | sap-transport-readiness | The named transport request does not exist at all (E070 probe empty) — distinct from `TR_NOT_MODIFIABLE` (exists but cannot take objects). |
 | `GUI_TIMEOUT` | reserved (canonical name for GUI-scripting stalls) | A GUI-scripting wait loop exhausted its budget (screen never arrived, modal never closed). |
+| `GUI_LAYOUT_UNKNOWN` | sap-se14 (canonical name for future reuse) | A driven screen/popup matched no known layout variant mid-flow — the run stops rather than guess-click. Distinct from `GUI_TIMEOUT` (a stall) and from `NEEDS_RECORDING` (a whole leg that ships unrecorded). |
+| `NO_SESSION` | sap-file-transfer, sap-gui-probe, sap-gui-skill-scaffold, sap-user-guide | No active authenticated SAP GUI session (login-status probe returned non-`LOGGED_IN`) — run `/sap-login` first. |
+| `NO_PIN` | sap-gui-probe, sap-gui-skill-scaffold | Multiple SAP GUI connections are attached and no AI-session pin selects one — refused loud rather than guessing a connection; run `/sap-login` to pin. |
+| `USER_ABORTED` | sap-gui-probe, sap-user-guide | The operator aborted the interactive run mid-flight — recorded as the end cause, never dressed up as a skill defect. |
 | `OBJECT_NOT_FOUND` | sap-explain-object, sap-impact-analysis, sap-review-abap | The named repository object does not resolve on the target system (TADIR/TFDIR probe empty). |
+| `OBJECT_NAMING_VIOLATION` | deploy skills' naming gate (sap-se11, sap-se24, sap-se37, sap-se38) + sap-gen-cds, sap-gen-rap | The object name fails the `sap_object_naming_rules.tsv` validator (`sap_check_object_name.ps1` exit 1) and the user chose Abort — run ends `SKIPPED`, nothing deployed. |
 | `SCREEN_DRIFT` | sap-doctor (`--screens`) | A golden-screen baseline checkpoint no longer matches the live screen (release/locale moved a control). |
+| `BLOCKED` | sap-workflow | A backend preflight found the required access layer unavailable (RFC down → `STATUS: BLOCKED`) — the whole mode stops before any read, no silent GUI degrade. |
 | `SE38_CHECK_FAILED` | sap-se38 | Program existence/syntax pre-check failed before deploy. |
 
 ## Scratch run & FM probe (`/sap-scratch-run`)
@@ -181,6 +190,24 @@ Contract:
 | `IDOC_MAPPING_INVALID` | The mapping spec has an unknown `rule` token, a missing `target`, or references a segment not in the IDoc type's tree — fail loud, nothing generated. |
 | `IDOC_WIRING_INCOMPLETE` | `verify-wiring` verdict is UNWIRED/PARTIAL — the WE57/BD51/WE42 rows the handler needs are missing (the operator TODO list, not a hard failure). |
 
+## Docs pipeline & generation (sap-gen-code)
+
+| Class | Emitted by | Meaning |
+|---|---|---|
+| `INPUT_NOT_FOUND` | sap-docs-check, sap-docs-extract, sap-gen-test-plan | The input document / work folder / `_*.txt` spec file the skill was pointed at does not exist — nothing processed. |
+| `RAW_DUMP_FAILED` | sap-docs-extract | The `{doc_name}_raw.txt` dump of the source document could not be produced (unreadable/corrupt document). |
+| `EXTRACT_FAILED` | sap-docs-extract | Structuring the raw dump into the per-type `_*.txt` files failed. |
+| `CONVERT_FAILED` | sap-docs-convert | A normalisation rule from `spec_conversion_rules.tsv` could not be applied to the extracted spec files. |
+| `DDIC_CHECK_FAILED` | sap-docs-check | The DDIC-definition validation dimension could not run to completion. |
+| `PROCESS_CHECK_FAILED` | sap-docs-check | The process-logic validation dimension could not run to completion. |
+| `GEN_ABAP_FAILED` | sap-gen-abap | Generation was blocked (missing `_process.txt`, unsupported program type, identifier too long after retry, …) — no source emitted. |
+| `META_NOT_FOUND` | sap-docs-layout | The workbook has no `(Meta) Layout` sheet — the layout contract cannot be read. |
+| `META_ALREADY_EXISTS` | sap-docs-layout | `bootstrap` on a workbook that already carries a `(Meta) Layout` sheet — refused rather than overwritten. |
+| `SECTION_UNKNOWN` | sap-docs-layout | A layout row references a section key that is not in the canonical section catalogue. |
+| `SHEET_NOT_FOUND` | sap-docs-layout | A layout row points at a worksheet that does not exist in the workbook. |
+| `INVALID_ARGUMENT` | sap-docs-layout | Bad invocation arguments (unknown mode / missing workbook path). |
+| `XLSX_WRITE_FAILED` | sap-docs-layout | The workbook write-back failed (file locked / xlsx emission error). |
+
 ## Git backend (`/sap-git`)
 
 | Class | Meaning |
@@ -239,6 +266,121 @@ Contract:
 
 *(The read modes `list`/`check`/`explain` emit only the generic `RFC_LOGON_FAILED`. The
 first three classes above are emitted by the `create`/`update`/`regen` write modes — NEEDS_RECORDING, deferred to a `/sap-gui-probe` session — and are reserved here per the same-commit rule so the write phase adds no new taxonomy.)*
+
+## Performance trace (`/sap-trace`)
+
+| Class | Meaning |
+|---|---|
+| `TRACE_QUERY_FAILED` | The ST05/SAT GUI display or ALV-export leg failed — the trace list could not be driven/exported on this release. |
+| `TRACE_PARSE_FAILED` | The offline analyzer (`sap_trace.ps1`) could not parse the exported/imported trace file. |
+| `TRACE_EMPTY` | The trace ran but produced no usable rows (nothing recorded, or every row below `--threshold-ms`) — a distinct class so "empty" is never mistaken for a parse failure. |
+
+## Spool download (`/sap-sp02`)
+
+| Class | Meaning |
+|---|---|
+| `SP02_NOT_FOUND` | The target spool number matched no row in the SP02 own-spool list (wrong number, another user's spool, or already deleted). |
+| `SP02_DOWNLOAD_FAILED` | The display/save leg ran but the local file never materialized (or verification failed) — never reported as a successful download. |
+
+## Where-used list (`/sap-where-used-list`)
+
+| Class | Meaning |
+|---|---|
+| `WHERE_USED_FAILED` | The scope popup / where-used result list could not be driven or read. |
+| `WHERE_USED_PRINT_FAILED` | The List > Print / spool leg failed after a successful list build. |
+
+## Number range objects (`/sap-snro`)
+
+| Class | Meaning |
+|---|---|
+| `SNRO_FAILED` | An SNRO create/update/interval-maintenance leg failed (GUI drive or post-write verify) — the number-range failures not covered by `TR_RESOLUTION_FAILED` / `GUI_TIMEOUT`. |
+
+## Add-on table update (`/sap-update-addon`)
+
+| Class | Meaning |
+|---|---|
+| `UPDATE_ADDON_FAILED` | The SM30 / SE16 / ZCMRUPDATE_ADDON_TABLE insert-or-update leg failed after method detection (per-row errors are additionally captured in the result file). |
+
+## Workbench transaction skills (sap-dev-core GUI legs)
+
+| Class | Emitted by | Meaning |
+|---|---|---|
+| `LOGIN_FAILED` | sap-login | The GUI login leg failed (connection opened but no authenticated session — bad credentials, locked user, unexpected login screen). Distinct from `RFC_LOGON_FAILED` (the NCo connectivity probe). |
+| `TR_CREATE_FAILED` | sap-se01 | CREATE mode could not produce a new transport request (or the new TRKORR could not be resolved locale-independently — never guessed). |
+| `SE21_FAILED` | sap-se21 | A package create/delete leg failed (GUI drive, popup chain, or post-action verify). |
+| `SE11_FAILED` / `SE11_INACTIVE` / `SE11_LOCKED` | sap-se11 | A DDIC create/update/delete leg failed / the object stayed inactive after Activate (post-activate verify non-'A') / the object is edit-locked by another user or session. |
+| `SE37_FAILED` / `SE37_INACTIVE` / `SE37_LOCKED` | sap-se37 (`SE37_FAILED` also reused by sap-rfc-wrapper's FM leg) | An FM create/update/delete leg failed / the FM or its function group stayed inactive after Activate / the FM is edit-locked. |
+| `SE24_FAILED` / `SE24_INACTIVE` / `SE24_LOCKED` | sap-se24 | A class/interface deploy leg failed / the class stayed inactive after Activate / the class is edit-locked. |
+| `SE91_FAILED` | sap-se91 | A message-class create/update or change-properties leg failed. |
+| `SE41_FAILED` | sap-se41 | A GUI status / menu painter leg failed. |
+| `SE51_FAILED` | sap-se51 | A screen painter leg failed. |
+| `SE54_FAILED` | sap-se54 | A table-maintenance-generator leg failed. |
+| `SE19_FAILED` / `BADI_NOT_FOUND` / `BADI_AMBIGUOUS_UNRESOLVED` / `DELETE_REFUSED_SAFETY` | sap-se19 | An implementation create/update/delete leg failed / the named BAdI (definition or implementation) does not exist / a name matching both classic and new-BAdI worlds was not disambiguated / delete refused by the created-by-us safety ledger (no ledger hit ⇒ refuse by default). |
+| `CMOD_FAILED` / `RFC_FAILED` | sap-cmod | A CMOD project create/assign/activate GUI leg failed / a read-only RFC lookup leg (`RFC_READ_TABLE` on MODATTR/MODACT/MODSAP…) failed after connect. |
+| `SE16N_FAILED` / `TABLE_NOT_FOUND` | sap-se16n | The SE16N query/download leg failed / the named table does not exist on the target system. |
+| `CHANGE_PACKAGE_FAILED` / `OBJECT_LOCKED_IN_TR` | sap-change-package | The Object Directory Entry dialog leg failed / the object sits in a modifiable TR (E071/E070 pre-check), which blocks the package move. |
+| `ACTIVATE_FAILED` | sap-activate-object | The routed activation (SE38/SE37/SE24/SE11 + worklist popup) did not leave the object active (PROGDIR/DWINACTIV verify). |
+| `FUNCTION_GROUP_FAILED` / `FUNCTION_GROUP_DELETE_FAILED` | sap-function-group | A function-group create/re-activate leg failed / the delete leg failed (including the SE38 `SAPL<FG>` fallback path). |
+| `BDC_FAILED` / `BDC_FILE_NOT_FOUND` | sap-call-bdc | `ABAP4_CALL_TRANSACTION` reported errors in BDCMSGCOLL / the SHDB recording file is absent from the bdc/ folder. |
+| `RFC_WRAPPER_FAILED` | sap-rfc-wrapper | The wrapper FM / DDIC parameter infrastructure deploy failed (delegated SE11/SE37 legs report their own classes; this is the orchestrator-level failure). |
+| `CHECK_ABAP_FAILED` | sap-check-abap | A check dimension could not run to completion (not a findings verdict — findings are the result file). |
+| `FIX_ABAP_FAILED` / `BACKUP_FAILED` | sap-fix-abap | The fix loop could not produce a clean re-checked source / the pre-fix backup of the original source could not be written (fix refused — never edit without a backup). |
+| `CHECK_FIX_FAILED` / `DISPATCH_FAILED` | sap-check-fix | The check-and-fix loop ended without reaching green / the input could not be dispatched to the owning check/fix skill (unrecognized object type). |
+
+## Program deploy (`/sap-se38`)
+
+The pre-deploy existence/syntax gate emits the generic `SE38_CHECK_FAILED`
+(see the Generic infrastructure table); the failure matrix maps the deploy
+legs to these classes:
+
+| Class | Meaning |
+|---|---|
+| `SE38_SYNTAX` | The in-editor Ctrl+F2 syntax check found errors — deploy stopped before Save/Activate. |
+| `SE38_UPLOAD` | The source upload/paste leg failed (upload menu/dialog broke, source file unreadable, paste guard aborted). |
+| `SE38_LOCKED` | The program could not be opened in change mode (edit lock or missing authorization on open). |
+| `SE38_AUTH` | An SE38 leg was refused for missing authorization (S_DEVELOP / S_TCODE). |
+| `SE38_INACTIVE` | The program is still INACTIVE after Activate (activation silently failed — missing DDIC types, message class, or local-class syntax errors). |
+| `SE38_CONTENT_MISMATCH` | Post-deploy content gate: the program is ACTIVE but its active source ≠ the uploaded file (the paste did not take — usually clipboard contention; the OLD source was re-activated). Not a success. |
+| `SE38_GENERIC` | An SE38 failure not matched by any specific row of the failure matrix. |
+| `SE38_TEXTELM_CHANGE_FAIL` | Step 5c: the text-elements editor did not open in Change mode (source is active; only text elements are missing). |
+| `SE38_TEXTELM_REENTRY_FAIL` | Step 5c: text elements saved but re-entry for Activate failed — TEXTPOOL is saved-but-inactive. |
+| `SE38_TEXTELM_TBL_UNKNOWN` | Step 5c: the text-elements sub-screen / Text Symbols tab / table ids are unknown on this SAP build — record once with `/sap-gui-probe --record`. |
+| `SE38_TEXTELM_TR_MISSING` | Step 5c: SAP prompted for a TR but none was resolved — resolve via `/sap-transport-request` and re-run. |
+| `SE38_TEXTELM_SAVE_FAIL` | Step 5c: the text-elements Save ended with sbar `E`/`A` — TEXTPOOL not written. |
+| `SE38_TEXTELM_ACTIVATE_FAIL` | Step 5c: TEXTPOOL saved but its activation ended with sbar `E`/`A` — saved-but-inactive. |
+| `SE38_TEXTELM_NO_STATUS` | Step 5c: the text-elements VBS died before emitting its final `TEXT_ELEMENTS:` status line. |
+
+## Dev environment lifecycle (`/sap-dev-init`, `/sap-dev-clean`)
+
+| Class | Emitted by | Meaning |
+|---|---|---|
+| `DEV_INIT_FAILED` | sap-dev-init | The init orchestration failed outside the three artefact steps below. |
+| `PACKAGE_FAILED` | sap-dev-init | The development-package step (delegated `/sap-se21`) failed. |
+| `FUGR_FAILED` | sap-dev-init | The function-group step (delegated `/sap-function-group`) failed. |
+| `DEPLOY_FAILED` | sap-dev-init | The utility-program deploy step (delegated `/sap-se38`, ZCMRUPDATE_ADDON_TABLE) failed. |
+| `DEV_CLEAN_FM_FAILED` | sap-dev-clean | Deleting the wrapper FM / a function-group member failed. |
+| `DEV_CLEAN_DDIC_FAILED` | sap-dev-clean | Deleting a dev-init DDIC artefact (parameter structure / table type) failed. |
+| `DEV_CLEAN_FG_HAS_EXTRAS` | sap-dev-clean | The function group contains FMs beyond the dev-init set — skipped rather than deleting operator content (override: `--force`). |
+| `DEV_CLEAN_PKG_NON_EMPTY` | sap-dev-clean | The package still contains objects after artefact cleanup — package delete skipped, never cascaded. |
+| `DEV_CLEAN_TR_RISK` | sap-dev-clean | The dev TR drop was refused because the request carries risk content (e.g. foreign/unexpected entries). |
+| `DEV_CLEAN_CONFIG_MISMATCH` | sap-dev-clean | The Step-2 anchor gate found the configured dev defaults pointing at different artefacts than the ones on the system — ABORT, nothing deleted (`--force`/`--reset` do NOT override). |
+
+## GUI authoring utilities (`/sap-gui-probe`, `/sap-gui-inspect`, `/sap-gui-skill-scaffold`)
+
+| Class | Emitted by | Meaning |
+|---|---|---|
+| `ACTION_FAILED` | sap-gui-probe | A driven step's action could not be executed on the live screen (findById miss, action VBS error). |
+| `MAX_STEPS` | sap-gui-probe | The step budget was exhausted before the scenario completed. |
+| `INSPECT_FAILED` | sap-gui-inspect | The property-tree dump leg failed. |
+| `INSPECT_NO_SESSION` | sap-gui-inspect | No attachable SAP GUI session for the inspection (skill-local variant of `NO_SESSION`). |
+| `INSPECT_HARDCOPY_FAILED` | sap-gui-inspect | The window Hardcopy (screenshot BMP) capture failed. |
+| `INSPECT_COMPOSE_FAILED` | sap-gui-inspect | Composing the captured BMPs into the annotated PNG (`sap_gui_diagnose_compose.ps1`) failed. |
+| `PROBE_FAILED` | sap-gui-skill-scaffold | A delegated `/sap-gui-probe` scenario failed — merge is refused (a partial scaffold is worse than none). |
+| `MERGE_FAILED` | sap-gui-skill-scaffold | Merging the probe run folders into one skill draft failed (cross-probe diff / popup-guard synthesis broke). |
+| `EMIT_FAILED` | sap-gui-skill-scaffold | Writing the merged skill folder (SKILL.md + references VBS) failed. |
+| `BAD_SKILL_NAME` | sap-gui-skill-scaffold | The requested skill name violates the repo naming convention (`sap-` prefix, kebab-case). |
+| `INSUFFICIENT_SCENARIOS` | sap-gui-skill-scaffold | Fewer usable scenarios than the scaffold needs — run ends `SKIPPED` with the missing-scenario prompt. |
+| `PIN_SYSTEM_MISMATCH` | sap-gui-skill-scaffold | The pinned connection's system identity does not match the system the scaffold was asked to target — refused before probing. |
 
 ## Release management & delivery (sap-project)
 
@@ -301,6 +443,7 @@ first three classes above are emitted by the `create`/`update`/`regen` write mod
 | `AUTH_ROLE_NOT_FOUND` | sap-suim | `users --role=<R>` named a role absent from AGR_DEFINE — near-miss `LIKE` candidates listed; not an empty "nobody has it". |
 | `AUTH_TCODE_NOT_FOUND` | sap-suim | `users --tcode=<T>` named a transaction absent from TSTC (typo) — refused before an empty "nobody can run it". |
 | `AUTH_MATRIX_INVALID` | sap-suim | `critical` — the critical_auths.tsv matrix is missing or has a bad header (`NO_MATRIX`) — the scan cannot run; never a false "0 critical grants". |
+| `AUTH_VOLUME_CAPPED` | sap-suim | A user-list read hit the `--max` volume cap (`capped=Y`) and the caller required a complete list — narrow the selection or raise `--max`; never presented as the full population. |
 
 ## Change history & audit (sap-project)
 
@@ -334,6 +477,9 @@ first three classes above are emitted by the `create`/`update`/`regen` write mod
 | `TCD_SCENARIO_INVALID` | sap-tcd-chain | The O2C scenario file failed local validation (missing ORDER_HEADER org field, no sold-to AG partner, no items) — no RFC made. |
 | `TCD_CHAIN_STEP_FAILED` | sap-tcd-chain | A chain BAPI (order/delivery/GI/billing) returned type E/A — the transaction was rolled back; the verbatim BAPIRET2 (usually a customizing gap: shipping point, copy control, picking relevance) is the deliverable. The manifest is finalized PARTIAL. |
 | `TCD_CHAIN_VERIFY_FAILED` | sap-tcd-chain | A step's BAPI + COMMIT reported success but the authoritative VBFA re-read found no successor document after the backoff — a false success; the chain stops, never rendered as complete. |
+| `BP_FAILED` | sap-bp | A business-partner create/change GUI leg failed (screen drive or post-write verify). |
+| `MM01_FAILED` | sap-mm01 | A material-master create GUI leg failed (screen drive or post-write verify). |
+| `VA01_FAILED` | sap-va01 | A sales-order create GUI leg failed (screen drive or post-write verify). |
 
 ## Configuration compare (sap-project)
 
@@ -458,16 +604,20 @@ first three classes above are emitted by the `create`/`update`/`regen` write mod
 | `WF_ACT_INVALID_STATE` | sap-workflow (act) | The requested verb is refused for the WI's state (restart needs ERROR; cancel refused on COMPLETED/CANCELLED; forward needs a dialog WI + --to) — refused BEFORE the confirm prompt. |
 | `WF_ACT_FAILED` | sap-workflow (act) | The WAPI call returned rc<>0, OR rc=0 but the authoritative SWWWIHEAD.WI_STAT re-read shows no change (never a false success). |
 | `WF_DEFINITION_NOT_FOUND` | sap-workflow (explain) | No active SWDSHEADER version for the WS task. |
+| `WF_INPUT` | sap-workflow | Invalid invocation input (unparseable workitem id / unknown verb / missing required argument) — refused before any RFC. |
 | `AUTHREQ_SOURCE_UNREADABLE` | sap-auth-requirements (derive) | Object source could not be read over RFC (and no --source-files given). |
 | `AUTHREQ_EXTRACT_FAILED` | sap-auth-requirements (derive) | The offline extractor produced no rows file. |
+| `AUTHREQ_INPUT` | sap-auth-requirements | Invalid invocation input (no resolvable object token / bad arguments) — refused before any read. |
 | `SM35_RFC_UNAVAILABLE` | sap-sm35 (list) | RFC down — session list cannot be read (no silent empty list). |
 | `SM35_SESSION_NOT_FOUND` / `SM35_LOG_NOT_FOUND` / `SM35_PROCESS_TIMEOUT` / `SM35_RERUN_SOURCE_MISSING` | sap-sm35 | Session absent / no TemSe log / process poll exceeded --wait / rerun source BDC file absent (never reconstructs from APQD). |
 | `SOST_SELECTION_EMPTY` / `SOST_RESEND_FAILED` | sap-sost (resend, v1.5) | Resend selection resolved to 0 rows / the GUI resend did not flip the status on re-read. |
 | `IMG_LAYOUT_UNKNOWN` / `IMG_HARVEST_INCOMPLETE` / `IMG_CACHE_STALE` / `IMG_CACHE_MISSING` / `IMG_ACTIVITY_NOT_FOUND` / `IMG_LAUNCH_NO_TARGET` / `IMG_LAUNCH_FAILED` | sap-img-find | Harvest layout drift / core table 0 rows / cache older than TTL (WARN) / cache absent / activity not in cache / launch has no tcode+object (INFO) / launch nav failed. |
 | `TRANSLATE_EMPTY_SCOPE` / `TRANSLATE_LENGTH_OVERFLOW` / `TRANSLATE_VERIFY_MISMATCH` / `LXE_WRITE_FAILED` | sap-translate | Empty scope / a proposed translation exceeds the hard length (refused) / post-write RFC re-read differs / the LXE write FM failed. |
+| `TRANSLATE_INPUT` | sap-translate | Invalid invocation input (bad language argument / unparseable translation input file) — refused before any write. |
 | `SE14_DELETE_PATH_REFUSED` / `SE14_CONVERSION_RUNNING` / `SE14_QCM_DATA_AT_RISK` / `SE14_UNSUPPORTED_TABCLASS` / `SE14_ADJUST_FAILED` / `SE14_SDATA_NOT_DEFAULT` | sap-se14 | Delete-data variant refused (v1 no override) / running conversion blocks writes / QCM shadow holds data on release-lock / non-TRANSP table / adjust GUI failed / save-data rail not confirmable (radRSGTB-SDATA missing or not `.Selected`) so adjust was refused. |
 | `GW_NOT_INSTALLED` / `GW_BACKEND_ONLY` / `GW_SERVICE_NOT_FOUND` / `GW_ERRLOG_GUI_ONLY` | sap-gateway-service | No Gateway hub / hub is on another system (IW_BEP only) / unknown service / SU_ERRLOG is not RFC-readable so errors need the GUI scrape. |
 | `SM30_NO_MAINT_DIALOG` / `SM30_TWO_STEP_UNSUPPORTED` / `SM30_CLUSTER_UNSUPPORTED` / `SM30_CLIENT_NOT_MODIFIABLE` / `SM30_DELETE_UNSUPPORTED` / `SM30_VERIFY_MISMATCH` / `SM30_NO_BASE_TABLE` / `PREREAD_UNFILTERED` | sap-sm30 | No TVDIR entry / two-step view (v1) / SM34 cluster / client locked / delete refused / post-write re-read delta / view has no base table / pre-read could not apply the view WHERE (WARN). |
+| `SM30_TR_REQUIRED` / `SM30_KEY_NOT_FOUND` / `SM30_SAVE_FAILED` | sap-sm30 | The Customizing-TR popup (KO008-TRKORR) fired with no resolved TR (never blind-Enter'd — resolve a Customizing TR and retry) / update: the Position lookup found no row for the target key (no silent upsert) / Save ended with sbar `E`/`A` — rows not written. |
 | `AUTH_CLIENT_NOT_MODIFIABLE` / `PFCG_ROLE_EXISTS` / `PFCG_VERIFY_MISMATCH` / `PFCG_GENERATE_FAILED` / `PFCG_NEEDS_RECORDING` | sap-pfcg | Client locked / create on an existing role / AGR_* re-read delta / SUPC left 0 auth rows / unknown PFCG/SUPC layout (never guess-click). |
 
 `NEEDS_RECORDING` (reused) covers the ships-unrecorded GUI legs of sap-sm35 (log scrape), sap-sost

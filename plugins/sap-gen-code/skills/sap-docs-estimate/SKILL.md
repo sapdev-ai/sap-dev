@@ -44,11 +44,13 @@ design and must never be presented as a commitment.
 ## Step 0 — Resolve Work Dir + Metrics Dir
 
 ```bash
-powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('WORK_DIR=' + (Get-SapWorkDir)); Write-Output ('CUSTOM_URL=' + (Get-SapSettingValue 'custom_url' ((Get-SapWorkDir) + '\custom')))"
+powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('WORK_DIR=' + (Get-SapWorkDir)); Write-Output ('CUSTOM_URL=' + (Get-SapSettingValue 'custom_url' ((Get-SapWorkDir) + '\custom'))); Write-Output ('RUN_TEMP=' + (Get-SapRunTemp))"
 ```
 
 Ledger + calibration live at `{work_dir}\metrics\` (stable cross-run path — NOT `{RUN_TEMP}`).
-Set `{RUN_TEMP}` for logging state only.
+Set `{RUN_TEMP}` = the `RUN_TEMP=` value printed above (`Get-SapRunTemp` mints + creates the
+per-run scratch dir holding the log state file) — for logging state only; mint it once here and
+reuse (re-minting breaks the `-Action end` state-file lookup).
 
 ## Step 0.5 — Start Logging
 

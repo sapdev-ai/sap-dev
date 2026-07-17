@@ -44,7 +44,10 @@ NUMBER), `ORDER_ITEM_NN` (MATERIAL, QTY), `DELIVERY` (SHIP_POINT), `BILLING`.
 
 ## Step 0 — Directories + Logging
 
-Resolve `work_dir` + `{RUN_TEMP}` (canonical one-liner). Start logging
+Resolve `work_dir` + `{RUN_TEMP}` (canonical one-liner — `sap_connection_lib.ps1` is dot-sourced
+there — with `Write-Output ('RUN_TEMP=' + (Get-SapRunTemp))` appended). `{RUN_TEMP}` = the
+per-run scratch dir holding the log state file; mint it once here and reuse (re-minting breaks
+the `-Action end` state-file lookup). Start logging
 (`sap_log_helper.ps1`, state `{RUN_TEMP}\sap_tcd_chain_run.json`). RFC-only — no GUI session.
 
 ## Step 1 — Parse & Dispatch

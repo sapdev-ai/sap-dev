@@ -71,12 +71,14 @@ write-capable companion. Diagnose stays read-only; it only invokes the fix skill
 ## Step 0 — Resolve Work Directory and Settings
 
 ```bash
-powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('WORK_DIR=' + (Get-SapWorkDir))"
+powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_settings_lib.ps1'; . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'; Write-Output ('WORK_DIR=' + (Get-SapWorkDir)); Write-Output ('RUN_TEMP=' + (Get-SapRunTemp))"
 ```
 
 Resolve the active connection: `--connection` if given, else the AI-session pin
 in `{work_dir}\runtime\session_registry.json`. Read `log_redact_keys` and the
-SAP RFC connection keys for that system. Set `{WORK_TEMP}` = `{work_dir}\temp`,
+SAP RFC connection keys for that system. Set `{RUN_TEMP}` = the `RUN_TEMP=`
+value (per-run scratch dir, minted + created by `Get-SapRunTemp` — home of the
+`_run.json` logging state), `{WORK_TEMP}` = `{work_dir}\temp`,
 `{RUN_DIR}` = `{WORK_TEMP}\diagnose\<run>`:
 
 ```bash

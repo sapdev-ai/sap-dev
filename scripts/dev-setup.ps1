@@ -3,16 +3,19 @@
 # =============================================================================
 # What it does:
 #   1. Verifies sap-dev-core/settings.json exists (the schema).
-#   2. Creates settings.local.json if missing.
+#   2. Bootstraps an empty settings.local.json if missing (optional hand-edited
+#      dev-checkout READ override — this script never writes values into it).
 #   3. Prompts for the SAP connection fields (server, system, client, user,
 #      password, language).
 #   4. DPAPI-encrypts the password before storing.
-#   5. Writes everything to settings.local.json via the merge helper —
-#      settings.json is never touched.
+#   5. Writes everything to {work_dir}\runtime\userconfig.json via
+#      Set-SapUserSetting (the Rule-7 skill write target) — settings.json and
+#      settings.local.json are never touched.
 #
-# Re-runnable: existing values in settings.local.json are shown as defaults;
-# pressing Enter keeps the existing value. Use -Force to be re-prompted for
-# every field even when one is already set.
+# Re-runnable: existing values from the merged settings view (settings.local.json
+# > userconfig.json > settings.json) are shown as defaults; pressing Enter keeps
+# the existing value. Use -Force to be re-prompted for every field even when one
+# is already set.
 #
 # Usage:
 #   pwsh ./scripts/dev-setup.ps1
@@ -48,14 +51,15 @@ Write-Host ""
 Write-Host "sap-dev developer setup" -ForegroundColor Cyan
 Write-Host "-----------------------"
 Write-Host "Schema (read-only): $SchemaPath"
-Write-Host "Local file (yours): $LocalPath"
+Write-Host "Optional dev override (hand-edited, read-only to this script): $LocalPath"
+Write-Host "Write target for the values below: {work_dir}\runtime\userconfig.json"
 Write-Host ""
 
 # Bootstrap the local file if missing.
 if (-not (Test-Path $LocalPath)) {
     $emptyShape = '{"userConfig":{}}'
     [System.IO.File]::WriteAllText($LocalPath, $emptyShape, (New-Object System.Text.UTF8Encoding($false)))
-    Write-Host "Created empty settings.local.json." -ForegroundColor Green
+    Write-Host "Created empty settings.local.json (optional hand-edited dev override; setup values go to userconfig.json)." -ForegroundColor Green
     Write-Host ""
 }
 
@@ -126,7 +130,7 @@ if (-not [string]::IsNullOrWhiteSpace($pwdRaw) -and -not $pwdRaw.StartsWith('dpa
 }
 
 Write-Host ""
-Write-Host "Writing to settings.local.json..." -ForegroundColor Cyan
+Write-Host "Writing to {work_dir}\runtime\userconfig.json (via Set-SapUserSetting)..." -ForegroundColor Cyan
 
 $writes = @(
     @{ Key = 'sap_application_server'; Val = $server }
@@ -147,7 +151,7 @@ foreach ($w in $writes) {
 }
 
 Write-Host ""
-Write-Host "Done. Verifying gitignore..." -ForegroundColor Cyan
+Write-Host "Done. Verifying the optional settings.local.json dev override is gitignored..." -ForegroundColor Cyan
 $ignore = & git -C $RepoRoot check-ignore -v 'plugins/sap-dev-core/settings.local.json' 2>&1
 if ($LASTEXITCODE -eq 0) {
     Write-Host "  OK — settings.local.json is gitignored ($ignore)" -ForegroundColor Green

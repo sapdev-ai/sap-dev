@@ -165,4 +165,4 @@ Failure classes: `GIT_NOT_INSTALLED`, `GIT_REPO_DIRTY`, `GIT_COMMIT_FAILED`, `SN
   only *used* if present, never deployed (Rule 2). The one local destructive op (diff's reset) is
   gated by the clean-worktree refusal. ECC 6 shares the identical path (all 23 objects probed
   identical); no release branch. **Security:** serialized source can contain hardcoded credentials
-  and the repo lives under `{work_dir}` — the skill never adds a remote or pushes (README warns).
+  and the repo lives under `{work_dir}` — the skill never adds a remote or pushes.

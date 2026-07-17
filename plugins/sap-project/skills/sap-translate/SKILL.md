@@ -43,7 +43,10 @@ Task: $ARGUMENTS
 
 ## Step 0 — Directories + Logging
 
-Resolve `work_dir` + `{RUN_TEMP}` (canonical one-liner). Start logging (`sap_log_helper.ps1`,
+Resolve `work_dir` + `{RUN_TEMP}` (canonical one-liner — `sap_connection_lib.ps1` is dot-sourced
+there — with `Write-Output ('RUN_TEMP=' + (Get-SapRunTemp))` appended). `{RUN_TEMP}` = the
+per-run scratch dir holding the log state file; mint it once here and reuse (re-minting breaks
+the `-Action end` state-file lookup). Start logging (`sap_log_helper.ps1`,
 state `{RUN_TEMP}\sap_translate_run.json`). Pinned RFC profile via `/sap-login`; wrapper FM from
 `/sap-dev-init` (apply only).
 
@@ -79,8 +82,8 @@ the operator to review/edit the TSV then run `apply`.
    `<SID>/<CLIENT>`, overwriting `<k>` existing texts. Proceed? (yes/no)". On no -> `SKIPPED`.
 3. Write per type via the SE63 engine FMs `LXE_OBJ_TEXT_PAIR_READ` -> mutate -> `LXE_OBJ_TEXT_PAIR_WRITE`
    through `Z_GENERIC_RFC_WRAPPER_TBL` (FMODE-blank -> the asXML wrapper bridge). On wrapper failure
-   or `sap_dev_mode=GUI`, degrade to the recorded `sap_se63_short_text.vbs` (ships `NEEDS_RECORDING`
-   until captured per text type via `/sap-gui-probe --record`).
+   or `sap_dev_mode=GUI`, degrade to a recorded SE63 GUI flow — not yet captured (no VBS ships):
+   emit `NEEDS_RECORDING` and record it once per text type via `/sap-gui-probe --record`.
 4. **Verify:** authoritative RFC re-read per row (T100 / DD04T / DD02T / DD03T / DD01T / DD07T) —
    compare row-for-row; mismatch -> `TRANSLATE_VERIFY_MISMATCH` (never trust GUI status text).
 
@@ -112,7 +115,8 @@ reused `RFC_LOGON_FAILED` / `GUI_TIMEOUT` / `NEEDS_RECORDING`.
   through the dev-init wrapper; `RS_TEXTPOOL_WRITE` does NOT exist (probed both) so the write pivots
   to LXE. Exact LXE signatures are a documented day-1 build spike (fetched via
   `RPY_FUNCTIONMODULE_READ_NEW`, never guessed); if the FM pair proves unusable, apply falls back to
-  the recorded SE63 GUI flow for that type — harvest/review are unaffected. Every write is verified
+  a to-be-recorded SE63 GUI flow for that type (`NEEDS_RECORDING` until captured via
+  `/sap-gui-probe --record`) — harvest/review are unaffected. Every write is verified
   by an independent RFC re-read; the mandatory review TSV + confirm gate mean nothing is written
   unattended.
 - **Never translates the original language:** a row whose target == MASTERLANG is refused and routed

@@ -6,7 +6,7 @@ description: |
   steer generation away from known traps. Deploy skills (sap-se38/se37/se24)
   and sap-atc auto-record new FM/METHOD errors here as CANDIDATE rows; this
   skill lets a human review and promote them.
-  Three operations:
+  Four operations:
     - list    show CANDIDATE rows awaiting review (default; --all also shows CONFIRMED)
     - promote mark a CANDIDATE row CONFIRMED so it starts influencing generation
     - mute    suppress a row (seed or candidate) so it is never injected

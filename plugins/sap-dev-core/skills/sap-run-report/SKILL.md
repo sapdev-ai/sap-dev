@@ -10,8 +10,8 @@ description: |
   Executing a report can change data (UPDATE / COMMITting BAPI / job submit / IDoc /
   mail) — the skill ALWAYS confirms before it runs, per skill_operating_rules Rule 5.
   Prerequisites: active SAP GUI session (use /sap-login first). The RFC background
-  path (Phase B) additionally needs SAP NCo 3.1 (32-bit) + Z_RUN_REPORT (deploy via
-  /sap-dev-init); variant list/show/delete route through /sap-rfc-wrapper.
+  path additionally needs SAP NCo 3.1 (32-bit) + Z_RUN_REPORT (deploy via
+  /sap-dev-init); variant list/show route through /sap-rfc-wrapper.
 argument-hint: "<PROGRAM> [--variant=V] [--foreground|--background] [--values=\"P_A=1;S_B=BT:10,20\"] [--save-output=PATH]   |   variant <list|show|set|delete> <PROGRAM> [VARIANT] [--values=\"...\"] [--desc=\"...\"]"
 ---
 
@@ -40,7 +40,7 @@ Task: $ARGUMENTS
 | `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_artifact_lib.ps1` | `New-SapScopeKey` / `Register-SapArtifact` — register the run output for `/sap-evidence-pack` (Kind `run_output`). Best-effort; never changes the verdict. |
 
 **Delegated skills** (invoke via the Skill tool — do not re-implement):
-`/sap-login` (session), `/sap-rfc-wrapper fm RS_VARIANT_*` (variant list/show/delete),
+`/sap-login` (session), `/sap-rfc-wrapper fm RS_VARIANT_*` (variant list/show),
 `/sap-sp02` (spool → file, background capture), `/sap-st22` (dump detail on an aborted run).
 
 ---
@@ -89,7 +89,7 @@ State file: `{RUN_TEMP}\sap_run_report_run.json`. Best-effort (Rule 4: never ski
 | Arg | Required | Default | Notes |
 |---|---|---|---|
 | `PROGRAM` | yes | — | UPPERCASE. The executable report name. |
-| `--foreground` / `--background` | no | **`--foreground`** (Phase A) | Foreground = SA38 F8, synchronous, list captured. Background = scheduled job (monitor via SM37 / `/sap-job`). The clean background+spool capture is the RFC Phase-B path (`Z_RUN_REPORT`). |
+| `--foreground` / `--background` | no | **`--foreground`** | Foreground = SA38 F8, synchronous, list captured. Background = scheduled job (monitor via SM37 / `/sap-job`). The clean background+spool capture is the RFC path (`Z_RUN_REPORT`, Step 3B). |
 | `--variant=V` | no | — | Named selection-set. Orthogonal to the engine (see design doc). |
 | `--values="P_A=1;S_B=BT:10,20"` | no | — | Ad-hoc selection values, filled on the live selection screen (foreground). Alternative input source to `--variant`. |
 | `--save-output=PATH` | no | `{RUN_TEMP}\run_<PROGRAM>.txt` | Foreground classic-list capture target. |
@@ -100,8 +100,11 @@ State file: `{RUN_TEMP}\sap_run_report_run.json`. Best-effort (Rule 4: never ski
 - `RFC` / unset → prefer RFC where a path exists; on any `RFC_ERROR` / missing wrapper,
   **degrade to GUI, never block** (same contract as `sap-se38` Step 4.6/4.7).
 
-Phase A implements the **GUI** paths for `run`; `variant list/show/delete` route through
-`/sap-rfc-wrapper` (RFC). Log the resolved `mode` / `engine` / `backend`.
+`run` implements both the **GUI** paths (3A foreground, 3C background fallback) and the
+**RFC** background path (3B — the default background engine when `Z_RUN_REPORT` + RFC
+are available). `variant list/show` route through `/sap-rfc-wrapper` (RFC); `variant
+set/delete` drive the SAPLSVAR GUI dialogs (Step 3V). Log the resolved `mode` /
+`engine` / `backend`.
 
 ---
 
@@ -367,14 +370,17 @@ reliable foreground capture is background→spool via `/sap-sp02`.
 
 ---
 
-## Limitations (Phase A)
+## Limitations
 
-- **GUI backend only.** The RFC background path (`Z_RUN_REPORT` → spool capture) and the
-  dedicated `sap_variant_rfc.ps1` variant create/edit are Phase B.
+- **The RFC background path is implemented and live-verified** (`Z_RUN_REPORT` +
+  `references/sap_run_report_rfc.ps1`, Step 3B — verified on S4G 2026-07-09), with GUI
+  Execute-in-Background (3C) as the fallback. A dedicated `sap_variant_rfc.ps1` for
+  variant create/edit does **not** exist yet — variant set (create/overwrite) and delete
+  remain GUI (SAPLSVAR, Step 3V); list/show are RFC via `/sap-rfc-wrapper`.
 - **Foreground output capture is best-effort** for classic lists (`%PC`); ALV /
-  interactive lists need manual capture or the Phase-B background+spool path.
-- **Background is fire-and-schedule** in GUI-only mode — no completion poll; monitor via
-  `/sap-job` (when built) or SM37.
+  interactive lists need the background+spool path (3B + `/sap-sp02`) for reliable capture.
+- **GUI-only background (3C) is fire-and-schedule** — no completion poll; monitor via
+  `/sap-job` or SM37.
 - **GUI IDs captured** (2026-07-09) for Get-Variant + Execute-in-Background — identical on
   S/4HANA 1909 (S4D) and ECC (EC2), so one path set covers both. The `%PC` classic-list save
   stays a best-effort seed (both probe reports rendered ALV); reliable foreground capture is

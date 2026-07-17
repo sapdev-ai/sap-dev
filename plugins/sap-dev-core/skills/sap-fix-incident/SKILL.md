@@ -56,7 +56,7 @@ the Skill tool, never re-implement): `/sap-st22` (`--deep`),
 `/sap-explain-object`, `/sap-gen-abap-unit`, `/sap-run-abap-unit`,
 `/sap-check-abap`, `/sap-se38`, `/sap-se37`, `/sap-se24`,
 `/sap-activate-object`, `/sap-transport-request`, `/sap-transport-readiness`,
-`/sap-se01`, `/sap-stms` (when available — until then, hand off to manual STMS).
+`/sap-se01`, `/sap-stms`.
 
 `<SAP_DEV_CORE_SHARED_DIR>` = `plugins/sap-dev-core/shared` — 3 levels up from
 `<SKILL_DIR>`, then into `sap-dev-core\shared`.
@@ -203,7 +203,7 @@ Print the TR and the exact next chain — the user takes these deliberately:
 ```
 /sap-transport-readiness <TR>      # GO/NO-GO gate
 /sap-se01 release <TR>             # irreversible — user's explicit step
-/sap-stms import <TR> --to <QAS>   # landscape movement (when /sap-stms exists)
+/sap-stms import <TR> --to <QAS>   # landscape movement (gated import)
 ```
 
 This skill releases nothing and imports nothing.

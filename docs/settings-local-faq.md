@@ -233,7 +233,7 @@ Quick PowerShell snippet:
 ```powershell
 . C:\path\to\sap-dev\plugins\sap-dev-core\shared\scripts\sap_settings_lib.ps1
 $cfg = Get-SapSettings
-$cfg.userConfig.sap_user        # → { description; sensitive; value }
+$cfg.userConfig.log_level       # → { description; sensitive; value }
 ```
 
 The `description` and `sensitive` always come from the schema. The

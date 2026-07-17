@@ -1,7 +1,7 @@
 {
   "name": "sap-project",
   "version": "0.8.0",
-  "description": "SAP project-delivery & operations automation for functional consultants, integration, security, release, and AMS/ops teams. Ships the test-data creation family today — Business Partner (BP), Material Master (MM01/MM02/MM03), and Sales Order (VA01/VA02/VA03) — and is the successor home for the former sap-tcd plugin. Expanding across the roadmap to authorizations & roles, incident & interface diagnosis (IDoc/RFC/output), release & transport management, config compare, and testing. Companion to sap-dev-core (install that first — its shared scripts are resolved at runtime).",
+  "description": "SAP project-delivery & operations automation for functional consultants, integration, security, release, and AMS/ops teams. Ships 40 skills covering functional/AMS operations across six lanes — incident root-cause, health checks, access & authorizations, release & transports, test data & regression (Business Partner BP, Material Master MM01/MM02/MM03, Sales Order VA01/VA02/VA03 — successor home of the former sap-tcd plugin), and config diagnosis & maintenance — plus the sap-consultant agent. Companion to sap-dev-core (install that first — its shared scripts are resolved at runtime).",
   "author": {
     "name": "KexiHe",
     "email": "hello@sapdev.ai",
@@ -23,5 +23,8 @@
     "material-master",
     "sales-order",
     "operations"
+  ],
+  "agents": [
+    "./agents/sap-consultant.md"
   ]
 }

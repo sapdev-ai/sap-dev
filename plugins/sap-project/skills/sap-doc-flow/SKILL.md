@@ -10,7 +10,7 @@ description: |
   dimension incident triage otherwise lacks). Prerequisites: pinned profile via /sap-login
   (RFC); SAP NCo 3.1 (32-bit). No GUI, no Z-object, no dev-init — safe to point at
   production, same posture as /sap-diagnose.
-argument-hint: "<DOCNO>  |  order|delivery|invoice <DOCNO>  [--max-nodes N] [--json] [--no-narrative] [--evidence-dir <RUN_DIR>] [--connection PROFILE]"
+argument-hint: "<DOCNO>  |  order|delivery|invoice <DOCNO>  [--max-nodes N] [--no-narrative] [--evidence-dir <RUN_DIR>] [--connection PROFILE]"
 ---
 
 # SAP Document Flow — O2C Chain & Stall Finder
@@ -59,7 +59,7 @@ powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_
 ## Step 1 — Parse Arguments
 
 Bare `<DOCNO>` → `auto`. Explicit `order|delivery|invoice <DOCNO>`. Flags: `--max-nodes N`
-(default 200), `--json`, `--no-narrative`, `--evidence-dir <RUN_DIR>` (reader mode for
+(default 200), `--no-narrative`, `--evidence-dir <RUN_DIR>` (reader mode for
 /sap-diagnose), `--connection PROFILE` (else pinned). `accounting <BELNR> --company
 <BUKRS>` and `po <EBELN>` are **v1.5 / v2 (not implemented)** → say NOT_YET_IMPLEMENTED
 and STOP. All modes read-only — no confirm-gate step.

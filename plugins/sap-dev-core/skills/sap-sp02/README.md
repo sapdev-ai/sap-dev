@@ -2,17 +2,19 @@
 
 Download a SAP spool request to a local text file via transaction SP02
 (Output Controller — own spool requests). Picks the spool by its
-SAP-assigned `TSP01-RQIDENT` number, opens it with F2, presses Save
-(`tbar[1]/btn[48]`), picks the export format, and writes to the local
-path you specify.
+SAP-assigned `TSP01-RQIDENT` number, opens it via the Display-contents
+toolbar button (icon `B_DISP`; F2 fallback), presses Save-to-local
+(icon `B_DOWN`; `btn[48]` fallback), picks the export format, and writes
+to the local path you specify.
 
 ## Skill Overview
 
 1. Navigate to SP02 (your own spool requests).
-2. Scan the list for the row whose spool-number column matches your
-   target. Tick its checkbox.
-3. F2 → Display contents.
-4. Save (toolbar `btn[48]`) → format radio → directory + filename.
+2. Scan the list for the row that matches your target spool number.
+   Tick its checkbox.
+3. Display contents (toolbar icon `B_DISP`; F2 fallback).
+4. Save to local file (toolbar icon `B_DOWN`; `btn[48]` fallback) →
+   format radio → directory + filename.
 5. Verify the file exists on disk and report the byte count.
 
 ## Auto-Trigger Keywords
@@ -57,8 +59,9 @@ Conversational forms:
 - Format index mapping (`text=0` / `csv=1` / `rtf=2` / `html=3`)
   is verified on S/4HANA 1909; on other releases, re-record if a
   format radio path fails.
-- The list scan defaults to column index `4` — pass `--col=<N>` if
-  your SP02 list layout differs.
+- The list scan matches the spool number in **any** column by default
+  (col 3 on S/4HANA client 400, col 4 elsewhere); pass `--col=<N>` only
+  to disambiguate a list where another cell could equal the number.
 
 ## Version
 

@@ -1460,9 +1460,12 @@ New tables **require an enhancement category** to be set before activation. With
 SAP returns the error: "Enhancement category for table ... missing".
 
 **Handling:** The table create VBS template automatically sets the enhancement category
-after filling tech settings, via:
+after filling tech settings, via the `sap_se11_set_enh_category.vbs` helper:
 - Menu: **Extras > Enhancement Category** (`wnd[0]/mbar/menu[4]/menu[7]`)
-- Select: **Can be enhanced (character-type)** (`radDESED7-R_FLAT`)
+- Select: the radio mapped from the `%%ENHANCEMENT_CATEGORY%%` token — default
+  `NOT_EXTENSIBLE` → **Cannot Be Enhanced** (`radDESED7-R_FINAL`); `FLAT` →
+  "Can be enhanced (character-like or numeric)" (`radDESED7-R_FLAT`). See Step 1;
+  empty / unreplaced tokens coerce to the `R_FINAL` default.
 - Press Enter to confirm
 
 ---
@@ -1498,8 +1501,10 @@ The enhancement category is also set automatically via `menu[4]/menu[7]`.
 | Data Class | `ctxtDD09V-TABART` (e.g., `APPL0`) |
 | Size Category | `ctxtDD09V-TABKAT` (e.g., `0`) |
 
-**Enhancement category** is set via menu **Extras > Enhancement Category** (`menu[4]/menu[7]`):
-- Radio button: `radDESED7-R_FLAT` (Can be enhanced, character-type)
+**Enhancement category** is set via menu **Extras > Enhancement Category** (`menu[4]/menu[7]`),
+driven by the `%%ENHANCEMENT_CATEGORY%%` token (default `NOT_EXTENSIBLE`):
+- Radio button: `radDESED7-R_FINAL` (Cannot Be Enhanced — the default);
+  `radDESED7-R_FLAT` (Can be enhanced, character-like or numeric) only when `FLAT` is requested
 
 These steps are fully automated in the table create template. No manual intervention needed.
 
@@ -1548,10 +1553,14 @@ These IDs are verified on S/4HANA 1909. If they fail on a different SAP version,
 
 ---
 
-## Known Limitation: SE11 Has No Delete Function for Tables
+## Known Limitation: Table Deletion May Leave the DB Table (SE14 Fallback)
 
-SE11 does not have a Delete menu item for database tables. Shift+F2 does not work
-from the table editor. To delete a table:
+SE11 has no Delete menu item **inside the table editor** — deletion is triggered via
+**Shift+F2 from the SE11 initial screen** (this skill's delete mode, Step 6c, which
+covers all 9 object types). For database tables, Shift+F2 removes the DDIC catalog
+entry but **may not drop the underlying database table**. To fully remove it:
 
 - Use **SE14** (Database Utility) > enter table name > press Edit > press "Delete Database Table"
 - Or execute ABAP report `RS_DD_TABDEL` via SA38
+
+See "TABLE deletion — known limitation" under Step 6c.

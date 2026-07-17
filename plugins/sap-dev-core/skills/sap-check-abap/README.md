@@ -6,7 +6,7 @@ Validates ABAP source code quality before deployment.
 
 | Check | Severity | Description |
 |---|---|---|
-| Naming conventions | WARNING | Variable prefix doesn't match `shared/abap_naming_rules.tsv` |
+| Naming conventions | WARNING | Variable prefix doesn't match `shared/tables/abap_naming_rules.tsv` |
 | Type validity | ERROR | Data type not found in local TYPES or SAP Dictionary |
 | Unused variables | WARNING | Variable declared but never referenced |
 | SQL table validation | ERROR | SQL table not found in SAP Dictionary |
@@ -49,7 +49,9 @@ CHECK_TYPE  SEVERITY  LINE  VARIABLE  SCOPE  DATA_KIND  DETAIL  FIX_ADVICE
 
 ## Naming Rules
 
-Shared file at `shared/abap_naming_rules.tsv`. Editable by the user.
+Shared file at `shared/tables/abap_naming_rules.tsv` (sap-dev-core). Editable
+by the user; a per-customer override at `{custom_url}\abap_naming_rules.tsv`
+takes precedence when present.
 
 Standard prefixes:
 
@@ -66,13 +68,13 @@ Standard prefixes:
 
 ## Pipeline
 
-`sap-gen-abap` → **sap-check-abap** → `sap-fix-abap` → `abap-deploy`
+`sap-gen-abap` → **sap-check-abap** → `sap-fix-abap` → deploy (`sap-se38` / `sap-se37` / `sap-se24`)
 
 ## Prerequisites
 
 - SAP GUI for Windows (32-bit COM: `SAP.Functions`)
 - S_RFC authorization for DDIF FMs (online mode only)
-- `shared/abap_naming_rules.tsv` in project root
+- `shared/tables/abap_naming_rules.tsv` (ships with sap-dev-core; `{custom_url}` override optional)
 
 ## Directory Structure
 
@@ -81,7 +83,11 @@ skills/sap-check-abap/
 ├── SKILL.md              # Skill workflow definition
 ├── README.md             # This file
 └── references/
-    └── sap_check_abap.vbs  # VBScript template
+    ├── sap_check_abap.vbs            # VBScript template (core checker)
+    ├── sap_check_fm.vbs              # `fm` dimension — CALL FUNCTION signature checker
+    ├── sap_check_conversion.ps1      # Conversion validator (CURR/QUAN reference, double-shift)
+    ├── sap_check_signatures.ps1      # Signature validator (struct fields + AUTHORITY-CHECK shape)
+    └── sap_check_spec_coverage.ps1   # Spec-coverage validator (deps / messages / text elements)
 ```
 
 Version: 1.0.0 | License: GPL-3.0

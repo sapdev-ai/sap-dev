@@ -7,7 +7,7 @@ Manage PF-STATUS (GUI status) subobjects on SAP via SE41 using SAP GUI Scripting
 This skill manages the full GUI status lifecycle via SE41, one operation per run:
 
 - **Operations**: `CREATE`, `UPDATE`, `DISPLAY`, `DELETE`, `ACTIVATE`, `DEACTIVATE`, `COPY`, plus an existence `CHECK`
-- **Single inline VBScript**: All operations are driven by one self-contained VBScript embedded directly in `SKILL.md` (Step 4), selected by the `OPERATION` token
+- **Single shipped VBScript**: All operations are driven by one self-contained VBScript shipped at `references/sap_se41_ops.vbs` (token-substituted per run per SKILL.md Step 4), selected by the `OPERATION` token
 - **Field-by-Field Entry**: SE41 has no Upload/Download — function codes are entered directly into the editor grid from a pipe-delimited definition file (CREATE/UPDATE)
 - **Standard Toolbar**: Assigns function codes to the 13 standard toolbar button slots
 - **Function Keys**: Assigns function codes and text to recommended and freely assigned function keys
@@ -48,15 +48,17 @@ This skill activates when discussing:
 
 ```
 sap-se41/
-├── SKILL.md                        # Main skill file (workflow + inline VBScript)
+├── SKILL.md                        # Main skill file (workflow; runs the shipped references VBS)
 ├── README.md                       # This file (keywords for discoverability)
 └── references/
-    └── sap_se41_ops.vbs            # Canonical copy of the inline operations VBScript
+    ├── sap_se41_ops.vbs            # The operations VBScript — single source of truth (token-substituted per run)
+    └── sap_se41_ops.screens.json   # Golden-screen baseline for the operations VBS
 ```
 
-The operations VBScript is embedded inline in `SKILL.md` (the single source of
-truth used at run time); `references/sap_se41_ops.vbs` is an identical
-standalone copy for review.
+The operations VBScript is shipped at `references/sap_se41_ops.vbs` — the single
+source of truth used at run time; SKILL.md Step 4 reads it from `references/`,
+substitutes the `%%TOKEN%%` values, and runs the result. No copy is embedded in
+SKILL.md.
 
 ## Usage
 

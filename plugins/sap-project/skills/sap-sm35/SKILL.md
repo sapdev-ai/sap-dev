@@ -41,7 +41,10 @@ Task: $ARGUMENTS
 
 ## Step 0 — Directories + Logging
 
-Resolve `work_dir` + `{RUN_TEMP}` (canonical one-liner). Start logging (`sap_log_helper.ps1`,
+Resolve `work_dir` + `{RUN_TEMP}` (canonical one-liner — `sap_connection_lib.ps1` is dot-sourced
+there — with `Write-Output ('RUN_TEMP=' + (Get-SapRunTemp))` appended). `{RUN_TEMP}` = the
+per-run scratch dir holding the log state file; mint it once here and reuse (re-minting breaks
+the `-Action end` state-file lookup). Start logging (`sap_log_helper.ps1`,
 state `{RUN_TEMP}\sap_sm35_run.json`). Pinned RFC profile via `/sap-login`.
 
 ## Step 1 — Parse & Dispatch
@@ -78,8 +81,8 @@ Run `list -Session <G>`; summarize the session's error signal from APQI stats (e
 transactions, error-message count) into `sm35_triage_<G>.md` + findings (MSGTY-agnostic at the
 stat level: any errored transactions -> HIGH `bdc-error-cluster`, coverage CHECKED). For
 **message-level** clustering by (MSGID, MSGNO), the SM35 GUI **log** display must be scraped —
-that VBS ships `NEEDS_RECORDING` (record once via `/sap-gui-probe --record` on this release), and
-deep clustering is v1.5. If neither stats nor a readable log is available -> triage
+that VBS is not yet shipped (to-be-recorded): emit `NEEDS_RECORDING` and capture it once via
+`/sap-gui-probe --record` on this release; deep clustering is v1.5. If neither stats nor a readable log is available -> triage
 `COULD_NOT_CHECK` (never an empty-but-green triage).
 
 ## Step 5 — Register

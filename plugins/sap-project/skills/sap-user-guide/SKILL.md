@@ -53,6 +53,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_
 ```
 Then `sap_log_helper.ps1 -Action start -StateFile {RUN_TEMP}\sap_user_guide_run.json`.
 
+`{OUT}` = `Get-SapArtifactDir -ScopeKey TCODE_<TXN> -Skill sap-user-guide` (from
+`sap_artifact_lib.ps1`; creates the dir) — the artifact output dir Steps 3–6 write to and
+Step 7 registers.
+
 ## Step 1 — Parse Args + Resolve Input
 
 `guide` | `pack`. A `guide <folder>`: validate it has `sap_gui_probe_run.json` + >=1

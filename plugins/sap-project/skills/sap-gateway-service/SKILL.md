@@ -13,7 +13,7 @@ description: |
   /sap-login) and refuses loud on ECC rather than faking support. Registers as /sap-diagnose's
   odata reader. Pure RFC for status (no wrapper, no Z object, no dev-init); smoke (HTTP) is v1.5
   and activate (MAINT_SERVICE + SICF) is v2, both gated. Prerequisites: pinned /sap-login RFC
-  profile; a live GUI session only for errors --deep; NCo 3.1 (32-bit).
+  profile; a live GUI session for errors (the error log is GUI-only); NCo 3.1 (32-bit).
 argument-hint: "status [<service>] [--all] | errors [--service X] [--user U] [--date YYYYMMDD] [--top N] [--deep]"
 ---
 
@@ -40,7 +40,10 @@ Task: $ARGUMENTS
 
 ## Step 0 — Directories + Logging
 
-Resolve `work_dir` + `{RUN_TEMP}` (canonical one-liner). Start logging (`sap_log_helper.ps1`,
+Resolve `work_dir` + `{RUN_TEMP}` (canonical one-liner — `sap_connection_lib.ps1` is dot-sourced
+there — with `Write-Output ('RUN_TEMP=' + (Get-SapRunTemp))` appended). `{RUN_TEMP}` = the
+per-run scratch dir holding the log state file; mint it once here and reuse (re-minting breaks
+the `-Action end` state-file lookup). Start logging (`sap_log_helper.ps1`,
 state `{RUN_TEMP}\sap_gateway_service_run.json`). Pinned RFC profile via `/sap-login`.
 
 ## Step 1 — Parse & Dispatch
