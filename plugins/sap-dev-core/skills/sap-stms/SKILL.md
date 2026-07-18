@@ -66,7 +66,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_
 ```
 
 Settings reads follow `settings_lookup.md`. Read `prod_system_ids` (optional
-comma-separated allow-list of production SIDs — see PROD detection in Step 3).
+comma-separated allow-list of production SIDs — see PROD detection in Step 3);
+saved profiles in `connections.json` whose `environment=PRD` (Rule 0
+classification, `safety_policy.md`) count as a PROD signal for their
+`system_name` too.
 Set `{WORK_TEMP}` = `{work_dir}\temp`; `{RUN}` = `{WORK_TEMP}\stms\<run>`:
 
 ```bash
@@ -173,7 +176,9 @@ stamp the SID as verified. Re-record `OpenTargetQueue` candidate IDs via
 
 `import <TR> --to <SID> [--client NNN] [--immediate] [--leave-in-queue]
 [--force]`. Read the TMS route so the target can be classified DEV / QA / PROD
-(route position + the `prod_system_ids` allow-list).
+(route position + the `prod_system_ids` allow-list + any `connections.json`
+profile for that SID carrying `environment=PRD`; any one PROD signal wins —
+stricter always wins, per `safety_policy.md` 0.1/0.4).
 
 ## W2 — Pre-flight gate (each a hard stop unless noted)
 
@@ -182,7 +187,8 @@ stamp the SID as verified. Re-record `OpenTargetQueue` candidate IDs via
 | TR is **released** | RFC read `E070-TRSTATUS = R` (via `sap_rfc_lib.ps1`; or `/sap-se16n E070`) | not `R` -> "release it first via `/sap-se01 release <TR>`" |
 | Already imported in target | Logs Mode read (RC present) | already imported -> report + stop (no double import) |
 | Readiness verdict | optional `/sap-transport-readiness <TR>` | `NO_GO` -> stop unless `--force` (and say `--force` was used) |
-| Target is PROD? | route position / `prod_system_ids` | escalate to the PROD gate in W3 |
+| Target is PROD? | route position / `prod_system_ids` / a `connections.json` profile with `environment=PRD` | escalate to the PROD gate in W3 |
+| PROD target allowed by policy? | `userConfig.prod_write_policy` (settings chain) | **Rule 0 (`safety_policy.md` 0.2):** when `target_class=PROD` and the policy is `BLOCK` (or blank — the default), STOP: `SAFETY: REFUSED class=SAFETY_PROD_REFUSED` — end the run `FAILED` with that error class. No `--force`, no override. Only `TYPED_CONFIRM` lets a PROD import continue into W3. |
 
 Echo each: `PREFLIGHT: released=<Y/N> imported=<Y/N> readiness=<GO|NO_GO|skipped> target_class=<DEV|QA|PROD>`.
 

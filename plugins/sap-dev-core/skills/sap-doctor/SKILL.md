@@ -281,7 +281,7 @@ SAP Doctor — <SYSTEM>/<CLIENT> as <USER>
 │ RFC_PING          │ rfc   │ PASS   │ pinned profile reachable                      │
 │ CLIENT_MODIFIABLE │ srv   │ PASS   │ client 100 allows Repository changes          │
 │ auth (10 caps)    │ auth  │ PASS   │ 10/10 capabilities pass (DEVELOPER)           │
-│ devenv (5 arts)   │ devenv│ PASS   │ /sap-dev-status ALL_OK                        │
+│ devenv (7 arts)   │ devenv│ PASS   │ /sap-dev-status ALL_OK                        │
 └───────────────────┴───────┴────────┴───────────────────────────────────────────────┘
 VERDICT: DEGRADED  (0 FAIL · 1 WARN · 0 SKIP)
 ```

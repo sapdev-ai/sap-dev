@@ -1000,6 +1000,58 @@ const sharedPlacementWarnings = [];
   }
 }
 
+// ---------------------------------------------------------------------------
+// Rule 0 safety-gate coverage (shared/rules/safety_policy.md) -- HARD ERRORS.
+//
+// Every skill on the write-capable list below MUST run
+// `sap_safety_gate.ps1 -Action assert` from its SKILL.md before its first
+// SAP-mutating step. This list IS the rollout tracker: when a new
+// write-capable skill ships (or an existing one gains a write mode), add it
+// here in the same commit that wires its Step-0.6 gate block. Phase 1
+// (2026-07-18) covers the ten highest-risk writers; /sap-stms keeps its own
+// target-based PROD gate (W2/W3) because an import's TARGET system differs
+// from the pinned connection the generic assert judges.
+const SAFETY_GATE_SKILLS = new Map([
+  ['sap-dev-core', ['sap-se38', 'sap-se37', 'sap-se24', 'sap-se11', 'sap-se01',
+                    'sap-se14', 'sap-run-report', 'sap-job']],
+  ['sap-project',  ['sap-sm30', 'sap-pfcg']],
+]);
+{
+  const policyPath = join(repoRoot, 'plugins', 'sap-dev-core', 'shared', 'rules', 'safety_policy.md');
+  const gatePath   = join(repoRoot, 'plugins', 'sap-dev-core', 'shared', 'scripts', 'sap_safety_gate.ps1');
+  if (!existsSync(policyPath)) {
+    errors.push(`sap-dev-core: shared/rules/safety_policy.md is missing -- Rule 0 (the highest-priority safety policy) has no source of truth`);
+  }
+  if (!existsSync(gatePath)) {
+    errors.push(`sap-dev-core: shared/scripts/sap_safety_gate.ps1 is missing -- Rule 0 has no enforcement arm`);
+  }
+  const rootClaudeMd = join(repoRoot, 'CLAUDE.md');
+  if (existsSync(rootClaudeMd) && !readFileSync(rootClaudeMd, 'utf8').includes('safety_policy.md')) {
+    errors.push(`CLAUDE.md does not reference safety_policy.md -- restore the "Directive 0" section so Rule 0 stays the highest-priority instruction`);
+  }
+  const opRulesPath = join(repoRoot, 'plugins', 'sap-dev-core', 'shared', 'rules', 'skill_operating_rules.md');
+  if (existsSync(opRulesPath) && !readFileSync(opRulesPath, 'utf8').includes('safety_policy.md')) {
+    errors.push(`sap-dev-core: shared/rules/skill_operating_rules.md lost its Rule 0 pointer to safety_policy.md -- restore it (the safety policy outranks the operating rules)`);
+  }
+  const gateCallRe = /sap_safety_gate\.ps1[^\n]*-Action\s+assert/;
+  for (const [pluginName, skills] of SAFETY_GATE_SKILLS) {
+    for (const skillName of skills) {
+      const skillMdPath = join(repoRoot, 'plugins', pluginName, 'skills', skillName, 'SKILL.md');
+      if (!existsSync(skillMdPath)) {
+        errors.push(`${pluginName}: skills/${skillName}/SKILL.md is on the Rule 0 write-capable list but does not exist -- update SAFETY_GATE_SKILLS in check-consistency.mjs`);
+        continue;
+      }
+      const md = readFileSync(skillMdPath, 'utf8');
+      if (!gateCallRe.test(md)) {
+        errors.push(`${pluginName}: skills/${skillName}/SKILL.md is write-capable but never runs 'sap_safety_gate.ps1 -Action assert' -- add the Step 0.6 safety-gate block (see safety_policy.md 0.4; sap-se38 is the canonical example)`);
+      }
+      if (!md.includes('safety_policy.md')) {
+        errors.push(`${pluginName}: skills/${skillName}/SKILL.md runs the safety gate but does not reference safety_policy.md -- add the Shared Resources row so authors find the contract`);
+      }
+    }
+  }
+}
+
 if (errors.length === 0) {
   let summary = `OK: ${mp.plugins.length} plugins, ${totalSkills} skills, all manifests aligned at version ${mp.version}, Tier 3 attach contract clean`;
   if (phase4Warnings.length > 0) {

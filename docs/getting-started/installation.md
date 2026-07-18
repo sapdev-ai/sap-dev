@@ -57,6 +57,21 @@ environment) and prints an actionable FIX per failing check.
 > resolve its `shared/` scripts at runtime and fail with a path error when it
 > is absent.
 
+**Activate the new skills.** After installing (or updating) plugins, reload so the
+session picks up the new `/sap-*` skills:
+
+```bash
+/reload-plugins
+```
+
+If you're using the **Claude desktop app** (rather than the terminal CLI),
+**restart the app** instead — `/reload-plugins` may not fully refresh the
+desktop's skill list.
+
+**Verify**: type `/` and you should see `/sap-login`, `/sap-dev-init`, `/sap-se38`,
+etc. in the slash-command list. If they're still missing after `/reload-plugins`
+(or a desktop restart), restart the `claude` session so it re-scans plugins.
+
 **Step 3: Login and bootstrap**
 
 ```bash

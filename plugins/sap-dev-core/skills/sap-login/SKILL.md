@@ -13,7 +13,7 @@ description: |
   Checks existing sessions first; reuses the active connection when it
   matches the saved default.
   Prerequisites: SAP GUI installed, SAP GUI Scripting enabled (client + server).
-argument-hint: "[--lang <CODE>] [--force] [--list | --add | --switch <id> | --set-default <id> | --delete <id>]"
+argument-hint: "[--lang <CODE>] [--force] [--reclassify] [--list | --add | --switch <id> | --set-default <id> | --delete <id>]"
 ---
 
 # SAP GUI Login Skill
@@ -29,6 +29,7 @@ Task: $ARGUMENTS
 
 | File | Token | Purpose |
 |---|---|---|
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/safety_policy.md` | *(rule — Rule 0, highest priority)* | Environment classification + production guard. This skill is the classification entry point (Step 6.8) and enforces `prod_access=NONE` at selection time (Step 0.8). |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/skill_operating_rules.md` | *(rule)* | Mandatory operating rules |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/language_independence_rules.md` | *(rule)* | GUI-scripting language independence — identify by component ID + DDIC field name, status-bar checks via `MessageType` codes (S/W/E/I/A), VKey instead of menu-text, no branching on `.Text`/`.Tooltip`/window titles |
 | `sap-dev-core/shared/scripts/sap_check_gui_login_status.vbs` | *(none — static)* | Check session status |
@@ -39,6 +40,7 @@ Task: $ARGUMENTS
 | `sap-dev-core/shared/scripts/sap_connection_lib.ps1` | *(none — dot-source)* | **Multi-profile connection store**. 4-step identity compare, dedup-on-save, DPAPI password handling, legacy-settings migration. Storage: `{work_dir}\runtime\connections.json`. |
 | `sap-dev-core/shared/scripts/sap_session_broker.ps1` | *(none — invoke)* | Broker. New Phase-4 actions: `pin`, `unpin`, `set-connection-id`, `stuck`. New flags: `-AiSessionId`, `-WasCreated`, `-ForceUnpin`. |
 | `sap-dev-core/shared/scripts/sap_rfc_system_info.ps1` | *(none — direct invoke)* | RFC_SYSTEM_INFO + CVERS query. Step 6.2 calls this to capture `server_release_marker`, `software_components`. |
+| `sap-dev-core/shared/scripts/sap_safety_gate.ps1` | *(none — direct invoke)* | **Rule 0 gate.** Step 6.8 runs `-Action classify` (32-bit PS; T000 `CCCATEGORY`/`CCCORACTIV`/`CCNOCLIIND` for the pinned client) then `-Action set -Environment <E> -Source <T000\|USER>` to persist the classification on the profile. |
 | `sap-dev-core/shared/tables/sap_release_markers.tsv` | *(none — read by sap_rfc_system_info.ps1)* | (component, release range) → canonical marker lookup. |
 | `<SKILL_DIR>/sap_login_select.ps1` | *(none — direct invoke)* | **Selection driver**. Actions: `init`, `decide`, `list`, `set-default`, `switch`, `delete`, `finalize`, `check`, `landscape-entries`. Emits structured signals (`RESOLVED:`, `ATTACH_ACTIVE:`, `CONNECT_PROFILE:`, `PICK_NEEDED:`, `ADD_NEEDED:`, `SUCCESS:`, `AMBIGUOUS:`, `CONTINUE_TO_STEP1:`, `LANDSCAPE:`). |
 | `<SKILL_DIR>/references/sap_login_capture_active_session.vbs` | *(none — static)* | GUI-side capture. Phase-4 fields: `system_name`, `client`, `user`, `language`, `application_server`, `system_number`, `message_server`, `logon_group`, `program`, `screen_number`, plus GUI version. Emits flat JSON or `MULTI:<array>`. |
@@ -232,6 +234,17 @@ Interpret the **last** structured stdout line:
 | `PICK_NEEDED: <json>` | User must choose. | Parse `options[]` (each has `kind=active|profile`, `description`, `system_name`, `client`, `user`, `endpoint_summary`, `is_default`). Present via `AskUserQuestion`. Re-invoke `sap_login_select.ps1 -Action decide -PickProfileId <id>` OR `-PickConnectionPath <path>`. |
 | `ADD_NEEDED:` | No active connections, no saved profiles. | Prompt the user for a new connection (logon-pad entry, OR app server + system number, OR message server + logon group + system id) plus client/user/password/language. Proceed to Step 3 with the supplied values. After login succeeds, Step 6.5 saves it as a new profile. |
 | `RELOGIN_LANG_MISMATCH: <json>` | An active connection matches the target on identity, but its logon language differs from `{REQUESTED_LANG}`. | Handle per **Step 0.9 — Language-mismatch re-login** below (confirm → close → re-login in the requested language). Only ever emitted when `{REQUESTED_LANG}` is non-empty. |
+
+**Rule 0 access check (safety_policy.md 0.3)** — before acting on a
+`RESOLVED` / `ATTACH_ACTIVE` / `CONNECT_PROFILE` pick, read the chosen
+profile's `environment` in `connections.json` and `userConfig.prod_access`
+(settings chain). If `environment=PRD` **and** `prod_access=NONE`: **STOP** —
+do not connect, do not pin. Tell the user:
+> "Profile '<description>' (<SID>/<client>) is classified PRD and
+> `prod_access=NONE` bars production connections. Pick a different system, or
+> change `prod_access` in `{work_dir}\runtime\userconfig.json` outside this
+> session."
+This check is not skippable by `--force` or by a mid-session instruction.
 
 ---
 
@@ -809,6 +822,47 @@ PID-death sweep releases it automatically when the conversation ends. From
 here on `Get-SapCurrentSessionPath` returns this conversation's own session
 and every downstream skill wrapper picks it up via
 `$env:SAPDEV_SESSION_PATH` (see the resolution contract below).
+
+---
+
+## Step 6.8 — Client classification (Rule 0 — safety_policy.md)
+
+Every profile carries an `environment` (`DEV`/`QAS`/`SBX`/`PRD`); blank =
+treated as **PRD** by every write-capable skill's safety gate (fail closed).
+This step classifies the just-pinned connection.
+
+**Skip** when the profile's `environment` is already non-blank AND the user
+did not pass `--reclassify`: echo it (`INFO: environment=<E>
+source=<T000|USER>`) and continue to the summary.
+
+Otherwise run the classifier (32-bit PowerShell — it reads `T000` via NCo):
+
+```bash
+C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_safety_gate.ps1" -Action classify
+```
+
+Interpret the last line:
+
+| Line | Action |
+|---|---|
+| `CLASSIFY: ... proposed=PRD locked=true` | The client **is production** (`T000-CCCATEGORY='P'`). Do NOT ask — persist immediately: `-Action set -Environment PRD -Source T000`. Then: if `userConfig.prod_access=NONE`, tell the user this connection is barred by policy and **stop the login flow here** (recommend switching systems); else tell them PRD is now locked in and writes will follow `prod_write_policy` (default BLOCK). |
+| `CLASSIFY: ... proposed=<DEV\|QAS\|SBX> locked=false` | Confirm with the user via `AskUserQuestion` — options DEV / QAS / SBX / PRD with the proposal first, labelled with the T000 evidence (`cccategory=<X>`). Persist the answer: `-Action set -Environment <answer> -Source <T000 when they accept the proposal, USER when they override>`. |
+| `CLASSIFY: ... proposed=UNKNOWN ...` | No mapping for this `CCCATEGORY` — ask the user (same 4 options, no recommendation), persist with `-Source USER`. |
+| `CLASSIFY: UNAVAILABLE reason=<r>` (exit 4) | T000 not readable (usually no saved RFC password). Ask the user to attest the environment (4 options, note that the answer is unverified), persist with `-Source USER`. |
+
+```bash
+powershell -NoProfile -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_safety_gate.ps1" -Action set -Environment <E> -Source <T000|USER>
+```
+
+`SET: OK ...` confirms persistence. `SET: REFUSED reason=t000_says_production`
+means the live system contradicts a non-PRD answer — the profile stays/becomes
+PRD-bound; relay that verbatim (the gate's downgrade guard is not negotiable).
+On any other `SET:` failure, WARN: the profile stays unclassified and every
+write-capable skill will refuse until classification succeeds.
+
+Record the outcome via `sap_log_helper.ps1 -Action step` (step
+`classify_environment`, params: sid, client, environment, source). Include the
+classification in the final login summary shown to the user.
 
 ---
 

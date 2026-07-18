@@ -36,6 +36,7 @@ Task: $ARGUMENTS
 | `<SKILL_DIR>/references/sap_se14_adjust.vbs` | GUI (`%%TABLE%%`·`%%OUTPUT_FILE%%`·`%%SESSION_PATH%%`·`%%ATTACH_LIB_VBS%%`·`%%SESSION_LOCK_VBS%%`) | SAPMSGTB save-data-only adjust driver — **recorded + live-verified end-to-end on S4D (S/4HANA 1909) 2026-07-12** |
 | `<SKILL_DIR>/references/sap_se14_unlock.vbs` | GUI | SAPMSGTB conversion-recovery driver — `NEEDS_RECORDING` until captured (CONVERSION_TERMINATED cannot be safely manufactured) |
 | `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_rfc_lib.ps1` · `sap_connection_lib.ps1` · `sap_attach_lib.vbs` · `sap_session_lock.vbs` | libs | RFC + Tier-3 attach + session lock |
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/safety_policy.md` + `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_safety_gate.ps1` | Rule 0 | Environment guard — Step 3 runs `-Action assert` before any write mode |
 | `/sap-activate-object` · `/sap-run-report` (RADPROTA) · `/sap-se16n` · `/sap-dev-status` | sub-skills | Plain reactivate / full log (v1.5) / raw dumps / wrapper preflight |
 
 ---
@@ -65,6 +66,14 @@ stop here (report verdict + suggested `adjust`/`unlock` command). CONSISTENT + `
 to do (if only DWINACTIV set, suggest `/sap-activate-object`). RFC down -> GUI SE14-check fallback.
 
 ## Step 3 — write-mode guards (adjust/unlock)
+
+**Rule 0 first** (`safety_policy.md`): `powershell -NoProfile -ExecutionPolicy Bypass -File
+"<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_safety_gate.ps1" -Action assert -Skill sap-se14` —
+`SAFETY: ALLOW` (0) proceed; `TYPED_CONFIRM_REQUIRED` (3) -> the operator types the shown
+`PROD <SID>/<CLIENT>` token, re-run with `-ConfirmationText '<their verbatim answer>'`, proceed
+only on `ALLOW_CONFIRMED`; `REFUSED class=<C>` (1) / `ERROR` (2) -> **STOP**, end `FAILED` with
+`-ErrorClass <C>`, relay the remediation lines — never bypass or drive SE14 manually instead
+(read-only `check` mode does not run the gate).
 
 TABCLASS != TRANSP -> `SE14_UNSUPPORTED_TABCLASS`. Verdict CONVERSION_RUNNING -> refuse both write
 modes (`SE14_CONVERSION_RUNNING`). `unlock` requires verdict CONVERSION_TERMINATED. `unlock

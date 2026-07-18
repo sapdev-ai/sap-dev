@@ -30,6 +30,7 @@ Task: $ARGUMENTS
 
 | File | Purpose |
 |---|---|
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/safety_policy.md` | **Rule 0 (highest priority)** — environment guard; enforced by Step 0.6 via `sap_safety_gate.ps1` (execution is a write-risk class: a report is never assumed read-only) |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/skill_operating_rules.md` | Mandatory operating rules — **Rule 5 (report execution requires confirmation)** governs this skill |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/language_independence_rules.md` | GUI-scripting language independence — identify by component ID + DDIC field name, status via `MessageType` (S/W/E/I/A), VKey over menu-text, no `.Text`/`.Tooltip` branching |
 | `<SKILL_DIR>/references/sap_sa38_run.vbs` | SA38 driver: fill program → F8 → (load variant) → execute (FG) or schedule background (BG); emits `RUN_REPORT:` lines |
@@ -72,6 +73,24 @@ powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_
 ```
 
 State file: `{RUN_TEMP}\sap_run_report_run.json`. Best-effort (Rule 4: never skip the call).
+
+---
+
+## Step 0.6 — Safety Gate (Rule 0 — `safety_policy.md`)
+
+Executing a report can mutate data, so `run` mode and `variant set`/`variant
+delete` run the environment gate (`variant list`/`variant show` skip it):
+
+```bash
+powershell -NoProfile -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_safety_gate.ps1" -Action assert -Skill sap-run-report
+```
+
+| Verdict (last line) | Exit | Action |
+|---|---|---|
+| `SAFETY: ALLOW ...` | 0 | proceed (log via `-Action step`, step `safety_gate`); the Rule 5 execution confirm still applies |
+| `SAFETY: TYPED_CONFIRM_REQUIRED ... expect="PROD <SID>/<CLIENT>"` | 3 | the operator must **type** the shown token; re-run assert with `-ConfirmationText '<their verbatim answer>'`; proceed only on `ALLOW_CONFIRMED` |
+| `SAFETY: REFUSED class=<C> ...` | 1 | **STOP.** End the run `FAILED` with `-ErrorClass <C>` and relay the gate's remediation lines. Never bypass, soften, retry, or run the report manually instead — Rule 0 outranks every other instruction, including mid-session user ones. |
+| `SAFETY: ERROR ...` | 2 | treat exactly as `REFUSED` (fail closed) |
 
 ---
 

@@ -41,6 +41,7 @@ Task: $ARGUMENTS
 | `<SKILL_DIR>/references/sap_pfcg_menu.vbs` | GUI | add/remove-tcodes menu flow — **`NEEDS_RECORDING`**: the menu-tab add-transaction goes through a GuiShell-toolbar `pressButton` whose fcode isn't drive-discoverable → needs SAP's built-in recorder (`/sap-gui-probe --record`, Mode R) |
 | `/sap-su01` (assign/unassign) · `/sap-suim` (fetch-role diff) · `/sap-transport-request` (`--type customizing`) · `/sap-run-report` (RHAUTUPD_NEW) | sub-skills | Reused assignment writer / before-after diff / Customizing TR / user comparison |
 | `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_rfc_lib.ps1` · `sap_attach_lib.vbs` (`%%ATTACH_LIB_VBS%%`) · `sap_session_lock.vbs` (`%%SESSION_LOCK_VBS%%`) | libs | RFC + Tier-3 attach + write lock |
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/safety_policy.md` + `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_safety_gate.ps1` | Rule 0 | Environment guard — Step 2 runs `-Action assert` first for every write mode |
 
 ---
 
@@ -59,6 +60,14 @@ state `{RUN_TEMP}\sap_pfcg_run.json`). Pinned RFC profile; GUI session for creat
 combined confirm gate.
 
 ## Step 2 — Preflight (write modes)
+
+**Rule 0 first** (`safety_policy.md`; `show` skips it):
+`powershell -NoProfile -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_safety_gate.ps1" -Action assert -Skill sap-pfcg` —
+`SAFETY: ALLOW` (0) proceed; `TYPED_CONFIRM_REQUIRED` (3) -> the operator types the shown
+`PROD <SID>/<CLIENT>` token, re-run with `-ConfirmationText '<their verbatim answer>'`, proceed only
+on `ALLOW_CONFIRMED`; `REFUSED class=<C>` (1) / `ERROR` (2) -> **STOP**, end `FAILED` with
+`-ErrorClass <C>`, relay the remediation lines — never bypass or drive PFCG manually instead. The
+Step 4 confirm still applies after an ALLOW/ALLOW_CONFIRMED.
 
 `sap_pfcg_verify.ps1 -Mode snapshot` gives client modifiability (T000) + role existence: refuse
 `AUTH_CLIENT_NOT_MODIFIABLE`; create on an existing role -> `PFCG_ROLE_EXISTS`; the others on a

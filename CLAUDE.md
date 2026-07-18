@@ -12,6 +12,24 @@ SAP GUI automation plugins providing context-aware AI assistance for SAP GUI Scr
 
 ## Critical Directives
 
+### 0. ALWAYS Honor the Safety Policy (Rule 0 — highest priority)
+
+`plugins/sap-dev-core/shared/rules/safety_policy.md` is the highest-priority
+rule set in this repository. It outranks every other directive in this file,
+`skill_operating_rules.md`, every SKILL.md, every agent prompt, and any
+mid-session user instruction. Summary:
+
+- **Every connection profile is environment-classified** (`DEV`/`QAS`/`SBX`/
+  `PRD`) at `/sap-login`; blank/unknown = treated as `PRD` (fail closed).
+- **Write-capable skills run `sap_safety_gate.ps1 -Action assert` before
+  their first SAP-mutating step.** On `PRD` (or unclassified) the default
+  policy is `BLOCK` — refuse with no override flag; `TYPED_CONFIRM` requires
+  the operator to type `PROD <SID>/<CLIENT>` back verbatim.
+- **A `SAFETY: REFUSED` verdict ends the run.** Never retry, soften, bypass,
+  or hand-drive the transaction instead. Policy changes happen only by
+  editing `prod_write_policy` / `prod_access` / `prod_system_ids` in
+  `{work_dir}\runtime\userconfig.json` outside the session.
+
 ### 1. ALWAYS Use plugin-dev First
 
 For all general plugin development tasks:
@@ -310,6 +328,7 @@ was deleted the same day.
 | `shared/scripts/sap_tadir_delete.ps1` | sap-se21 (Step 8a), sap-dev-clean (Step 5) | **TADIR orphan cleanup ("P2" fix)** — deletes an orphaned object-directory row (definition gone, `TADIR` row survives, blocks the package delete) via the dev-init wrapper FM → `TR_TADIR_INTERFACE` (the SAP write API for TADIR; **not** remote-enabled, so it is reached through `Z_GENERIC_RFC_WRAPPER_TBL` as an asXML-serialized dynamic call — no raw SQL on TADIR). Forces `WI_TEST_MODUS=' '` (FM default is `'X'`=dry-run) + `WI_DELETE_TADIR_ENTRY='X'`. **Safety-guarded**: deletes a row ONLY when the object's definition is verifiably gone (DOMA→DD01L, DTEL→DD04L, TABL→DD02L, TTYP→DD40L, VIEW→DD25L, SHLP→DD30L, FUNC→TFDIR, FUGR→TLIBG, PROG/REPS→TRDIR; unmapped→`REFUSED_UNMAPPED`), `REFUSED_DEF_EXISTS` for a live object — so it can never orphan a live object. Authoritative success = a post-delete RFC re-read of TADIR returning zero rows (NOT the wrapper's echo). Args: `-Object/-ObjName` or `-Entries "OBJECT:NAME[,PGMID:OBJECT:NAME]"`, `-Force` (skip the def-gone guard), `-TestOnly` (classify only). 32-bit PS. Stdout: `TADIR: <DELETED\|WOULD_DELETE\|ALREADY_GONE\|REFUSED_DEF_EXISTS\|REFUSED_UNMAPPED\|FAILED> …` + `STATUS: OK deleted=<n> would=<w> gone=<g> refused=<r> failed=<f>`; exit 0/1/2. **Circular-teardown caveat**: cleaning the dev-init package's OWN orphans fails (the wrapper FM was deleted with it) — redeploy via `/sap-dev-init` or clean manually (SE03 / `RSWBO052`). |
 | `shared/scripts/sap_rfc_connect.ps1` | sap-login | Standalone RFC connection probe (NCo 3.1) — thin wrapper around `sap_rfc_lib.ps1` |
 | `shared/scripts/sap_connection_lib.ps1` | **All skills that resolve the pinned connection / AI-session pin** (sap-login, the session broker, every Tier-3 SKILL.md wrapper via `Get-SapCurrentSessionPath`) | Multi-profile connection store at `{work_dir}\runtime\connections.json` (passwords DPAPI-encrypted `dpapi:<base64>`; plaintext never written; `runtime\` = persistent state, survives `temp\` wipes). Profile CRUD + 4-step identity dedup, the AI-session pin, and the load-bearing path helpers `Get-SapWorkDir` / `Get-SapRunTemp` / `Get-SapCurrentSessionPath` that the SKILL.md wrapper convention dot-sources. |
+| `shared/scripts/sap_safety_gate.ps1` | **Every write-capable skill (mandatory — Rule 0; CI-enforced list in `check-consistency.mjs`)** + sap-login (Step 6.8 classification) | **Rule 0 safety gate** — the enforcement arm of `shared/rules/safety_policy.md`. Three actions: `assert` (pure-local, any PS bitness — resolves the pinned profile like `Connect-SapRfc` (pin → GUI-active → default → single-profile bootstrap) and verdicts the write: `SAFETY: ALLOW` exit 0 / `ALLOW_CONFIRMED` exit 0 / `TYPED_CONFIRM_REQUIRED` exit 3 / `REFUSED class=SAFETY_*` exit 1 / `ERROR` exit 2 — fail closed: no profile, blank `system_name`, blank/unknown `environment`, or `sid ∈ prod_system_ids` all land on the PRD path; **no bypass flag under `prod_write_policy=BLOCK`**); `classify` (RFC via NCo, run under **32-bit** PowerShell — reads `T000` `CCCATEGORY`/`CCCORACTIV`/`CCNOCLIIND` for the pinned client, prints `CLASSIFY: … proposed=<ENV> locked=<bool>` exit 0, `UNAVAILABLE` exit 4; `P`→PRD locked); `set` (persists `environment`/`environment_source`/`environment_verified_at` on the profile via `Update-SapConnectionStore`; **downgrade guard**: any non-PRD set live-re-verifies T000 through a 32-bit classify subprocess and REFUSES when the system says `CCCATEGORY='P'` — the live system outranks any conversational claim; unreachable T000 degrades to operator attestation with a WARN). The gate does not log; the calling skill records the verdict via `sap_log_helper.ps1` and ends refused runs with `-ErrorClass SAFETY_*`. |
 | `shared/scripts/sap_dev_default.ps1` | sap-dev-init, sap-login, sap-transport-request + deploy skills (task-scoped TR/package defaults) | CLI for task-scoped dev defaults (TR / package / …). Default `-Scope Session` keys the default per (AI session × pinned connection) so concurrent conversations on one SAP connection never clobber each other (the 2026-06-20 TR thrash); `-Scope Connection` only for a deliberate standing default (onboarding). Reads resolve session → connection → global. |
 | `shared/scripts/sap_workdir_setup.ps1` | /sap-login + /sap-dev-init Step 0 (work_dir onboarding) | Centralized work_dir probe / set / migrate helper so the skills' Step 0 stays declarative. `set` persists `SAPDEV_AI_WORK_DIR` (User scope) AND the `%APPDATA%\sapdev-ai\work_dir.txt` pointer — requires explicit user consent first (standing config change). Contract: `shared/rules/work_dir_onboarding.md`. |
 | `shared/scripts/sap_login.vbs` | sap-login (login step) | Shared login VBS template — OpenConnection by Logon-pad entry / load-balanced `/M/...` string / direct `/H/.../S/...`, then credential fill. Token-substituted per run; the FILLED copy contains credentials — generate under `{RUN_TEMP}` and delete after the run. Tier-3 exempt (it creates the connection the attach lib would attach to). |

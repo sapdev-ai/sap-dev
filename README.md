@@ -154,6 +154,9 @@ Add the marketplace to Claude Code:
 
 # Install the core plugin FIRST (the other three require it)
 /plugin install sap-dev-core@sap-dev
+
+# Activate the freshly installed skills (Claude desktop app: restart the app instead)
+/reload-plugins
 ```
 
 **Install order matters:** `sap-gen-code`, `sap-migrate`, and `sap-project` are

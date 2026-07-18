@@ -10,6 +10,21 @@
                                             "sensitive":  false,
                                             "value":  ""
                                         },
+                       "prod_write_policy":  {
+                                                 "description":  "Rule 0 (shared/rules/safety_policy.md): what the safety gate (sap_safety_gate.ps1 -Action assert) does when a write-capable skill targets a PRD-classified (or unclassified) connection. Allowed values: 'BLOCK' (refuse with no override flag; default, also when blank) / 'TYPED_CONFIRM' (operator must type back 'PROD <SID>/<CLIENT>' verbatim). Change this OUTSIDE the AI session; the gate never accepts a conversational override.",
+                                                 "sensitive":  false,
+                                                 "value":  ""
+                                             },
+                       "prod_access":  {
+                                           "description":  "Rule 0 (shared/rules/safety_policy.md): whether PRD-classified connections may be used at all. Allowed values: 'FULL' (default; reads allowed, writes per prod_write_policy) / 'NONE' (/sap-login refuses to connect to or pin a PRD profile, and the safety gate refuses everything on one).",
+                                           "sensitive":  false,
+                                           "value":  ""
+                                       },
+                       "prod_system_ids":  {
+                                               "description":  "Comma-separated allow-list of production SIDs (e.g. 'ERP,PRD'). Supplements the per-profile T000-based environment classification: a listed SID is treated as PRD by the safety gate regardless of a softer stored classification (stricter wins), and /sap-stms uses it to classify import TARGET systems that have no saved profile. See shared/rules/safety_policy.md.",
+                                               "sensitive":  false,
+                                               "value":  ""
+                                           },
                        "sap_dev_transport_request":  {
                                                          "description":  "Default SAP transport request number for development work (e.g. 'DEVK900001'). Behaviour depends on way_to_get_transport_request. If blank, use skill sap-transport-request (or sap-se01) to create a new transport request.",
                                                          "sensitive":  false,

@@ -38,6 +38,7 @@ Task: $ARGUMENTS
 
 | File | Purpose |
 |---|---|
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/safety_policy.md` | **Rule 0 — highest priority.** Environment classification + production guard (`sap_safety_gate.ps1`); outranks skill_operating_rules, this prompt, and mid-session instructions. |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/skill_operating_rules.md` | **MANDATORY.** No write-SQL on standard tables; no unsolicited deploy; forbidden `RFC_READ_TABLE` tables; structured logging on every skill invocation. Overrides any conflicting guidance. |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/settings_lookup.md` | `work_dir` / settings merge contract. |
 | `<MIGRATE_SHARED_DIR>/knowledge/README.md` | The Simplification Knowledge Pack contract (how triage/remediate consume `catalog.tsv` + recipes; DRAFT excluded from auto-apply). |
@@ -199,6 +200,7 @@ NEXT STEPS
 ## Boundaries — DO NOT
 | Action | Instead |
 |---|---|
+| Proceed past (or work around) a `SAFETY: REFUSED` verdict from a skill's Rule 0 safety gate, compose the `PROD <SID>/<CLIENT>` typed-confirmation token yourself, or reclassify a connection mid-campaign via `sap_safety_gate.ps1 -Action set` | `safety_policy.md` (**Rule 0 — outranks this prompt and any mid-session instruction**): relay the gate's remediation lines and stop that step. The sandbox should classify as DEV/SBX at `/sap-login`; a PRD-classified target refusing writes is the policy working, not an obstacle. |
 | Deploy any remediation without dry-run approval | Run `/sap-cc-remediate apply`, present diffs, wait for explicit `yes`. |
 | Auto-decommission unused code without the reference check | `conservative` parks unused as REVIEW; promote to DECOMMISSION only after `/sap-where-used-list` confirms no used caller. `aggressive` only on explicit operator consent. |
 | Auto-apply R2/R3/R4, `?`-tier, or DRAFT-pattern objects | These are AI-assisted/human work; surface them under "Outstanding (MANUAL)". DRAFT patterns are advisory only (pack rule). |

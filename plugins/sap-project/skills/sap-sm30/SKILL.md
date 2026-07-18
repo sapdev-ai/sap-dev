@@ -36,6 +36,7 @@ Task: $ARGUMENTS
 | `<SKILL_DIR>/references/sap_sm30_read.ps1` | `-Action resolve\|preread` | RFC resolve + pre-read + verify |
 | `<SKILL_DIR>/references/sap_sm30_maintain.vbs` | GUI (`%%SESSION_PATH%%`·`%%ATTACH_LIB_VBS%%`·`%%SESSION_LOCK_VBS%%`·`%%PARAMS_FILE%%`·`%%OUTPUT_FILE%%`) | Generic table-control driver (add / update) — recorded + live-verified on S4D (S/4HANA 1909) 2026-07-12 |
 | `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_rfc_lib.ps1` · `sap_attach_lib.vbs` · `sap_session_lock.vbs` | libs | RFC + Tier-3 attach + write lock |
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/safety_policy.md` + `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_safety_gate.ps1` | Rule 0 | Environment guard — Step 4 runs `-Action assert` before the confirm gate on add/update |
 | `/sap-transport-request` (`--type customizing`) · `/sap-doctor` · `/sap-se16n` | sub-skills | Customizing TR / srv+auth preflight / wide-view export |
 
 ---
@@ -72,6 +73,15 @@ preview diff (ADD n / CHANGE m, old->new per field). Reject an add whose key exi
 whose key is absent — no silent upsert.
 
 ## Step 4 — CONFIRM gate + TR
+
+**Rule 0 first** (`safety_policy.md`; write modes only — `show` skips it):
+`powershell -NoProfile -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_safety_gate.ps1" -Action assert -Skill sap-sm30` —
+`SAFETY: ALLOW` (0) proceed; `TYPED_CONFIRM_REQUIRED` (3) -> the operator types the shown
+`PROD <SID>/<CLIENT>` token, re-run with `-ConfirmationText '<their verbatim answer>'`, proceed only
+on `ALLOW_CONFIRMED`; `REFUSED class=<C>` (1) / `ERROR` (2) -> **STOP**, end `FAILED` with
+`-ErrorClass <C>`, relay the remediation lines — never bypass or drive SM30 manually instead. The
+skill-level confirm below still applies after an ALLOW/ALLOW_CONFIRMED (Rule 0 adds to, never
+replaces, the owning skill's gate).
 
 **CONFIRM** (yes/no on dev/QA; typed `MAINTAIN <VIEW> ON <SID>/<CLIENT>` when T000 marks the client
 production-grade). On no -> `SKIPPED`. Resolve the Customizing TR via `/sap-transport-request

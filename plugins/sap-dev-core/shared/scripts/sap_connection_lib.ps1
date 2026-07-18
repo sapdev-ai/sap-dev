@@ -258,7 +258,8 @@ function _Normalize-ConnectionRecord {
                       'password_dpapi','message_server','logon_group','system_id',
                       'application_server','system_number','created_at','last_used_at',
                       'gui_version_raw','server_kernel_release','server_release_family',
-                      'server_release_marker','server_release_raw')) {
+                      'server_release_marker','server_release_raw',
+                      'environment','environment_source','environment_verified_at')) {
         if ($p.ContainsKey($f)) { $p[$f] = "$($p[$f])" } else { $p[$f] = '' }
     }
     # Integer fields -- TryParse, never a hard [int] cast that could throw.
@@ -463,7 +464,13 @@ function New-SapConnectionInfo {
         [string]$ServerReleaseFamily = '',
         [string]$ServerReleaseMarker = '',
         [string]$ServerReleaseRaw    = '',
-        $SoftwareComponents          = $null
+        $SoftwareComponents          = $null,
+        # Rule 0 environment classification (safety_policy.md). Written by
+        # sap_safety_gate.ps1 -Action set (login Step 6.8); DEV|QAS|SBX|PRD,
+        # blank = unclassified = treated as PRD by the gate (fail closed).
+        [string]$Environment         = '',
+        [string]$EnvironmentSource   = '',
+        [string]$EnvironmentVerifiedAt = ''
     )
     return @{
         id                     = "$Id"
@@ -493,6 +500,9 @@ function New-SapConnectionInfo {
         server_release_marker  = "$ServerReleaseMarker"
         server_release_raw     = "$ServerReleaseRaw"
         software_components    = if ($null -ne $SoftwareComponents) { $SoftwareComponents } else { @() }
+        environment            = "$Environment"
+        environment_source     = "$EnvironmentSource"
+        environment_verified_at = "$EnvironmentVerifiedAt"
     }
 }
 
@@ -1244,7 +1254,8 @@ function Save-SapConnection {
                           'password_dpapi','message_server','logon_group','system_id',
                           'application_server','system_number','created_at','last_used_at',
                           'gui_version_raw','server_kernel_release','server_release_family',
-                          'server_release_marker','server_release_raw')) {
+                          'server_release_marker','server_release_raw',
+                          'environment','environment_source','environment_verified_at')) {
             if (-not $new.ContainsKey($f)) { $new[$f] = '' }
         }
         foreach ($i in @('gui_major','gui_minor','gui_patch')) {

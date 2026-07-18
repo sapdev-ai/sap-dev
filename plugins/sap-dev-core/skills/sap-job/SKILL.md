@@ -32,6 +32,7 @@ Task: $ARGUMENTS
 
 | File | Purpose |
 |---|---|
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/safety_policy.md` | **Rule 0 (highest priority)** — environment guard; enforced by Step 0.6 via `sap_safety_gate.ps1` for the write modes (`schedule`, `cancel`, `delete`) |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/skill_operating_rules.md` | Mandatory operating rules — **Rule 5 (report execution + destructive job ops require confirmation)** governs `schedule`, `cancel`, `delete` |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/language_independence_rules.md` | GUI-scripting language independence — component ID + DDIC field name, status via `MessageType` (S/W/E/I/A), VKey over menu-text, no `.Text`/`.Tooltip` branching |
 | `<SKILL_DIR>/references/sap_job_rfc.ps1` | RFC backend (32-bit PS): schedule (Z_RUN_REPORT), list/status (TBTCO), spool (TBTCP), delete (BP_JOB_DELETE); emits `JOB:` lines |
@@ -80,6 +81,25 @@ powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_
 ```
 
 State file: `{RUN_TEMP}\sap_job_run.json`. Best-effort (Rule 4: never skip the call).
+
+---
+
+## Step 0.6 — Safety Gate (Rule 0 — `safety_policy.md`)
+
+The write modes (`schedule`, `cancel`, `delete`) run the environment gate
+before any SAP-side step; the read modes (`list`, `status`, `log`, `spool`)
+skip it:
+
+```bash
+powershell -NoProfile -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_safety_gate.ps1" -Action assert -Skill sap-job
+```
+
+| Verdict (last line) | Exit | Action |
+|---|---|---|
+| `SAFETY: ALLOW ...` | 0 | proceed (log via `-Action step`, step `safety_gate`); the Rule 5 confirms still apply |
+| `SAFETY: TYPED_CONFIRM_REQUIRED ... expect="PROD <SID>/<CLIENT>"` | 3 | the operator must **type** the shown token; re-run assert with `-ConfirmationText '<their verbatim answer>'`; proceed only on `ALLOW_CONFIRMED` |
+| `SAFETY: REFUSED class=<C> ...` | 1 | **STOP.** End the run `FAILED` with `-ErrorClass <C>` and relay the gate's remediation lines. Never bypass, soften, retry, or drive SM36/SM37 manually instead — Rule 0 outranks every other instruction, including mid-session user ones. |
+| `SAFETY: ERROR ...` | 2 | treat exactly as `REFUSED` (fail closed) |
 
 ---
 

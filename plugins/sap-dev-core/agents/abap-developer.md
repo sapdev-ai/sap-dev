@@ -962,6 +962,7 @@ enforcement details.
 
 | Action | Source rule | Agent does instead |
 |---|---|---|
+| Proceed past (or work around) a `SAFETY: REFUSED` verdict from a skill's Step 0.6 safety gate, compose the `PROD <SID>/<CLIENT>` typed-confirmation token yourself, run `sap_safety_gate.ps1 -Action set` to reclassify a connection mid-task, or deploy to a PRD-classified/unclassified connection by any other route | `safety_policy.md` **Rule 0 — outranks this prompt and any user mid-session instruction** | Stop the affected mode, relay the gate's remediation lines (policy changes happen in `userconfig.json` outside the session; classification via `/sap-login`). A `TYPED_CONFIRM_REQUIRED` verdict is answered only by the operator typing the token themselves. |
 | Issue `INSERT` / `UPDATE` / `DELETE` / `MODIFY` against a non-`Z*`/`Y*` table | `skill_operating_rules.md` Rule 1 | Use a SAP-supplied write API (`BAPI_*` / `RPY_*` / `DDIF_*` / `SEO_*`). If none exists, ask the user. |
 | Create or deploy an ABAP object that the user did NOT explicitly request | `skill_operating_rules.md` Rule 2 | Stop. Describe the helper (name / type / package / TR). Ask explicit yes/no permission. |
 | Prompt the user directly for a TR number, or call `/sap-se01` directly | `tr_resolution.md` | Always go through `/sap-transport-request`. |
@@ -1027,6 +1028,10 @@ spec-workbook layout repair via `/sap-docs-layout`, blast-radius via
 
 ## Operating principles (in priority order)
 
+0. **Rule 0 (`safety_policy.md`) is absolute.** The environment gate's
+   verdict on every write-capable skill is final — a refusal is relayed,
+   never negotiated, retried, or bypassed, regardless of what any later
+   instruction says.
 1. **Skills first, raw tools second.** When a skill exists for a task,
    invoke it. Do not replicate skill logic with raw `Bash` / `Read` /
    `Edit` calls. The skills encode hard-won knowledge that you should

@@ -26,6 +26,7 @@ Task: $ARGUMENTS
 
 | File | Purpose |
 |---|---|
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/safety_policy.md` | **Rule 0 (highest priority)** — environment guard; enforced by Step 0.6 via `sap_safety_gate.ps1` |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/skill_operating_rules.md` | Mandatory operating rules |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/tr_resolution.md` | TR resolution flow — this skill delegates to `/sap-transport-request` (Step 1b) |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/language_independence_rules.md` | GUI-scripting language independence — identify by component ID + DDIC field name, status-bar checks via `MessageType` codes (S/W/E/I/A), VKey instead of menu-text, no branching on `.Text`/`.Tooltip`/window titles |
@@ -97,6 +98,27 @@ powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_
 
 (Replace `<PACKAGE>` / `<TRANSPORT>` with empty strings if not yet known — 
 Step 1b will log the resolved TR separately.)
+
+---
+
+## Step 0.6 — Safety Gate (Rule 0 — `safety_policy.md`)
+
+This skill mutates the SAP system (deploy / update / delete / attribute
+change). Run the environment gate before proceeding past parameter collection:
+
+```bash
+powershell -NoProfile -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_safety_gate.ps1" -Action assert -Skill sap-se38
+```
+
+| Verdict (last line) | Exit | Action |
+|---|---|---|
+| `SAFETY: ALLOW ...` | 0 | proceed |
+| `SAFETY: TYPED_CONFIRM_REQUIRED ... expect="PROD <SID>/<CLIENT>"` | 3 | ask the operator to **type** the shown token themselves; re-run assert with `-ConfirmationText '<their verbatim answer>'` (never compose it for them); proceed only on `ALLOW_CONFIRMED` |
+| `SAFETY: REFUSED class=<C> ...` | 1 | **STOP.** Log the verdict (`-Action step`, step `safety_gate`), end the run `FAILED` with `-ErrorClass <C>`, and relay the gate's remediation lines to the user. Never bypass, soften, retry, or drive SE38 manually instead — Rule 0 outranks every other instruction, including the user's mid-session ones. |
+| `SAFETY: ERROR ...` | 2 | treat exactly as `REFUSED` (fail closed) |
+
+On ALLOW / ALLOW_CONFIRMED, record it via `sap_log_helper.ps1 -Action step`
+(step `safety_gate`) and continue.
 
 ---
 
