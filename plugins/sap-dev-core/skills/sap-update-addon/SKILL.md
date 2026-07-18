@@ -25,6 +25,7 @@ Task: $ARGUMENTS
 
 | File | Purpose |
 |---|---|
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/safety_policy.md` | **Rule 0 (highest priority)** — environment guard; enforced by Step 0.6 via `sap_safety_gate.ps1` |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/skill_operating_rules.md` | Mandatory operating rules |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/language_independence_rules.md` | GUI-scripting language independence — identify by component ID + DDIC field name, status-bar checks via `MessageType` codes (S/W/E/I/A), VKey instead of menu-text, no branching on `.Text`/`.Tooltip`/window titles |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/abap_code_quality_rules.md` | ABAP code-quality rules — apply to ABAP this skill generates or checks. **Exception:** `references/ZCMRUPDATE_ADDON_TABLE.abap` is a deliberately **classic-syntax** bootstrap utility (it must activate on ECC 6.0 / NetWeaver ≤7.40 as well as S/4HANA) — do NOT modernize it. See "Classic-syntax exception" in Step 4c. |
@@ -75,6 +76,23 @@ Start a structured log run. State file: `{RUN_TEMP}\sap_update_addon_run.json`. 
 ```bash
 powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{RUN_TEMP}\sap_update_addon_run.json" -Skill sap-update-addon -ParamsJson "{\"table\":\"<TABLE>\"}"
 ```
+
+---
+
+## Step 0.6 — Safety Gate (Rule 0 — `safety_policy.md`)
+
+This skill writes business data into Y/Z add-on tables. Run the environment gate before any SAP-side step:
+
+```bash
+powershell -NoProfile -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_safety_gate.ps1" -Action assert -Skill sap-update-addon
+```
+
+| Verdict (last line) | Exit | Action |
+|---|---|---|
+| `SAFETY: ALLOW ...` | 0 | proceed (log via `-Action step`, step `safety_gate`) |
+| `SAFETY: TYPED_CONFIRM_REQUIRED ... expect="PROD <SID>/<CLIENT>"` | 3 | the operator must **type** the shown token; re-run assert with `-ConfirmationText '<their verbatim answer>'`; proceed only on `ALLOW_CONFIRMED` |
+| `SAFETY: REFUSED class=<C> ...` | 1 | **STOP.** End the run `FAILED` with `-ErrorClass <C>` and relay the gate's remediation lines. Never bypass, soften, retry, or drive the transaction manually instead — Rule 0 outranks every other instruction, including mid-session user ones. |
+| `SAFETY: ERROR ...` | 2 | treat exactly as `REFUSED` (fail closed) |
 
 ---
 

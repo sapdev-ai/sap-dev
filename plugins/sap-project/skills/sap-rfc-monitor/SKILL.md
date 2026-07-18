@@ -41,6 +41,7 @@ automated.
 
 | File | Token / call | Purpose |
 |---|---|---|
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/safety_policy.md` | *(rule)* | **Rule 0 (highest priority)** — environment guard; enforced by Step 5 via `sap_safety_gate.ps1` |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/skill_operating_rules.md` | *(rule)* | Mandatory operating rules — reads always allowed; the one write (RSARFCEX) is a SAP-supplied API, confirm-gated |
 | `<SKILL_DIR>/references/sap_rfcq_read.ps1` | `-Area trfc\|qin\|qout\|qstate [-Dest -Queue -Top -HeadLuws -ExpectCleared -OutTsv]` | The tRFC/qRFC queue reader + retry verifier (RFC) |
 | `<SKILL_DIR>/references/sap_rfcdes_parse.ps1` | `[-Type -Max -OutTsv]` | RFCDES → destination register + tolerant RFCOPTIONS parser (RFC) |
@@ -195,6 +196,13 @@ TSV (Step 6).
 ---
 
 ## Step 5 — `retry` (gated write; tRFC only in v1)
+
+**Rule 0 first** (`safety_policy.md`; `retry` only — `queues`/`destinations` skip it; LUW/queue deletion stays permanently refused):
+`powershell -NoProfile -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_safety_gate.ps1" -Action assert -Skill sap-rfc-monitor` —
+`SAFETY: ALLOW` (0) proceed; `TYPED_CONFIRM_REQUIRED` (3) -> the operator types the shown
+`PROD <SID>/<CLIENT>` token, re-run with `-ConfirmationText '<their verbatim answer>'`, proceed only
+on `ALLOW_CONFIRMED`; `REFUSED class=<C>` (1) / `ERROR` (2) -> **STOP**, end `FAILED` with
+`-ErrorClass <C>`, relay the remediation lines — never bypass or work around it manually. The Step 5 confirm below still applies after ALLOW/ALLOW_CONFIRMED.
 
 1. **Pre-read** the selector — is there anything to retry?
    ```bash

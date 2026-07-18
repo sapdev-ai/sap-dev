@@ -42,6 +42,7 @@ mutated with `ENQUE_DELETE` (SAP's own enqueue APIs) — **never** with
 
 | File | Token | Purpose |
 |---|---|---|
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/safety_policy.md` | *(rule)* | **Rule 0 (highest priority)** — environment guard; enforced by Step 0.6 via `sap_safety_gate.ps1` |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/skill_operating_rules.md` | *(rule)* | Mandatory operating rules (no SQL writes; no unsolicited deploy; confirm gates) |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/error_classes.md` | *(rule)* | `error_class` taxonomy (this skill's `LOCK_*` classes live here) |
 | `<SKILL_DIR>/references/sap_sm12_lib.ps1` | `%%SM12_LIB_PS1%%` | Shared helpers: generic FM-table reader, lock-age math, server-clock |
@@ -82,6 +83,23 @@ powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_
 ```
 
 State file `{RUN_TEMP}\sap_sm12_run.json`. Best-effort.
+
+---
+
+## Step 0.6 — Safety Gate (Rule 0 — `safety_policy.md`)
+
+The `release` mode mutates runtime state (deletes an enqueue lock) and runs the environment gate first; `list` is read-only and skips it. The owner-liveness gate and typed owner-name confirmation below still apply after ALLOW/ALLOW_CONFIRMED:
+
+```bash
+powershell -NoProfile -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_safety_gate.ps1" -Action assert -Skill sap-sm12
+```
+
+| Verdict (last line) | Exit | Action |
+|---|---|---|
+| `SAFETY: ALLOW ...` | 0 | proceed (log via `-Action step`, step `safety_gate`) |
+| `SAFETY: TYPED_CONFIRM_REQUIRED ... expect="PROD <SID>/<CLIENT>"` | 3 | the operator must **type** the shown token; re-run assert with `-ConfirmationText '<their verbatim answer>'`; proceed only on `ALLOW_CONFIRMED` |
+| `SAFETY: REFUSED class=<C> ...` | 1 | **STOP.** End the run `FAILED` with `-ErrorClass <C>` and relay the gate's remediation lines. Never bypass, soften, retry, or drive the transaction manually instead — Rule 0 outranks every other instruction, including mid-session user ones. |
+| `SAFETY: ERROR ...` | 2 | treat exactly as `REFUSED` (fail closed) |
 
 ---
 

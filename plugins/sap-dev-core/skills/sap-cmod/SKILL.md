@@ -29,6 +29,7 @@ Task: $ARGUMENTS
 
 | File | Purpose |
 |---|---|
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/safety_policy.md` | **Rule 0 (highest priority)** — environment guard; enforced by Step 0.6 via `sap_safety_gate.ps1` |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/skill_operating_rules.md` | Mandatory operating rules (no direct SQL writes on standard tables; no unsolicited deploys) |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/tr_resolution.md` | TR resolution — this skill delegates to `/sap-transport-request`; never asks for a TR itself |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/language_independence_rules.md` | GUI scripting works under any logon language — identify by component ID + DDIC field name, status via `MessageType` (S/W/E/I/A), VKey not menu-text, no branching on `.Text`/titles |
@@ -82,6 +83,23 @@ Per the CLAUDE.md "Two-bucket temp model" write this skill's generated scratch (
 ```bash
 powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{RUN_TEMP}\sap_cmod_run.json" -Skill sap-cmod -ParamsJson "{\"project\":\"<PROJECT>\",\"op\":\"<OPERATION>\"}"
 ```
+
+---
+
+## Step 0.6 — Safety Gate (Rule 0 — `safety_policy.md`)
+
+The write operations (create, add/remove assignments, change description, activate, deactivate, delete project, change package, edit component) run the environment gate before any SAP-side step; the read operation (check / status) skips it:
+
+```bash
+powershell -NoProfile -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_safety_gate.ps1" -Action assert -Skill sap-cmod
+```
+
+| Verdict (last line) | Exit | Action |
+|---|---|---|
+| `SAFETY: ALLOW ...` | 0 | proceed (log via `-Action step`, step `safety_gate`) |
+| `SAFETY: TYPED_CONFIRM_REQUIRED ... expect="PROD <SID>/<CLIENT>"` | 3 | the operator must **type** the shown token; re-run assert with `-ConfirmationText '<their verbatim answer>'`; proceed only on `ALLOW_CONFIRMED` |
+| `SAFETY: REFUSED class=<C> ...` | 1 | **STOP.** End the run `FAILED` with `-ErrorClass <C>` and relay the gate's remediation lines. Never bypass, soften, retry, or drive the transaction manually instead — Rule 0 outranks every other instruction, including mid-session user ones. |
+| `SAFETY: ERROR ...` | 2 | treat exactly as `REFUSED` (fail closed) |
 
 ---
 

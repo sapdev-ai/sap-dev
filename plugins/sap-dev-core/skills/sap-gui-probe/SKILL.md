@@ -49,6 +49,7 @@ Task: $ARGUMENTS
 
 | File | Purpose |
 |---|---|
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/safety_policy.md` | **Rule 0 (highest priority)** — environment guard; enforced by the drive-mode write classifier via `sap_safety_gate.ps1` |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/skill_operating_rules.md` | Mandatory operating rules |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/settings_lookup.md` | Settings model — merge per-key on `.value` (env var → `settings.local.json` → `userconfig.json` → `settings.json`); non-per-connection writes go to `userconfig.json` |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/language_independence_rules.md` | GUI-scripting language independence — identify by component ID + DDIC field name, status-bar checks via `MessageType` codes (S/W/E/I/A), VKey instead of menu-text, no branching on `.Text`/`.Tooltip`/window titles |
@@ -331,6 +332,16 @@ Last line on stdout is `READ` or `WRITE`. The full ruleset is in the
 script header.
 
 ### 2.5 — Confirm if WRITE and MODE=confirm
+
+**Rule 0 first** (`safety_policy.md`; first write-classified action of a drive run; `--record`
+parsing never runs it): before executing the FIRST write-classified action of a drive run — in
+confirm mode AND in `--auto` mode alike — the gate must pass once:
+`powershell -NoProfile -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_safety_gate.ps1" -Action assert -Skill sap-gui-probe` —
+`SAFETY: ALLOW` (0) proceed; `TYPED_CONFIRM_REQUIRED` (3) -> the operator types the shown
+`PROD <SID>/<CLIENT>` token, re-run with `-ConfirmationText '<their verbatim answer>'`, proceed only
+on `ALLOW_CONFIRMED`; `REFUSED class=<C>` (1) / `ERROR` (2) -> **STOP**, end `FAILED` with
+`-ErrorClass <C>`, relay the remediation lines — never bypass or work around it manually. The
+per-action confirm/auto machinery below still applies after ALLOW/ALLOW_CONFIRMED.
 
 If the classifier returned `WRITE` **and** the mode is `confirm`, pause and
 ask the user with AskUserQuestion. Surface:

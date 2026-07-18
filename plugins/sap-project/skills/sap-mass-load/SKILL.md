@@ -33,6 +33,7 @@ propose the mapping and run the confirm gates.
 
 | File | Token / call | Purpose |
 |---|---|---|
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/safety_policy.md` + `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_safety_gate.ps1` | Rule 0 | Environment guard — Step 4 runs `-Action assert` before the write |
 | `<SKILL_DIR>/references/sap_mass_load_rfc.ps1` | `-Action clientguard\|interface\|validate` | Read-only core (guard + target introspection + dry-run) |
 | `<SKILL_DIR>/references/sap_mass_load_execute.ps1` | `-DryRun` / live | BAPI row-loop executor (gated write) + ledger |
 | `<SKILL_DIR>/references/mass_load_checktables.tsv` | read | Key-existence check tables (field -> table,keyfield) |
@@ -93,6 +94,13 @@ C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypas
 execute refuses. Derive `-KeyChecks` from the approved mapping (each key column -> its DDIC field).
 
 ## Step 4 — execute (typed gate; the only write)
+
+**Rule 0 first** (`safety_policy.md`; `execute`/`resume` only — `plan`/`validate`/`status` skip it):
+`powershell -NoProfile -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_safety_gate.ps1" -Action assert -Skill sap-mass-load` —
+`SAFETY: ALLOW` (0) proceed; `TYPED_CONFIRM_REQUIRED` (3) -> the operator types the shown
+`PROD <SID>/<CLIENT>` token, re-run with `-ConfirmationText '<their verbatim answer>'`, proceed only
+on `ALLOW_CONFIRMED`; `REFUSED class=<C>` (1) / `ERROR` (2) -> **STOP**, end `FAILED` with
+`-ErrorClass <C>`, relay the remediation lines — never bypass or work around it manually. The non-overridable MASS_LOAD_CLIENT_REFUSED guard and the typed `LOAD` gate below still apply — Rule 0 adds the profile/policy layer, it does not replace them.
 
 Pre-flight: approved mapping present, input hash unchanged, dry-run READY and newer than mapping, row
 count <= cap. **Typed confirm gate:** show target SID/client, client category, target BAPI, backend,

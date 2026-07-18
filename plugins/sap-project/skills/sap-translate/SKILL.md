@@ -33,6 +33,7 @@ Task: $ARGUMENTS
 
 | File | Token / call | Purpose |
 |---|---|---|
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/safety_policy.md` + `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_safety_gate.ps1` | Rule 0 | Environment guard — Step 4 runs `-Action assert` before the write |
 | `<SKILL_DIR>/references/sap_translate_harvest.ps1` | `-Object -Type -To` | Harvest translatable texts -> review TSV |
 | `<SKILL_DIR>/references/translate_length_limits.tsv` | read by harvest | Hard per-unit length limits (DDIC-cross-checked live) |
 | `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_object_resolver.ps1` | dot-source / CLI | TR/package scope expansion (`-Expand`) |
@@ -73,6 +74,13 @@ Write the reviewed TSV. **STOP** — the review gate is mandatory; harvest NEVER
 the operator to review/edit the TSV then run `apply`.
 
 ## Step 4 — apply (confirm-gated write)
+
+**Rule 0 first** (`safety_policy.md`; `apply` only — `harvest` skips it):
+`powershell -NoProfile -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_safety_gate.ps1" -Action assert -Skill sap-translate` —
+`SAFETY: ALLOW` (0) proceed; `TYPED_CONFIRM_REQUIRED` (3) -> the operator types the shown
+`PROD <SID>/<CLIENT>` token, re-run with `-ConfirmationText '<their verbatim answer>'`, proceed only
+on `ALLOW_CONFIRMED`; `REFUSED class=<C>` (1) / `ERROR` (2) -> **STOP**, end `FAILED` with
+`-ErrorClass <C>`, relay the remediation lines — never bypass or work around it manually. The Step 4 confirm below still applies after ALLOW/ALLOW_CONFIRMED.
 
 1. Load the reviewed TSV; re-validate EVERY length (any overflow -> `TRANSLATE_LENGTH_OVERFLOW`,
    listed, never written); diff vs live target (rows overwriting an existing translation need

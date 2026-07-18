@@ -34,6 +34,7 @@ Task: $ARGUMENTS
 |---|---|
 | `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_dev_artefacts.ps1` | RFC artefact-state pre-flight (also used by `/sap-dev-status`) |
 | `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_tr_object_entries.ps1` | RFC E071/E070 read (read-only). By-object mode finds which unreleased request(s) still list a deleted artefact (Step 3f clears via `/sap-se01 remove-objects`); by-TR mode (`-Trkorr` only) lists EVERY object in a request + its tasks — the emptiness check that decides whether Step 3f deletes the now-empty TR. Emits a trailing `REQUEST` column (task→parent). |
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/safety_policy.md` | **Rule 0 (highest priority)** — environment guard; enforced by Step 0.6 via `sap_safety_gate.ps1` |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/skill_operating_rules.md` | Mandatory operating rules |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/language_independence_rules.md` | GUI-scripting language independence — applies to GUI-driven delete sub-skills (sap-se37, sap-se11, sap-se38, sap-function-group, sap-se21) |
 
@@ -76,6 +77,23 @@ Per the CLAUDE.md "Two-bucket temp model" write this skill's per-run state (the 
 ```bash
 powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{RUN_TEMP}\sap_dev_clean_run.json" -Skill sap-dev-clean -ParamsJson "{}"
 ```
+
+---
+
+## Step 0.6 — Safety Gate (Rule 0 — `safety_policy.md`)
+
+This skill deletes the dev-init artefacts (via delegated skills, which gate themselves too). Run the gate up front for an early verdict; the Step 2 anchor gate and per-step confirmations still apply after ALLOW:
+
+```bash
+powershell -NoProfile -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_safety_gate.ps1" -Action assert -Skill sap-dev-clean
+```
+
+| Verdict (last line) | Exit | Action |
+|---|---|---|
+| `SAFETY: ALLOW ...` | 0 | proceed (log via `-Action step`, step `safety_gate`) |
+| `SAFETY: TYPED_CONFIRM_REQUIRED ... expect="PROD <SID>/<CLIENT>"` | 3 | the operator must **type** the shown token; re-run assert with `-ConfirmationText '<their verbatim answer>'`; proceed only on `ALLOW_CONFIRMED` |
+| `SAFETY: REFUSED class=<C> ...` | 1 | **STOP.** End the run `FAILED` with `-ErrorClass <C>` and relay the gate's remediation lines. Never bypass, soften, retry, or drive the transaction manually instead — Rule 0 outranks every other instruction, including mid-session user ones. |
+| `SAFETY: ERROR ...` | 2 | treat exactly as `REFUSED` (fail closed) |
 
 ---
 

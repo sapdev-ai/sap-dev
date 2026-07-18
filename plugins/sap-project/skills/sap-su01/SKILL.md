@@ -30,6 +30,7 @@ Task: $ARGUMENTS
 
 | File | Token / call | Purpose |
 |---|---|---|
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/safety_policy.md` + `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_safety_gate.ps1` | Rule 0 | Environment guard — Step 2.5 runs `-Action assert` before the write |
 | `<SKILL_DIR>/references/sap_su01_rfc.ps1` | `-Action precheck\|show\|create\|assign\|unassign\|lock\|unlock\|resetpw\|delete` | BAPI_USER_* backend + DEV guard + verify re-reads |
 | `<SKILL_DIR>/references/sap_su01_store.ps1` | `-Action upsert\|remove\|isowned\|list` | Per-(SID,client) test-user registry (JSONL, DPAPI passwords) |
 | `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_dpapi.ps1` | via the backend | Password protect (`dpapi:<b64>`); plaintext never stored/printed |
@@ -74,6 +75,13 @@ Pinned RFC profile required (`/sap-login`). **Refuse** `lock`/`delete`/`reset-pa
 of the pinned profile's own user → `SU01_SELF_TARGET_REFUSED`.
 
 ## Step 2.5 — Confirm Gate (every write)
+
+**Rule 0 first** (`safety_policy.md`; every write mode — `show` skips it):
+`powershell -NoProfile -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_safety_gate.ps1" -Action assert -Skill sap-su01` —
+`SAFETY: ALLOW` (0) proceed; `TYPED_CONFIRM_REQUIRED` (3) -> the operator types the shown
+`PROD <SID>/<CLIENT>` token, re-run with `-ConfirmationText '<their verbatim answer>'`, proceed only
+on `ALLOW_CONFIRMED`; `REFUSED class=<C>` (1) / `ERROR` (2) -> **STOP**, end `FAILED` with
+`-ErrorClass <C>`, relay the remediation lines — never bypass or work around it manually. SU01_NON_DEV_REFUSED remains the stricter inner guard (production/non-modifiable refused outright, no override) — Rule 0 adds the profile/policy layer on top.
 
 State SID / client / user / (roles) and get a yes/no. **delete** of a user NOT in the
 registry AND not matching `su01_user_prefix` → require the operator to **type the

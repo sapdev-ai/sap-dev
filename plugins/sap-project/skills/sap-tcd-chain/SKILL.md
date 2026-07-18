@@ -30,6 +30,7 @@ Task: $ARGUMENTS
 
 | File | Token / call | Purpose |
 |---|---|---|
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/safety_policy.md` + `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_safety_gate.ps1` | Rule 0 | Environment guard — Step 4 runs `-Action assert` before the write |
 | `<SKILL_DIR>/references/sap_tcd_chain_rfc.ps1` | `-Action preflight\|create-order\|create-delivery\|post-gi\|create-billing\|verify-flow` | BAPI chain + VBFA verify |
 | `<SKILL_DIR>/references/scenario_o2c_sample.txt` | template | Commented scenario-file sample |
 | `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_artifact_lib.ps1` | dot-sourced | Chain manifest + evidence registration |
@@ -73,6 +74,13 @@ simulate (`BAPI_SALESORDER_CREATEFROMDAT2 TESTRUN`) with zero persistence. Rende
 (missing sold-to / item / org) → show the offending lines, STOP.
 
 ## Step 4 — Confirm Gate (`run o2c`, mandatory)
+
+**Rule 0 first** (`safety_policy.md`; `run o2c` (non-dry-run) only — `--dry-run` and `status` skip it):
+`powershell -NoProfile -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_safety_gate.ps1" -Action assert -Skill sap-tcd-chain` —
+`SAFETY: ALLOW` (0) proceed; `TYPED_CONFIRM_REQUIRED` (3) -> the operator types the shown
+`PROD <SID>/<CLIENT>` token, re-run with `-ConfirmationText '<their verbatim answer>'`, proceed only
+on `ALLOW_CONFIRMED`; `REFUSED class=<C>` (1) / `ERROR` (2) -> **STOP**, end `FAILED` with
+`-ErrorClass <C>`, relay the remediation lines — never bypass or work around it manually. The yes/no gate below still applies after ALLOW/ALLOW_CONFIRMED.
 
 State it and get a yes/no:
 

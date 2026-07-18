@@ -37,6 +37,7 @@ run the confirm gate and narrate the failure triage.
 
 | File | Token / call | Purpose |
 |---|---|---|
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/safety_policy.md` + `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_safety_gate.ps1` | Rule 0 | Environment guard — Step 3 runs `-Action assert` before the write |
 | `<SKILL_DIR>/references/sap_replay_compile.ps1` | `-Action lint\|compile` | Lint (RFC) + segment compiler |
 | `<SKILL_DIR>/references/sap_replay_exec.vbs` | via 32-bit cscript | Generic segment interpreter (GUI) |
 | `<SKILL_DIR>/references/sap_replay_table_check.ps1` | `-CheckFile -Values` | RFC_READ_TABLE assertion engine |
@@ -78,6 +79,13 @@ Ensure a GUI session (`/sap-login`), broker `acquire`, liveness check. WARN if t
 REPLAY_ERROR:GUARD).
 
 ## Step 3 — CONFIRM gate (mandatory; run executes transactions)
+
+**Rule 0 first** (`safety_policy.md`; `run` only — `lint`/`init`/`--dry-run` skip it):
+`powershell -NoProfile -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_safety_gate.ps1" -Action assert -Skill sap-test-replay` —
+`SAFETY: ALLOW` (0) proceed; `TYPED_CONFIRM_REQUIRED` (3) -> the operator types the shown
+`PROD <SID>/<CLIENT>` token, re-run with `-ConfirmationText '<their verbatim answer>'`, proceed only
+on `ALLOW_CONFIRMED`; `REFUSED class=<C>` (1) / `ERROR` (2) -> **STOP**, end `FAILED` with
+`-ErrorClass <C>`, relay the remediation lines — never bypass or work around it manually. The typed `REPLAY <SID>` / yes-no confirm below still applies after ALLOW/ALLOW_CONFIRMED.
 
 Render tcode, system/client, binding summary, checkpoint count. Non-DEV/modifiable client -> **typed**
 confirmation `REPLAY <SID>`; DEV -> yes/no. `--dry-run` compiles + lints only (no GUI, no gate).

@@ -36,6 +36,7 @@ narrate; the interpreter replays one action at a time.
 
 | File | Token / call | Purpose |
 |---|---|---|
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/safety_policy.md` + `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_safety_gate.ps1` | Rule 0 | Environment guard — Step 2.5 runs `-Action assert` before the write |
 | `<SKILL_DIR>/references/sap_guide_compose.ps1` | `-Action harvest\|compose` | Parse probe folder + assemble guide skeleton (local) |
 | `<SKILL_DIR>/references/sap_guide_ddic_texts.ps1` | `-Tcode -Fields` | DDIC labels + F1 docs over RFC |
 | `<SKILL_DIR>/references/sap_guide_replay.vbs` | via 32-bit cscript | Single-action replay + screen-identity verify (GUI) |
@@ -64,6 +65,13 @@ Step 7 registers.
 delegate `/sap-gui-probe drive` first (its gates apply), then compose from the fresh folder.
 
 ## Step 2.5 — CONFIRM gate (only `--with-screens`)
+
+**Rule 0 first** (`safety_policy.md`; `--with-screens` replay only — default `guide`, `pack`, and `--no-writes` skip it):
+`powershell -NoProfile -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_safety_gate.ps1" -Action assert -Skill sap-user-guide` —
+`SAFETY: ALLOW` (0) proceed; `TYPED_CONFIRM_REQUIRED` (3) -> the operator types the shown
+`PROD <SID>/<CLIENT>` token, re-run with `-ConfirmationText '<their verbatim answer>'`, proceed only
+on `ALLOW_CONFIRMED`; `REFUSED class=<C>` (1) / `ERROR` (2) -> **STOP**, end `FAILED` with
+`-ErrorClass <C>`, relay the remediation lines — never bypass or work around it manually. The typed-SID confirm below still applies after ALLOW/ALLOW_CONFIRMED.
 
 Replay EXECUTES the transaction. Classify every recorded action READ/WRITE (verb + VKeys 11/14/27/28/33,
 same classifier as /sap-gui-probe); present tcode, step count, and the explicit **write-action list**

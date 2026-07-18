@@ -34,6 +34,7 @@ Task: $ARGUMENTS
 
 | File | Token / call | Purpose |
 |---|---|---|
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/safety_policy.md` | *(rule)* | **Rule 0 (highest priority)** — environment guard; enforced by Step 7 via `sap_safety_gate.ps1` |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/skill_operating_rules.md` | *(rule)* | Mandatory operating rules |
 | `<SKILL_DIR>/references/sap_retrofit_ledger.ps1` | `-Action init\|append\|set-state\|watermark\|list` | Local workspace + state-machine ledger |
 | `<SKILL_DIR>/references/sap_retrofit_harvest.ps1` | `-MaintHint … [-Since -Packages -MaxTrs]` | Released maintenance TRs → per-object rows (RFC, read-only) |
@@ -128,6 +129,13 @@ Print the mandatory-review banner. **This mode has no deploy path — enforced b
 separation.**
 
 ## Step 7 — apply (GREEN, confirm-gated write to the PROJECT line)
+
+**Rule 0 first** (`safety_policy.md`; `apply` only — `init`/`harvest`/`classify`/`status`/`draft` skip it):
+`powershell -NoProfile -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_safety_gate.ps1" -Action assert -Skill sap-retrofit` —
+`SAFETY: ALLOW` (0) proceed; `TYPED_CONFIRM_REQUIRED` (3) -> the operator types the shown
+`PROD <SID>/<CLIENT>` token, re-run with `-ConfirmationText '<their verbatim answer>'`, proceed only
+on `ALLOW_CONFIRMED`; `REFUSED class=<C>` (1) / `ERROR` (2) -> **STOP**, end `FAILED` with
+`-ErrorClass <C>`, relay the remediation lines — never bypass or work around it manually. The maintenance-vs-project hard refusal and the confirm gate below still apply after ALLOW/ALLOW_CONFIRMED.
 
 1. Select GREEN rows (`--green-only`) or explicit `--objects`. `GREEN_MANUAL`/`YELLOW`/`RED` are
    **refused** (`--approved-draft <OBJ>` for a reviewed YELLOW draft is **v1.5**, typed

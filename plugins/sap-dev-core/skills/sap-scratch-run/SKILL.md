@@ -31,6 +31,7 @@ Task: $ARGUMENTS
 
 | File | Token / call | Purpose |
 |---|---|---|
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/safety_policy.md` + `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_safety_gate.ps1` | Rule 0 | Environment guard — Steps 3/3F run `-Action assert` before any deploy or FM call |
 | `<SKILL_DIR>/references/sap_scratch_guard.ps1` | `-SourceFile` | Read-only static guard (deny-set + Z/Y allow) — the load-bearing gate |
 | `<SKILL_DIR>/references/sap_scratch_fm.ps1` | `-Fm -Values` | FMODE-routed FM call + capture + wall-clock timing |
 | `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_rfc_syntax_check.ps1` | `-Subc 1` | Headless EDITOR_SYNTAX_CHECK (via the wrapper) |
@@ -60,6 +61,16 @@ state `{RUN_TEMP}\sap_scratch_run.json`). Generated scratch → `{RUN_TEMP}`.
 
 ## Step 3 — `run` (generate → GUARD → syntax → confirm → deploy → execute → cleanup)
 
+**Rule 0 first** (`safety_policy.md`; `run` deploys and executes a scratch report):
+`powershell -NoProfile -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_safety_gate.ps1" -Action assert -Skill sap-scratch-run` —
+`SAFETY: ALLOW` (0) proceed; `TYPED_CONFIRM_REQUIRED` (3) -> the operator types the shown
+`PROD <SID>/<CLIENT>` token, re-run with `-ConfirmationText '<their verbatim answer>'`, proceed only
+on `ALLOW_CONFIRMED`; `REFUSED class=<C>` (1) / `ERROR` (2) -> **STOP**, end `FAILED` with
+`-ErrorClass <C>`, relay the remediation lines — never bypass or work around it manually. The
+read-only static guard, the SCRATCH_ENV_REFUSED modifiability guard, and the CONFIRM gate below
+still apply after ALLOW/ALLOW_CONFIRMED — Rule 0 adds the profile/policy layer, it does not
+replace them.
+
 1. **Generate** `REPORT zzscratch_<runid8>.` into `{RUN_TEMP}\scratch_<runid>.abap` — answer the
    question with `SELECT … UP TO {--max-rows} ROWS` + `WRITE`/cl_salv, `$TMP`, no TR.
 2. **Modifiability guard** — RFC-check T000: refuse deploy on a non-modifiable/production client
@@ -80,6 +91,14 @@ state `{RUN_TEMP}\sap_scratch_run.json`). Generated scratch → `{RUN_TEMP}`.
    RFC re-read `TRDIR` → row gone = authoritative; orphan → `SCRATCH_CLEANUP_FAILED` (loud, names it).
 
 ## Step 3F — `fm` (call + capture + time)
+
+**Rule 0 first** (`safety_policy.md`; `fm` executes a function module that may mutate):
+`powershell -NoProfile -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_safety_gate.ps1" -Action assert -Skill sap-scratch-run` —
+`SAFETY: ALLOW` (0) proceed; `TYPED_CONFIRM_REQUIRED` (3) -> the operator types the shown
+`PROD <SID>/<CLIENT>` token, re-run with `-ConfirmationText '<their verbatim answer>'`, proceed only
+on `ALLOW_CONFIRMED`; `REFUSED class=<C>` (1) / `ERROR` (2) -> **STOP**, end `FAILED` with
+`-ErrorClass <C>`, relay the remediation lines — never bypass or work around it manually. Its own
+guards still apply after ALLOW/ALLOW_CONFIRMED.
 
 ```bash
 ... sap_scratch_fm.ps1 -Fm <FM> -Values "P=v;P2=v2" -SharedDir "<SAP_DEV_CORE_SHARED_DIR>"

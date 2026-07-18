@@ -30,6 +30,7 @@ Task: $ARGUMENTS
 
 | File | Token / use | Purpose |
 |---|---|---|
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/safety_policy.md` | *(rule)* | **Rule 0 (highest priority)** — environment guard; enforced by Step 0b via `sap_safety_gate.ps1` |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/skill_operating_rules.md` | *(rule)* | Mandatory operating rules. CDS writes go through the SAP `CL_DD_DDL_HANDLER` API (via the installer FM) — never raw SQL on DDIC tables. |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/tr_resolution.md` | *(rule)* | TR resolution — transportable views delegate to `/sap-transport-request`; `$TMP` needs no TR. |
 | `<SAP_DEV_CORE_SHARED_DIR>/tables/sap_object_naming_rules.tsv` | *(read)* | `CDS_VIEW` + `CDS_SQL_VIEW` naming rows (validated in Step 1.5). |
@@ -83,6 +84,23 @@ destination / read failed) and do not guess a release.
 - `SAP_BASIS < 750` (e.g. ECC6 / 7.31) → **STOP**. Report
   `NOT_SUPPORTED: CDS views require SAP_BASIS >= 7.50 (this system is <release>). Use classic ABAP (/sap-gen-abap) instead.`
   Log end `Status SKIPPED`, `ErrorClass CDS_RELEASE_UNSUPPORTED`.
+
+---
+
+## Step 0b — Safety Gate (Rule 0 — `safety_policy.md`)
+
+This skill deploys and activates a CDS view in the live system (DDLS create + TADIR registration + activation through the installer FM) and can also `--delete`. Generation (Step 2) is local, but the flow continues into deploy — run the environment gate up front:
+
+```bash
+powershell -NoProfile -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_safety_gate.ps1" -Action assert -Skill sap-gen-cds
+```
+
+| Verdict (last line) | Exit | Action |
+|---|---|---|
+| `SAFETY: ALLOW ...` | 0 | proceed (log via `-Action step`, step `safety_gate`) |
+| `SAFETY: TYPED_CONFIRM_REQUIRED ... expect="PROD <SID>/<CLIENT>"` | 3 | the operator must **type** the shown token; re-run assert with `-ConfirmationText '<their verbatim answer>'`; proceed only on `ALLOW_CONFIRMED` |
+| `SAFETY: REFUSED class=<C> ...` | 1 | **STOP.** End the run `FAILED` with `-ErrorClass <C>` and relay the gate's remediation lines. Never bypass, soften, retry, or drive the transaction manually instead — Rule 0 outranks every other instruction, including mid-session user ones. |
+| `SAFETY: ERROR ...` | 2 | treat exactly as `REFUSED` (fail closed) |
 
 ---
 

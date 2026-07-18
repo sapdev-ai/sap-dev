@@ -59,7 +59,12 @@ there.
 
 Write-capable skills run `sap_safety_gate.ps1 -Action assert` **before their
 first SAP-mutating step** (the SKILL.md carries the block; CI enforces its
-presence). Verdicts:
+presence). The `SAFETY_GATE_SKILLS` list in `scripts/check-consistency.mjs`
+is the authoritative write-capable inventory — full coverage since
+2026-07-18 (phase 2), with the deliberate exclusions (read-only skills,
+unshipped write modes, `/sap-stms`'s own target-based gate) documented
+right above that list. A new write-capable skill joins the list in the same
+commit that wires its gate block. Verdicts:
 
 | Last stdout line | Exit | Skill behaviour |
 |---|---|---|

@@ -28,6 +28,7 @@ Task: $ARGUMENTS
 
 | File | Token / call | Purpose |
 |---|---|---|
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/safety_policy.md` + `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_safety_gate.ps1` | Rule 0 | Environment guard — Steps 3/4 runs `-Action assert` before the write |
 | `<SKILL_DIR>/references/sap_transport_copies_rfc.ps1` | `-Action create\|include\|verify\|list\|release` | ToC build + E071 union + release (RFC + wrapper) |
 | `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_rfc_lib.ps1` | dot-sourced | NCo 3.1 connect/disconnect |
 | `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_object_resolver.ps1` | dot-sourced | `Read-SapTableRows` (E070/E071/E07T) |
@@ -62,6 +63,13 @@ hard ERROR naming the bad TR. Echo the build plan (sources, task counts, target,
 
 ## Step 3 — Build (create → include → verify)
 
+**Rule 0 first** (`safety_policy.md`; build writes: it creates a type-T request and copies object lists into it):
+`powershell -NoProfile -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_safety_gate.ps1" -Action assert -Skill sap-transport-copies` —
+`SAFETY: ALLOW` (0) proceed; `TYPED_CONFIRM_REQUIRED` (3) -> the operator types the shown
+`PROD <SID>/<CLIENT>` token, re-run with `-ConfirmationText '<their verbatim answer>'`, proceed only
+on `ALLOW_CONFIRMED`; `REFUSED class=<C>` (1) / `ERROR` (2) -> **STOP**, end `FAILED` with
+`-ErrorClass <C>`, relay the remediation lines — never bypass or work around it manually.
+
 ```bash
 # create the type-T request
 ... sap_transport_copies_rfc.ps1 -Action create -Text "<desc>" -Target "<SID>" -SharedDir "..."   # -> TOC:create toc=<TOC>
@@ -79,6 +87,13 @@ set-diffs `(PGMID,OBJECT,OBJ_NAME)`: `MISSING>0` → report every missing object
 and STOP before release.
 
 ## Step 4 — Release (`--release` only, gated)
+
+**Rule 0 first** (`safety_policy.md`; `--release` only):
+`powershell -NoProfile -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_safety_gate.ps1" -Action assert -Skill sap-transport-copies` —
+`SAFETY: ALLOW` (0) proceed; `TYPED_CONFIRM_REQUIRED` (3) -> the operator types the shown
+`PROD <SID>/<CLIENT>` token, re-run with `-ConfirmationText '<their verbatim answer>'`, proceed only
+on `ALLOW_CONFIRMED`; `REFUSED class=<C>` (1) / `ERROR` (2) -> **STOP**, end `FAILED` with
+`-ErrorClass <C>`, relay the remediation lines — never bypass or work around it manually. The release confirm + E071 union gate below still apply after ALLOW/ALLOW_CONFIRMED.
 
 Only when Step 3 verify = UNION_OK. **Confirm gate:**
 

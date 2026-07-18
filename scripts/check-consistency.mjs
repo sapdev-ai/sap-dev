@@ -1005,16 +1005,44 @@ const sharedPlacementWarnings = [];
 //
 // Every skill on the write-capable list below MUST run
 // `sap_safety_gate.ps1 -Action assert` from its SKILL.md before its first
-// SAP-mutating step. This list IS the rollout tracker: when a new
+// SAP-mutating step. This list IS the write-capable inventory: when a new
 // write-capable skill ships (or an existing one gains a write mode), add it
-// here in the same commit that wires its Step-0.6 gate block. Phase 1
-// (2026-07-18) covers the ten highest-risk writers; /sap-stms keeps its own
-// target-based PROD gate (W2/W3) because an import's TARGET system differs
-// from the pinned connection the generic assert judges.
+// here in the same commit that wires its gate block. Phase 2 (2026-07-18)
+// reached full coverage (53 skills). Deliberate EXCLUSIONS, so nobody
+// "fixes" them onto the list without cause:
+//   * /sap-stms -- keeps its own TARGET-based PROD gate (W2/W3): an import's
+//     target system differs from the pinned connection the generic assert
+//     judges.
+//   * Pure read / local skills: sap-git (refuses writes), sap-trace,
+//     sap-sp02, sap-fix-abap (local file edits), sap-se16n, sap-sql-query.
+//   * Write modes documented but UNSHIPPED (add when they ship):
+//     sap-vofm (create/update/regen v1.5), sap-sost (resend v1.5),
+//     sap-gateway-service (activate v2), sap-spau-triage (route v1.5),
+//     sap-gen-rap (deploy v1.5).
+//   * Analysis-artifact writers only (SCI object sets / run series, no
+//     repo or business mutation): sap-atc, sap-cc-analyze.
+//   * Sole write leg is delegating a report capture/export to the gated
+//     /sap-run-report: sap-forms, sap-golden-master.
+//   * sap-gui-skill-scaffold -- probes run through sap-gui-probe (gated).
 const SAFETY_GATE_SKILLS = new Map([
   ['sap-dev-core', ['sap-se38', 'sap-se37', 'sap-se24', 'sap-se11', 'sap-se01',
-                    'sap-se14', 'sap-run-report', 'sap-job']],
-  ['sap-project',  ['sap-sm30', 'sap-pfcg']],
+                    'sap-se14', 'sap-run-report', 'sap-job',
+                    'sap-activate-object', 'sap-call-bdc', 'sap-change-package',
+                    'sap-check-fix', 'sap-cmod', 'sap-dev-clean', 'sap-dev-init',
+                    'sap-file-transfer', 'sap-fix-incident', 'sap-function-group',
+                    'sap-gui-probe', 'sap-rfc-wrapper', 'sap-run-abap-unit',
+                    'sap-scratch-run', 'sap-se19', 'sap-se21', 'sap-se41',
+                    'sap-se51', 'sap-se54', 'sap-se91', 'sap-sm12', 'sap-snro',
+                    'sap-transport-request', 'sap-update-addon']],
+  ['sap-gen-code', ['sap-gen-cds']],
+  ['sap-migrate',  ['sap-cc-decommission', 'sap-cc-remediate',
+                    'sap-exit-modernize']],
+  ['sap-project',  ['sap-sm30', 'sap-pfcg',
+                    'sap-bp', 'sap-fi-post', 'sap-idoc', 'sap-mass-load',
+                    'sap-mm01', 'sap-output-diagnose', 'sap-retrofit',
+                    'sap-rfc-monitor', 'sap-sm35', 'sap-su01', 'sap-tcd-chain',
+                    'sap-test-replay', 'sap-translate', 'sap-transport-copies',
+                    'sap-user-guide']],
 ]);
 {
   const policyPath = join(repoRoot, 'plugins', 'sap-dev-core', 'shared', 'rules', 'safety_policy.md');

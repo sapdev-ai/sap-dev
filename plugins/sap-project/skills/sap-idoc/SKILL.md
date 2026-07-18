@@ -35,6 +35,7 @@ behind an evidence-first confirm gate.
 
 | File | Token / call | Purpose |
 |---|---|---|
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/safety_policy.md` | *(rule)* | **Rule 0 (highest priority)** — environment guard; enforced by Step 4 via `sap_safety_gate.ps1` |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/skill_operating_rules.md` | *(rule)* | Mandatory operating rules — reads always allowed; reprocess is a SAP-supplied report, gated |
 | `<SKILL_DIR>/references/sap_idoc_read.ps1` | `-Action find\|explain [filters\|-Docnum]` | EDIDC find + EDIDS explain (RFC) |
 | `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_rfc_lib.ps1` / `sap_object_resolver.ps1` / `sap_artifact_lib.ps1` | dot-sourced by the engine | RFC connect, `Read-SapTableRows`, artifact index |
@@ -119,6 +120,13 @@ fix-data-first vs fix-code).
 ---
 
 ## Step 4 — `reprocess` (gated write)
+
+**Rule 0 first** (`safety_policy.md`; `reprocess` only — `find`/`explain`/`triage` skip it):
+`powershell -NoProfile -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_safety_gate.ps1" -Action assert -Skill sap-idoc` —
+`SAFETY: ALLOW` (0) proceed; `TYPED_CONFIRM_REQUIRED` (3) -> the operator types the shown
+`PROD <SID>/<CLIENT>` token, re-run with `-ConfirmationText '<their verbatim answer>'`, proceed only
+on `ALLOW_CONFIRMED`; `REFUSED class=<C>` (1) / `ERROR` (2) -> **STOP**, end `FAILED` with
+`-ErrorClass <C>`, relay the remediation lines — never bypass or work around it manually. The typed `REPROCESS <count>` confirm below still applies after ALLOW/ALLOW_CONFIRMED.
 
 1. **Route** by status (the current EDIDC status of the target set):
    - inbound error **51 / 56 / 60 / 61 / 63 / 65** → **RBDMANI2**

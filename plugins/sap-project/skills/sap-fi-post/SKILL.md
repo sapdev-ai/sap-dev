@@ -32,6 +32,7 @@ Task: $ARGUMENTS
 
 | File | Token / call | Purpose |
 |---|---|---|
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/safety_policy.md` + `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_safety_gate.ps1` | Rule 0 | Environment guard — Step 5 runs `-Action assert` before the write |
 | `<SKILL_DIR>/references/sap_fi_post_rfc.ps1` | `-Action check\|post\|show\|preflight -DefFile <f>` | BAPI backend (check/post/verify) |
 | `<SKILL_DIR>/references/fi_post_def_grammar.md` | read by `template` | Definition-file grammar + 3 template shapes |
 | `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_artifact_lib.ps1` | dot-sourced | Manifest + evidence-pack registration |
@@ -87,6 +88,13 @@ required HEADER fields) THEN `BAPI_ACC_DOCUMENT_CHECK` (zero persistence). Read 
   special G/L), recommend `/sap-call-bdc` with an FB01 recording — **do not auto-run it**.
 
 ## Step 5 — Confirm Gate (`post` only, mandatory)
+
+**Rule 0 first** (`safety_policy.md`; `post` only — `check`/`show`/`template` skip it):
+`powershell -NoProfile -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_safety_gate.ps1" -Action assert -Skill sap-fi-post` —
+`SAFETY: ALLOW` (0) proceed; `TYPED_CONFIRM_REQUIRED` (3) -> the operator types the shown
+`PROD <SID>/<CLIENT>` token, re-run with `-ConfirmationText '<their verbatim answer>'`, proceed only
+on `ALLOW_CONFIRMED`; `REFUSED class=<C>` (1) / `ERROR` (2) -> **STOP**, end `FAILED` with
+`-ErrorClass <C>`, relay the remediation lines — never bypass or work around it manually. The typed `POST` escalation and yes/no gate below still apply after ALLOW/ALLOW_CONFIRMED.
 
 State it plainly and get a yes/no:
 

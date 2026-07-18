@@ -37,6 +37,7 @@ Task: $ARGUMENTS
 
 | File | Purpose |
 |---|---|
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/safety_policy.md` | **Rule 0 (highest priority)** — environment guard; enforced by the create step via `sap_safety_gate.ps1` |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/skill_operating_rules.md` | Mandatory operating rules (no SQL writes on standard tables; no unsolicited deploys) |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/tr_resolution.md` | Defines `way_to_get_transport_request`, `rule_of_tr_description`, the description placeholders, and the 60-char compression rules. **This skill IS the implementation of that rule.** |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/language_independence_rules.md` | GUI-scripting language independence — this skill delegates to GUI-driving `/sap-se01` for new-TR creation, which must observe the rule |
@@ -179,6 +180,15 @@ TR).
 3. Do NOT persist the new TR.
 
 ### Create Path
+
+**Rule 0 first** (`safety_policy.md`; TR creation only — resolving/verifying an existing TR is
+read-only and ungated; when the calling deploy skill already passed its own Step 0.6 this is a
+fast ALLOW re-check):
+`powershell -NoProfile -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_safety_gate.ps1" -Action assert -Skill sap-transport-request` —
+`SAFETY: ALLOW` (0) proceed; `TYPED_CONFIRM_REQUIRED` (3) -> the operator types the shown
+`PROD <SID>/<CLIENT>` token, re-run with `-ConfirmationText '<their verbatim answer>'`, proceed only
+on `ALLOW_CONFIRMED`; `REFUSED class=<C>` (1) / `ERROR` (2) -> **STOP**, end `FAILED` with
+`-ErrorClass <C>`, relay the remediation lines — never bypass or work around it manually.
 
 The Create Path is a **branching gate**. Pick exactly ONE branch based on
 `sap_dev_mode`, execute it end-to-end, then return the resolved TR to the

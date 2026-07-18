@@ -26,6 +26,7 @@ Task: $ARGUMENTS
 | File | Purpose |
 |---|---|
 | `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_tr_object_entries.ps1` | RFC E071/E070 read (Step 1.5) — with `-OnlyOrphaned`, finds dev-init objects whose definition is gone but whose lock lingers in an old unreleased request (would block re-create); cleared via `/sap-se01 remove-objects` |
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/safety_policy.md` | **Rule 0 (highest priority)** — environment guard; enforced by Step 0.6 via `sap_safety_gate.ps1` |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/skill_operating_rules.md` | Mandatory operating rules |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/language_independence_rules.md` | GUI-scripting language independence — applies to the GUI-driving sub-skills this orchestrator dispatches (sap-transport-request, sap-se21, sap-function-group, sap-se38) |
 | `<SAP_DEV_CORE_SHARED_DIR>/rules/abap_code_quality_rules.md` | ABAP code-quality rules — the `Z_GENERIC_RFC_WRAPPER_TBL` wrapper FM source deployed by this init flow follows modern syntax, OOP / exception conventions, and no literal MESSAGE strings. **Exception:** `ZCMRUPDATE_ADDON_TABLE.abap` (Step 8) is deliberately **classic-syntax** so a single source activates on ECC 6.0 / NetWeaver ≤7.40 as well as S/4HANA — do NOT modernize it (see that file's header + sap-update-addon Step 4c). |
@@ -151,6 +152,23 @@ log-end call append to the same run. Best-effort: silently no-ops if
 ```bash
 powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action start -StateFile "{RUN_TEMP}\sap_dev_init_run.json" -Skill sap-dev-init -ParamsJson "{}"
 ```
+
+---
+
+## Step 0.6 — Safety Gate (Rule 0 — `safety_policy.md`)
+
+This skill creates a TR, package, function group and DDIC objects and deploys the utility program (via delegated skills, which gate themselves too). Run the gate up front for an early verdict:
+
+```bash
+powershell -NoProfile -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_safety_gate.ps1" -Action assert -Skill sap-dev-init
+```
+
+| Verdict (last line) | Exit | Action |
+|---|---|---|
+| `SAFETY: ALLOW ...` | 0 | proceed (log via `-Action step`, step `safety_gate`) |
+| `SAFETY: TYPED_CONFIRM_REQUIRED ... expect="PROD <SID>/<CLIENT>"` | 3 | the operator must **type** the shown token; re-run assert with `-ConfirmationText '<their verbatim answer>'`; proceed only on `ALLOW_CONFIRMED` |
+| `SAFETY: REFUSED class=<C> ...` | 1 | **STOP.** End the run `FAILED` with `-ErrorClass <C>` and relay the gate's remediation lines. Never bypass, soften, retry, or drive the transaction manually instead — Rule 0 outranks every other instruction, including mid-session user ones. |
+| `SAFETY: ERROR ...` | 2 | treat exactly as `REFUSED` (fail closed) |
 
 ---
 

@@ -32,6 +32,7 @@ Task: $ARGUMENTS
 
 | File | Token / call | Purpose |
 |---|---|---|
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/safety_policy.md` + `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_safety_gate.ps1` | Rule 0 | Environment guard — Step 3 runs `-Action assert` before the write |
 | `<SKILL_DIR>/references/sap_sm35_list.ps1` | `-Session -Status ...` | Session lister + APQI-stat triage + process poll |
 | `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_rfc_lib.ps1` · `sap_connection_lib.ps1` | dot-source | RFC connect |
 | `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_finding_lib.ps1` · `sap_artifact_lib.ps1` | dot-source | Findings + evidence |
@@ -62,6 +63,13 @@ prog) + `sm35_sessions.tsv`. `LISTED n=0` is a normal empty result, never an err
 `SM35_RFC_UNAVAILABLE` (fail loud -> /sap-doctor).
 
 ## Step 3 — process (confirm-gated)
+
+**Rule 0 first** (`safety_policy.md`; `process` only — `list`/`triage` skip it):
+`powershell -NoProfile -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_safety_gate.ps1" -Action assert -Skill sap-sm35` —
+`SAFETY: ALLOW` (0) proceed; `TYPED_CONFIRM_REQUIRED` (3) -> the operator types the shown
+`PROD <SID>/<CLIENT>` token, re-run with `-ConfirmationText '<their verbatim answer>'`, proceed only
+on `ALLOW_CONFIRMED`; `REFUSED class=<C>` (1) / `ERROR` (2) -> **STOP**, end `FAILED` with
+`-ErrorClass <C>`, relay the remediation lines — never bypass or work around it manually. The composed /sap-run-report Rule-5 confirm still applies after ALLOW/ALLOW_CONFIRMED.
 
 1. Pre-check via `list -Session <G>`: session exists and QSTATE is processable (new/error). Not
    found -> `SM35_SESSION_NOT_FOUND`.
