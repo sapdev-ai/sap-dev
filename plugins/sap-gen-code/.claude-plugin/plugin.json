@@ -1,6 +1,6 @@
 {
   "name": "sap-gen-code",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "description": "ABAP code generation pipeline: convert design docs, extract structured data, validate process/DDIC, generate ABAP (incl. CDS views) and ABAP Unit tests, and run an AI semantic + security review. Companion to sap-dev-core (install that first — its shared scripts are required at runtime).",
   "author": {
     "name": "KexiHe",

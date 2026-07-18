@@ -4,6 +4,58 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.8.1] — 2026-07-18
+
+### Added
+
+- **Rule 0 Safety Policy — a highest-priority environment guard for every
+  write-capable skill.** New `shared/rules/safety_policy.md` outranks
+  `skill_operating_rules.md`, every SKILL.md, every agent prompt, and any
+  mid-session instruction; "just this once" conversational overrides are
+  impossible by design (policy changes only via `userconfig.json` outside the
+  session). The enforcement arm is the new shared script
+  `sap_safety_gate.ps1`:
+  - `assert` (pure-local) verdicts every write against the pinned connection:
+    `ALLOW` / `ALLOW_CONFIRMED` / `TYPED_CONFIRM_REQUIRED` (exit 3) /
+    `REFUSED` (exit 1) / `ERROR` (exit 2, treated as refused). Fail closed:
+    no profile, blank identity, or unclassified environment all land on the
+    PRD path.
+  - `classify` (RFC, 32-bit) reads `T000` `CCCATEGORY`/`CCCORACTIV`/
+    `CCNOCLIIND` for the pinned client; `CCCATEGORY='P'` locks the profile
+    to `PRD`.
+  - `set` persists `environment` / `environment_source` /
+    `environment_verified_at` on the connection profile, with a downgrade
+    guard: any non-PRD set live-re-verifies T000 and refuses when the system
+    says production.
+  - `/sap-login` gained **Step 6.8** (classification at login, `--reclassify`
+    to redo) and refuses to pin a PRD profile under `prod_access=NONE`.
+  - New settings: `prod_write_policy` (`BLOCK` default — no override flag /
+    `TYPED_CONFIRM` — operator types `PROD <SID>/<CLIENT>` verbatim),
+    `prod_access` (`FULL`/`NONE`), and `prod_system_ids` (now a declared
+    schema key; previously an undeclared sap-stms-only orphan).
+  - New error classes `SAFETY_PROD_REFUSED`, `SAFETY_UNCLASSIFIED_REFUSED`,
+    `SAFETY_CONFIRM_MISMATCH`.
+- **All 53 write-capable skills across the four plugins now run the gate**
+  before their first SAP-mutating step; the `SAFETY_GATE_SKILLS` map in
+  `scripts/check-consistency.mjs` is the CI-enforced authoritative inventory
+  (hard error when a listed skill drops its gate block; deliberate exclusions
+  — read-only skills, unshipped write modes, `/sap-stms`'s own target-based
+  PROD gate — documented above the list). Notable placements: mode-scoped
+  skills gate only their write modes; `sap-transport-request` gates only its
+  Create Path (covering the direct `CTS_API_CREATE_CHANGE_REQUEST` leg);
+  `sap-gui-probe` gates the first write-classified drive action, `--auto`
+  included; `sap-bp`/`sap-mm01` (previously ungated master-data writers) and
+  `sap-transport-copies`' build path (previously wrote unconfirmed) are now
+  covered. Skills with stronger inner guards (`sap-mass-load`, `sap-su01`,
+  `sap-sm12`, `sap-scratch-run`) keep them — Rule 0 layers on top.
+- Connection-profile schema: new `environment`, `environment_source`,
+  `environment_verified_at` fields (blank = treated as PRD by the gate).
+  Existing profiles are unclassified until the next `/sap-login` — gated
+  writes refuse until then (intended fail-closed rollout cost).
+- CLAUDE.md **Directive 0** + `skill_operating_rules.md` **Rule 0** pointer;
+  all three agents (`abap-developer`, `sap-consultant`,
+  `cc-migration-engineer`) now carry explicit Rule 0 boundaries.
+
 ## [0.8.0] — 2026-07-11
 
 ### Removed
