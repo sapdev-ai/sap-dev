@@ -6,6 +6,19 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **Golden-screen baseline coverage reaches 100% (136/136) and the
+  missing-baseline gate is promoted to a hard error.** The last unbaselined
+  driving VBS — `sap-stms`'s `sap_stms_import.vbs`, long skipped because a
+  naive static seed would have frozen its PLACEHOLDER control IDs — gets a
+  placeholder-free static seed: 4 `pending_live` checkpoints (initial, queue
+  grid candidate-scan, the live-captured TMS-alert failure-mode popup, and the
+  deliberately-uncalibrated import-options dialog whose calibration gate is
+  documented in the checkpoint note rather than frozen as required IDs). With
+  coverage at 100%, `check-consistency.mjs` now fails the build on any new
+  driving VBS shipped without a baseline (same WARN→ERROR ratchet lifecycle as
+  the bare-cscript and locale-literal gates); the `(N unbaselined)` summary
+  suffix is gone.
+
 - **`/sap-doctor` authorization probe: 7 new capabilities backfilled** into
   `required_authorizations.tsv`, closing the docs/security.md §1 rows that had
   no probe coverage (probed capabilities 67 → 74): `transport_release`

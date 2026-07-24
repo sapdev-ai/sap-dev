@@ -1,0 +1,42 @@
+{
+  "schema": "sapdev.screenbaseline/1",
+  "vbs": "sap_stms_import.vbs",
+  "captured_on": {
+    "release": "",
+    "kernel": "",
+    "date": "",
+    "method": "static"
+  },
+  "checkpoints": [
+    {
+      "id": "initial",
+      "reach": { "okcode": "/nSTMS_IMPORT" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [
+        "wnd[0]/tbar[0]/okcd"
+      ],
+      "status": "pending_live"
+    },
+    {
+      "id": "queue",
+      "reach": { "note": "import queue after /nSTMS_IMPORT; on multi-system setups the system-overview grid renders first and the target queue is entered by double-clicking the SYSNAM/SYSTEM row (OpenTargetQueue). The grid shell is a release-variant candidate scan resolved live (cntlCTRL_IMPORT_QUEUE / cntlGRID_IMPORT / cntlGRID1 / cntlCONTAINER under wnd[0]/usr, .../shellcont/shell); row identity read via technical columns TRKORR/REQUEST (queue) and SYSNAM/SYSTEM (overview); wnd[0]/sbar MessageType is read after the import press" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [],
+      "status": "pending_live"
+    },
+    {
+      "id": "tms_alert",
+      "reach": { "note": "conditional failure-mode popup, NOT part of the happy path: when the TMSADM RFC layer is down, STMS_IMPORT renders the TMS Alert Viewer (program SAPLTMSU_ALT) + error popup instead of the queue. Detection IDs wnd[1]/usr/txtGS_DYN100-S_ALOG-ERROR / -S_ALOG-FUNCTION / -MSG_LINE2 were captured live on S/4HANA 2022 (S4H) and ECC (ER1) 2026-07-11, identical on both; if a release moves them the STMS_TMS_RFC_DOWN guard silently stops firing and TMS-down aborts regress to a misleading queue-not-found" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [],
+      "status": "pending_live"
+    },
+    {
+      "id": "import_dialog",
+      "reach": { "note": "import-options dialog (wnd[1]) after the Import Request press. Deliberately uncalibrated: the destructive control IDs ship as PLACEHOLDER_* constants (IMPORT_BTN / OPTS_CONFIRM / OPTS_CLIENT_FLD) and the calibration gate aborts before pressing anything until /sap-gui-probe --record on the STMS_IMPORT flow substitutes them; the import-now / leave-in-queue checkboxes are likewise unrecorded (OPTION-SUPPORT gate fails loud if requested). Recording those IDs is the calibration step that would flip this checkpoint to captured" },
+      "identity": { "program": "", "dynpro": "" },
+      "required_ids": [],
+      "status": "pending_live"
+    }
+  ]
+}

@@ -183,12 +183,13 @@ node scripts/check-consistency.mjs
 
 Should print (counts grow and shrink as the tree evolves — the shape is what matters):
 ```
-OK: 4 plugins, 70 skills, all manifests aligned at version 0.7.2, Tier 3 attach contract clean, screen-baseline coverage 126/127 (1 unbaselined)
+OK: 4 plugins, 70 skills, all manifests aligned at version 0.7.2, Tier 3 attach contract clean, screen-baseline coverage 126/127
 ```
-(The former `cscript-host warning(s)` and `locale-literal warning(s)` summary
-segments no longer exist — both gates were promoted to hard errors on
-2026-07-10 once their counts ratcheted to zero, so violations now FAIL the
-run instead of appearing in the OK line.)
+(The former `cscript-host warning(s)`, `locale-literal warning(s)`, and
+`(N unbaselined)` summary segments no longer exist — those gates were promoted
+to hard errors once their counts ratcheted to zero (cscript/locale-literal
+2026-07-10; missing screen baselines 2026-07-24 at 136/136), so violations now
+FAIL the run instead of appearing in the OK line.)
 
 On failure, the script lists each non-conforming file with a specific reason. This contract's gate covers twelve conditions (2026-07-03: grown from seven; the authoritative spec for each is its own comment block inside `scripts/check-consistency.mjs` — note the checker has since grown further gates *outside* this contract's scope, e.g. the Rule 0 safety-gate coverage check and the manifest/marketplace alignment checks):
 

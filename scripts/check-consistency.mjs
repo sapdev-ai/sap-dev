@@ -14,16 +14,19 @@
 //     (promoted from WARN on 2026-07-02 once the tree reached zero offenders)
 //   - SKILL.md passes {RUN_TEMP} to Get-SapCurrentSessionPath -WorkTemp
 //   - A committed screen baseline (.screens.json) is malformed
+//   - A driving VBS ships without a screen baseline (promoted from WARN on
+//     2026-07-24 when coverage ratcheted to 136/136)
 //   - A file in sap-dev-core/shared/scripts is not mentioned in CLAUDE.md's
 //     "Current Shared Files" table (authors' discovery surface; added
 //     2026-07-03 after 23 undocumented scripts were found)
 // WARN-level ratchets (do not fail the build yet): Phase-4 broker hints,
 // build-KPI enrichment, Step-0 work_dir resolution, {WORK_TEMP}-root scratch
-// (.vbs/.ps1/.json/.xml/.log/.txt), missing screen baselines,
+// (.vbs/.ps1/.json/.xml/.log/.txt),
 // single/zero-consumer shared-script placement (CLAUDE.md placement rule,
 // reverse direction of the coverage ERROR above).
-// Former ratchets promoted to ERROR on 2026-07-10 (counts reached zero):
-// bare-cscript / wscript invocations, locale-literal GUI-text branching.
+// Former ratchets promoted to ERROR when their counts reached zero:
+// bare-cscript / wscript invocations, locale-literal GUI-text branching
+// (both 2026-07-10); missing screen baselines (2026-07-24, at 136/136).
 
 import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
 import { join, dirname, resolve, basename } from 'node:path';
@@ -416,16 +419,16 @@ for (const plugin of mp.plugins) {
 // dominant "silent false-success after a screen/control moved" bug class into a
 // pre-flight drift report. Contract: contributing/golden_screen_baselines.md.
 //
-// Two tiers, mirroring the non-ASCII guard's "don't break the build on
-// pre-existing debt" stance:
-//   * MISSING baseline   -> informational WARN (a ratcheting coverage metric).
-//                           Promote to a hard error once coverage hits 100%.
-//   * MALFORMED baseline -> HARD error. Safe: only fires on a baseline that was
-//                           actually authored, so it cannot break today's tree.
+// Both tiers are HARD errors since 2026-07-24, when the missing-baseline WARN
+// ratchet reached 100% coverage (136/136) and was promoted per the original
+// plan (same lifecycle as the non-ASCII / bare-cscript / locale-literal gates):
+//   * MISSING baseline   -> HARD error. Author a static pending_live seed per
+//                           contributing/golden_screen_baselines.md in the same
+//                           commit that adds a driving VBS.
+//   * MALFORMED baseline -> HARD error (only fires on an authored baseline).
 // ---------------------------------------------------------------------------
 
 const BASELINE_SCHEMA = 'sapdev.screenbaseline/1';
-const baselineWarnings = [];
 let baselineOperational = 0;
 let baselinePresent = 0;
 
@@ -496,13 +499,12 @@ for (const plugin of mp.plugins) {
       validateScreenBaseline(plugin.name, skill, file, jsonAbs);
     } else {
       const want = file.replace(/\.vbs$/i, '.screens.json');
-      baselineWarnings.push(`${plugin.name}: ${skill}/${file} has no screen baseline (${want}); /sap-doctor --screens cannot detect release/locale drift for it — capture one per contributing/golden_screen_baselines.md`);
+      errors.push(`${plugin.name}: ${skill}/${file} has no screen baseline (${want}) -- hard error since 2026-07-24 (coverage ratcheted to 136/136); author a static pending_live seed per contributing/golden_screen_baselines.md in the same commit that adds the VBS`);
     }
   }
 }
 
-const baselineCoverage = `screen-baseline coverage ${baselinePresent}/${baselineOperational}` +
-  (baselineWarnings.length > 0 ? ` (${baselineWarnings.length} unbaselined)` : '');
+const baselineCoverage = `screen-baseline coverage ${baselinePresent}/${baselineOperational}`;
 
 // ---------------------------------------------------------------------------
 // Build-KPI gate-enrichment + Step-0 work_dir gates (added 2026-06-13 with the
@@ -530,8 +532,9 @@ const baselineCoverage = `screen-baseline coverage ${baselinePresent}/${baseline
 //     Both honour the env var; a direct settings.json read references NEITHER
 //     token, so the regression this guards against is still caught.
 //
-// Both are informational WARN (ratcheting), mirroring the non-ASCII / baseline
-// gates: they surface regressions without breaking the build.
+// Both are informational WARN (ratcheting), mirroring the original WARN stance
+// of the non-ASCII / baseline gates (both since promoted): they surface
+// regressions without breaking the build.
 // ---------------------------------------------------------------------------
 
 const LEDGER_GATE_SKILLS = new Set([
@@ -1130,7 +1133,6 @@ if (errors.length === 0) {
   for (const w of runTempWarnings) console.warn('  WARN: ' + w);
   for (const w of refExistWarnings) console.warn('  WARN: ' + w);
   for (const w of sharedPlacementWarnings) console.warn('  WARN: ' + w);
-  for (const w of baselineWarnings) console.warn('  WARN: ' + w);
   process.exit(0);
 } else {
   console.error(`FAIL: ${errors.length} consistency issue(s):`);
@@ -1160,9 +1162,5 @@ if (errors.length === 0) {
     for (const w of sharedPlacementWarnings) console.error('  WARN: ' + w);
   }
   console.error(`\n${baselineCoverage}`);
-  if (baselineWarnings.length > 0) {
-    console.error(`Golden-screen baseline warnings (informational):`);
-    for (const w of baselineWarnings) console.error('  WARN: ' + w);
-  }
   process.exit(1);
 }

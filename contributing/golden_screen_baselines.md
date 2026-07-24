@@ -29,10 +29,11 @@ reports drift as BLOCKER findings.
    a `GetObject("SAPGUI")` / `GetScriptingEngine` reference, minus the
    `TIER3_EXEMPT_VBS` bootstrap set), it expects a sibling
    `<stem>.screens.json`:
-   - **missing** baseline → informational `WARN` (a ratcheting coverage metric,
-     `screen-baseline coverage N/M`). Does **not** break the build — pre-existing
-     un-baselined VBS are debt, not regressions. Promote to a hard error once
-     coverage reaches 100%.
+   - **missing** baseline → **hard error** (promoted from WARN on 2026-07-24
+     when the ratcheting coverage metric reached 100%, per the original plan —
+     same lifecycle as the bare-cscript / locale-literal gates). A new driving
+     VBS must ship its static `pending_live` seed in the same commit; the
+     `screen-baseline coverage N/M` figure stays in the checker's summary line.
    - **malformed** baseline → **hard error** (fails CI). Safe, because it only
      fires on a baseline that was actually authored.
 2. **Live validation skill** — `/sap-doctor --screens` (built). A PowerShell
@@ -111,12 +112,15 @@ One baseline per driving VBS, named `<vbs-stem>.screens.json`, beside the VBS in
 
 ## Seeded baselines
 
-Coverage is **full-minus-one** (seeded 2026-07-03 at 120/121, held as new
-driving VBS shipped with their baselines; the current N/M figure is printed in
-the `check-consistency.mjs` OK line; the only gap is
-`sap_stms_import.vbs`, deliberately unbaselined until its PLACEHOLDER control
-IDs are calibrated via `/sap-gui-probe --record` — a baseline would freeze placeholder
-text). Every driving VBS now ships a multi-checkpoint seed: `method: static`,
+Coverage is **full — 136/136** (seeded 2026-07-03 at 120/121, held as new
+driving VBS shipped with their baselines, closed 2026-07-24; the current N/M
+figure is printed in the `check-consistency.mjs` summary line). The last gap —
+`sap_stms_import.vbs`, long left out because a naive static seed would have
+frozen its PLACEHOLDER control IDs — was closed with a placeholder-free seed:
+the `import_dialog` checkpoint carries empty `required_ids` (`pending_live`)
+and records the calibration gate in its `reach.note`, so nothing placeholder is
+frozen; it flips to `captured` when `/sap-gui-probe --record` calibrates the
+import controls. Every driving VBS now ships a multi-checkpoint seed: `method: static`,
 `status: pending_live`, the required-control set extracted per checkpoint from
 the VBS's literal `findById` paths (dynamic/concatenated IDs excluded — capture
 live), popups as their own checkpoints. Live `identity` is captured and
