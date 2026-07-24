@@ -538,7 +538,46 @@ If bOnLogin Then
         WScript.Echo "INFO: Login detected - continuing."
     End If
 Else
-    WScript.Echo "INFO: Already logged in - skipping login."
+    WScript.Echo "INFO: No login screen on this session - verifying it is really logged in."
+End If
+
+' ------ 4b. Positively verify the session IS logged in -----------------------
+' NEVER infer "logged in" from the mere ABSENCE of the logon-screen field. A
+' connection whose session died server-side (idle logoff) still RENDERS and
+' still reports its LAST-KNOWN Info -- SystemName/Client/User survive the drop --
+' and the txtRSYST-MANDT probe can even succeed once and then collapse on the
+' very next call. That combination previously produced the sequence
+'   INFO: Reusing login-screen session ... -> INFO: Already logged in ... -> SUCCESS:
+' against a session sitting on the logon screen (observed live 2026-07-24 on
+' EC2/ERP): a false SUCCESS that made every downstream skill target a dead
+' session. Judge by the SCREEN, which cannot be cached: program SAPMSYST is the
+' logon/system screen, i.e. NOT logged in. This gate covers BOTH paths (freshly
+' filled credentials and adopted existing session), so SUCCESS below is always
+' backed by a live, logged-in screen.
+Dim oVerifyInfo, oVerifyWnd, sVerifyPgm, bVerified
+bVerified = False
+sVerifyPgm = ""
+On Error Resume Next
+Err.Clear
+Set oVerifyWnd = oSession.findById("wnd[0]")
+If Err.Number = 0 And Not (oVerifyWnd Is Nothing) Then
+    Err.Clear
+    Set oVerifyInfo = oSession.Info
+    If Err.Number = 0 And Not (oVerifyInfo Is Nothing) Then
+        sVerifyPgm = oVerifyInfo.Program
+        If Err.Number = 0 Then
+            ' SAPMSYST == logon screen (and the multiple-logon dialog); anything
+            ' else (SAPLSMTR_NAVIGATION, a start transaction, ...) means we are in.
+            If UCase(Left(sVerifyPgm & "        ", 8)) <> "SAPMSYST" Then bVerified = True
+        End If
+    End If
+End If
+Err.Clear
+On Error GoTo 0
+
+If Not bVerified Then
+    WScript.Echo "ERROR: session is NOT logged in (screen program '" & sVerifyPgm & "'). A dropped connection keeps rendering and keeps reporting its cached SystemName/Client/User, so this is not a usable logon. Close the connection and re-run: cscript //NoLogo <skill>\references\sap_close_connection.vbs ""/app/con[N]"""
+    WScript.Quit 1
 End If
 
 ' Report final session info

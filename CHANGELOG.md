@@ -4,6 +4,34 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **`Get-SapCurrentSessionPath` could hand back a DIFFERENT SAP system's session
+  path.** The docstring says the sole-connection fallback applies "if no
+  AI-session pin", but the condition never tested for the absence of a pin — so
+  a session pinned to connection B, whose live broker block did not exist yet,
+  fell through and returned the only other block (system A). Live window where
+  this bites: between `/sap-login --switch` (which re-pins to a `connection_id`)
+  and Step 6.5 `finalize` (which binds that id onto the live block), where it
+  returned S4D's `con[0]` while pinned to EC2 — a sweep started there would have
+  driven ~500 navigations into the wrong system. A pinned session whose block
+  cannot be found now returns `''` (refuse), degrading to the attach lib's own
+  safe strategies. Verified against the `-RuntimeDir` test seam with a
+  pre-fix/post-fix comparison plus the three non-regression cases (pin bound,
+  no-pin sole connection, no-pin ambiguous).
+- **`sap_login.vbs` could report `SUCCESS` without logging in.** It inferred
+  "already logged in" from the *absence* of the logon-screen field
+  `txtRSYST-MANDT`; on a session that dropped server-side that probe can succeed
+  once and collapse on the next call, and SAP GUI keeps serving the session's
+  **cached** `SystemName`/`Client`/`User`, so the final SUCCESS line looked
+  entirely normal while the session sat on the logon screen. New **Step 4b**
+  positively verifies liveness by the screen itself — which cannot be cached —
+  refusing when `Info.Program` is `SAPMSYST`. It gates both the credential-fill
+  and adopted-session paths, so `SUCCESS:` is now always backed by a live
+  logged-in screen. Verified on the same dropped connection that produced the
+  original false SUCCESS (now a clear ERROR + exit 1), with a normal login still
+  succeeding end-to-end afterwards (exit 0).
+
 ### Changed
 
 - **Golden-screen harness becomes release-aware: identity-only drift demoted to

@@ -1702,10 +1702,20 @@ function Get-SapCurrentSessionPath {
     if ($pinnedConnId) {
         $target = $connBlocks | Where-Object { "$($_.connection_id)" -eq $pinnedConnId } | Select-Object -First 1
     }
-    if (-not $target -and $connBlocks.Count -eq 1) {
+    if (-not $target -and -not $pinnedConnId -and $connBlocks.Count -eq 1) {
         # Sole-connection default: no pin, but only one connection -- safe.
         $target = $connBlocks[0]
     }
+    # A PINNED session whose connection block cannot be found must NOT fall
+    # through to the sole-connection default: that block may belong to a
+    # DIFFERENT SAP system, and handing its path back is exactly the silent
+    # miss-targeting this whole pin/broker design exists to prevent. Live case
+    # (2026-07-24): between `/sap-login --switch` (which re-pins to a
+    # connection_id) and Step 6.5 finalize (which binds that id onto the live
+    # block via `broker set-connection-id`), the pinned id matches no block --
+    # and the old condition returned the OTHER system's con[0]. Returning ''
+    # here degrades to the attach lib's own strategies (sole-connection default,
+    # else refuse loud), which are safe.
     if (-not $target) { return '' }
 
     if (-not $target.entries) { return '' }
