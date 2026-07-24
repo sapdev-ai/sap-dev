@@ -11,11 +11,11 @@
     {
       "id": "initial",
       "reach": { "okcode": "/nSP02" },
-      "identity": { "program": "", "dynpro": "" },
+      "identity": { "program": "SAPMSSY0", "dynpro": "0120" },
       "required_ids": [
         "wnd[0]/tbar[0]/okcd"
       ],
-      "status": "pending_live"
+      "status": "captured"
     },
     {
       "id": "spool_list",

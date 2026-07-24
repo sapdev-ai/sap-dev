@@ -2,23 +2,23 @@
   "schema": "sapdev.screenbaseline/1",
   "vbs": "sap_se54_generate.vbs",
   "captured_on": {
-    "release": "",
-    "kernel": "",
-    "date": "",
-    "method": "static"
+    "release": "S4HANA_1909",
+    "kernel": "754",
+    "date": "2026-07-24",
+    "method": "live"
   },
   "checkpoints": [
     {
       "id": "initial",
       "reach": { "okcode": "/nSE54" },
-      "identity": { "program": "", "dynpro": "" },
+      "identity": { "program": "SAPMSVIM", "dynpro": "0050" },
       "required_ids": [
         "wnd[0]/tbar[0]/okcd",
         "wnd[0]/usr/txtVIMDYNFLDS-VIEWNAME",
         "wnd[0]/usr/radVIMDYNFLDS-ELEM_GEN",
         "wnd[0]/usr/btnVIMDYNFLDS-PUSH_GMNT"
       ],
-      "status": "pending_live"
+      "status": "captured"
     },
     {
       "id": "create_module_popup",

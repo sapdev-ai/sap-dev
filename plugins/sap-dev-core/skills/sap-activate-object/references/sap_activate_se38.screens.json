@@ -2,22 +2,22 @@
   "schema": "sapdev.screenbaseline/1",
   "vbs": "sap_activate_se38.vbs",
   "captured_on": {
-    "release": "",
-    "kernel": "",
-    "date": "",
-    "method": "static"
+    "release": "S4HANA_1909",
+    "kernel": "754",
+    "date": "2026-07-24",
+    "method": "live"
   },
   "checkpoints": [
     {
       "id": "initial",
       "reach": { "okcode": "/nse38" },
-      "identity": { "program": "", "dynpro": "" },
+      "identity": { "program": "SAPLWBABAP", "dynpro": "0100" },
       "required_ids": [
         "wnd[0]/tbar[0]/okcd",
         "wnd[0]/usr/ctxtRS38M-PROGRAMM",
         "wnd[0]/sbar"
       ],
-      "status": "pending_live"
+      "status": "captured"
     }
   ]
 }

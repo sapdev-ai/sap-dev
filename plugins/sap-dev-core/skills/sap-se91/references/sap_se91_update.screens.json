@@ -2,16 +2,16 @@
   "schema": "sapdev.screenbaseline/1",
   "vbs": "sap_se91_update.vbs",
   "captured_on": {
-    "release": "",
-    "kernel": "",
-    "date": "",
-    "method": "static"
+    "release": "S4HANA_1909",
+    "kernel": "754",
+    "date": "2026-07-24",
+    "method": "live"
   },
   "checkpoints": [
     {
       "id": "initial",
       "reach": { "okcode": "/nSE91" },
-      "identity": { "program": "", "dynpro": "" },
+      "identity": { "program": "SAPLWBMESSAGES", "dynpro": "0100" },
       "required_ids": [
         "wnd[0]",
         "wnd[0]/tbar[0]/okcd",
@@ -19,7 +19,7 @@
         "wnd[0]/usr/radRSDAG-MSGFLAG",
         "wnd[0]/usr/btnMODTASTE"
       ],
-      "status": "pending_live"
+      "status": "captured"
     },
     {
       "id": "lang_popup",

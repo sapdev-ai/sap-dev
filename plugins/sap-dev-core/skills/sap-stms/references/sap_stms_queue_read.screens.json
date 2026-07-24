@@ -2,20 +2,20 @@
   "schema": "sapdev.screenbaseline/1",
   "vbs": "sap_stms_queue_read.vbs",
   "captured_on": {
-    "release": "",
-    "kernel": "",
-    "date": "",
-    "method": "static"
+    "release": "S4HANA_1909",
+    "kernel": "754",
+    "date": "2026-07-24",
+    "method": "live"
   },
   "checkpoints": [
     {
       "id": "initial",
       "reach": { "okcode": "/nSTMS_IMPORT" },
-      "identity": { "program": "", "dynpro": "" },
+      "identity": { "program": "SAPMSSY0", "dynpro": "0120" },
       "required_ids": [
         "wnd[0]/tbar[0]/okcd"
       ],
-      "status": "pending_live"
+      "status": "captured"
     }
   ]
 }

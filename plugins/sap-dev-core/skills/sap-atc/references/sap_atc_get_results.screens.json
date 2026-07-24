@@ -2,21 +2,21 @@
   "schema": "sapdev.screenbaseline/1",
   "vbs": "sap_atc_get_results.vbs",
   "captured_on": {
-    "release": "",
-    "kernel": "",
-    "date": "",
-    "method": "static"
+    "release": "S4HANA_1909",
+    "kernel": "754",
+    "date": "2026-07-24",
+    "method": "live"
   },
   "checkpoints": [
     {
       "id": "initial",
       "reach": { "okcode": "/nATC" },
-      "identity": { "program": "", "dynpro": "" },
+      "identity": { "program": "SAPLSATC_TRANSACTION_CI", "dynpro": "0100" },
       "required_ids": [
         "wnd[0]/tbar[0]/okcd",
         "wnd[0]/shellcont/shell/shellcont[1]/shell"
       ],
-      "status": "pending_live"
+      "status": "captured"
     },
     {
       "id": "selection",

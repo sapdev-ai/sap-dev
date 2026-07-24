@@ -2,21 +2,21 @@
   "schema": "sapdev.screenbaseline/1",
   "vbs": "sap_function_group_gui_activate.vbs",
   "captured_on": {
-    "release": "",
-    "kernel": "",
-    "date": "",
-    "method": "static"
+    "release": "S4HANA_1909",
+    "kernel": "754",
+    "date": "2026-07-24",
+    "method": "live"
   },
   "checkpoints": [
     {
       "id": "initial",
       "reach": { "okcode": "/nse37" },
-      "identity": { "program": "", "dynpro": "" },
+      "identity": { "program": "SAPLSFUNCTION_BUILDER", "dynpro": "1008" },
       "required_ids": [
         "wnd[0]/tbar[0]/okcd",
         "wnd[0]/mbar/menu[2]/menu[3]/menu[1]"
       ],
-      "status": "pending_live"
+      "status": "captured"
     },
     {
       "id": "change_group_popup",

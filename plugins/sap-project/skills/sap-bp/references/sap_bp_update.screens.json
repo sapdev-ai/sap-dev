@@ -2,21 +2,21 @@
   "schema": "sapdev.screenbaseline/1",
   "vbs": "sap_bp_update.vbs",
   "captured_on": {
-    "release": "",
-    "kernel": "",
-    "date": "",
-    "method": "static"
+    "release": "S4HANA_1909",
+    "kernel": "754",
+    "date": "2026-07-24",
+    "method": "live"
   },
   "checkpoints": [
     {
       "id": "initial",
       "reach": { "okcode": "/nBP" },
-      "identity": { "program": "", "dynpro": "" },
+      "identity": { "program": "SAPLBUS_LOCATOR", "dynpro": "3000" },
       "required_ids": [
         "wnd[0]/tbar[0]/okcd",
         "wnd[0]/tbar[1]/btn[17]"
       ],
-      "status": "pending_live"
+      "status": "captured"
     },
     {
       "id": "open_dialog",

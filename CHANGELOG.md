@@ -6,6 +6,17 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **Golden-screen harness: first full live sweep on S/4HANA 1909 — 70
+  checkpoints promoted `pending_live` → `captured`.** `/sap-doctor --screens
+  --update-baseline` replayed all 136 baselines against a live S4D session:
+  532 checkpoints, **zero drift**, 70 okcode-reachable checkpoints captured
+  (live program/dynpro identity recorded; `captured_on` = S4HANA_1909 /
+  kernel 754 / 2026-07-24 / live) across 70 baseline files in 23 skills.
+  Captured checkpoints now gate hard in future `--screens` runs (identity +
+  required-ID comparison verified end-to-end on the re-run: sap-stms
+  SCREENCHECK OK). Note-reach checkpoints stay `pending_live` until the
+  probe learns step recipes (v1 replays okcode reaches only).
+
 - **Golden-screen baseline coverage reaches 100% (136/136) and the
   missing-baseline gate is promoted to a hard error.** The last unbaselined
   driving VBS — `sap-stms`'s `sap_stms_import.vbs`, long skipped because a

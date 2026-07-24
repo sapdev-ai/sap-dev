@@ -17,7 +17,7 @@
         "wnd[0]/usr/cntlGUI_AREA/shellcont/shell/shellcont[1]/shell",
         "wnd[0]/tbar[1]/btn[6]"
       ],
-      "status": "pending_live"
+      "status": "captured"
     },
     {
       "id": "reselect_popup",

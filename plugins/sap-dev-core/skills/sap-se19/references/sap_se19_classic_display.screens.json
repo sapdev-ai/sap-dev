@@ -2,23 +2,23 @@
   "schema": "sapdev.screenbaseline/1",
   "vbs": "sap_se19_classic_display.vbs",
   "captured_on": {
-    "release": "",
-    "kernel": "",
-    "date": "",
-    "method": "static"
+    "release": "S4HANA_1909",
+    "kernel": "754",
+    "date": "2026-07-24",
+    "method": "live"
   },
   "checkpoints": [
     {
       "id": "initial",
       "reach": { "okcode": "/nSE19" },
-      "identity": { "program": "", "dynpro": "" },
+      "identity": { "program": "SAPLSEXO", "dynpro": "0120" },
       "required_ids": [
         "wnd[0]/tbar[0]/okcd",
         "wnd[0]/usr/radG_IS_CLASSIC_1",
         "wnd[0]/usr/ctxtRSEXSCRN-IMP_NAME",
         "wnd[0]/usr/btnPUSHBUTTON_DISPLAY_TEXT"
       ],
-      "status": "pending_live"
+      "status": "captured"
     },
     {
       "id": "display",

@@ -11,11 +11,11 @@
     {
       "id": "sa38_initial",
       "reach": { "okcode": "/nSA38" },
-      "identity": { "program": "", "dynpro": "" },
+      "identity": { "program": "SAPMS38M", "dynpro": "0101" },
       "required_ids": [
         "wnd[0]/usr/ctxtRS38M-PROGRAMM"
       ],
-      "status": "pending_live"
+      "status": "captured"
     },
     {
       "id": "variant_attributes",

@@ -2,23 +2,23 @@
   "schema": "sapdev.screenbaseline/1",
   "vbs": "sap_sci_create_object_set.vbs",
   "captured_on": {
-    "release": "",
-    "kernel": "",
-    "date": "",
-    "method": "static"
+    "release": "S4HANA_1909",
+    "kernel": "754",
+    "date": "2026-07-24",
+    "method": "live"
   },
   "checkpoints": [
     {
       "id": "initial",
       "reach": { "okcode": "/nSCI" },
-      "identity": { "program": "", "dynpro": "" },
+      "identity": { "program": "SAPLS_CODE_INSPECTOR", "dynpro": "0100" },
       "required_ids": [
         "wnd[0]/tbar[0]/okcd",
         "wnd[0]/usr/btnSCI_DYNP-OBJS_GL",
         "wnd[0]/usr/ctxtSCI_DYNP-OBJS",
         "wnd[0]/usr/btnOBJS_CREAT"
       ],
-      "status": "pending_live"
+      "status": "captured"
     },
     {
       "id": "object_set",

@@ -2,23 +2,23 @@
   "schema": "sapdev.screenbaseline/1",
   "vbs": "sap_se21_delete.vbs",
   "captured_on": {
-    "release": "",
-    "kernel": "",
-    "date": "",
-    "method": "static"
+    "release": "S4HANA_1909",
+    "kernel": "754",
+    "date": "2026-07-24",
+    "method": "live"
   },
   "checkpoints": [
     {
       "id": "initial",
       "reach": { "okcode": "/nSE21" },
-      "identity": { "program": "", "dynpro": "" },
+      "identity": { "program": "SAPLPB_ENTRY", "dynpro": "0100" },
       "required_ids": [
         "wnd[0]/tbar[0]/okcd",
         "wnd[0]/usr/ctxtPBENSCREEN-PACKNAME",
         "wnd[0]/usr/btnDISPLAY",
         "wnd[0]/sbar"
       ],
-      "status": "pending_live"
+      "status": "captured"
     }
   ]
 }

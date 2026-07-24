@@ -2,21 +2,21 @@
   "schema": "sapdev.screenbaseline/1",
   "vbs": "sap_va01_check.vbs",
   "captured_on": {
-    "release": "",
-    "kernel": "",
-    "date": "",
-    "method": "static"
+    "release": "S4HANA_1909",
+    "kernel": "754",
+    "date": "2026-07-24",
+    "method": "live"
   },
   "checkpoints": [
     {
       "id": "initial",
       "reach": { "okcode": "/nVA03" },
-      "identity": { "program": "", "dynpro": "" },
+      "identity": { "program": "SAPMV45A", "dynpro": "0102" },
       "required_ids": [
         "wnd[0]/tbar[0]/okcd",
         "wnd[0]/usr/ctxtVBAK-VBELN"
       ],
-      "status": "pending_live"
+      "status": "captured"
     },
     {
       "id": "overview_screen",

@@ -2,21 +2,21 @@
   "schema": "sapdev.screenbaseline/1",
   "vbs": "sap_trace_st05.vbs",
   "captured_on": {
-    "release": "",
-    "kernel": "",
-    "date": "",
-    "method": "static"
+    "release": "S4HANA_1909",
+    "kernel": "754",
+    "date": "2026-07-24",
+    "method": "live"
   },
   "checkpoints": [
     {
       "id": "initial",
       "reach": { "okcode": "/nST05" },
-      "identity": { "program": "", "dynpro": "" },
+      "identity": { "program": "R_ST05_TRACE_MAIN", "dynpro": "0010" },
       "required_ids": [
         "wnd[0]/tbar[0]/okcd",
         "wnd[0]/tbar[1]/btn[7]"
       ],
-      "status": "pending_live"
+      "status": "captured"
     },
     {
       "id": "filter",

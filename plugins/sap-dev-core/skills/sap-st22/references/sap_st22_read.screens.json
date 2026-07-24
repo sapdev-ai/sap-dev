@@ -2,20 +2,20 @@
   "schema": "sapdev.screenbaseline/1",
   "vbs": "sap_st22_read.vbs",
   "captured_on": {
-    "release": "",
-    "kernel": "",
-    "date": "",
-    "method": "static"
+    "release": "S4HANA_1909",
+    "kernel": "754",
+    "date": "2026-07-24",
+    "method": "live"
   },
   "checkpoints": [
     {
       "id": "initial",
       "reach": { "okcode": "/nST22" },
-      "identity": { "program": "", "dynpro": "" },
+      "identity": { "program": "RSSHOWRABAX", "dynpro": "1000" },
       "required_ids": [
         "wnd[0]/tbar[0]/okcd"
       ],
-      "status": "pending_live"
+      "status": "captured"
     },
     {
       "id": "dump_list",

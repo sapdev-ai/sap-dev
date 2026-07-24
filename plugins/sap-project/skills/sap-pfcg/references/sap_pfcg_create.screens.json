@@ -16,7 +16,7 @@
         "wnd[0]/usr/ctxtAGR_NAME_NEU",
         "wnd[0]/mbar/menu[0]/menu[0]/menu[0]"
       ],
-      "status": "pending_live"
+      "status": "captured"
     },
     {
       "id": "role_detail",
