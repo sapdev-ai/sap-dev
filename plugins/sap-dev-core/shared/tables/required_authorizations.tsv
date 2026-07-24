@@ -22,10 +22,22 @@ package_maintain	S_DEVELOP	ACTVT	01|02	Create/change packages (/sap-se21, /sap-c
 package_maintain	S_DEVELOP	OBJTYPE	DEVC	
 transport_manage	S_TRANSPRT	ACTVT	01|02	Create/change transport requests (/sap-transport-request, /sap-se01)
 transport_manage	S_TRANSPRT	TTYPE	DTRA|TASK	
+transport_release	S_TRANSPRT	ACTVT	43	Release transport requests + tasks (/sap-se01 release) - the Sec.1 "43 release" leg; kept separate from transport_manage so the create/change probe stays strict
+transport_release	S_TRANSPRT	TTYPE	DTRA|TASK
+stms_import	S_CTS_ADMI	CTS_ADMFCT	IMPA|IMPS	Import transports (/sap-stms import) - import-all vs import-single function codes; confirm exact set in SU21; PROD imports additionally pass the skill's typed-SID gate
+stms_import	S_TCODE	TCD	STMS	STMS transaction for the GUI import leg (/sap-stms)
 rfc_execute	S_RFC	ACTVT	16	Execute RFC FMs -- verification gates, lookups, wrapper
 gui_file_transfer	S_GUI	ACTVT	61	GUI file up/download (source paste, SE16N export)
 table_display	S_TABU_DIS	ACTVT	03	Display table contents (/sap-se16n, diagnose readers)
 tcode_workbench	S_TCODE	TCD	SE38	ABAP editor transaction (representative workbench S_TCODE)
+snro	S_NUMBER	ACTVT		Maintain number range objects + intervals (/sap-snro) - confirm exact ACTVT set in SU21 (02 change intervals / 11 change number level / 17 maintain object)
+snro	S_TCODE	TCD	SNRO	SNRO number-range maintenance transaction (/sap-snro)
+update_addon	S_TABU_DIS	ACTVT	02	Maintain Z/Y add-on tables (/sap-update-addon) - DICBERCLS is table-dependent; add S_TABU_NAM per table where the auth group is denied
+update_addon	S_TCODE	TCD	SM30	SM30 maintenance dialog where a maintenance view exists (/sap-update-addon sm30 method)
+atc	S_DEVELOP	ACTVT	03	Display the objects under check - ATC/SCI reads sources (/sap-atc, /sap-cc-analyze); central ATC additionally needs the hub trust/RFC setup
+atc	S_TCODE	TCD	SCI|ATC	Representative Code Inspector / ATC monitor transactions (/sap-atc)
+abap_unit	S_DEVELOP	ACTVT	03	Run ABAP Unit on the tested objects - tests execute the code under test (/sap-run-abap-unit; /sap-gen-abap-unit's deploy leg inherits the workbench rows) - verify live whether execution demands more than display
+sp02	S_SPO_ACT	SPOACTION	BASE|DISP|DOWN	Spool list/display/download (/sap-sp02) - own spool requests usually pass without it; needed for protected/foreign spools; confirm exact SPOACTION set in SU21
 file_transfer_upload	S_TCODE	TCD	CG3Z	Upload file to application server (/sap-file-transfer upload)
 file_transfer_upload	S_DATASET	ACTVT	34	Write app-server file via CG3Z; SPTH/S_PATH may further restrict paths
 file_transfer_download	S_TCODE	TCD	CG3Y	Download file from application server (/sap-file-transfer download)

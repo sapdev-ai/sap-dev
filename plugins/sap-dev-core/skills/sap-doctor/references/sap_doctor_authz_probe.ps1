@@ -3,7 +3,8 @@
 #
 # Answers the #1 security-review question ("what does the AI's connection need,
 # and does this user have it?") with a machine check instead of prose. Reads
-# shared/tables/required_authorizations.tsv (the mirror of docs/security.md Sec.1)
+# shared/tables/required_authorizations.tsv (the comprehensive per-capability
+# probe set; a superset of the coarse summary in docs/security.md Sec.1)
 # and, for the pinned RFC user, calls SUSR_USER_AUTH_FOR_OBJ_GET (RFC-enabled --
 # no dev-init wrapper needed) once per authorization object, then evaluates each
 # capability with faithful AUTHORITY-CHECK semantics: a capability PASSes only

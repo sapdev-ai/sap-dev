@@ -6,6 +6,16 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **`/sap-doctor` authorization probe: 7 new capabilities backfilled** into
+  `required_authorizations.tsv`, closing the docs/security.md §1 rows that had
+  no probe coverage (probed capabilities 67 → 74): `transport_release`
+  (S_TRANSPRT ACTVT 43 — kept separate from `transport_manage` so the
+  create/change probe stays strict under OR-value semantics), `stms_import`
+  (S_CTS_ADMI IMPA|IMPS + STMS), `snro` (S_NUMBER presence + SNRO),
+  `update_addon` (S_TABU_DIS 02 + SM30), `atc` (S_DEVELOP 03 + SCI|ATC),
+  `abap_unit` (S_DEVELOP 03), `sp02` (S_SPO_ACT BASE|DISP|DOWN). Verified
+  live: all 7 evaluate correctly via SUSR_USER_AUTH_FOR_OBJ_GET on S4D.
+
 - **sap-st22 reader: newer-S/4HANA selection-screen support + detail-scrape
   widening.** The ST22 reader now tries the newer RSSHOWRABAX selection fields
   (`S_DATUM-LOW/HIGH`, `txtS_UNAME-LOW`) ahead of the older `RST22_SUBMIT-*`
