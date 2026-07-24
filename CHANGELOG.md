@@ -6,6 +6,26 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **`/sap-snro`: two driver control IDs did not exist on any tested release.**
+  The screens harness flagged `sap_snro_intervals/initial` (3/5 ids) and
+  `sap_snro_update/initial` (3/4) — with the **same** ids missing on S/4HANA 1909
+  *and* ECC 6.0, which ruled out a cross-release difference and pointed at a bad
+  static seed. Live control enumeration of SNRO's initial screen (SAPMSNRO/0150,
+  identical id set on both releases) showed the truth:
+  - the Change button is **`wnd[0]/usr/btnUPDATE`**, not `btnCHANGE` — so
+    `sap_snro_update.vbs` pressed a control that never existed and its update
+    flow could not have worked;
+  - Number Ranges is the application-toolbar button **`wnd[0]/tbar[1]/btn[7]`**
+    ("Interval Editing", F7), not `wnd[0]/usr/btnINTV` with a `tbar[1]/btn[6]`
+    fallback — both of those were absent too, so `sap_snro_intervals.vbs` failed
+    at the same step.
+  Fixed the drivers *and* their baselines; the intervals fallback is now the
+  position-independent VKey F7 rather than a second guessed button id. All four
+  `sap-snro` initial checkpoints now verify **4/4 or 5/5 ids on both releases**
+  (previously 2 PASS + 2 PENDING; now 4 PASS, 0 PENDING, exit 0 on each).
+  The deeper interval-editing checkpoints are untouched — they were not
+  reachable read-only, so their id sets remain unverified `pending_live`, and
+  the write paths themselves are still untested.
 - **`Get-SapCurrentSessionPath` could hand back a DIFFERENT SAP system's session
   path.** The docstring says the sole-connection fallback applies "if no
   AI-session pin", but the condition never tested for the absence of a pin — so
