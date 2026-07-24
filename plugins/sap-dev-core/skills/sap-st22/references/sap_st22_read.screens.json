@@ -26,7 +26,7 @@
     },
     {
       "id": "dump_detail",
-      "reach": { "note": "dump detail after double-click on a list row (DEEP mode); body scraped from GuiTextedit controls anywhere in wnd[0]. On newer S/4HANA (RSSHOWRABAX screen 120, 'Runtime Error Long Text') the body is a GuiTree navigator with no scriptable section content -> detail_status=partial (exception/program still captured from the list level)" },
+      "reach": { "note": "dump detail after double-click on a list row (DEEP mode); body scraped from GuiTextedit controls anywhere in wnd[0]. On newer S/4HANA (RSSHOWRABAX screen 120, 'Runtime Error Long Text') the body is a GuiTree navigator with no scriptable section content -> detail_status=partial (exception/program still captured from the list level). required_ids [wnd[0]] is an intentional screen-exists floor: the detail body has no single release-stable control to assert, so drift surfaces at runtime as detail_status=partial, not via this baseline" },
       "identity": { "program": "", "dynpro": "" },
       "required_ids": [
         "wnd[0]"

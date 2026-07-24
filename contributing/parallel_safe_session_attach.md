@@ -190,7 +190,7 @@ segments no longer exist — both gates were promoted to hard errors on
 2026-07-10 once their counts ratcheted to zero, so violations now FAIL the
 run instead of appearing in the OK line.)
 
-On failure, the script lists each non-conforming file with a specific reason. The check covers (2026-07-03: grown from seven to twelve conditions; the checker's header comment in `scripts/check-consistency.mjs` is the authoritative list):
+On failure, the script lists each non-conforming file with a specific reason. This contract's gate covers twelve conditions (2026-07-03: grown from seven; the authoritative spec for each is its own comment block inside `scripts/check-consistency.mjs` — note the checker has since grown further gates *outside* this contract's scope, e.g. the Rule 0 safety-gate coverage check and the manifest/marketplace alignment checks):
 
 1. Legacy `For Each oCandidate In oApp.Children` (and its variant patterns) → must not appear in non-exempt operational VBS.
 2. VBS with `Const SESSION_PATH` but no `%%ATTACH_LIB_VBS%%` include → the helper will be undefined at runtime.

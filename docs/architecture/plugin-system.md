@@ -40,7 +40,7 @@ Each plugin contains its own `plugin.json` in a `.claude-plugin` subdirectory. T
 
 Skills are discovered by Claude Code from the `SKILL.md` YAML frontmatter (`name` + `description`).
 - **SKILL.md**: Contains the frontmatter used for discovery/triggering plus the expert instructions and tool usage patterns for the skill.
-- **README.md**: Optional human-facing documentation; plays no role in skill discovery or triggering (57 of the 123 skills ship without one).
+- **README.md**: Optional human-facing documentation; plays no role in skill discovery or triggering (as of 2026-07-24 every one of the 123 skills happens to ship with one, but nothing requires it).
 
 ## Validation
 

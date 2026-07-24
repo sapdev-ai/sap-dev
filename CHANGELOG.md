@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- **sap-st22 reader: newer-S/4HANA selection-screen support + detail-scrape
+  widening.** The ST22 reader now tries the newer RSSHOWRABAX selection fields
+  (`S_DATUM-LOW/HIGH`, `txtS_UNAME-LOW`) ahead of the older `RST22_SUBMIT-*`
+  candidates (verified live on S4H/S4G); it always assigns the user field —
+  clearing SAP's pre-filled current user so an empty `USER` no longer
+  false-skips the ALV on newer releases and uniformly means "all users in the
+  window"; and `ReadDetailText` scrapes `GuiTextedit` controls from anywhere in
+  `wnd[0]` (was `wnd[0]/usr`). The newer screen-120 "Runtime Error Long Text"
+  GuiTree navigator has no scriptable section content, so deep degrades to
+  `detail_status=partial` there by design.
+
 ## [0.8.1] — 2026-07-18
 
 ### Added

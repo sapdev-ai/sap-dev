@@ -14,5 +14,12 @@ npx --yes -p ajv-cli@5 -p ajv-formats@3 ajv validate \
   --strict=false -c ajv-formats --all-errors
 
 echo
+echo "==> Schema validation (plugin.json manifests)"
+npx --yes -p ajv-cli@5 -p ajv-formats@3 ajv validate \
+  -s schemas/plugin.schema.json \
+  -d "plugins/*/.claude-plugin/plugin.json" \
+  --strict=false -c ajv-formats --all-errors
+
+echo
 echo "==> Consistency check (filesystem vs marketplace.json + manifest versions)"
 node scripts/check-consistency.mjs

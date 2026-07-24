@@ -1,4 +1,5 @@
-# required_authorizations.tsv  -  machine-readable mirror of docs/security.md Sec.1
+# required_authorizations.tsv  -  the comprehensive per-capability authorization probe set
+# (a superset of the coarse core-developer summary table in docs/security.md Sec.1)
 # Read by /sap-doctor (references\sap_doctor_authz_probe.ps1) to probe the LOGGED-IN
 # user via SUSR_USER_AUTH_FOR_OBJ_GET (RFC-enabled). Also a reference for /sap-evidence-pack.
 #

@@ -3,8 +3,9 @@
   "version": "0.8.1",
   "private": true,
   "scripts": {
-    "validate": "npm run validate:marketplace && npm run check:consistency",
+    "validate": "npm run validate:marketplace && npm run validate:plugins && npm run check:consistency",
     "validate:marketplace": "ajv validate -s schemas/marketplace.schema.json -d .claude-plugin/marketplace.json --strict=false -c ajv-formats --all-errors",
+    "validate:plugins": "ajv validate -s schemas/plugin.schema.json -d \"plugins/*/.claude-plugin/plugin.json\" --strict=false -c ajv-formats --all-errors",
     "check:consistency": "node scripts/check-consistency.mjs",
     "lint:abap": "node scripts/lint-abap-contract.mjs --selftest",
     "skeleton:abap": "node scripts/diff-abap-skeleton.mjs --selftest"

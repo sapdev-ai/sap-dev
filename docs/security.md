@@ -41,13 +41,19 @@ Practical notes:
   the role from the trace. After any authorization failure, `SU53` on the AI's
   user shows the missing object.
 - **`/sap-doctor` probes authorizations mechanically** (auth group, Step 3b):
-  `references/sap_doctor_authz_probe.ps1` reads the machine-readable mirror of
-  this table — `sap-dev-core/shared/tables/required_authorizations.tsv` — and
+  `references/sap_doctor_authz_probe.ps1` reads the machine-readable probe set —
+  `sap-dev-core/shared/tables/required_authorizations.tsv` — and
   calls `SUSR_USER_AUTH_FOR_OBJ_GET` (RFC-enabled; **no dev-init wrapper
   needed**) for the logged-in user, emitting `AUTH: PASS|FAIL <capability>`.
-  **Keep the TSV in sync with this table when you edit either.** This table +
-  SU53 remains the authoritative contract for the exact, release-specific field
-  values (the probe checks the representative object/fields per capability).
+  **Relationship of the two:** the table above is a coarse core-developer
+  summary (a dozen rows, the objects a human reviewer asks about first); the
+  TSV is the comprehensive per-capability probe set across all four plugins —
+  a large superset with finer granularity, and the source of truth for what
+  `/sap-doctor` actually checks. When you add a capability, extend the TSV;
+  update this table only when the change matters at the summary level. This
+  table + SU53 remains the authoritative contract for the exact,
+  release-specific field values (the probe checks the representative
+  object/fields per capability).
 - **Recommendation:** give the AI a dedicated, personal-but-separate Dialog
   user (e.g. `DEV_AI_<initials>`) on DEV only. That makes every SAP change
   attributable to the AI-assisted workflow in standard SAP audit trails

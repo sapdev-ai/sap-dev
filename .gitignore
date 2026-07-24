@@ -19,6 +19,8 @@ temp/
 *.tmp
 *.bak
 *.log
+# Runtime delivery-assurance output — belongs under {work_dir}\artifacts, never the repo
+artifacts/
 
 # Office artefacts — block ad-hoc files but ALLOW the official templates
 *.xlsx

@@ -85,6 +85,11 @@ if ($maxDeep) { $lines += "MAXDEEP=$maxDeep" }
 $lines | Set-Content '{RUN_DIR}\st22_params.txt' -Encoding Default
 ```
 
+> **Empty `USER` means all users.** The reader always assigns the user field —
+> clearing SAP's pre-filled current user on newer RSSHOWRABAX selection screens
+> (required for the ALV to render there) — so an anchor without `--user`
+> returns dumps for **all** users in the window, uniformly across releases.
+
 > **Deep mode is read-only too.** Opening a dump and pressing Back changes
 > nothing in SAP. But it is slower (one GUI round-trip per dump), so it is
 > opt-in and bounded by `--max-deep`. `/sap-diagnose` only requests `--deep`
@@ -163,16 +168,18 @@ powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_
 - **List level** emits date/time/user/program/exception/short-text + a synthetic
   `dump_key` (date+time+program) so SM13 can link to it. `--deep` adds the
   failing line + source snippet on top (see below).
-- **Deep detail recording debt.** The dump detail view's text container ID
-  varies by release; the scraper walks `wnd[0]/usr` for `GuiTextedit` controls
-  and anchors the error line on the locale-independent `>>>>` marker. On releases
-  that render the dump as an **HTML viewer** there is no readable text control,
-  so deep returns `detail_status=partial` (exception/program still captured) —
-  run `/sap-gui-probe --record` on the ST22 dump-open and add the detail container ID to
-  `sap_st22_read.vbs` (`ReadDetailText` candidates) to lift it to `ok`. **Live
-  calibration on the target release is pending** — the candidate-ID + `>>>>`
-  approach is built and degrades safely, but has not yet been recorded against a
-  real ST22 dump.
+- **Deep detail recording debt.** The dump detail view's body varies by
+  release; the scraper walks the whole main window (`wnd[0]`) for `GuiTextedit`
+  controls and anchors the error line on the locale-independent `>>>>` marker.
+  On releases that render the dump as an **HTML viewer** — or as the newer
+  RSSHOWRABAX screen-120 "Runtime Error Long Text" **GuiTree navigator**, whose
+  section content is not scriptable (observed live on S4H/S4G 2026-07-24) —
+  there is no readable text control, so deep returns `detail_status=partial`
+  (exception/program still captured) — run `/sap-gui-probe --record` on the ST22
+  dump-open and add the detail container ID to `sap_st22_read.vbs`
+  (`ReadDetailText` candidates) to lift it to `ok`. The `GuiTextedit` + `>>>>`
+  scrape path degrades safely but has not yet been recorded against a release
+  that renders the dump as scriptable text.
 - **Call-stack / chosen-variables** parsing (the `call_stack` / `chosen_variables`
   arrays in `dump_detail`) is the next deep increment; v1 deep leaves them empty.
 - **Requires an active GUI session** and `sapgui/user_scripting = TRUE`.

@@ -143,9 +143,12 @@ repo against SAP, plus the static gates:
 . .\plugins\sap-dev-core\shared\scripts\sap_settings_lib.ps1
 Get-SapSettingValue 'work_dir'
 
-# static gates (CI parity)
+# static gates (the two fastest CI gates — CI additionally runs the
+# lint-abap/skeleton selftests and the tests/fixtures gates; see .github/workflows/validate.yml)
 npm run check:consistency   # node scripts/check-consistency.mjs
 npm run validate            # JSON-schema validation
+npm run lint:abap           # lint-abap-contract selftest (optional, matches CI)
+npm run skeleton:abap       # diff-abap-skeleton selftest (optional, matches CI)
 ```
 
 ### Tier 1 — end-to-end through Claude (`--plugin-dir`)

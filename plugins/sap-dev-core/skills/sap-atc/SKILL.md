@@ -862,14 +862,15 @@ update this table.
 
 ## Recording references
 
-Each stage's VBS header points to its source recording:
+Each stage's VBS header names its source recording (captured with SAP GUI's
+Script Recording and Playback against S/4HANA 1909):
 
-| Stage VBS | Recording |
+| Stage VBS | Source recording |
 |---|---|
-| `sap_sci_create_object_set.vbs` | `C:\Temp\Record_SCI_CreateObjectSet_01.vbs` |
-| `sap_atc_create_run_series.vbs` | `C:\Temp\Record_ATC_CreateRunSeries_01.vbs` |
-| `sap_atc_check_run_status.vbs`  | `C:\Temp\Record_ATC_CheckRunStatus_01.vbs` |
-| `sap_atc_get_results.vbs`       | `C:\Temp\Record_ATC_CheckResult_01.vbs` |
+| `sap_sci_create_object_set.vbs` | `Record_SCI_CreateObjectSet_01.vbs` |
+| `sap_atc_create_run_series.vbs` | `Record_ATC_CreateRunSeries_01.vbs` |
+| `sap_atc_check_run_status.vbs`  | `Record_ATC_CheckRunStatus_01.vbs` |
+| `sap_atc_get_results.vbs`       | `Record_ATC_CheckResult_01.vbs` |
 
 When something breaks on a different SAP release, re-record on the
 target system and patch the affected VBS.

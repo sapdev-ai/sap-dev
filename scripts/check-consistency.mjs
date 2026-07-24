@@ -128,7 +128,8 @@ if (mp.metadata.total_skills !== totalSkills) {
 // causes parallel skills to trample each other and multi-connection users
 // to silently miss-target the wrong SAP system. Catch regressions at CI time.
 //
-// Exempt by design (these don't fit the helper's contract):
+// Exempt by design (these don't fit the helper's contract; the authoritative
+// set is TIER3_EXEMPT_VBS just below — keep this prose list in sync with it):
 //   sap_login.vbs                       — bootstrap; runs before SAPGUI exists
 //   sap_check_gui_login_status.vbs      — pre-flight probe
 //   sap_gui_object_details.vbs          — own findById(SESSION_PATH) per Phase-1 fix
@@ -137,6 +138,8 @@ if (mp.metadata.total_skills !== totalSkills) {
 //   sap_close_connection.vbs            — closes a /app/con[N] by path (login family)
 //   sap_gui_security_warmup.vbs         — one-shot SAP-GUI-Security warmup; bootstrap
 //   sap_attach_lib.vbs                  — the helper itself
+//   sap_screen_check_probe.vbs          — golden-screen inspector; self-resolves SESSION_PATH
+//   sap_se38_content_verify.vbs         — pure ExecuteGlobal function library (no attach)
 //
 // For SKILL.md PowerShell wrappers, every generator block that writes a
 // runtime VBS via `Set-Content ... _run.vbs` should substitute %%ATTACH_LIB_VBS%%
@@ -1075,6 +1078,25 @@ const SAFETY_GATE_SKILLS = new Map([
       }
       if (!md.includes('safety_policy.md')) {
         errors.push(`${pluginName}: skills/${skillName}/SKILL.md runs the safety gate but does not reference safety_policy.md -- add the Shared Resources row so authors find the contract`);
+      }
+    }
+  }
+  // Reverse direction (added 2026-07-24): any SKILL.md that runs
+  // `sap_safety_gate.ps1 -Action assert` MUST be on SAFETY_GATE_SKILLS --
+  // otherwise the list silently stops being the authoritative write-capable
+  // inventory. (/sap-login uses only the gate's classify/set actions and is
+  // correctly absent; this regex matches assert calls only.)
+  for (const plugin of mp.plugins) {
+    const sourceRel = plugin.source.replace(/^\.\//, '').replace(/\/$/, '');
+    const skillsDir = join(repoRoot, sourceRel, 'skills');
+    if (!existsSync(skillsDir)) continue;
+    const listed = new Set(SAFETY_GATE_SKILLS.get(plugin.name) ?? []);
+    for (const skillName of readdirSync(skillsDir)) {
+      if (listed.has(skillName)) continue;
+      const skillMdPath = join(skillsDir, skillName, 'SKILL.md');
+      if (!existsSync(skillMdPath)) continue;
+      if (gateCallRe.test(readFileSync(skillMdPath, 'utf8'))) {
+        errors.push(`${plugin.name}: skills/${skillName}/SKILL.md runs 'sap_safety_gate.ps1 -Action assert' but is NOT in SAFETY_GATE_SKILLS -- add it there in the same commit (the list is the authoritative write-capable inventory)`);
       }
     }
   }

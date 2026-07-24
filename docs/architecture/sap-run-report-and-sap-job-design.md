@@ -321,7 +321,7 @@ verdict `JOB_VERDICT: OK|ERROR`. Error classes `JOB_SCHEDULE_FAILED`, `JOB_NOT_F
 skills/sap-job/{SKILL.md,README.md,references/{sap_sm36_schedule.vbs,sap_sm37_ops.vbs,*.screens.json,sap_job_rfc.ps1}}
 ```
 **As built (2026-07-09):** all six files created; `./skills/sap-job` registered in
-`marketplace.json` (total_skills 68→69 at build time; 70 today with `/sap-file-transfer`).
+`marketplace.json` (total_skills 68→69 at build time; 70 as of the 2026-07-09 build with `/sap-file-transfer`).
 
 Two planned promotions were **re-scoped** against how Phase A/B actually shipped:
 - **`sap_variant_rfc.ps1` → `shared/scripts/sap_variant_lib.ps1`: N/A.** That dedicated
@@ -347,7 +347,7 @@ Get-Variant/`--values` + best-effort `%PC` list capture) + GUI background schedu
 variant list/show/delete via `/sap-rfc-wrapper` (dedicated `sap_variant_rfc.ps1` deferred
 to Phase B with variant *set*); confirm gate (Step 2.5); safety rule (Rule 5); error
 classes; `sap_sa38_run.vbs` + `.screens.json` (seed, `pending_live`); marketplace registered
-(68 skills at that build checkpoint; total is 70 today). Consistency gate: **clean** (Tier-3 attach OK, baseline counted). Ships the
+(68 skills at that build checkpoint; 70 as of the 2026-07-09 build). Consistency gate: **clean** (Tier-3 attach OK, baseline counted). Ships the
 daily dev-loop value as **+1 skill**. Remaining: `/sap-gui-probe --record` the Get-Variant /
 background-exec / `%PC` popups on the target release to flip the baseline to `captured`.
 

@@ -71,12 +71,14 @@ Full flag list: `[--anchor PATH] [--user U] [--date today|YYYYMMDD]
   clean `status=skipped` with a hint to run `/sap-gui-probe --record` on ST22
   and update the candidates in `sap_st22_read.vbs` — it never guesses
 - **Deep detail has its own calibration debt.** The dump detail view's text
-  container varies by release; the scraper walks `wnd[0]/usr` for
-  `GuiTextedit` controls and anchors on the locale-independent `>>>>` marker.
-  Releases that render the dump as an HTML viewer return
-  `detail_status=partial` (exception/program still captured from the list) —
-  never report `partial` as "no defect found". A `/sap-gui-probe --record`
-  pass on the dump-detail screen lifts it to `ok`
+  container varies by release; the scraper walks the whole main window
+  (`wnd[0]`) for `GuiTextedit` controls and anchors on the locale-independent
+  `>>>>` marker. Releases that render the dump as an HTML viewer — or as the
+  newer RSSHOWRABAX "Runtime Error Long Text" GuiTree navigator (S4H/S4G),
+  which has no scriptable section content — return `detail_status=partial`
+  (exception/program still captured from the list) — never report `partial`
+  as "no defect found". A `/sap-gui-probe --record` pass on the dump-detail
+  screen lifts it to `ok`
 - Call-stack / chosen-variables parsing in `dump_detail` is a planned deep
   increment; v1 leaves those arrays empty
 - The fingerprint ledger is best-effort and workstation-dated
