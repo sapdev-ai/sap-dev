@@ -234,18 +234,38 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "<SKILL_DIR>\references\sap_
 The orchestrator (plain PowerShell; it shells 32-bit cscript itself) emits:
 
 ```
-CHECK: <stem>/<cp> | RESULT: PASS|DRIFT|PENDING|COULD_NOT_CHECK | IDS: <n>/<m> | IDENTITY: <pgm>/<scr> [| BASELINE: <pgm>/<scr> | SEVERITY: BLOCKER] | DETAIL: <text>
+CHECK: <stem>/<cp> | RESULT: PASS|DRIFT|DRIFT_IDENTITY|NOT_APPLICABLE|PENDING|COULD_NOT_CHECK | IDS: <n>/<m> | IDENTITY: <pgm>/<scr> [| BASELINE: <pgm>/<scr> | SEVERITY: BLOCKER|WARN] | DETAIL: <text>
   MISSING_ID: <path>            (per missing/absent control)
 CAPTURE: <baseline-path> | <cp.id> | program=<pgm> | dynpro=<scr>   (only with -Capture, for pending_live)
-SCREENCHECK: <OK|DRIFT|DEGRADED> baselines=<N> checkpoints=<M> PASS=.. DRIFT=.. CNC=.. PENDING=..
+SCREENCHECK: <OK|DRIFT|DEGRADED> baselines=<N> checkpoints=<M> PASS=.. DRIFT=.. IDWARN=.. NA=.. CNC=.. PENDING=..
 ```
 
+**Two severities, because a baseline holds one identity but an estate spans releases**
+(added 2026-07-24 after the first cross-release sweep):
+
+| Result | Meaning | Doctor mapping |
+|---|---|---|
+| `DRIFT` (SEVERITY: BLOCKER) | a **required control ID is gone** — the VBS will mis-step | **FAIL** (blocks) |
+| `DRIFT_IDENTITY` (SEVERITY: WARN) | only the screen **identity** differs while every required control still resolves — the driver still works; typically a cross-release fingerprint difference (live: STMS list is `SAPMSSY0/1000` on ECC6 vs `0120` on S/4HANA 1909; ST05 is `SAPLSSQ0ACC` vs `R_ST05_TRACE_MAIN`) | WARN (does not block) |
+| `NOT_APPLICABLE` | the checkpoint's `not_applicable_on` lists this system's release marker — the transaction does not exist here (e.g. ATC, `/IWFND/ERROR_LOG` on ECC6). **Not probed at all** | informational |
+
 Map the `SCREENCHECK:` verdict into the **screens** doctor group: `OK` → PASS;
-`DRIFT` → **FAIL** (a `captured` checkpoint drifted — the named VBS will mis-step on
-this release; this BLOCKS, consistent with any-FAIL below); `DEGRADED` → SKIP (only
-`pending_live` / `COULD_NOT_CHECK` — nothing gated). Keep each drifted checkpoint's
-`MISSING_ID` / identity for the report, and for every DRIFT recommend re-recording
-that VBS (`/sap-gui-probe --record`) for this release + updating its baseline.
+`DRIFT` → **FAIL** (a required control vanished; this BLOCKS, consistent with any-FAIL
+below); `DEGRADED` → SKIP (nothing gated failed — identity warnings, NOT_APPLICABLE,
+`pending_live` or `COULD_NOT_CHECK` only). Keep each drifted checkpoint's `MISSING_ID`
+/ identity for the report. For a **BLOCKER** recommend re-recording that VBS
+(`/sap-gui-probe --record`) for this release + updating its baseline; for a **WARN**
+do NOT recommend re-recording — either add the release's identity or, if the screen is
+absent on that release, add the marker to `not_applicable_on`.
+
+**Release marker.** `not_applicable_on` is matched against the target system's
+`server_release_marker` (e.g. `S4HANA_1909`, `ECC6_EHP6`). The orchestrator
+auto-resolves it from the AI session's pinned profile; pass `-ReleaseMarker <tag>`
+explicitly when you also pass `-SessionPath` for a connection other than the pinned one
+(it warns in that case). If the marker cannot be resolved, `not_applicable_on` is not
+evaluated and every checkpoint is probed — it never guesses, because a wrong exemption
+would be a false PASS. Populate a blank marker with
+`<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_rfc_system_info.ps1`.
 
 **Promote pending_live baselines (only with `--update-baseline`).** If `-Capture` was
 passed, apply each `CAPTURE: <path> | <cp.id> | program=<pgm> | dynpro=<scr>` line to

@@ -6,6 +6,30 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **Golden-screen harness becomes release-aware: identity-only drift demoted to
+  WARN, plus `not_applicable_on`.** The first cross-release sweep (S/4HANA 1909
+  baselines replayed live on ECC 6.0 under a JA logon) matched **116 of 125**
+  probed checkpoints, but the 9 mismatches all reported as BLOCKER drift even
+  though none was a broken driver — so `/sap-doctor --screens` returned a false
+  BLOCKED verdict on any ECC6 system. Now:
+  - a **missing required control ID** stays `DRIFT` / `SEVERITY: BLOCKER`
+    (exit 1, doctor FAIL) — the VBS really would mis-step;
+  - **identity-only** mismatch where every required control still resolves is
+    `DRIFT_IDENTITY` / `SEVERITY: WARN` — non-blocking (observed: STMS list is
+    `SAPMSSY0/1000` on ECC6 vs `0120` on S/4; ST05 is `SAPLSSQ0ACC` vs
+    `R_ST05_TRACE_MAIN`);
+  - new optional **`not_applicable_on[<release marker>]`** (file level and per
+    checkpoint, unioned) marks screens a release simply lacks — those are **not
+    probed at all** and report `NOT_APPLICABLE`. Applied to ATC (4 baselines)
+    and `/IWFND/ERROR_LOG` for `ECC6_EHP6`.
+  Markers are `server_release_marker` values, auto-resolved from the pinned
+  profile or passed via `-ReleaseMarker`; an unresolvable marker evaluates no
+  exemptions rather than risk a silent false PASS. Summary line gained
+  `IDWARN=` and `NA=`; `check-consistency.mjs` validates the new field.
+  Verified live in both directions: on ECC6 the 9 false BLOCKERs became 4 WARN +
+  5 NOT_APPLICABLE (exit 0), and on S/4HANA 1909 the exemptions correctly did
+  **not** fire (`NA=0`) with all the same checkpoints still PASSing.
+
 - **Golden-screen harness: first full live sweep on S/4HANA 1909 — 70
   checkpoints promoted `pending_live` → `captured`.** `/sap-doctor --screens
   --update-baseline` replayed all 136 baselines against a live S4D session:

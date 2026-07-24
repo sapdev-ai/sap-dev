@@ -91,6 +91,36 @@ One baseline per driving VBS, named `<vbs-stem>.screens.json`, beside the VBS in
 | `checkpoints[].identity` | yes | `{ program, dynpro }` of the screen. May be empty strings **only** when `status` is `pending_live`. |
 | `checkpoints[].required_ids[]` | yes | The `findById` control paths the VBS depends on at this checkpoint. Language-stable (IDs + DDIC field names, never `.Text`) per `shared/rules/language_independence_rules.md`. Non-empty unless `status` is `pending_live`. |
 | `checkpoints[].status` | yes | `captured` (identity + ids verified on a live system) \| `pending_live` (static seed — identity to be captured on first `/sap-doctor --screens` run). |
+| `not_applicable_on[]` | no | Release markers (`server_release_marker` values from `shared/tables/sap_release_markers.tsv`, e.g. `ECC6_EHP6`) on which this screen **does not exist at all**. Valid at **file level** (the whole transaction is absent — the usual case) and per checkpoint; the two union. A match means the checkpoint is **not probed** and reports `NOT_APPLICABLE` instead of drift. |
+
+### Severity: BLOCKER vs WARN (2026-07-24)
+
+A baseline holds **one** identity, but an estate spans releases, so "this screen looks
+different over here" must not be reported like a broken driver. `/sap-doctor --screens`
+therefore separates two failure meanings:
+
+- **`DRIFT` / `SEVERITY: BLOCKER`** — a **required control ID is gone**. The VBS will
+  mis-step. Fails the run (exit 1) and FAILs the doctor group. Fix by re-recording that
+  VBS for the release and updating the baseline.
+- **`DRIFT_IDENTITY` / `SEVERITY: WARN`** — only the screen **identity** differs while
+  **every** required control still resolves. The driver still works. Non-blocking
+  (exit 0, doctor SKIP). Do **not** re-record for this; either add the release's
+  identity or, when the screen is genuinely absent there, list the marker in
+  `not_applicable_on`.
+
+Measured on the first cross-release sweep (S/4HANA 1909 baselines replayed on ECC 6.0,
+JA logon): 116 of 125 probed checkpoints matched outright. The mismatches were 4
+identity-only differences where all controls resolved (STMS list `SAPMSSY0/1000` vs
+`0120`; ST05 `SAPLSSQ0ACC` vs `R_ST05_TRACE_MAIN`) and 5 genuinely absent transactions
+(ATC ×4, `/IWFND/ERROR_LOG`). **Zero** cases of a control ID moving between releases —
+which is why identity-only mismatch is the WARN tier and a missing control is the
+BLOCKER tier.
+
+The marker is matched against the target system's `server_release_marker`. The
+orchestrator auto-resolves it from the pinned connection profile, or takes
+`-ReleaseMarker <tag>`. **When it cannot be resolved, exemptions are not evaluated and
+everything is probed** — a wrongly-applied exemption would be a silent false PASS, the
+exact failure class this harness exists to prevent.
 
 ## Authoring a baseline
 

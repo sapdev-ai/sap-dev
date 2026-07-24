@@ -451,6 +451,25 @@ function validateScreenBaseline(pluginName, skill, vbsFile, jsonAbs) {
     errors.push(`${tag} must have a non-empty checkpoints array`);
     return;
   }
+  // not_applicable_on (optional, added 2026-07-24): release markers on which
+  // this screen does not exist at all, so /sap-doctor --screens reports
+  // NOT_APPLICABLE instead of drift. Valid at file level (whole transaction
+  // absent) and per checkpoint. Values are server_release_marker tags from
+  // shared/tables/sap_release_markers.tsv (e.g. ECC6_EHP6, S4HANA_1909).
+  const checkNaOn = (val, where) => {
+    if (val === undefined || val === null) return;
+    if (!Array.isArray(val) || val.length === 0) {
+      errors.push(`${where} not_applicable_on must be a non-empty array of release markers (or omitted)`);
+      return;
+    }
+    for (const m of val) {
+      if (typeof m !== 'string' || !m.trim()) {
+        errors.push(`${where} not_applicable_on entries must be non-empty release-marker strings`);
+        break;
+      }
+    }
+  };
+  checkNaOn(b.not_applicable_on, tag);
   b.checkpoints.forEach((cp, i) => {
     const where = `${tag} checkpoint[${i}]`;
     if (!cp || typeof cp !== 'object') { errors.push(`${where} is not an object`); return; }
@@ -469,6 +488,7 @@ function validateScreenBaseline(pluginName, skill, vbsFile, jsonAbs) {
     } else if (!pending && (!cp.identity.program || !cp.identity.dynpro)) {
       errors.push(`${where} identity.program and identity.dynpro are required when status is "captured"`);
     }
+    checkNaOn(cp.not_applicable_on, where);
   });
 }
 

@@ -23,23 +23,47 @@
 #                           (the SKILL.md flow applies them via the Edit tool
 #                           under --update-baseline; this script NEVER writes
 #                           a baseline file)
+#   -ReleaseMarker <tag>    the target system's server_release_marker (e.g.
+#                           S4HANA_1909, ECC6_EHP6). Used to evaluate each
+#                           checkpoint's optional not_applicable_on list. When
+#                           omitted it is auto-resolved from the AI session's
+#                           pinned connection profile; when it cannot be
+#                           resolved, not_applicable_on is not evaluated (the
+#                           checkpoint is probed normally) and an INFO line says so.
+#
+# Severity model (2026-07-24, after the first cross-release sweep):
+# a baseline holds ONE identity, but an estate spans releases, so a screen that
+# legitimately differs on another release must not be reported like a broken
+# driver. Two distinct failure meanings:
+#   * a required control ID is GONE          -> DRIFT, SEVERITY: BLOCKER. The
+#     VBS will mis-step. This is the signal worth breaking a build over.
+#   * only the screen IDENTITY differs while EVERY required control still
+#     resolves -> DRIFT_IDENTITY, SEVERITY: WARN. The driver still works; this
+#     is usually a cross-release fingerprint difference (observed live: STMS
+#     list is SAPMSSY0/1000 on ECC6 vs 0120 on S/4HANA 1909; ST05 is
+#     SAPLSSQ0ACC vs R_ST05_TRACE_MAIN). Non-blocking.
+# A checkpoint whose not_applicable_on contains the current release marker is
+# NOT probed at all (no navigation) and reports NOT_APPLICABLE -- the release
+# simply lacks that transaction (e.g. ATC and /IWFND/ERROR_LOG on ECC6).
 #
 # Stdout contract (parsed by the SKILL.md flow):
-#   CHECK: <stem>/<cp> | RESULT: PASS|DRIFT|PENDING|COULD_NOT_CHECK | IDS: <n>/<m> | IDENTITY: <pgm>/<scr> [| BASELINE: <pgm>/<scr> | SEVERITY: BLOCKER] | DETAIL: <text>
+#   CHECK: <stem>/<cp> | RESULT: PASS|DRIFT|DRIFT_IDENTITY|NOT_APPLICABLE|PENDING|COULD_NOT_CHECK | IDS: <n>/<m> | IDENTITY: <pgm>/<scr> [| BASELINE: <pgm>/<scr> | SEVERITY: BLOCKER|WARN] | DETAIL: <text>
 #     MISSING_ID: <path>                      (one per missing required control)
 #   CAPTURE: <baseline-path> | <cp.id> | program=<pgm> | dynpro=<scr>
-#   SCREENCHECK: <OK|DRIFT|DEGRADED> baselines=<N> checkpoints=<M> PASS=.. DRIFT=.. CNC=.. PENDING=..
+#   SCREENCHECK: <OK|DRIFT|DEGRADED> baselines=<N> checkpoints=<M> PASS=.. DRIFT=.. IDWARN=.. NA=.. CNC=.. PENDING=..
 #
 # Verdict:
-#   OK        every captured checkpoint verified (identity + all required IDs)
-#   DRIFT     one or more captured checkpoints drifted (BLOCKER)
-#   DEGRADED  nothing gated: only pending_live / COULD_NOT_CHECK results (or a
-#             captured checkpoint could not be checked)
+#   OK        every captured checkpoint verified (identity + all required IDs);
+#             no identity warnings
+#   DRIFT     one or more captured checkpoints lost a required control (BLOCKER)
+#   DEGRADED  nothing gated failed: only identity warnings, NOT_APPLICABLE,
+#             pending_live or COULD_NOT_CHECK results
 #
-# Exit codes: 1 = any checkpoint DRIFTed; 2 = hard input error (probe template
+# Exit codes: 1 = any BLOCKER drift; 2 = hard input error (probe template
 # missing, no baselines in scope, malformed baseline JSON) with no drift;
-# 0 = otherwise. Probe exit 2 (SAP unreachable) / 3 (refused: busy/ambiguous)
-# are per-checkpoint COULD_NOT_CHECK results, not drift.
+# 0 = otherwise (identity warnings and NOT_APPLICABLE do NOT fail the run).
+# Probe exit 2 (SAP unreachable) / 3 (refused: busy/ambiguous) are
+# per-checkpoint COULD_NOT_CHECK results, not drift.
 #
 # Plain Windows PowerShell 5.1 compatible. Read-only against SAP (the probe
 # only navigates and restores /n). ASCII-only source.
@@ -52,7 +76,8 @@ param(
     [string]$ProbeVbs = '',
     [string]$WorkTemp = '',
     [string]$SessionPath = '',
-    [switch]$Capture
+    [switch]$Capture,
+    [string]$ReleaseMarker = ''
 )
 
 # No Set-StrictMode / global EAP=Stop on purpose: a slightly-off baseline must
@@ -123,9 +148,43 @@ if ($Capture) { $captureText = 'on' }
 Write-Output ("INFO: baselines=" + $baselineFiles.Count + " capture=" + $captureText + " probe=" + $ProbeVbs)
 
 # ---------------------------------------------------------------------------
+# Release marker -- the key not_applicable_on is evaluated against.
+# Explicit -ReleaseMarker wins; otherwise auto-resolve from this AI session's
+# pinned connection profile. Best-effort: an unresolvable marker degrades to
+# "evaluate nothing", never to a wrong exemption (a checkpoint silently skipped
+# on the wrong system would be a false PASS, which is the failure mode this
+# whole harness exists to prevent).
+# ---------------------------------------------------------------------------
+$markerSource = 'arg'
+if ([string]::IsNullOrWhiteSpace($ReleaseMarker)) {
+    $markerSource = 'pinned-profile'
+    try {
+        $connLib = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\..\shared\scripts\sap_connection_lib.ps1'))
+        if (Test-Path -LiteralPath $connLib) {
+            . $connLib
+            $prof = Get-SapCurrentConnectionProfile
+            if ($null -ne $prof) { $ReleaseMarker = '' + $prof['server_release_marker'] }
+        }
+    } catch { $ReleaseMarker = '' }
+}
+$ReleaseMarker = ('' + $ReleaseMarker).Trim()
+if ([string]::IsNullOrWhiteSpace($ReleaseMarker)) {
+    Write-Output "INFO: release_marker=<unknown> -- not_applicable_on cannot be evaluated; every checkpoint is probed. Populate server_release_marker on the profile (sap_rfc_system_info.ps1) or pass -ReleaseMarker."
+} else {
+    Write-Output ("INFO: release_marker=" + $ReleaseMarker + " (source=" + $markerSource + ")")
+    if ($markerSource -eq 'pinned-profile' -and -not [string]::IsNullOrWhiteSpace($SessionPath)) {
+        # The marker describes the PINNED connection; -SessionPath may target a
+        # different one. Getting this wrong would skip checkpoints on a system
+        # that does have them -- a false PASS. Surface it rather than guess.
+        Write-Output "WARN: -SessionPath was given but the release marker came from the pinned profile -- pass -ReleaseMarker explicitly if that session is a different system."
+    }
+}
+
+# ---------------------------------------------------------------------------
 # Run every checkpoint of every baseline
 # ---------------------------------------------------------------------------
 $countPass = 0; $countDrift = 0; $countCnc = 0; $countPending = 0
+$countIdWarn = 0; $countNa = 0
 $cncOnCaptured = 0
 $checkpointTotal = 0
 $hardErrors = 0
@@ -143,6 +202,13 @@ foreach ($bf in $baselineFiles) {
     }
     $checkpoints = @()
     if ($null -ne $baseline -and $baseline.PSObject.Properties.Name -contains 'checkpoints' -and $null -ne $baseline.checkpoints) { $checkpoints = @($baseline.checkpoints) }
+    # File-level not_applicable_on applies to EVERY checkpoint of this baseline
+    # (the whole transaction is absent on that release); a checkpoint MAY add
+    # more releases of its own. Union semantics.
+    $fileNaOn = @()
+    if ($null -ne $baseline -and $baseline.PSObject.Properties.Name -contains 'not_applicable_on' -and $null -ne $baseline.not_applicable_on) {
+        $fileNaOn = @($baseline.not_applicable_on | ForEach-Object { ('' + $_).Trim() } | Where-Object { $_ })
+    }
     if ($checkpoints.Count -eq 0) {
         Write-Output ("ERROR: " + $bf.FullName + " has no checkpoints (schema sapdev.screenbaseline/1 requires a non-empty array).")
         $hardErrors++
@@ -171,7 +237,19 @@ foreach ($bf in $baselineFiles) {
         $foundCount = 0
         $captureLine = $null
 
-        if ([string]::IsNullOrWhiteSpace($okcode)) {
+        # not_applicable_on: releases where this screen does not exist at all
+        # (e.g. ATC / /IWFND/ERROR_LOG on ECC6). Evaluated BEFORE probing, so we
+        # never navigate to a transaction the release lacks.
+        $naOn = @() + $fileNaOn
+        if ($cp.PSObject.Properties.Name -contains 'not_applicable_on' -and $null -ne $cp.not_applicable_on) {
+            $naOn += @($cp.not_applicable_on | ForEach-Object { ('' + $_).Trim() } | Where-Object { $_ })
+        }
+        $naHit = ($ReleaseMarker -ne '' -and ($naOn | Where-Object { $_ -eq $ReleaseMarker }).Count -gt 0)
+
+        if ($naHit) {
+            $result = 'NOT_APPLICABLE'
+            $detail = 'declared not applicable on ' + $ReleaseMarker + ' (not probed)'
+        } elseif ([string]::IsNullOrWhiteSpace($okcode)) {
             # v1 navigates by reach.okcode only; step recipes are not replayed.
             $result = 'COULD_NOT_CHECK'
             $detail = 'no reach.okcode (v1 replays okcode checkpoints only)'
@@ -228,13 +306,20 @@ foreach ($bf in $baselineFiles) {
 
                 if ($status -eq 'captured') {
                     $identityOk = ((NormProgram $livePgm) -eq (NormProgram $basePgm)) -and ((Pad4 $liveScr) -eq (Pad4 $baseScr))
-                    if (-not $identityOk -or $missingIds.Count -gt 0) {
+                    if ($missingIds.Count -gt 0) {
+                        # A control the VBS depends on is gone -- it WILL mis-step.
                         $result = 'DRIFT'
                         $severitySeg = ' | BASELINE: ' + $basePgm + '/' + $baseScr + ' | SEVERITY: BLOCKER'
-                        $parts = @()
+                        $parts = @('' + $missingIds.Count + ' required id(s) missing')
                         if (-not $identityOk) { $parts += 'screen identity moved' }
-                        if ($missingIds.Count -gt 0) { $parts += ('' + $missingIds.Count + ' required id(s) missing') }
                         $detail = ($parts -join '; ') + ' -- re-record ' + ('' + $baseline.vbs) + ' for this release'
+                    } elseif (-not $identityOk) {
+                        # Fingerprint differs but every required control resolves:
+                        # the driver still works. Typically a cross-release
+                        # difference, so warn instead of blocking.
+                        $result = 'DRIFT_IDENTITY'
+                        $severitySeg = ' | BASELINE: ' + $basePgm + '/' + $baseScr + ' | SEVERITY: WARN'
+                        $detail = 'screen identity differs but all ' + $requiredIds.Count + ' required id(s) resolve -- driver still works; if this release is a supported target, add its identity (or list it in not_applicable_on) rather than re-recording'
                     } else {
                         $result = 'PASS'
                         $detail = 'identity + all required ids verified'
@@ -261,6 +346,10 @@ foreach ($bf in $baselineFiles) {
         switch ($result) {
             'PASS'  { $countPass++ }
             'DRIFT' { $countDrift++ }
+            'DRIFT_IDENTITY' { $countIdWarn++ }
+            # Deliberate, declared exemption -- not an unchecked captured
+            # checkpoint, so it must not hold the verdict back like a CNC does.
+            'NOT_APPLICABLE' { $countNa++ }
             'PENDING' { $countPending++ }
             default {
                 $countCnc++
@@ -288,12 +377,13 @@ Remove-Item -LiteralPath $scratch -Recurse -Force -ErrorAction SilentlyContinue
 $verdict = 'DEGRADED'
 if ($countDrift -gt 0) {
     $verdict = 'DRIFT'
-} elseif ($countPass -gt 0 -and $cncOnCaptured -eq 0) {
-    # Every captured checkpoint that exists was verified clean.
+} elseif ($countPass -gt 0 -and $cncOnCaptured -eq 0 -and $countIdWarn -eq 0) {
+    # Every captured checkpoint that exists was verified clean. Identity
+    # warnings keep the run non-blocking but stop it claiming a clean OK.
     $verdict = 'OK'
 }
 
-Write-Output ('SCREENCHECK: ' + $verdict + ' baselines=' + $baselineFiles.Count + ' checkpoints=' + $checkpointTotal + ' PASS=' + $countPass + ' DRIFT=' + $countDrift + ' CNC=' + $countCnc + ' PENDING=' + $countPending)
+Write-Output ('SCREENCHECK: ' + $verdict + ' baselines=' + $baselineFiles.Count + ' checkpoints=' + $checkpointTotal + ' PASS=' + $countPass + ' DRIFT=' + $countDrift + ' IDWARN=' + $countIdWarn + ' NA=' + $countNa + ' CNC=' + $countCnc + ' PENDING=' + $countPending)
 
 if ($countDrift -gt 0) { exit 1 }
 if ($hardErrors -gt 0) { exit 2 }

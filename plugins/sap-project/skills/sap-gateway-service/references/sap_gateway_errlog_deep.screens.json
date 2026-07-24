@@ -1,6 +1,7 @@
 {
   "schema": "sapdev.screenbaseline/1",
   "vbs": "sap_gateway_errlog_deep.vbs",
+  "not_applicable_on": ["ECC6_EHP6"],
   "captured_on": {
     "release": "S/4HANA 1909",
     "kernel": "754",

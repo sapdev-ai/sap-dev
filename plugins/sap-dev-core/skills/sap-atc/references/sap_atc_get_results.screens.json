@@ -1,6 +1,7 @@
 {
   "schema": "sapdev.screenbaseline/1",
   "vbs": "sap_atc_get_results.vbs",
+  "not_applicable_on": ["ECC6_EHP6"],
   "captured_on": {
     "release": "S4HANA_1909",
     "kernel": "754",
