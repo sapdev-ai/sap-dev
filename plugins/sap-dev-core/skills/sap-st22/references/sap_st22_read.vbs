@@ -87,14 +87,22 @@ On Error GoTo 0
 
 ' ---- set selection (best-effort, candidate IDs) --------------------------
 ' ST22 selection-screen field IDs differ across releases; try candidates.
+' Newer S/4HANA ST22 (program RSSHOWRABAX, "ABAP Runtime Errors" screen 1000)
+' uses S_DATUM-LOW/HIGH + S_UNAME-LOW (verified live on S4H/S4G 2026-07-24);
+' the RST22_SUBMIT-* / DATE_* candidates cover older releases. First existing
+' field wins (SetFirst), so listing every release variant is safe.
 Dim dateLowIds, dateHighIds, userIds, p
-dateLowIds  = Array("wnd[0]/usr/ctxtRST22_SUBMIT-FROMDATE", "wnd[0]/usr/ctxtDATE_LOW", "wnd[0]/usr/ctxt%_DATUM_LOW")
-dateHighIds = Array("wnd[0]/usr/ctxtRST22_SUBMIT-TODATE",   "wnd[0]/usr/ctxtDATE_HIGH","wnd[0]/usr/ctxt%_DATUM_HIGH")
-userIds     = Array("wnd[0]/usr/ctxtRST22_SUBMIT-UNAME",    "wnd[0]/usr/ctxtUSER",     "wnd[0]/usr/ctxtUNAME")
+dateLowIds  = Array("wnd[0]/usr/ctxtS_DATUM-LOW",  "wnd[0]/usr/ctxtRST22_SUBMIT-FROMDATE", "wnd[0]/usr/ctxtDATE_LOW", "wnd[0]/usr/ctxt%_DATUM_LOW")
+dateHighIds = Array("wnd[0]/usr/ctxtS_DATUM-HIGH", "wnd[0]/usr/ctxtRST22_SUBMIT-TODATE",   "wnd[0]/usr/ctxtDATE_HIGH","wnd[0]/usr/ctxt%_DATUM_HIGH")
+userIds     = Array("wnd[0]/usr/txtS_UNAME-LOW",   "wnd[0]/usr/ctxtRST22_SUBMIT-UNAME",    "wnd[0]/usr/ctxtUSER",     "wnd[0]/usr/ctxtUNAME")
 
 If Len(sFromDate) = 8 Then SetFirst dateLowIds, FmtDate(sFromDate)
 If Len(sToDate)   = 8 Then SetFirst dateHighIds, FmtDate(sToDate)
-If Len(sUser)     > 0 Then SetFirst userIds, sUser
+' Always assign the user field: an empty sUser CLEARS the pre-filled current
+' user that the RSSHOWRABAX selection screen defaults to. Otherwise an empty
+' USER param queries only the logged-in user, which usually returns 0 dumps and
+' ST22 then renders NO ALV grid -- the old "grid not found" false-skip on S4G.
+SetFirst userIds, sUser
 
 ' Execute / display the dump list (F8).
 On Error Resume Next
@@ -402,14 +410,19 @@ Function DetailJson(status, excClass, shortTxt, inc, ln, jSrc, jStack, jVars)
         "}"
 End Function
 
-' Walk wnd[0]/usr and accumulate the text of every GuiTextedit control. Returns
-' "" when the body is an HTML viewer (no readable text control) -> partial.
+' Walk the whole main window (wnd[0]) and accumulate the text of every
+' GuiTextedit control. Rooted at wnd[0] (not wnd[0]/usr) so a dump body rendered
+' in a container OUTSIDE the user area (e.g. wnd[0]/shellcont/...) is still seen.
+' Returns "" -> detail_status=partial when the body is not a readable text
+' control: an HTML viewer, OR the newer RSSHOWRABAX "Runtime Error Long Text"
+' GuiTree navigator (S4H/S4G, screen 120) whose section content is not
+' scriptable. The list-level exception/program are still captured in that case.
 Function ReadDetailText()
     Dim root, acc
     acc = ""
     On Error Resume Next
     Set root = Nothing
-    Set root = oSession.findById("wnd[0]/usr")
+    Set root = oSession.findById("wnd[0]")
     On Error GoTo 0
     If Not (root Is Nothing) Then CollectTextedit root, acc, 0
     ReadDetailText = acc

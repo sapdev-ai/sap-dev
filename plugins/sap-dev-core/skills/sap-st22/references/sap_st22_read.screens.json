@@ -19,17 +19,17 @@
     },
     {
       "id": "dump_list",
-      "reach": { "note": "dump list after F8; selection fields and ALV grid ids are release-variant candidate scans, captured live" },
+      "reach": { "note": "dump list after F8; selection fields (S_DATUM-LOW/HIGH + S_UNAME-LOW on newer RSSHOWRABAX; RST22_SUBMIT-* on older) and the ALV grid (cntlRSSHOWRABAX_ALV_100/shellcont/shell) are release-variant candidate scans, resolved live" },
       "identity": { "program": "", "dynpro": "" },
       "required_ids": [],
       "status": "pending_live"
     },
     {
       "id": "dump_detail",
-      "reach": { "note": "dump detail after double-click on a list row (DEEP mode); body scraped from GuiTextedit children of the user area" },
+      "reach": { "note": "dump detail after double-click on a list row (DEEP mode); body scraped from GuiTextedit controls anywhere in wnd[0]. On newer S/4HANA (RSSHOWRABAX screen 120, 'Runtime Error Long Text') the body is a GuiTree navigator with no scriptable section content -> detail_status=partial (exception/program still captured from the list level)" },
       "identity": { "program": "", "dynpro": "" },
       "required_ids": [
-        "wnd[0]/usr"
+        "wnd[0]"
       ],
       "status": "pending_live"
     }
