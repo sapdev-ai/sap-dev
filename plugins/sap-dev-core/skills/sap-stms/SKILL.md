@@ -232,11 +232,18 @@ without importing (exit 1).
 ```powershell
 $shared = '<SAP_DEV_CORE_SHARED_DIR>\scripts'
 . "$shared\sap_connection_lib.ps1"
-$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
+# BAKE the path into %%SESSION_PATH%% (attach Strategy 1) rather than exporting
+# $env:SAPDEV_SESSION_PATH here: this generator is a SEPARATE process from the one
+# that runs cscript, so the env var would already be gone and the attach lib would
+# silently fall through to its sole-connection default (2026-08-06). NOTE: this
+# pins the DOMAIN CONTROLLER session STMS is driven from -- the import's *target*
+# system is a separate concern, guarded by this skill's own TARGET-based PROD gate
+# (W2/W3), which is why sap-stms is deliberately off SAFETY_GATE_SKILLS.
+$sessionPath = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'   # or the --session value
 $vbs = [IO.File]::ReadAllText('<SKILL_DIR>\references\sap_stms_import.vbs', [Text.Encoding]::UTF8)
 $vbs = $vbs.Replace('%%ATTACH_LIB_VBS%%',  "$shared\sap_attach_lib.vbs")
 $vbs = $vbs.Replace('%%SESSION_LOCK_VBS%%',"$shared\sap_session_lock.vbs")
-$vbs = $vbs.Replace('%%SESSION_PATH%%',    '')        # or the --session value
+$vbs = $vbs.Replace('%%SESSION_PATH%%',    $sessionPath)
 $vbs = $vbs.Replace('%%TR%%',              'THE_TR')
 $vbs = $vbs.Replace('%%TARGET_SID%%',      'THE_SID')
 $vbs = $vbs.Replace('%%TARGET_CLIENT%%',   'THE_CLIENT')

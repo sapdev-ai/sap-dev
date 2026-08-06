@@ -219,14 +219,17 @@ $content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_se01_create
 $content = $content -replace '%%REQUEST_TYPE%%','THE_TYPE'
 $content = $content -replace '%%DESCRIPTION%%','THE_DESC'
 $content = $content -replace '%%SESSION_LOCK_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_session_lock.vbs'
-# Phase 3.5 session-attach plumbing.
-$sessionPath = ''
-$content = $content -replace '%%SESSION_PATH%%', $sessionPath
-$content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
+# Phase 4.2 session-attach plumbing. BAKE the resolved path into %%SESSION_PATH%%
+# (attach Strategy 1): this generator is a SEPARATE process from the one that runs
+# cscript, so an $env:SAPDEV_SESSION_PATH exported here dies with it and the attach
+# lib silently falls through to its sole-connection default -- which would create
+# the TR on a different SAP system than the deploy that asked for it (2026-08-06).
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
-$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
+$sessionPath = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
+$content = $content.Replace('%%SESSION_PATH%%', $sessionPath)
+$content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
 [System.IO.File]::WriteAllText('{RUN_TEMP}\sap_se01_create_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
-Write-Host 'Done'
+Write-Host ("Done (session_path='" + $sessionPath + "')")
 ```
 Replace `THE_TYPE` (W or C), `THE_DESC` (short text), and `<SKILL_DIR>` /
 `{WORK_TEMP}` with absolute paths.
@@ -234,7 +237,15 @@ Replace `THE_TYPE` (W or C), `THE_DESC` (short text), and `<SKILL_DIR>` /
 Run:
 ```bash
 powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_se01_create_run.ps1"
-C:/Windows/SysWOW64/cscript.exe //NoLogo {RUN_TEMP}\sap_se01_create_run.vbs
+```
+
+Declare the GUI target in the SAME block as cscript — the attach lib reads
+`SAPDEV_EXPECT_SYSTEM`/`_CLIENT` from the process environment, so the TR is always
+created on the system the caller's RFC leg resolved:
+```powershell
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+Set-SapGuiTargetExpectation -WorkTemp '{WORK_TEMP}' | Out-Null
+& 'C:/Windows/SysWOW64/cscript.exe' //NoLogo '{RUN_TEMP}\sap_se01_create_run.vbs'
 ```
 
 **Expected last line of stdout:** `DONE`. If the VBS prints `ERROR:`, abort
@@ -447,20 +458,29 @@ Write `{RUN_TEMP}\sap_se01_release_run.ps1`:
 ```powershell
 $content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_se01_release.vbs', [System.Text.Encoding]::UTF8)
 $content = $content -replace '%%TRANSPORT%%','THE_TR'
-# Phase 3.5 session-attach plumbing.
-$sessionPath = ''
-$content = $content -replace '%%SESSION_PATH%%', $sessionPath
-$content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
+# BAKE the session path (attach Strategy 1) -- an env var exported by this
+# generator process never reaches the separate process that runs cscript. Release
+# is irreversible, so a silent retarget would release the WRONG system's TR.
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
-$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
+$sessionPath = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
+$content = $content.Replace('%%SESSION_PATH%%', $sessionPath)
+$content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
 [System.IO.File]::WriteAllText('{RUN_TEMP}\sap_se01_release_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
-Write-Host 'Done'
+Write-Host ("Done (session_path='" + $sessionPath + "')")
 ```
 
 Run:
 ```bash
 powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_se01_release_run.ps1"
-C:/Windows/SysWOW64/cscript.exe //NoLogo {RUN_TEMP}\sap_se01_release_run.vbs
+```
+
+Declare the GUI target in the SAME block as cscript. Release is irreversible, so
+refusing a GUI parked on a different system than the RFC leg is the difference
+between releasing the intended TR and releasing another system's namesake:
+```powershell
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+Set-SapGuiTargetExpectation -WorkTemp '{WORK_TEMP}' | Out-Null
+& 'C:/Windows/SysWOW64/cscript.exe' //NoLogo '{RUN_TEMP}\sap_se01_release_run.vbs'
 ```
 
 ## R6 — Interpret VBS output
@@ -637,13 +657,15 @@ Write `{RUN_TEMP}\sap_se01_delete_run.ps1`:
 $content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_se01_delete.vbs', [System.Text.Encoding]::UTF8)
 $content = $content -replace '%%TRANSPORT%%','THE_TR'
 $content = $content -replace '%%SESSION_LOCK_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_session_lock.vbs'
-$sessionPath = ''
-$content = $content -replace '%%SESSION_PATH%%', $sessionPath
-$content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
+# BAKE the session path (attach Strategy 1) -- an env var exported by this
+# generator process never reaches the separate process that runs cscript. Delete
+# is irreversible, so a silent retarget would destroy the WRONG system's TR.
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
-$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
+$sessionPath = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
+$content = $content.Replace('%%SESSION_PATH%%', $sessionPath)
+$content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
 [System.IO.File]::WriteAllText('{RUN_TEMP}\sap_se01_delete_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
-Write-Host 'Done'
+Write-Host ("Done (session_path='" + $sessionPath + "')")
 ```
 The VBS derives the shared `sap_delete_popups.vbs` path from the substituted
 `%%ATTACH_LIB_VBS%%` directory (same `shared/scripts` folder) -- no extra token.
@@ -651,7 +673,15 @@ The VBS derives the shared `sap_delete_popups.vbs` path from the substituted
 Run:
 ```bash
 powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_se01_delete_run.ps1"
-C:/Windows/SysWOW64/cscript.exe //NoLogo {RUN_TEMP}\sap_se01_delete_run.vbs
+```
+
+Declare the GUI target in the SAME block as cscript. Deletion is irreversible, so
+refusing a GUI parked on a different system than the RFC leg is the difference
+between deleting the intended TR and destroying another system's namesake:
+```powershell
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+Set-SapGuiTargetExpectation -WorkTemp '{WORK_TEMP}' | Out-Null
+& 'C:/Windows/SysWOW64/cscript.exe' //NoLogo '{RUN_TEMP}\sap_se01_delete_run.vbs'
 ```
 
 ## D5 -- Interpret VBS output
@@ -789,13 +819,14 @@ $content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_se01_remove
 $content = $content -replace '%%TRANSPORT%%','THE_TR'
 $content = $content -replace '%%OBJECTS%%','THE_OBJECTS'
 $content = $content -replace '%%SESSION_LOCK_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_session_lock.vbs'
-$sessionPath = ''
-$content = $content -replace '%%SESSION_PATH%%', $sessionPath
-$content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
+# BAKE the session path (attach Strategy 1) -- an env var exported by this
+# generator process never reaches the separate process that runs cscript.
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
-$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
+$sessionPath = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
+$content = $content.Replace('%%SESSION_PATH%%', $sessionPath)
+$content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
 [System.IO.File]::WriteAllText('{RUN_TEMP}\sap_se01_remove_objects_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
-Write-Host 'Done'
+Write-Host ("Done (session_path='" + $sessionPath + "')")
 ```
 Replace `THE_TR`, `THE_OBJECTS` (the comma-separated list, or empty for
 remove-ALL), and `<SKILL_DIR>` / `{WORK_TEMP}` / `{RUN_TEMP}` with absolute
@@ -805,7 +836,14 @@ empty only for a deliberate operator-confirmed remove-ALL.
 Run:
 ```bash
 powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_se01_remove_objects_run.ps1"
-C:/Windows/SysWOW64/cscript.exe //NoLogo {RUN_TEMP}\sap_se01_remove_objects_run.vbs
+```
+
+Declare the GUI target in the SAME block as cscript, so object entries are only
+ever unassigned from the TR on the system the RFC leg resolved:
+```powershell
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+Set-SapGuiTargetExpectation -WorkTemp '{WORK_TEMP}' | Out-Null
+& 'C:/Windows/SysWOW64/cscript.exe' //NoLogo '{RUN_TEMP}\sap_se01_remove_objects_run.vbs'
 ```
 
 ## X5 — Interpret VBS output

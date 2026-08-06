@@ -211,14 +211,17 @@ $content  = $content.Replace('%%JOBNAME%%',  'THE_JOBNAME')      # '' = program
 $content  = $content.Replace('%%START%%',    'THE_START')        # immediate|YYYYMMDDHHMMSS|event:E
 $content  = $content.Replace('%%PERIOD%%',   'THE_PERIOD')       # '' | daily|weekly|monthly
 $content  = $content.Replace('%%JOBCLASS%%', 'THE_CLASS')        # A|B|C ('' -> C)
-# Tier-3 session-attach plumbing.
+# Tier-3 session-attach plumbing. BAKE the resolved path into %%SESSION_PATH%%
+# (attach Strategy 1): this generator is a SEPARATE process from the one that runs
+# cscript, so an $env:SAPDEV_SESSION_PATH exported here dies with it and the attach
+# lib silently falls through to its sole-connection default (2026-08-06).
+. "$shared\scripts\sap_connection_lib.ps1"
 $sessionPath = ''   # set to the parsed --session value if supplied
+if (-not $sessionPath) { $sessionPath = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}' }
 $content  = $content.Replace('%%SESSION_PATH%%',   $sessionPath)
 $content  = $content.Replace('%%ATTACH_LIB_VBS%%', "$shared\scripts\sap_attach_lib.vbs")
-. "$shared\scripts\sap_connection_lib.ps1"
-$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 [System.IO.File]::WriteAllText('{RUN_TEMP}\sap_sm36_schedule.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
-Write-Host 'Done'
+Write-Host ("Done (session_path='" + $sessionPath + "')")
 ```
 
 *Operations generator* — write `{RUN_TEMP}\sap_sm37_ops_run.ps1` (same shape):
@@ -235,20 +238,31 @@ $content  = $content.Replace('%%FROM_DATE%%',     'THE_FROM')        # '' = scre
 $content  = $content.Replace('%%TO_DATE%%',       'THE_TO')
 $content  = $content.Replace('%%STATUS_FILTER%%', 'THE_STATUSES')    # e.g. 'RF'; '' = all
 $content  = $content.Replace('%%SAVE_PATH%%',     'THE_SAVE_PATH')   # log %PC target, '' to skip
-$sessionPath = ''
+# BAKE the session path (attach Strategy 1) -- an env var exported by this
+# generator process never reaches the separate process that runs cscript.
+. "$shared\scripts\sap_connection_lib.ps1"
+$sessionPath = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 $content  = $content.Replace('%%SESSION_PATH%%',   $sessionPath)
 $content  = $content.Replace('%%ATTACH_LIB_VBS%%', "$shared\scripts\sap_attach_lib.vbs")
-. "$shared\scripts\sap_connection_lib.ps1"
-$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 [System.IO.File]::WriteAllText('{RUN_TEMP}\sap_sm37_ops.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
-Write-Host 'Done'
+Write-Host ("Done (session_path='" + $sessionPath + "')")
 ```
 
-Run the generator, then the VBS via the **32-bit** cscript host (SAP GUI COM needs 32-bit):
+Run the generator, then the VBS via the **32-bit** cscript host (SAP GUI COM needs
+32-bit). Same two blocks for either flow — substitute `sap_sm37_ops` /
+`sap_sm36_schedule` for `<VBS>`:
 
 ```bash
-powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_sm37_ops_run.ps1"
-C:\Windows\SysWOW64\cscript.exe //NoLogo {RUN_TEMP}\sap_sm37_ops.vbs
+powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\<VBS>_run.ps1"
+```
+
+Declare the GUI target in the SAME block as cscript — the attach lib reads
+`SAPDEV_EXPECT_SYSTEM`/`_CLIENT` from the process environment, so a job operation
+can never land on a system other than the one the RFC leg resolved:
+```powershell
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+Set-SapGuiTargetExpectation -WorkTemp '{WORK_TEMP}' | Out-Null
+& 'C:\Windows\SysWOW64\cscript.exe' //NoLogo '{RUN_TEMP}\<VBS>.vbs'
 ```
 
 For the GUI **log** save-output, wrap the cscript with the SAP GUI Security guard exactly

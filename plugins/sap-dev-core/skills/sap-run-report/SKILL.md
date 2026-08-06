@@ -172,14 +172,17 @@ $content  = $content.Replace('%%VARIANT%%',   'THE_VARIANT')     # '' if none
 $content  = $content.Replace('%%VALUES%%',    'THE_VALUES')      # '' if none
 $content  = $content.Replace('%%MODE%%',      'THE_MODE')        # FG | BG
 $content  = $content.Replace('%%SAVE_PATH%%', 'THE_SAVE_PATH')   # '' to skip capture
-# Tier-3 session-attach plumbing.
+# Tier-3 session-attach plumbing. BAKE the resolved path into %%SESSION_PATH%%
+# (attach Strategy 1): this generator is a SEPARATE process from the one that runs
+# cscript, so an $env:SAPDEV_SESSION_PATH exported here dies with it and the attach
+# lib silently falls through to its sole-connection default (2026-08-06).
+. "$shared\scripts\sap_connection_lib.ps1"
 $sessionPath = ''   # set to the parsed --session value if supplied
+if (-not $sessionPath) { $sessionPath = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}' }
 $content  = $content.Replace('%%SESSION_PATH%%',   $sessionPath)
 $content  = $content.Replace('%%ATTACH_LIB_VBS%%', "$shared\scripts\sap_attach_lib.vbs")
-. "$shared\scripts\sap_connection_lib.ps1"
-$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 [System.IO.File]::WriteAllText('{RUN_TEMP}\sap_sa38_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
-Write-Host 'Done'
+Write-Host ("Done (session_path='" + $sessionPath + "')")
 ```
 
 Run the generator:
@@ -190,9 +193,13 @@ powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_sa38_run_run.ps1"
 ### Execute
 
 **No capture (background, or foreground without `--save-output`)** — run the VBS via the
-**32-bit** cscript host (SAP GUI COM needs 32-bit):
-```bash
-C:\Windows\SysWOW64\cscript.exe //NoLogo {RUN_TEMP}\sap_sa38_run.vbs
+**32-bit** cscript host (SAP GUI COM needs 32-bit), declaring the GUI target in the SAME
+block (the attach lib reads `SAPDEV_EXPECT_SYSTEM`/`_CLIENT` from the process environment,
+so the report can never be executed on a system other than the one the RFC leg resolved):
+```powershell
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+Set-SapGuiTargetExpectation -WorkTemp '{WORK_TEMP}' | Out-Null
+& 'C:\Windows\SysWOW64\cscript.exe' //NoLogo '{RUN_TEMP}\sap_sa38_run.vbs'
 ```
 
 **Foreground with `--save-output`** — the `%PC` list download is SAP-GUI-side file IO, so
@@ -201,6 +208,9 @@ Substitute `THE_SAVE_PATH` (= `--save-output`) and `THE_SID` / `THE_CLIENT` (pin
 ```powershell
 $shared = '<SAP_DEV_CORE_SHARED_DIR>\scripts'
 $out    = 'THE_SAVE_PATH'
+# Declare which SAP system the GUI leg may drive; MUST be in the same block as cscript.
+. "$shared\sap_connection_lib.ps1"
+Set-SapGuiTargetExpectation -WorkTemp '{WORK_TEMP}' | Out-Null
 & "$shared\sap_gui_security_precheck.ps1" -Path $out -Access w -System 'THE_SID' -Client 'THE_CLIENT' -Transaction 'SA38' | Out-Host
 $watcher = $null
 if ($LASTEXITCODE -ne 0) {

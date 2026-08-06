@@ -175,14 +175,16 @@ Write `{RUN_TEMP}\sap_snro_check_run.ps1`:
 ```powershell
 $content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_snro_check.vbs', [System.Text.Encoding]::UTF8)
 $content = $content.Replace('%%NRO_NAME%%','THE_NRO_NAME')
-# Phase 3.5 session-attach plumbing.
-$sessionPath = ''
+# Phase 4.2 session-attach plumbing. BAKE the resolved path into %%SESSION_PATH%%
+# (attach Strategy 1): this generator is a SEPARATE process from the one that runs
+# cscript, so an $env:SAPDEV_SESSION_PATH exported here dies with it and the attach
+# lib silently falls through to its sole-connection default (2026-08-06).
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+$sessionPath = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 $content = $content.Replace('%%SESSION_PATH%%',   $sessionPath)
 $content = $content.Replace('%%ATTACH_LIB_VBS%%', '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs')
-. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
-$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 [System.IO.File]::WriteAllText('{RUN_TEMP}\sap_snro_check_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
-Write-Host 'Done'
+Write-Host ("Done (session_path='" + $sessionPath + "')")
 ```
 Replace `THE_NRO_NAME` with the actual NRO name (UPPERCASE) and `<SKILL_DIR>` with the absolute path to this skill directory.
 
@@ -193,8 +195,13 @@ powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_snro_check_run.ps1"
 
 ### Execute
 
-```bash
-C:\Windows\SysWOW64\cscript.exe //NoLogo {RUN_TEMP}\sap_snro_check_run.vbs
+Declare the GUI target in the SAME block as cscript — the attach lib reads
+`SAPDEV_EXPECT_SYSTEM`/`_CLIENT` from the process environment, so a GUI parked on
+a different system than the RFC leg is refused instead of driven:
+```powershell
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+Set-SapGuiTargetExpectation -WorkTemp '{WORK_TEMP}' | Out-Null
+& 'C:\Windows\SysWOW64\cscript.exe' //NoLogo '{RUN_TEMP}\sap_snro_check_run.vbs'
 ```
 
 **Parse the last line of output:**
@@ -232,14 +239,14 @@ $content  = $content.Replace('%%DOMLEN%%',     'THE_DOMLEN')
 $content  = $content.Replace('%%PERCENTAGE%%', 'THE_PERCENTAGE')
 $content  = $content.Replace('%%PACKAGE%%',    'THE_PACKAGE')
 $content  = $content.Replace('%%TRANSPORT%%',  'THE_TRANSPORT')
-# Phase 3.5 session-attach plumbing.
-$sessionPath = ''
+# BAKE the session path (attach Strategy 1) -- an env var exported by this
+# generator process never reaches the separate process that runs cscript.
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+$sessionPath = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 $content  = $content.Replace('%%SESSION_PATH%%',     $sessionPath)
 $content  = $content.Replace('%%ATTACH_LIB_VBS%%',   '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs')
-. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
-$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 [System.IO.File]::WriteAllText('{RUN_TEMP}\sap_snro_create_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
-Write-Host 'Done'
+Write-Host ("Done (session_path='" + $sessionPath + "')")
 ```
 Use `.Replace()` (literal). Replace `<SKILL_DIR>` and all `THE_*` placeholders. If `LONG_TEXT` is blank, pass the short text. If `PERCENTAGE` is blank, pass `10.0`. If package/transport not provided, pass empty strings.
 
@@ -250,8 +257,12 @@ powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_snro_create_run.ps1"
 
 ### Execute
 
-```bash
-C:\Windows\SysWOW64\cscript.exe //NoLogo {RUN_TEMP}\sap_snro_create_run.vbs
+Declare the GUI target in the SAME block as cscript (see the check step) so the
+number range object is created on the system the RFC leg resolved:
+```powershell
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+Set-SapGuiTargetExpectation -WorkTemp '{WORK_TEMP}' | Out-Null
+& 'C:\Windows\SysWOW64\cscript.exe' //NoLogo '{RUN_TEMP}\sap_snro_create_run.vbs'
 ```
 
 Proceed to Step 6 to evaluate the result. If the user also supplied intervals, continue with Step 5c after a successful create.
@@ -278,14 +289,14 @@ $content  = $content.Replace('%%DOMLEN%%',     'THE_DOMLEN')
 $content  = $content.Replace('%%PERCENTAGE%%', 'THE_PERCENTAGE')
 $content  = $content.Replace('%%PACKAGE%%',    'THE_PACKAGE')
 $content  = $content.Replace('%%TRANSPORT%%',  'THE_TRANSPORT')
-# Phase 3.5 session-attach plumbing.
-$sessionPath = ''
+# BAKE the session path (attach Strategy 1) -- an env var exported by this
+# generator process never reaches the separate process that runs cscript.
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+$sessionPath = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 $content  = $content.Replace('%%SESSION_PATH%%',     $sessionPath)
 $content  = $content.Replace('%%ATTACH_LIB_VBS%%',   '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs')
-. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
-$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 [System.IO.File]::WriteAllText('{RUN_TEMP}\sap_snro_update_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
-Write-Host 'Done'
+Write-Host ("Done (session_path='" + $sessionPath + "')")
 ```
 Pass empty strings for fields the user does not want to change. The VBS only touches fields whose token is non-empty.
 
@@ -296,8 +307,12 @@ powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_snro_update_run.ps1"
 
 ### Execute
 
-```bash
-C:\Windows\SysWOW64\cscript.exe //NoLogo {RUN_TEMP}\sap_snro_update_run.vbs
+Declare the GUI target in the SAME block as cscript (see the check step) so the
+number range object is updated on the system the RFC leg resolved:
+```powershell
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+Set-SapGuiTargetExpectation -WorkTemp '{WORK_TEMP}' | Out-Null
+& 'C:\Windows\SysWOW64\cscript.exe' //NoLogo '{RUN_TEMP}\sap_snro_update_run.vbs'
 ```
 
 Proceed to Step 6.
@@ -327,14 +342,14 @@ $tpl      = "$skillDir\references\sap_snro_intervals.vbs"
 $content  = [System.IO.File]::ReadAllText($tpl, [System.Text.Encoding]::UTF8)
 $content  = $content.Replace('%%NRO_NAME%%',     'THE_NRO_NAME')
 $content  = $content.Replace('%%INTERVALS_FILE%%','THE_INTERVALS_FILE')
-# Phase 3.5 session-attach plumbing.
-$sessionPath = ''
+# BAKE the session path (attach Strategy 1) -- an env var exported by this
+# generator process never reaches the separate process that runs cscript.
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+$sessionPath = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 $content  = $content.Replace('%%SESSION_PATH%%',   $sessionPath)
 $content  = $content.Replace('%%ATTACH_LIB_VBS%%', '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs')
-. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
-$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 [System.IO.File]::WriteAllText('{RUN_TEMP}\sap_snro_intervals_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
-Write-Host 'Done'
+Write-Host ("Done (session_path='" + $sessionPath + "')")
 ```
 
 Run:
@@ -344,8 +359,13 @@ powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_snro_intervals_run.ps1"
 
 ### Execute
 
-```bash
-C:\Windows\SysWOW64\cscript.exe //NoLogo {RUN_TEMP}\sap_snro_intervals_run.vbs
+Declare the GUI target in the SAME block as cscript (see the check step). Number
+range intervals carry live document numbering, so landing on the wrong system
+would corrupt that system's numbering state:
+```powershell
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+Set-SapGuiTargetExpectation -WorkTemp '{WORK_TEMP}' | Out-Null
+& 'C:\Windows\SysWOW64\cscript.exe' //NoLogo '{RUN_TEMP}\sap_snro_intervals_run.vbs'
 ```
 
 Proceed to Step 6.

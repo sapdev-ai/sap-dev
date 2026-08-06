@@ -92,24 +92,34 @@ CONVERSION_TERMINATED state, which cannot be safely manufactured — see Scope).
 guessed click).
 
 **`adjust`** — substitute the 5 tokens and run the recorded save-data-only driver via **32-bit
-cscript**. Mirror the parallel-safe attach contract (set `SAPDEV_SESSION_PATH`, keep the base
-`{WORK_TEMP}` for `Get-SapCurrentSessionPath`, write the runtime VBS to `{RUN_TEMP}`, UTF-16 LE BOM):
+cscript**. Mirror the parallel-safe attach contract (BAKE the resolved path into
+`%%SESSION_PATH%%`, keep the base `{WORK_TEMP}` for `Get-SapCurrentSessionPath`, write the runtime
+VBS to `{RUN_TEMP}`, UTF-16 LE BOM):
 
 ```powershell
 $shared = '<SAP_DEV_CORE_SHARED_DIR>\scripts'
 . "$shared\sap_connection_lib.ps1"
-$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
+# BAKE the path (attach Strategy 1) rather than exporting $env:SAPDEV_SESSION_PATH:
+# this generator is a SEPARATE process from the one that runs cscript, so the env
+# var would already be gone and the attach lib would silently fall through to its
+# sole-connection default (2026-08-06).
+$sessionPath = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'   # or the --session value
 $vbs = [IO.File]::ReadAllText('<SKILL_DIR>\references\sap_se14_adjust.vbs', [Text.Encoding]::UTF8)
 $vbs = $vbs.Replace('%%TABLE%%',            '<T>')                        # upper-cased table name
 $vbs = $vbs.Replace('%%OUTPUT_FILE%%',      '{RUN_TEMP}\se14_adjust.json')
-$vbs = $vbs.Replace('%%SESSION_PATH%%',     '')                          # or the --session value
+$vbs = $vbs.Replace('%%SESSION_PATH%%',     $sessionPath)
 $vbs = $vbs.Replace('%%ATTACH_LIB_VBS%%',   "$shared\sap_attach_lib.vbs")
 $vbs = $vbs.Replace('%%SESSION_LOCK_VBS%%', "$shared\sap_session_lock.vbs")
 [IO.File]::WriteAllText('{RUN_TEMP}\se14_adjust_run.vbs', $vbs, [System.Text.UnicodeEncoding]::new($false, $true))
 ```
 
-```bash
-C:\Windows\SysWOW64\cscript.exe //NoLogo "{RUN_TEMP}\se14_adjust_run.vbs"
+Declare the GUI target in the SAME block as cscript — the attach lib reads
+`SAPDEV_EXPECT_SYSTEM`/`_CLIENT` from the process environment, and an SE14 adjust
+is a data-affecting write, so landing on the wrong system is not recoverable:
+```powershell
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+Set-SapGuiTargetExpectation -WorkTemp '{WORK_TEMP}' | Out-Null
+& 'C:\Windows\SysWOW64\cscript.exe' //NoLogo "{RUN_TEMP}\se14_adjust_run.vbs"
 ```
 
 Parse the `SE14:` / `STATUS:` lines (and read `{RUN_TEMP}\se14_adjust.json` =

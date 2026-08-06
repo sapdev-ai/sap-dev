@@ -98,24 +98,32 @@ $lines | Set-Content '{RUN_DIR}\st22_params.txt' -Encoding Default
 
 ## Step 2 — Run the Reader (32-bit cscript)
 
-Substitute the attach tokens + IO paths. Set `SAPDEV_SESSION_PATH` so the
-attach helper targets this AI session's pinned connection (per the parallel-safe
-attach contract).
+Substitute the attach tokens + IO paths, **baking** this AI session's pinned
+session path into `%%SESSION_PATH%%` so the attach helper targets the pinned
+connection (per the parallel-safe attach contract).
 
 ```powershell
 $shared = '<SAP_DEV_CORE_SHARED_DIR>\scripts'
 . "$shared\sap_connection_lib.ps1"
-$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
+# BAKE the path (attach Strategy 1) rather than exporting $env:SAPDEV_SESSION_PATH:
+# this generator is a SEPARATE process from the one that runs cscript, so the env
+# var would already be gone and the helper would silently fall through to its
+# sole-connection default -- reporting another system's dumps (2026-08-06).
+$sessionPath = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'   # or the --session value
 $vbs = [IO.File]::ReadAllText('<SKILL_DIR>\references\sap_st22_read.vbs', [Text.Encoding]::UTF8)
 $vbs = $vbs.Replace('%%ATTACH_LIB_VBS%%', "$shared\sap_attach_lib.vbs")
-$vbs = $vbs.Replace('%%SESSION_PATH%%',   '')   # or the --session value
+$vbs = $vbs.Replace('%%SESSION_PATH%%',   $sessionPath)
 $vbs = $vbs.Replace('%%PARAMS_FILE%%',    '{RUN_DIR}\st22_params.txt')
 $vbs = $vbs.Replace('%%OUTPUT_FILE%%',    '{RUN_DIR}\evidence_st22.json')
 [IO.File]::WriteAllText('{RUN_DIR}\st22_run.vbs', $vbs, [System.Text.UnicodeEncoding]::new($false, $true))
 ```
 
-```bash
-C:\Windows\SysWOW64\cscript.exe //NoLogo "{RUN_DIR}\st22_run.vbs"
+Declare the GUI target in the SAME block as cscript, so the dumps in the evidence
+file provably came from the system the rest of `/sap-diagnose` read over RFC:
+```powershell
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+Set-SapGuiTargetExpectation -WorkTemp '{WORK_TEMP}' | Out-Null
+& 'C:\Windows\SysWOW64\cscript.exe' //NoLogo "{RUN_DIR}\st22_run.vbs"
 ```
 
 (32-bit `cscript` is mandatory — SAP GUI Scripting COM is 32-bit. Never `cmd /c`.)

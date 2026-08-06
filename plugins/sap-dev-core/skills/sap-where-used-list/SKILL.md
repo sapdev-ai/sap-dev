@@ -137,16 +137,19 @@ $content  = $content.Replace('%%OBJECT_TYPE%%',     'THE_OBJECT_TYPE')   # empty
 $content  = $content.Replace('%%OBJECT_NAME%%',     'THE_OBJECT_NAME')
 $content  = $content.Replace('%%TO_SPOOL%%',        'THE_TO_SPOOL')      # 'X' or empty
 $content  = $content.Replace('%%SESSION_LOCK_VBS%%', '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_session_lock.vbs')
-# Session-attach plumbing (Phase 3.5 multi-connection aware). Resolution:
-# explicit --session > SAPDEV_SESSION_PATH > sole-
-# connection auto-default > refuse. See sap_attach_lib.vbs for details.
+# Session-attach plumbing (Phase 4.2). Resolution: explicit --session > this AI
+# session's pin, BAKED into %%SESSION_PATH%% (attach Strategy 1). Do NOT export
+# $env:SAPDEV_SESSION_PATH instead: this generator is a SEPARATE process from the
+# one that runs cscript, so the env var would already be gone and the helper would
+# silently fall through to its sole-connection default -- which would list the
+# callers found on a DIFFERENT SAP system than the one asked about (2026-08-06).
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $sessionPath = ''  # set to the parsed --session value if supplied
+if (-not $sessionPath) { $sessionPath = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}' }
 $content  = $content.Replace('%%SESSION_PATH%%',     $sessionPath)
 $content  = $content.Replace('%%ATTACH_LIB_VBS%%',   '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs')
-. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
-$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 [System.IO.File]::WriteAllText('{RUN_TEMP}\sap_where_used_list_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
-Write-Host 'Done'
+Write-Host ("Done (session_path='" + $sessionPath + "')")
 ```
 
 Run via 32-bit cscript:

@@ -196,13 +196,20 @@ $content = $content.Replace('%%LOCAL_FILE%%',    '<local-file>')
 $content = $content.Replace('%%REMOTE_FILE%%',   '<appserver-file>')
 $content = $content.Replace('%%TRANSFER_MODE%%', '<ASC|BIN>')
 $content = $content.Replace('%%OVERWRITE%%',     '<X-or-empty>')
-$content = $content.Replace('%%SESSION_PATH%%',  '<--session value or empty>')
+# Prefer an explicit --session, else this AI session's pin. BAKE it into
+# %%SESSION_PATH%% (attach Strategy 1) so it survives even if the cscript call
+# later moves to its own block (an exported env var would not).
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+$sessionPath = '<--session value or empty>'
+if (-not $sessionPath) { $sessionPath = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}' }
+$content = $content.Replace('%%SESSION_PATH%%',  $sessionPath)
 $content = $content.Replace('%%ATTACH_LIB_VBS%%', '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs')
 $content = $content.Replace('%%SESSION_LOCK_VBS%%', '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_session_lock.vbs')
-. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
-$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 [System.IO.File]::WriteAllText("$runTemp\sap_file_transfer_run.vbs", $content, [System.Text.UnicodeEncoding]::new($false, $true))
-C:\Windows\SysWOW64\cscript.exe //NoLogo "$runTemp\sap_file_transfer_run.vbs"
+# Declare which SAP system the GUI leg may drive; the attach lib reads this from
+# the process environment, so it MUST be set by the process that runs cscript.
+Set-SapGuiTargetExpectation -WorkTemp '{WORK_TEMP}' | Out-Null
+& 'C:\Windows\SysWOW64\cscript.exe' //NoLogo "$runTemp\sap_file_transfer_run.vbs"
 ```
 
 **Outcome contract** (parse stdout + exit code — never infer success from

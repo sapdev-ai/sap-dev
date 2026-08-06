@@ -156,14 +156,18 @@ $content = $content -replace '%%TO_TIME%%',     'HH:MM:SS'
 $content = $content -replace '%%MEASUREMENT%%', 'THE_MEASUREMENT'   # SAT only; '' = latest
 # Session-attach plumbing (Phase 4.2). AttachSapSession resolves the target
 # session: SESSION_PATH constant -> SAPDEV_SESSION_PATH env var ->
-# sole-connection default -> refuse loud.
-$sessionPath = ''   # set to the parsed --session value if supplied
-$content = $content -replace '%%SESSION_PATH%%',   $sessionPath
-$content = $content -replace '%%ATTACH_LIB_VBS%%', '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
+# sole-connection default -> refuse loud. Resolve the pin here and BAKE it into
+# the SESSION_PATH constant (Strategy 1); the env var (Strategy 2) does NOT work
+# from this block, which is a SEPARATE process from the one that runs cscript, so
+# the helper would silently fall through to the sole-connection default and trace
+# whatever SAP GUI happens to be open (2026-08-06).
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
-$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
+$sessionPath = ''   # set to the parsed --session value if supplied
+if (-not $sessionPath) { $sessionPath = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}' }
+$content = $content.Replace('%%SESSION_PATH%%',   $sessionPath)
+$content = $content -replace '%%ATTACH_LIB_VBS%%', '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
 [System.IO.File]::WriteAllText('{RUN_TEMP}\sap_trace_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
-Write-Host 'Done'
+Write-Host ("Done (session_path='" + $sessionPath + "')")
 ```
 
 Replace `RUNTS` / `THE_USER` / `HH:MM:SS` / `THE_MEASUREMENT` and the

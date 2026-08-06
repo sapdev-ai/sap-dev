@@ -94,25 +94,34 @@ The generic table-control driver `sap_sm30_maintain.vbs` is **recorded + live-ve
 (KEY=VALUE: `VIEW` / `MODE=add|update` / `DATA_FILE` / `TRKORR`), so the run-time VBS carries only the
 Tier-3 + IO tokens. `DATA_FILE` = the TSV whose header row = DD27S FIELDNAMEs (**key fields first**, in
 key order) and each later row = one entry; MANDT/CLIENT are auto and skipped. Substitute the attach +
-lock + IO tokens, set `SAPDEV_SESSION_PATH` (parallel-safe attach contract), write UTF-16 LE, and run
-via **32-bit cscript**:
+lock + IO tokens, **bake** the resolved session path (parallel-safe attach contract), write UTF-16 LE,
+and run via **32-bit cscript**:
 
 ```powershell
 $shared = '<SAP_DEV_CORE_SHARED_DIR>\scripts'
 . "$shared\sap_connection_lib.ps1"
-$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
+# BAKE the path into %%SESSION_PATH%% (attach Strategy 1) rather than exporting
+# $env:SAPDEV_SESSION_PATH here: this generator is a SEPARATE process from the one
+# that runs cscript, so the env var would already be gone and the attach lib would
+# silently fall through to its sole-connection default (2026-08-06).
+$sessionPath = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'   # or the --session value
 # PARAMS_FILE lines: VIEW=<name>  MODE=add|update  DATA_FILE=<abs tsv>  TRKORR=<customizing-TR-or-empty>
 $vbs = [IO.File]::ReadAllText('<SKILL_DIR>\references\sap_sm30_maintain.vbs', [Text.Encoding]::UTF8)
 $vbs = $vbs.Replace('%%ATTACH_LIB_VBS%%',   "$shared\sap_attach_lib.vbs")
 $vbs = $vbs.Replace('%%SESSION_LOCK_VBS%%', "$shared\sap_session_lock.vbs")
-$vbs = $vbs.Replace('%%SESSION_PATH%%',     '')   # or the --session value
+$vbs = $vbs.Replace('%%SESSION_PATH%%',     $sessionPath)
 $vbs = $vbs.Replace('%%PARAMS_FILE%%',      '{RUN_TEMP}\sm30_params.txt')
 $vbs = $vbs.Replace('%%OUTPUT_FILE%%',      '{RUN_TEMP}\sm30_result.json')
 [IO.File]::WriteAllText('{RUN_TEMP}\sm30_maintain_run.vbs', $vbs, [System.Text.UnicodeEncoding]::new($false, $true))
 ```
 
-```bash
-C:\Windows\SysWOW64\cscript.exe //NoLogo "{RUN_TEMP}\sm30_maintain_run.vbs"
+Declare the GUI target in the SAME block as cscript — the attach lib reads
+`SAPDEV_EXPECT_SYSTEM`/`_CLIENT` from the process environment, so customizing rows
+can never be written to a system other than the one the RFC leg resolved:
+```powershell
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+Set-SapGuiTargetExpectation -WorkTemp '{WORK_TEMP}' | Out-Null
+& 'C:\Windows\SysWOW64\cscript.exe' //NoLogo "{RUN_TEMP}\sm30_maintain_run.vbs"
 ```
 
 **Generic table-control driver:** the overview belongs to the *generated* program SAPL<AREA>, so it

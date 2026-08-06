@@ -220,19 +220,26 @@ $content = $content.Replace('%%OPERATION%%',  'THE_OPERATION')
 # but if SAP then prompts for a TR the VBS aborts with ABORT_EMPTY_TR -- it
 # never blind-Enters the transport popup.
 $content = $content.Replace('%%TRANSPORT%%',  'THE_TRANSPORT_OR_EMPTY')
-# Phase 3.5 session-attach plumbing.
-$sessionPath = ''
+# Phase 4.2 session-attach plumbing. BAKE the resolved path into %%SESSION_PATH%%
+# (attach Strategy 1): this generator is a SEPARATE process from the one that runs
+# cscript, so an $env:SAPDEV_SESSION_PATH exported here dies with it and the attach
+# lib silently falls through to its sole-connection default (2026-08-06).
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+$sessionPath = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 $content = $content.Replace('%%SESSION_PATH%%',   $sessionPath)
 $content = $content.Replace('%%ATTACH_LIB_VBS%%', '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs')
-. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
-$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 [System.IO.File]::WriteAllText('{RUN_TEMP}\sap_update_addon_sm30_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
-Write-Host 'Done'
+Write-Host ("Done (session_path='" + $sessionPath + "')")
 ```
 
-Execute (SAP GUI Scripting COM requires 32-bit cscript):
-```bash
-C:/Windows/SysWOW64/cscript.exe //NoLogo "{RUN_TEMP}\sap_update_addon_sm30_run.vbs"
+Execute (SAP GUI Scripting COM requires 32-bit cscript), declaring the GUI target
+in the SAME block — the attach lib reads `SAPDEV_EXPECT_SYSTEM`/`_CLIENT` from the
+process environment, so add-on table rows can never be written to a system other
+than the one the RFC detection resolved:
+```powershell
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+Set-SapGuiTargetExpectation -WorkTemp '{WORK_TEMP}' | Out-Null
+& 'C:/Windows/SysWOW64/cscript.exe' //NoLogo "{RUN_TEMP}\sap_update_addon_sm30_run.vbs"
 ```
 
 **SM30 Notes:**
@@ -265,19 +272,23 @@ $content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_update_addo
 $content = $content.Replace('%%TABLE_NAME%%', 'THE_TABLE_NAME')
 $content = $content.Replace('%%DATA_FILE%%',  'THE_DATA_FILE')
 $content = $content.Replace('%%OPERATION%%',  'THE_OPERATION')
-# Phase 3.5 session-attach plumbing.
-$sessionPath = ''
+# BAKE the session path (attach Strategy 1) -- an env var exported by this
+# generator process never reaches the separate process that runs cscript.
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+$sessionPath = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 $content = $content.Replace('%%SESSION_PATH%%',   $sessionPath)
 $content = $content.Replace('%%ATTACH_LIB_VBS%%', '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs')
-. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
-$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 [System.IO.File]::WriteAllText('{RUN_TEMP}\sap_update_addon_se16_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
-Write-Host 'Done'
+Write-Host ("Done (session_path='" + $sessionPath + "')")
 ```
 
-Execute (SAP GUI Scripting COM requires 32-bit cscript):
-```bash
-C:/Windows/SysWOW64/cscript.exe //NoLogo "{RUN_TEMP}\sap_update_addon_se16_run.vbs"
+Execute (SAP GUI Scripting COM requires 32-bit cscript), declaring the GUI target
+in the SAME block (see the SM30 path above) so rows land only on the system the
+RFC detection resolved:
+```powershell
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+Set-SapGuiTargetExpectation -WorkTemp '{WORK_TEMP}' | Out-Null
+& 'C:/Windows/SysWOW64/cscript.exe' //NoLogo "{RUN_TEMP}\sap_update_addon_se16_run.vbs"
 ```
 
 **SE16 Notes (INSERT / UPDATE):**
@@ -319,14 +330,14 @@ $content = $content.Replace('%%TEMP_DIR%%',   '{RUN_TEMP}')
 # refuses OPERATION=DELETE upfront with
 # "ERROR: PROG method supports upsert (MODIFY) only" (exit 1).
 $content = $content.Replace('%%OPERATION%%',  'THE_OPERATION')
-# Phase 3.5 session-attach plumbing.
-$sessionPath = ''
+# BAKE the session path (attach Strategy 1) -- an env var exported by this
+# generator process never reaches the separate process that runs cscript.
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+$sessionPath = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 $content = $content.Replace('%%SESSION_PATH%%',   $sessionPath)
 $content = $content.Replace('%%ATTACH_LIB_VBS%%', '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs')
-. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
-$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 [System.IO.File]::WriteAllText('{RUN_TEMP}\sap_update_addon_prog_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
-Write-Host 'Done'
+Write-Host ("Done (session_path='" + $sessionPath + "')")
 ```
 
 ### Execute (with SAP GUI Security guard)
@@ -344,6 +355,10 @@ can appear well after the upload.
 
 ```powershell
 $shared  = '<SAP_DEV_CORE_SHARED_DIR>\scripts'
+# Declare which SAP system the GUI leg may write to; MUST be in the same block as
+# cscript (the attach lib reads it from the process environment).
+. "$shared\sap_connection_lib.ps1"
+Set-SapGuiTargetExpectation -WorkTemp '{WORK_TEMP}' | Out-Null
 $watcher = Start-Process powershell -PassThru -WindowStyle Hidden `
     -RedirectStandardOutput "{RUN_TEMP}\sap_update_addon_sidecar.out" `
     -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File',

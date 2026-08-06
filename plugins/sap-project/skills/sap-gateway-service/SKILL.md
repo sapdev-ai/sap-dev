@@ -73,23 +73,34 @@ via RFC_READ_TABLE or BBP_RFC_READ_TABLE (its RSTR/STRG columns trip a SAPLSDTX/
 ASSIGN-CASTING dump) — the backend returns `GW_ERRLOG_GUI_ONLY`, so `errors` is driven by the
 `/IWFND/ERROR_LOG` **GUI reader** `sap_gateway_errlog_deep.vbs` (recorded + live-verified end-to-end
 on S4D 2026-07-11 — needs a live GUI session; pin one via `/sap-login`). Substitute the attach + IO
-tokens, set `SAPDEV_SESSION_PATH` (parallel-safe attach contract), and run it via **32-bit cscript**:
+tokens, **bake** the resolved session path (parallel-safe attach contract), and run it via
+**32-bit cscript**:
 
 ```powershell
 $shared = '<SAP_DEV_CORE_SHARED_DIR>\scripts'
 . "$shared\sap_connection_lib.ps1"
-$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
+# BAKE the path into %%SESSION_PATH%% (attach Strategy 1) rather than exporting
+# $env:SAPDEV_SESSION_PATH here: this generator is a SEPARATE process from the one
+# that runs cscript, so the env var would already be gone and the attach lib would
+# silently fall through to its sole-connection default (2026-08-06).
+$sessionPath = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'   # or the --session value
 # PARAMS_FILE = KEY=VALUE lines: FROMDATE=YYYYMMDD TODATE=YYYYMMDD USER=<b> SERVICE=<n> TOPN=<n> [DEEP=1]
 $vbs = [IO.File]::ReadAllText('<SKILL_DIR>\references\sap_gateway_errlog_deep.vbs', [Text.Encoding]::UTF8)
 $vbs = $vbs.Replace('%%ATTACH_LIB_VBS%%', "$shared\sap_attach_lib.vbs")
-$vbs = $vbs.Replace('%%SESSION_PATH%%',   '')   # or the --session value
+$vbs = $vbs.Replace('%%SESSION_PATH%%',   $sessionPath)
 $vbs = $vbs.Replace('%%PARAMS_FILE%%',    '{RUN_TEMP}\gwerr_params.txt')
 $vbs = $vbs.Replace('%%OUTPUT_FILE%%',    '{RUN_TEMP}\gwerr.json')
 [IO.File]::WriteAllText('{RUN_TEMP}\gwerr_run.vbs', $vbs, [System.Text.UnicodeEncoding]::new($false, $true))
 ```
 
-```bash
-C:\Windows\SysWOW64\cscript.exe //NoLogo "{RUN_TEMP}\gwerr_run.vbs"
+Run with the GUI target declared in the SAME block — the RFC legs of this skill
+and this GUI reader resolve their target through different chains, so without the
+expectation the error log could come from a different system than the rest of the
+report:
+```powershell
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+Set-SapGuiTargetExpectation -WorkTemp '{WORK_TEMP}' | Out-Null
+& 'C:\Windows\SysWOW64\cscript.exe' //NoLogo "{RUN_TEMP}\gwerr_run.vbs"
 ```
 
 Parse `GWERR: entries=<n> deep=<d> file=<path>` + `STATUS: OK`; a `STATUS: GRID_NOT_FOUND` line means

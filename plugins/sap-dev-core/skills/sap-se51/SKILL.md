@@ -168,14 +168,16 @@ Write `{RUN_TEMP}\sap_se51_check_run.ps1`:
 $content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_se51_check.vbs', [System.Text.Encoding]::UTF8)
 $content = $content -replace '%%PROGRAM_NAME%%','THE_PROGRAM_NAME'
 $content = $content -replace '%%SCREEN_NUMBER%%','THE_SCREEN_NUMBER'
-# Phase 3.5 session-attach plumbing.
-$sessionPath = ''
-$content = $content -replace '%%SESSION_PATH%%', $sessionPath
-$content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
+# Phase 4.2 session-attach plumbing. BAKE the resolved path into %%SESSION_PATH%%
+# (attach Strategy 1): this generator is a SEPARATE process from the one that runs
+# cscript, so an $env:SAPDEV_SESSION_PATH exported here dies with it and the attach
+# lib silently falls through to its sole-connection default (2026-08-06).
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
-$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
+$sessionPath = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
+$content = $content.Replace('%%SESSION_PATH%%', $sessionPath)
+$content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
 [System.IO.File]::WriteAllText('{RUN_TEMP}\sap_se51_check_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
-Write-Host 'Done'
+Write-Host ("Done (session_path='" + $sessionPath + "')")
 ```
 Replace `THE_PROGRAM_NAME` (UPPERCASE), `THE_SCREEN_NUMBER`, and `<SKILL_DIR>`.
 
@@ -186,8 +188,13 @@ powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_se51_check_run.ps1"
 
 ### Execute
 
-```bash
-C:\Windows\SysWOW64\cscript.exe //NoLogo {RUN_TEMP}\sap_se51_check_run.vbs
+Declare the GUI target in the SAME block as cscript — the attach lib reads
+`SAPDEV_EXPECT_SYSTEM`/`_CLIENT` from the process environment, so a GUI parked on
+a different system than the RFC leg is refused instead of driven:
+```powershell
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+Set-SapGuiTargetExpectation -WorkTemp '{WORK_TEMP}' | Out-Null
+& 'C:\Windows\SysWOW64\cscript.exe' //NoLogo '{RUN_TEMP}\sap_se51_check_run.vbs'
 ```
 
 **Parse the last line of output:**
@@ -218,14 +225,14 @@ $content = $content -replace '%%PROGRAM_NAME%%','THE_PROGRAM_NAME'
 $content = $content -replace '%%SCREEN_NUMBER%%','THE_SCREEN_NUMBER'
 $content = $content -replace '%%LOG_FILE%%','{RUN_TEMP}\sap_se51_update.log'
 $content = $content -replace '%%FOREGROUND_GUARD_PS1%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_gui_foreground_guard.ps1'
-# Phase 3.5 session-attach plumbing.
-$sessionPath = ''
-$content = $content -replace '%%SESSION_PATH%%', $sessionPath
-$content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
+# BAKE the session path (attach Strategy 1) -- an env var exported by this
+# generator process never reaches the separate process that runs cscript.
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
-$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
+$sessionPath = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
+$content = $content.Replace('%%SESSION_PATH%%', $sessionPath)
+$content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
 [System.IO.File]::WriteAllText('{RUN_TEMP}\sap_se51_update_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
-Write-Host 'Done'
+Write-Host ("Done (session_path='" + $sessionPath + "')")
 ```
 Replace `THE_PROGRAM_NAME` (UPPERCASE), `THE_SCREEN_NUMBER`, and `<SKILL_DIR>`.
 
@@ -277,14 +284,14 @@ $content = $content -replace '%%SCREEN_NUMBER%%','THE_SCREEN_NUMBER'
 $content = $content -replace '%%SCREEN_SHORT_TEXT%%','THE_SHORT_TEXT'
 $content = $content -replace '%%LOG_FILE%%','{RUN_TEMP}\sap_se51_create.log'
 $content = $content -replace '%%FOREGROUND_GUARD_PS1%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_gui_foreground_guard.ps1'
-# Phase 3.5 session-attach plumbing.
-$sessionPath = ''
-$content = $content -replace '%%SESSION_PATH%%', $sessionPath
-$content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
+# BAKE the session path (attach Strategy 1) -- an env var exported by this
+# generator process never reaches the separate process that runs cscript.
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
-$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
+$sessionPath = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
+$content = $content.Replace('%%SESSION_PATH%%', $sessionPath)
+$content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
 [System.IO.File]::WriteAllText('{RUN_TEMP}\sap_se51_create_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
-Write-Host 'Done'
+Write-Host ("Done (session_path='" + $sessionPath + "')")
 ```
 Replace all `THE_*` placeholders and `<SKILL_DIR>`.
 
@@ -555,15 +562,17 @@ $c = $c -replace '%%TRANSPORT%%','THE_TR'
 $c = $c -replace '%%PACKAGE%%','THE_PACKAGE'
 $c = $c -replace '%%ELEMENT_FILE%%','{RUN_TEMP}\se51_elements.txt'
 $c = $c -replace '%%LOG_FILE%%','{RUN_TEMP}\sap_se51_add_element.log'
-# SESSION_PATH: leave '' for the single-session case (the attach lib resolves
-# via SAPDEV_SESSION_PATH below). If multiple sessions are open on the
-# connection the lib refuses — pass an explicit '/app/con[0]/ses[0]' here.
-$c = $c -replace '%%SESSION_PATH%%',''
-$c = $c -replace '%%ATTACH_LIB_VBS%%',"$shared\sap_attach_lib.vbs"
+# SESSION_PATH: BAKE this AI session's pin in (attach Strategy 1). Do NOT export
+# it as $env:SAPDEV_SESSION_PATH instead: this generator is a SEPARATE process
+# from the one that runs cscript, so the env var would already be gone and the
+# lib would silently fall through to its sole-connection default (2026-08-06).
+# Override with an explicit '/app/con[0]/ses[0]' when several sessions are open.
 . "$shared\sap_connection_lib.ps1"
-$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
+$sessionPath = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
+$c = $c.Replace('%%SESSION_PATH%%', $sessionPath)
+$c = $c -replace '%%ATTACH_LIB_VBS%%',"$shared\sap_attach_lib.vbs"
 [System.IO.File]::WriteAllText('{RUN_TEMP}\sap_se51_add_element_run.vbs', $c, [System.Text.UnicodeEncoding]::new($false, $true))
-Write-Host 'Done'
+Write-Host ("Done (session_path='" + $sessionPath + "')")
 ```
 
 Run with **`cscript`** (this VBS writes to a log file, not the clipboard, so no
@@ -571,7 +580,14 @@ Run with **`cscript`** (this VBS writes to a log file, not the clipboard, so no
 
 ```bash
 powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_se51_add_element_run.ps1"
-C:\Windows\SysWOW64\cscript.exe //NoLogo {RUN_TEMP}\sap_se51_add_element_run.vbs
+```
+
+Declare the GUI target in the SAME block as cscript so screen elements are only
+ever added on the system the RFC leg resolved:
+```powershell
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+Set-SapGuiTargetExpectation -WorkTemp '{WORK_TEMP}' | Out-Null
+& 'C:\Windows\SysWOW64\cscript.exe' //NoLogo '{RUN_TEMP}\sap_se51_add_element_run.vbs'
 ```
 
 Read `{RUN_TEMP}\sap_se51_add_element.log`. Last line:
@@ -732,15 +748,15 @@ $c = $c -replace '%%TRANSPORT%%','THE_TR'
 $c = $c -replace '%%PACKAGE%%','THE_PACKAGE'
 $c = $c -replace '%%LINESPEC_FILE%%','{RUN_TEMP}\se51_lines.txt'
 $c = $c -replace '%%LOG_FILE%%','{RUN_TEMP}\sap_se51_layout_rebuild.log'
-# SESSION_PATH: leave '' for the single-session case (the attach lib resolves
-# via SAPDEV_SESSION_PATH below). If multiple sessions are open on the
-# connection the lib refuses — pass an explicit '/app/con[0]/ses[0]' here.
-$c = $c -replace '%%SESSION_PATH%%',''
-$c = $c -replace '%%ATTACH_LIB_VBS%%',"$shared\sap_attach_lib.vbs"
+# SESSION_PATH: BAKE this AI session's pin in (attach Strategy 1) -- an env var
+# exported by this generator process never reaches the process that runs cscript.
+# Override with an explicit '/app/con[0]/ses[0]' when several sessions are open.
 . "$shared\sap_connection_lib.ps1"
-$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
+$sessionPath = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
+$c = $c.Replace('%%SESSION_PATH%%', $sessionPath)
+$c = $c -replace '%%ATTACH_LIB_VBS%%',"$shared\sap_attach_lib.vbs"
 [System.IO.File]::WriteAllText('{RUN_TEMP}\sap_se51_layout_rebuild_run.vbs', $c, [System.Text.UnicodeEncoding]::new($false, $true))
-Write-Host 'Done'
+Write-Host ("Done (session_path='" + $sessionPath + "')")
 ```
 
 Run with **`cscript`** (writes to a log file; no clipboard/foreground guard
@@ -748,7 +764,15 @@ needed):
 
 ```bash
 powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_se51_layout_rebuild_run.ps1"
-C:\Windows\SysWOW64\cscript.exe //NoLogo {RUN_TEMP}\sap_se51_layout_rebuild_run.vbs
+```
+
+Declare the GUI target in the SAME block as cscript. A layout rebuild replaces the
+screen, so refusing a GUI parked on a different system than the RFC leg is the
+difference between rebuilding the intended screen and clobbering its namesake:
+```powershell
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+Set-SapGuiTargetExpectation -WorkTemp '{WORK_TEMP}' | Out-Null
+& 'C:\Windows\SysWOW64\cscript.exe' //NoLogo '{RUN_TEMP}\sap_se51_layout_rebuild_run.vbs'
 ```
 
 Read `{RUN_TEMP}\sap_se51_layout_rebuild.log`. Last line:
