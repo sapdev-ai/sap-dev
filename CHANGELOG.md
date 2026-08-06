@@ -6,6 +6,24 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **`ZCMRUPDATE_ADDON_TABLE` short-dumped on downloading any table with a CURR
+  column.** The `convert_to_external` CURR branch passed
+  `max_number_of_digits = 23` to `BAPI_CURRENCY_CONV_TO_EXTERNAL`, but that
+  parameter exists only on the `_TO_INTERNAL` twin (verified against the live
+  FM interface on S4D, 2026-08-07) — evidently copied from the upload branch,
+  where it is legitimate (mandatory, even). An unknown parameter raises
+  `CALL_FUNCTION_PARM_UNKNOWN`, a runtime error the surrounding
+  `CATCH cx_root` cannot intercept, so the first CURR field `do_download`
+  formatted dumped the run. The parameter is simply removed — the
+  `_TO_EXTERNAL` direction needs no digit cap; the upload path's
+  `_TO_INTERNAL` call is untouched, and no selection-screen field was renamed
+  (`sap_update_addon_prog.vbs` drives them by GUI field id). The compiler
+  syntax check does NOT catch this defect class (verified with a minimal
+  repro) — only an FM-signature check (`/sap-check-abap` `fm` dimension)
+  does. **Redeploy required**: the program `/sap-dev-init` deploys is
+  byte-identical to this reference copy, so every system carries the dump
+  until `ZCMRUPDATE_ADDON_TABLE` is redeployed via `/sap-dev-init` (or a
+  `/sap-se38` update).
 - **Every safety-gate `assert` (and every other caller that omits the new
   `ResolvedVia` out-parameter) refused with a false `no_profile` under Windows
   PowerShell 5.1.** The RFC target-stamp work (PR #9) declared the parameter as
