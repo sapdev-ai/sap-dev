@@ -159,11 +159,16 @@ $r = Read-SapAbapSource -Name '{OBJECT}' -Type '{TYPE}' -OutDir '{OUT}' -WithInc
 
 **Class / interface (GUI download; skip if `--no-gui`):** reuse the SE24
 download VBS exactly as `/sap-explain-object` does — substitute
-`%%CLASS_NAME%% %%OUTPUT_FILE%% %%SESSION_PATH%% %%ATTACH_LIB_VBS%%`, set
-`$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'`,
-write UTF-16, and run via 32-bit cscript:
-```bash
-"C:/Windows/SysWOW64/cscript.exe" //NoLogo "{RUN_TEMP}\review_dl.vbs"
+`%%CLASS_NAME%% %%OUTPUT_FILE%% %%SESSION_PATH%% %%ATTACH_LIB_VBS%%`, **baking**
+`Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'` into `%%SESSION_PATH%%` (an
+`$env:SAPDEV_SESSION_PATH` exported by the generator dies with that process and
+the attach lib then reads whatever GUI happens to be open — 2026-08-06), write
+UTF-16, and run via 32-bit cscript with the GUI target declared in the SAME
+block, so the reviewed body provably comes from the system the RFC readers used:
+```powershell
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+Set-SapGuiTargetExpectation -WorkTemp '{WORK_TEMP}' | Out-Null
+& "C:/Windows/SysWOW64/cscript.exe" //NoLogo "{RUN_TEMP}\review_dl.vbs"
 ```
 If `--no-gui` and `{TYPE}=class`: skip the body, note "class body not acquired
 (--no-gui) — reviewed signature only", and run only the dimensions that work on

@@ -257,13 +257,16 @@ $content = $content -replace '%%SHORT_TEXT%%','THE_SHORT_TEXT'
 $content = $content -replace '%%DEF_FILE%%','{WORK_TEMP}\THE_STATUS.def'
 $content = $content -replace '%%TARGET_PROGRAM%%','THE_TARGET_PROGRAM'
 $content = $content -replace '%%TARGET_STATUS%%','THE_TARGET_STATUS'
-# Phase 3.5 session-attach plumbing.
-$content = $content -replace '%%SESSION_PATH%%', ''
-$content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
+# Phase 4.2 session-attach plumbing. BAKE the resolved path into %%SESSION_PATH%%
+# (attach Strategy 1): this generator is a SEPARATE process from the one that runs
+# cscript, so an $env:SAPDEV_SESSION_PATH exported here dies with it and the attach
+# lib silently falls through to its sole-connection default (2026-08-06).
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
-$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
+$sessionPath = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
+$content = $content.Replace('%%SESSION_PATH%%', $sessionPath)
+$content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
 [System.IO.File]::WriteAllText('{RUN_TEMP}\sap_se41_ops_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
-Write-Host 'Done'
+Write-Host ("Done (session_path='" + $sessionPath + "')")
 ```
 
 Run:
@@ -273,8 +276,13 @@ powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_se41_ops_run.ps1"
 
 ### Execute
 
-```bash
-C:\Windows\SysWOW64\cscript.exe //NoLogo {RUN_TEMP}\sap_se41_ops_run.vbs
+Declare the GUI target in the SAME block as cscript — the attach lib reads
+`SAPDEV_EXPECT_SYSTEM`/`_CLIENT` from the process environment, so a GUI-status
+change can never land on a system other than the one the RFC leg resolved:
+```powershell
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+Set-SapGuiTargetExpectation -WorkTemp '{WORK_TEMP}' | Out-Null
+& 'C:\Windows\SysWOW64\cscript.exe' //NoLogo '{RUN_TEMP}\sap_se41_ops_run.vbs'
 ```
 
 ---

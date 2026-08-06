@@ -19,14 +19,19 @@
 //   - A file in sap-dev-core/shared/scripts is not mentioned in CLAUDE.md's
 //     "Current Shared Files" table (authors' discovery surface; added
 //     2026-07-03 after 23 undocumented scripts were found)
+//   - A SKILL.md fenced block regresses on either half of the cross-system
+//     target guard: a dead session pin (exports $env:SAPDEV_SESSION_PATH but
+//     launches no child), or a write-capable cscript block with no
+//     Set-SapGuiTargetExpectation (added 2026-08-06)
 // WARN-level ratchets (do not fail the build yet): Phase-4 broker hints,
 // build-KPI enrichment, Step-0 work_dir resolution, {WORK_TEMP}-root scratch
-// (.vbs/.ps1/.json/.xml/.log/.txt),
+// (.vbs/.ps1/.json/.xml/.log/.txt), and
 // single/zero-consumer shared-script placement (CLAUDE.md placement rule,
 // reverse direction of the coverage ERROR above).
 // Former ratchets promoted to ERROR when their counts reached zero:
 // bare-cscript / wscript invocations, locale-literal GUI-text branching
-// (both 2026-07-10); missing screen baselines (2026-07-24, at 136/136).
+// (both 2026-07-10); missing screen baselines (2026-07-24, at 136/136); both
+// cross-system target-guard halves (2026-08-06, after migrating 40 skills).
 
 import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
 import { join, dirname, resolve, basename } from 'node:path';
@@ -1120,6 +1125,128 @@ const SAFETY_GATE_SKILLS = new Map([
       if (!existsSync(skillMdPath)) continue;
       if (gateCallRe.test(readFileSync(skillMdPath, 'utf8'))) {
         errors.push(`${plugin.name}: skills/${skillName}/SKILL.md runs 'sap_safety_gate.ps1 -Action assert' but is NOT in SAFETY_GATE_SKILLS -- add it there in the same commit (the list is the authoritative write-capable inventory)`);
+      }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Cross-system GUI target gate (added 2026-08-06).
+//
+// A skill that touches SAP over BOTH transports resolves its target twice, and
+// the two chains can disagree: Connect-SapRfc walks pin -> GUI-active ->
+// default -> sole-profile, while AttachSapSession walks hint ->
+// SAPDEV_SESSION_PATH -> sole-connection -> refuse. Live incident (S4D/100 vs
+// S4H/400): the AI session was pinned to S4D, the only attached GUI window was
+// S4H, and /sap-se38 read S4H's Z_EXCEPTION_1 while the RFC leg read S4D's --
+// same program name, 7 lines apart, neither output naming its system.
+//
+// Two SKILL.md-side halves keep the legs together. Both are per-FENCED-BLOCK,
+// because the process boundary is what breaks them: each fenced block is run as
+// its OWN process, so anything exported in one block is gone by the next.
+//
+//   (a) Dead session pin. A generator block that does
+//         $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath ...
+//       and leaves cscript to a LATER block exports into a process that exits
+//       immediately. The attach lib then finds no env var, falls through to its
+//       sole-connection default (Strategy 3), and silently discards the
+//       AI-session pin. The fix is to resolve the path in the generator and BAKE
+//       it into %%SESSION_PATH%% (attach Strategy 1), which survives the process
+//       boundary. So: an assignment with no cscript/wscript in the SAME block is
+//       a dead pin.
+//
+//   (b) Missing target expectation. Set-SapGuiTargetExpectation
+//       (sap_connection_lib.ps1) exports SAPDEV_EXPECT_SYSTEM/_CLIENT from the
+//       same profile Connect-SapRfc would pick, and AssertSapGuiTarget
+//       (sap_attach_lib.vbs) turns a mismatch into a hard refusal. It only works
+//       when it runs in the process that launches cscript -- same boundary as
+//       (a). A write-capable skill invoking cscript without it can still deploy
+//       to the wrong system.
+//
+// Severity: both halves are HARD ERRORS. They shipped 2026-08-06 as WARN
+// ratchets over 102 offenders (58 dead pins + 44 unverified write blocks) with a
+// hard error only on the six flagship deploy skills; the remaining 34 skills were
+// migrated the same day and both counts reached zero, so they were promoted per
+// the bare-cscript / screen-baseline precedent. Comment lines (leading # or ')
+// are stripped before matching, so prose about the env var never trips the gate.
+// ---------------------------------------------------------------------------
+
+{
+  // Fenced blocks, in source order. Any ``` line toggles; the info string is
+  // irrelevant here because a block's LANGUAGE does not decide which process
+  // runs it -- the fence boundary does.
+  const fencedBlocks = (md) => {
+    const lines = md.split(/\r?\n/);
+    const out = [];
+    let open = false, buf = [], startLine = 0;
+    for (let i = 0; i < lines.length; i++) {
+      if (/^\s*```/.test(lines[i])) {
+        if (!open) { open = true; buf = []; startLine = i + 2; }
+        else { open = false; out.push({ startLine, body: buf.join('\n') }); }
+        continue;
+      }
+      if (open) buf.push(lines[i]);
+    }
+    return out;                       // an unterminated final fence is ignored
+  };
+  const codeLines = (body) => body.split(/\r?\n/).filter(l => !/^\s*(#|')/.test(l));
+  const rePin = /\$env:SAPDEV_SESSION_PATH\s*=/;
+  // A child process inherits the environment of the process that spawns it, so an
+  // export is live as long as SOMETHING is launched from the same block. cscript
+  // is the usual consumer, but a child powershell counts too: sap-update-addon
+  // deliberately bridges the pin into a 32-bit `powershell -File ...detect.ps1`,
+  // which resolves the session itself. Only an export with NO child launch at all
+  // is dead.
+  const spawnsChild = (body) => codeLines(body).some(
+    (line) => /\b(powershell|pwsh)(\.exe)?(?![\w.])/i.test(line));
+  // Same invocation heuristic as the bare-cscript gate above: the token must be
+  // followed by an argument, so a bare mention in running text is not a call.
+  const invokesHost = (body) => codeLines(body).some((line) => {
+    const tokRe = /\b(cscript|wscript)(\.exe)?(?![\w.])/gi;
+    let m;
+    while ((m = tokRe.exec(line)) !== null) {
+      if (/^["']?\s+(\/\/|["'{$]|[A-Za-z]:|\.[\\/])/.test(line.slice(m.index + m[0].length))) return true;
+    }
+    return false;
+  });
+  // A block whose ONLY VBS targets are Tier-3 exempt has nothing for the
+  // expectation to enforce: those templates never include %%ATTACH_LIB_VBS%% and
+  // never call AttachSapSession, so AssertSapGuiTarget does not run and
+  // SAPDEV_EXPECT_SYSTEM would be inert. This is the pre-login bootstrap set --
+  // sap_check_gui_login_status.vbs probes whether a session exists at all, and
+  // sap_gui_security_warmup.vbs drives a Hardcopy to materialise the SAP GUI
+  // Security dialog. Generated copies keep the stem plus a _run suffix, so
+  // normalise that away before testing. A block naming no .vbs at all stays
+  // gated (conservative -- e.g. a variable-built path).
+  const onlyExemptVbs = (body) => {
+    const named = [...body.matchAll(/([A-Za-z0-9_.\-]+)\.vbs\b/g)]
+      .map((m) => m[1].replace(/_run$/, '') + '.vbs');
+    return named.length > 0 && named.every((n) => TIER3_EXEMPT_VBS.has(n));
+  };
+
+  for (const plugin of mp.plugins) {
+    const sourceRel = plugin.source.replace(/^\.\//, '').replace(/\/$/, '');
+    const skillsDir = join(repoRoot, sourceRel, 'skills');
+    if (!existsSync(skillsDir)) continue;
+    const writeCapable = new Set(SAFETY_GATE_SKILLS.get(plugin.name) ?? []);
+    for (const skillEntry of readdirSync(skillsDir)) {
+      const skillMdPath = join(skillsDir, skillEntry, 'SKILL.md');
+      if (!existsSync(skillMdPath)) continue;
+      for (const block of fencedBlocks(readFileSync(skillMdPath, 'utf8'))) {
+        const code = codeLines(block.body).join('\n');
+        const hasHost = invokesHost(block.body);
+
+        // (a) dead pin -- exported in a block that launches no child at all.
+        if (rePin.test(code) && !hasHost && !spawnsChild(block.body)) {
+          errors.push(`${plugin.name}: skills/${skillEntry}/SKILL.md:${block.startLine} sets $env:SAPDEV_SESSION_PATH in a fenced block that launches no child process -- that process exits before the VBS runs, so the AI-session pin is discarded and the attach lib falls through to its sole-connection default (the 2026-08-06 cross-system read). Resolve the path in the generator and bake it into %%SESSION_PATH%% instead (see sap-se38 Step A)`);
+        }
+
+        // (b) write-capable cscript block with no declared target.
+        if (hasHost && !/Set-SapGuiTargetExpectation/.test(block.body)
+            && !onlyExemptVbs(block.body)
+            && writeCapable.has(skillEntry)) {
+          errors.push(`${plugin.name}: skills/${skillEntry}/SKILL.md:${block.startLine} invokes cscript from a write-capable skill without calling Set-SapGuiTargetExpectation in the SAME block -- SAPDEV_EXPECT_SYSTEM/_CLIENT must be exported by the process that launches cscript, else a GUI parked on another system is written to instead of refused (shared/scripts/sap_attach_lib.vbs AssertSapGuiTarget)`);
+        }
       }
     }
   }

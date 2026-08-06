@@ -227,16 +227,20 @@ Write `{RUN_TEMP}\sap_se38_check_run.ps1`:
 ```powershell
 $content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_se38_check.vbs', [System.Text.Encoding]::UTF8)
 $content = $content -replace '%%PROGRAM_NAME%%','THE_PROGRAM_NAME'
-# Phase 4.2 session-attach plumbing. SESSION_PATH empty -> attach lib falls
-# through to SAPDEV_SESSION_PATH (set below) -> sole-connection -> refuse.
-# Pass --session for explicit targeting in parallel/multi-connection contexts.
-$sessionPath = ''
-$content = $content -replace '%%SESSION_PATH%%', $sessionPath
-$content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
+# Phase 4.2 session-attach plumbing. BAKE the resolved session path into the VBS
+# (%%SESSION_PATH%% = attach Strategy 1) rather than exporting it as
+# $env:SAPDEV_SESSION_PATH here: this generator is a SEPARATE process from the one
+# that later launches cscript, so an env var set here dies with it and the attach
+# lib silently falls through to its sole-connection default (Strategy 3) -- which
+# is how a run pinned to one SAP system drove another one (2026-08-06). A baked-in
+# const survives the process boundary; an empty value still falls through exactly
+# as before. Pass --session to override in parallel/multi-connection contexts.
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
-$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
+$sessionPath = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
+$content = $content.Replace('%%SESSION_PATH%%', $sessionPath)
+$content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
 [System.IO.File]::WriteAllText('{RUN_TEMP}\sap_se38_check_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
-Write-Host 'Done'
+Write-Host ("Done (session_path='" + $sessionPath + "')")
 ```
 Replace `THE_PROGRAM_NAME` with the actual program name (UPPERCASE) and `<SKILL_DIR>` with the absolute path to this skill directory.
 
@@ -247,8 +251,17 @@ powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_se38_check_run.ps1"
 
 ### Execute
 
-```bash
-C:\Windows\SysWOW64\cscript.exe //NoLogo {RUN_TEMP}\sap_se38_check_run.vbs
+Run as one PowerShell block — the target expectation MUST be declared in the
+SAME process that launches cscript (the attach lib reads it from the process
+environment, and cscript is a child of THIS PowerShell, not of the generator
+block above). It resolves the same profile `Connect-SapRfc` uses, so a GUI
+sitting on a different system than the RFC leg is refused loud instead of
+silently answering EXIST/NOT_EXIST about the wrong system:
+
+```powershell
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+Set-SapGuiTargetExpectation -WorkTemp '{WORK_TEMP}' | Out-Null
+& 'C:\Windows\SysWOW64\cscript.exe' //NoLogo '{RUN_TEMP}\sap_se38_check_run.vbs'
 ```
 
 **Parse the last line of output:**
@@ -413,8 +426,17 @@ $content = $content -replace '%%PACKAGE%%','THE_PACKAGE'
 $content = $content -replace '%%TRANSPORT%%','THE_TRANSPORT'
 $content = $content -replace '%%SESSION_LOCK_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_session_lock.vbs'
 $content = $content -replace '%%FOREGROUND_GUARD_PS1%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_gui_foreground_guard.ps1'
-$sessionPath = ''
-$content = $content -replace '%%SESSION_PATH%%', $sessionPath
+# Phase 4.2 session-attach plumbing. BAKE the resolved session path into the VBS
+# (%%SESSION_PATH%% = attach Strategy 1) rather than exporting it as
+# $env:SAPDEV_SESSION_PATH here: this generator is a SEPARATE process from the one
+# that later launches cscript, so an env var set here dies with it and the attach
+# lib silently falls through to its sole-connection default (Strategy 3) -- which
+# is how a run pinned to one SAP system WROTE to another (2026-08-06). A baked-in
+# const survives the process boundary; an empty value still falls through exactly
+# as before.
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+$sessionPath = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
+$content = $content.Replace('%%SESSION_PATH%%', $sessionPath)
 $content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
 # Locale-aware syntax-check classifier (Ctrl+F2 grid MSGTYPE match for ZH/JA/DE logons).
 $content = $content -replace '%%SYNTAX_CHECK_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_syntax_check_lib.vbs'
@@ -427,10 +449,8 @@ $content = $content -replace '%%POST_ACTIVATE_VERIFY_PS1%%','<SAP_DEV_CORE_SHARE
 # silently-failed paste leaves the OLD source active and PROGDIR/F8 still pass.
 $content = $content -replace '%%CONTENT_VERIFY_VBS%%','<SKILL_DIR>\references\sap_se38_content_verify.vbs'
 $content = $content -replace '%%CONTENT_VERIFY_PS1%%','<SKILL_DIR>\references\sap_se38_content_verify.ps1'
-. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
-$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 [System.IO.File]::WriteAllText('{RUN_TEMP}\sap_se38_update_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
-Write-Host 'Done'
+Write-Host ("Done (session_path='" + $sessionPath + "')")
 ```
 Replace `THE_PROGRAM_NAME` (UPPERCASE), `THE_PROGRAM_TYPE` (`I` when updating an **Include** program — e.g. a function-exit `ZX…` include — so the verify skips the F8 run-test; otherwise empty or `1`), `THE_SOURCE_PATH` (absolute path with backslashes), `THE_PACKAGE` (SAP package or empty string), `THE_TRANSPORT` (transport number or empty string), `<SKILL_DIR>`, and `<SAP_DEV_CORE_SHARED_DIR>` (absolute path to `plugins/sap-dev-core/shared/`).
 
@@ -447,11 +467,18 @@ powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_se38_update_run.ps1"
 
 ### Execute
 
-```bash
+```powershell
+# Declare which SAP system the GUI leg may WRITE to. MUST happen in THIS block:
+# the attach lib reads it from the process environment, and cscript inherits this
+# PowerShell's environment (via sap_run_with_lock.ps1 -> cmd /c). It resolves the
+# same profile Connect-SapRfc uses, so a GUI parked on a different system than the
+# RFC leg is refused instead of receiving this program's source (2026-08-06).
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+Set-SapGuiTargetExpectation -WorkTemp '{WORK_TEMP}' | Out-Null
 # SE38 stages ABAP source on the Windows clipboard + SendKeys ^v behind an OS
 # foreground guard -- both machine-global singletons that a per-run folder cannot
 # isolate. Serialize the paste across concurrent runs with a global named mutex.
-powershell -NoProfile -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_run_with_lock.ps1" -MutexName SapDevGuiPaste_v1 -TimeoutMs 180000 -Command "C:\Windows\SysWOW64\cscript.exe //NoLogo {RUN_TEMP}\sap_se38_update_run.vbs"
+& powershell -NoProfile -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_run_with_lock.ps1" -MutexName SapDevGuiPaste_v1 -TimeoutMs 180000 -Command "C:\Windows\SysWOW64\cscript.exe //NoLogo {RUN_TEMP}\sap_se38_update_run.vbs"
 ```
 
 Proceed to Step 6 to evaluate the result.
@@ -511,8 +538,17 @@ $content = $content -replace '%%PACKAGE%%','THE_PACKAGE'
 $content = $content -replace '%%TRANSPORT%%','THE_TRANSPORT'
 $content = $content -replace '%%SESSION_LOCK_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_session_lock.vbs'
 $content = $content -replace '%%FOREGROUND_GUARD_PS1%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_gui_foreground_guard.ps1'
-$sessionPath = ''
-$content = $content -replace '%%SESSION_PATH%%', $sessionPath
+# Phase 4.2 session-attach plumbing. BAKE the resolved session path into the VBS
+# (%%SESSION_PATH%% = attach Strategy 1) rather than exporting it as
+# $env:SAPDEV_SESSION_PATH here: this generator is a SEPARATE process from the one
+# that later launches cscript, so an env var set here dies with it and the attach
+# lib silently falls through to its sole-connection default (Strategy 3) -- which
+# is how a run pinned to one SAP system WROTE to another (2026-08-06). A baked-in
+# const survives the process boundary; an empty value still falls through exactly
+# as before.
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+$sessionPath = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
+$content = $content.Replace('%%SESSION_PATH%%', $sessionPath)
 $content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
 # Locale-aware syntax-check classifier (Ctrl+F2 grid MSGTYPE match for ZH/JA/DE logons).
 $content = $content -replace '%%SYNTAX_CHECK_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_syntax_check_lib.vbs'
@@ -525,10 +561,8 @@ $content = $content -replace '%%POST_ACTIVATE_VERIFY_PS1%%','<SAP_DEV_CORE_SHARE
 # silently-failed paste leaves the OLD source active and PROGDIR/F8 still pass.
 $content = $content -replace '%%CONTENT_VERIFY_VBS%%','<SKILL_DIR>\references\sap_se38_content_verify.vbs'
 $content = $content -replace '%%CONTENT_VERIFY_PS1%%','<SKILL_DIR>\references\sap_se38_content_verify.ps1'
-. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
-$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 [System.IO.File]::WriteAllText('{RUN_TEMP}\sap_se38_create_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
-Write-Host 'Done'
+Write-Host ("Done (session_path='" + $sessionPath + "')")
 ```
 Replace all `THE_*` placeholders and `<SKILL_DIR>`. `THE_PACKAGE` and `THE_TRANSPORT` follow the same rules as Step 5a.
 
@@ -539,11 +573,18 @@ powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_se38_create_run.ps1"
 
 ### Execute
 
-```bash
+```powershell
+# Declare which SAP system the GUI leg may WRITE to. MUST happen in THIS block:
+# the attach lib reads it from the process environment, and cscript inherits this
+# PowerShell's environment (via sap_run_with_lock.ps1 -> cmd /c). It resolves the
+# same profile Connect-SapRfc uses, so a GUI parked on a different system than the
+# RFC leg is refused instead of receiving this program's source (2026-08-06).
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+Set-SapGuiTargetExpectation -WorkTemp '{WORK_TEMP}' | Out-Null
 # SE38 stages ABAP source on the Windows clipboard + SendKeys ^v behind an OS
 # foreground guard -- both machine-global singletons that a per-run folder cannot
 # isolate. Serialize the paste across concurrent runs with a global named mutex.
-powershell -NoProfile -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_run_with_lock.ps1" -MutexName SapDevGuiPaste_v1 -TimeoutMs 180000 -Command "C:\Windows\SysWOW64\cscript.exe //NoLogo {RUN_TEMP}\sap_se38_create_run.vbs"
+& powershell -NoProfile -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_run_with_lock.ps1" -MutexName SapDevGuiPaste_v1 -TimeoutMs 180000 -Command "C:\Windows\SysWOW64\cscript.exe //NoLogo {RUN_TEMP}\sap_se38_create_run.vbs"
 ```
 
 Proceed to Step 6 to evaluate the result.
@@ -672,14 +713,20 @@ if (Test-Path '{RUN_TEMP}\sap_se38_textelm_symbols.txt') {
 $content = $content.Replace('%%TEXT_SYMBOLS%%', $txtSyms)
 $content = $content.Replace('%%PACKAGE%%','THE_PACKAGE')
 $content = $content.Replace('%%TRANSPORT%%','THE_TRANSPORT')
-# Phase 3.5 session-attach plumbing.
-$sessionPath = ''
+# Phase 4.2 session-attach plumbing. BAKE the resolved session path into the VBS
+# (%%SESSION_PATH%% = attach Strategy 1) rather than exporting it as
+# $env:SAPDEV_SESSION_PATH here: this generator is a SEPARATE process from the one
+# that later launches cscript, so an env var set here dies with it and the attach
+# lib silently falls through to its sole-connection default (Strategy 3) -- which
+# is how a run pinned to one SAP system WROTE to another (2026-08-06). A baked-in
+# const survives the process boundary; an empty value still falls through exactly
+# as before.
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+$sessionPath = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 $content = $content.Replace('%%SESSION_PATH%%',   $sessionPath)
 $content = $content.Replace('%%ATTACH_LIB_VBS%%', '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs')
-. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
-$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 [System.IO.File]::WriteAllText('{RUN_TEMP}\sap_se38_textelm_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
-Write-Host 'Done'
+Write-Host ("Done (session_path='" + $sessionPath + "')")
 ```
 Replace `THE_PROGRAM_NAME` (UPPERCASE), `THE_PACKAGE`, `THE_TRANSPORT`, and `<SKILL_DIR>`.
 
@@ -697,8 +744,16 @@ powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_se38_textelm_run.ps1"
 
 ### Execute
 
-```bash
-C:\Windows\SysWOW64\cscript.exe //NoLogo {RUN_TEMP}\sap_se38_textelm_run.vbs
+Run as one PowerShell block — the target expectation MUST be declared in the
+SAME process that launches cscript (the attach lib reads it from the process
+environment, and cscript is a child of THIS PowerShell, not of the generator
+block above), so a GUI parked on a different system than the RFC leg is refused
+instead of receiving this program's selection texts (2026-08-06):
+
+```powershell
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+Set-SapGuiTargetExpectation -WorkTemp '{WORK_TEMP}' | Out-Null
+& 'C:\Windows\SysWOW64\cscript.exe' //NoLogo '{RUN_TEMP}\sap_se38_textelm_run.vbs'
 ```
 
 **On success** (output contains `SUCCESS:`): proceed to Step 5c.1. The VBS template now handles
@@ -899,14 +954,20 @@ $content  = $content.Replace('%%STATUS%%',      'THE_STATUS')
 $content  = $content.Replace('%%TYPE%%',        'THE_TYPE')
 $content  = $content.Replace('%%TRANSPORT%%',   'THE_TRANSPORT')
 $content  = $content.Replace('%%SESSION_LOCK_VBS%%', '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_session_lock.vbs')
-# Phase 3.5 session-attach plumbing.
-$sessionPath = ''
+# Phase 4.2 session-attach plumbing. BAKE the resolved session path into the VBS
+# (%%SESSION_PATH%% = attach Strategy 1) rather than exporting it as
+# $env:SAPDEV_SESSION_PATH here: this generator is a SEPARATE process from the one
+# that later launches cscript, so an env var set here dies with it and the attach
+# lib silently falls through to its sole-connection default (Strategy 3) -- which
+# is how a run pinned to one SAP system WROTE to another (2026-08-06). A baked-in
+# const survives the process boundary; an empty value still falls through exactly
+# as before.
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+$sessionPath = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 $content  = $content.Replace('%%SESSION_PATH%%',     $sessionPath)
 $content  = $content.Replace('%%ATTACH_LIB_VBS%%',   '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs')
-. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
-$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 [System.IO.File]::WriteAllText('{RUN_TEMP}\sap_se38_change_attrs_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
-Write-Host 'Done'
+Write-Host ("Done (session_path='" + $sessionPath + "')")
 ```
 Use `.Replace()` (literal) — title/status texts may contain regex
 metacharacters. Replace `<SKILL_DIR>` and the `THE_*` placeholders.
@@ -918,8 +979,16 @@ powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_se38_change_attrs_run.p
 
 ### Execute
 
-```bash
-C:\Windows\SysWOW64\cscript.exe //NoLogo {RUN_TEMP}\sap_se38_change_attrs_run.vbs
+Run as one PowerShell block — the target expectation MUST be declared in the
+SAME process that launches cscript (the attach lib reads it from the process
+environment, and cscript is a child of THIS PowerShell, not of the generator
+block above), so a GUI parked on a different system than the RFC leg is refused
+instead of having ITS program's attributes rewritten (2026-08-06):
+
+```powershell
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+Set-SapGuiTargetExpectation -WorkTemp '{WORK_TEMP}' | Out-Null
+& 'C:\Windows\SysWOW64\cscript.exe' //NoLogo '{RUN_TEMP}\sap_se38_change_attrs_run.vbs'
 ```
 
 ### Behaviour Notes
@@ -1020,13 +1089,19 @@ $content  = $content.Replace('%%TRANSPORT%%',       'THE_TRANSPORT')
 $content  = $content.Replace('%%PACKAGE%%',         'THE_OBJDIR_PACKAGE')
 $content  = $content.Replace('%%ORIG_LANG%%',       'THE_OBJDIR_LANG')
 $content  = $content.Replace('%%SESSION_LOCK_VBS%%', '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_session_lock.vbs')
-$sessionPath = ''
+# Phase 4.2 session-attach plumbing. BAKE the resolved session path into the VBS
+# (%%SESSION_PATH%% = attach Strategy 1) rather than exporting it as
+# $env:SAPDEV_SESSION_PATH here: this generator is a SEPARATE process from the one
+# that later launches cscript, so an env var set here dies with it and the attach
+# lib silently falls through to its sole-connection default (Strategy 3) -- which
+# is how a run pinned to one SAP system drove another one (2026-08-06). Delete is
+# irreversible, so a silent retarget here destroys the WRONG system's program.
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+$sessionPath = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 $content  = $content.Replace('%%SESSION_PATH%%',     $sessionPath)
 $content  = $content.Replace('%%ATTACH_LIB_VBS%%',   '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs')
-. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
-$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 [System.IO.File]::WriteAllText('{RUN_TEMP}\sap_se38_delete_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
-Write-Host 'Done'
+Write-Host ("Done (session_path='" + $sessionPath + "')")
 ```
 Replace `<SKILL_DIR>` and the `THE_*` placeholders.
 
@@ -1037,8 +1112,17 @@ powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_se38_delete_run.ps1"
 
 ### Execute
 
-```bash
-C:\Windows\SysWOW64\cscript.exe //NoLogo {RUN_TEMP}\sap_se38_delete_run.vbs
+Run as one PowerShell block — the target expectation MUST be declared in the
+SAME process that launches cscript (the attach lib reads it from the process
+environment, and cscript is a child of THIS PowerShell, not of the generator
+block above). Deletion is irreversible, so refusing a GUI parked on a different
+system than the RFC leg is the difference between deleting the intended program
+and destroying its namesake on another system (2026-08-06):
+
+```powershell
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+Set-SapGuiTargetExpectation -WorkTemp '{WORK_TEMP}' | Out-Null
+& 'C:\Windows\SysWOW64\cscript.exe' //NoLogo '{RUN_TEMP}\sap_se38_delete_run.vbs'
 ```
 
 ### Behaviour Notes

@@ -258,15 +258,18 @@ $manifest   = "$diagDir\manifest.tsv"
 $content    = [System.IO.File]::ReadAllText("$skillDir\references\sap_gui_diagnose_capture.vbs", [System.Text.Encoding]::UTF8)
 $content    = $content.Replace('%%OUTPUT_DIR%%', $diagDir)
 $content    = $content.Replace('%%MANIFEST%%',   $manifest)
-# Session-attach plumbing (Phase 3.5 multi-connection aware). Resolution:
-# explicit --session > SAPDEV_SESSION_PATH > sole-connection auto-default > refuse.
+# Session-attach plumbing (Phase 4.2). Resolution: explicit --session > this AI
+# session's pin, BAKED into %%SESSION_PATH%% (attach Strategy 1). Do not export
+# $env:SAPDEV_SESSION_PATH here instead: this generator is a SEPARATE process from
+# the one that runs cscript, so the env var would already be gone and the attach
+# lib would silently fall through to its sole-connection default (2026-08-06).
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
 $sessionPath = ''  # set to the parsed --session value if supplied
+if (-not $sessionPath) { $sessionPath = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}' }
 $content    = $content.Replace('%%SESSION_PATH%%',   $sessionPath)
 $content    = $content.Replace('%%ATTACH_LIB_VBS%%', '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs')
-. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
-$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 [System.IO.File]::WriteAllText("{RUN_TEMP}\sap_gui_inspect_capture_run.vbs", $content, [System.Text.UnicodeEncoding]::new($false, $true))
-Write-Host 'Done'
+Write-Host ("Done (session_path='" + $sessionPath + "')")
 ```
 
 Run via `cscript`, **with the SAP GUI Security watcher in parallel**. `HardCopy`

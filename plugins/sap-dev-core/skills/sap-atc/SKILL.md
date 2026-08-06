@@ -252,12 +252,14 @@ $content  = $content.Replace('%%OBJECT_NAME%%',    'THE_OBJECT_NAME')     # empt
 # Batch mode (A5): absolute path to the <TYPE> <NAME> object-list file, else empty.
 $content  = $content.Replace('%%OBJECT_LIST_FILE%%','THE_OBJECT_LIST_FILE')
 $content  = $content.Replace('%%SESSION_LOCK_VBS%%',"$shared\scripts\sap_session_lock.vbs")
-# Phase 3.5 session-attach plumbing.
-$sessionPath = ''
+# Phase 4.2 session-attach plumbing. BAKE the resolved path into %%SESSION_PATH%%
+# (attach Strategy 1): this generator is a SEPARATE process from the one that runs
+# cscript, so an $env:SAPDEV_SESSION_PATH exported here dies with it and the attach
+# lib silently falls through to its sole-connection default (2026-08-06).
+. "$shared\scripts\sap_connection_lib.ps1"
+$sessionPath = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 $content  = $content.Replace('%%SESSION_PATH%%',   $sessionPath)
 $content  = $content.Replace('%%ATTACH_LIB_VBS%%', "$shared\scripts\sap_attach_lib.vbs")
-. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
-$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 [System.IO.File]::WriteAllText('{RUN_TEMP}\sap_atc_stage1_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 ```
 
@@ -316,11 +318,12 @@ $content  = $content.Replace('%%CHECK_VARIANT%%',   'THE_CHECK_VARIANT')
 $content  = $content.Replace('%%OBJECT_PROVIDER%%', 'THE_OBJECT_PROVIDER')
 $content  = $content.Replace('%%SESSION_LOCK_VBS%%', "$shared\scripts\sap_session_lock.vbs")
 # Phase 3.5 session-attach plumbing.
-$sessionPath = ''
+# BAKE the session path (attach Strategy 1) -- an env var exported by this
+# generator process never reaches the separate process that runs cscript.
+. "$shared\scripts\sap_connection_lib.ps1"
+$sessionPath = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 $content  = $content.Replace('%%SESSION_PATH%%',   $sessionPath)
 $content  = $content.Replace('%%ATTACH_LIB_VBS%%', "$shared\scripts\sap_attach_lib.vbs")
-. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
-$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 [System.IO.File]::WriteAllText('{RUN_TEMP}\sap_atc_stage2_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 ```
 
@@ -374,11 +377,12 @@ $content  = [System.IO.File]::ReadAllText("$skillDir\references\sap_atc_check_ru
 $content  = $content.Replace('%%RUN_SERIES_NAME%%', 'THE_RUN_SERIES')
 $content  = $content.Replace('%%SESSION_LOCK_VBS%%', "$shared\scripts\sap_session_lock.vbs")
 # Phase 3.5 session-attach plumbing.
-$sessionPath = ''
+# BAKE the session path (attach Strategy 1) -- an env var exported by this
+# generator process never reaches the separate process that runs cscript.
+. "$shared\scripts\sap_connection_lib.ps1"
+$sessionPath = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 $content  = $content.Replace('%%SESSION_PATH%%',   $sessionPath)
 $content  = $content.Replace('%%ATTACH_LIB_VBS%%', "$shared\scripts\sap_attach_lib.vbs")
-. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
-$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 [System.IO.File]::WriteAllText('{RUN_TEMP}\sap_atc_stage3_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 ```
 
@@ -456,11 +460,12 @@ $content  = $content.Replace('%%RUN_SERIES_NAME%%', 'THE_RUN_SERIES')
 $content  = $content.Replace('%%OUTPUT_PATH%%',    'THE_OUTPUT_PATH')
 $content  = $content.Replace('%%SESSION_LOCK_VBS%%', "$shared\scripts\sap_session_lock.vbs")
 # Phase 3.5 session-attach plumbing.
-$sessionPath = ''
+# BAKE the session path (attach Strategy 1) -- an env var exported by this
+# generator process never reaches the separate process that runs cscript.
+. "$shared\scripts\sap_connection_lib.ps1"
+$sessionPath = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 $content  = $content.Replace('%%SESSION_PATH%%',   $sessionPath)
 $content  = $content.Replace('%%ATTACH_LIB_VBS%%', "$shared\scripts\sap_attach_lib.vbs")
-. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
-$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 [System.IO.File]::WriteAllText('{RUN_TEMP}\sap_atc_stage4_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 ```
 
@@ -581,11 +586,12 @@ $content  = $content.Replace('%%RUN_SERIES_NAME%%', 'THE_RUN_SERIES')
 $content  = $content.Replace('%%OUTPUT_PATH%%',    'THE_DRILL_PATH')
 $content  = $content.Replace('%%SESSION_LOCK_VBS%%',"$shared\scripts\sap_session_lock.vbs")
 # Phase 3.5 session-attach plumbing.
-$sessionPath = ''
+# BAKE the session path (attach Strategy 1) -- an env var exported by this
+# generator process never reaches the separate process that runs cscript.
+. "$shared\scripts\sap_connection_lib.ps1"
+$sessionPath = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 $content  = $content.Replace('%%SESSION_PATH%%',   $sessionPath)
 $content  = $content.Replace('%%ATTACH_LIB_VBS%%', "$shared\scripts\sap_attach_lib.vbs")
-. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
-$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 [System.IO.File]::WriteAllText('{RUN_TEMP}\sap_atc_stage4b_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 ```
 

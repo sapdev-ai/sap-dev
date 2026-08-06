@@ -258,21 +258,31 @@ $content = $content -replace '%%FUGR_ID%%','THE_ID'
 $content = $content -replace '%%FUGR_DESC%%','THE_DESC'
 $content = $content -replace '%%PACKAGE%%','THE_PKG'
 $content = $content -replace '%%TRANSPORT%%','THE_TR'
-# Phase 3.5 session-attach plumbing.
-$sessionPath = ''
-$content = $content -replace '%%SESSION_PATH%%', $sessionPath
-$content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
+# Phase 4.2 session-attach plumbing. BAKE the resolved path into %%SESSION_PATH%%
+# (attach Strategy 1): this generator is a SEPARATE process from the one that runs
+# cscript, so an $env:SAPDEV_SESSION_PATH exported here dies with it and the attach
+# lib silently falls through to its sole-connection default (2026-08-06).
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
-$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
+$sessionPath = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
+$content = $content.Replace('%%SESSION_PATH%%', $sessionPath)
+$content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
 [System.IO.File]::WriteAllText('{RUN_TEMP}\sap_function_group_gui_create_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
-Write-Host 'Done'
+Write-Host ("Done (session_path='" + $sessionPath + "')")
 ```
 
 Run via cscript:
 
 ```bash
 powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_function_group_gui_create_run.ps1"
-C:/Windows/SysWOW64/cscript.exe //NoLogo {RUN_TEMP}\sap_function_group_gui_create_run.vbs
+```
+
+Declare the GUI target in the SAME block as cscript — the attach lib reads
+`SAPDEV_EXPECT_SYSTEM`/`_CLIENT` from the process environment, so a GUI parked on
+a different system than the RFC leg is refused instead of receiving the FG:
+```powershell
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+Set-SapGuiTargetExpectation -WorkTemp '{WORK_TEMP}' | Out-Null
+& 'C:/Windows/SysWOW64/cscript.exe' //NoLogo '{RUN_TEMP}\sap_function_group_gui_create_run.vbs'
 ```
 
 **Output:** the VBS prints `INFO: sbar [...]` and `INFO: activate sbar
@@ -390,21 +400,30 @@ $content = $content -replace '%%TRANSPORT%%','THE_TR'
 $content = $content -replace '%%PACKAGE%%','THE_PACKAGE'   # FG DEVCLASS (pre-check 3); fills the ECC6 KO007 Object-Directory popup. Empty = Local Object.
 $content = $content -replace '%%ORIG_LANG%%',''            # 1-char orig lang for an empty KO007 package; VBS defaults to E
 $content = $content -replace '%%SESSION_LOCK_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_session_lock.vbs'
-# Phase 3.5 session-attach plumbing.
-$sessionPath = ''
-$content = $content -replace '%%SESSION_PATH%%', $sessionPath
-$content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
+# BAKE the session path (attach Strategy 1) -- an env var exported by this
+# generator process never reaches the separate process that runs cscript. Delete
+# is irreversible, so a silent retarget would destroy the WRONG system's FG.
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
-$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
+$sessionPath = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
+$content = $content.Replace('%%SESSION_PATH%%', $sessionPath)
+$content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
 [System.IO.File]::WriteAllText('{RUN_TEMP}\sap_function_group_gui_delete_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
-Write-Host 'Done'
+Write-Host ("Done (session_path='" + $sessionPath + "')")
 ```
 
 Run:
 
 ```bash
 powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_function_group_gui_delete_run.ps1"
-C:/Windows/SysWOW64/cscript.exe //NoLogo {RUN_TEMP}\sap_function_group_gui_delete_run.vbs
+```
+
+Declare the GUI target in the SAME block as cscript. Deletion is irreversible, so
+refusing a GUI parked on a different system than the RFC leg is the difference
+between deleting the intended FG and destroying its namesake elsewhere:
+```powershell
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+Set-SapGuiTargetExpectation -WorkTemp '{WORK_TEMP}' | Out-Null
+& 'C:/Windows/SysWOW64/cscript.exe' //NoLogo '{RUN_TEMP}\sap_function_group_gui_delete_run.vbs'
 ```
 
 ### Behaviour Notes

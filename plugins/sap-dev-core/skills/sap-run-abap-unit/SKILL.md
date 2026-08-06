@@ -172,19 +172,25 @@ $content  = [System.IO.File]::ReadAllText("$skillDir\references\$tpl", [System.T
 $content  = $content.Replace('%%OBJECT_NAME%%', 'THE_OBJECT')
 # '1' when --with-coverage (or --min-coverage given); '' for results-only.
 $content  = $content.Replace('%%WITH_COVERAGE%%', 'THE_WITH_COVERAGE')
-# Tier-3 session-attach plumbing.
-$sessionPath = ''
+# Tier-3 session-attach plumbing. BAKE the resolved path into %%SESSION_PATH%%
+# (attach Strategy 1): this generator is a SEPARATE process from the one that runs
+# cscript, so an $env:SAPDEV_SESSION_PATH exported here dies with it and the attach
+# lib silently falls through to its sole-connection default (2026-08-06).
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+$sessionPath = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 $content  = $content.Replace('%%SESSION_PATH%%',   $sessionPath)
 $content  = $content.Replace('%%ATTACH_LIB_VBS%%', "$shared\scripts\sap_attach_lib.vbs")
-. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
-$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 [System.IO.File]::WriteAllText('{RUN_TEMP}\sap_run_abap_unit.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 ```
 
-Run via 32-bit cscript:
+Run via 32-bit cscript, declaring the GUI target in the SAME block — the attach
+lib reads `SAPDEV_EXPECT_SYSTEM`/`_CLIENT` from the process environment, so unit
+results can never come from a system other than the one the RFC leg resolved:
 
-```bash
-C:/Windows/SysWOW64/cscript.exe //NoLogo {RUN_TEMP}\sap_run_abap_unit.vbs
+```powershell
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+Set-SapGuiTargetExpectation -WorkTemp '{WORK_TEMP}' | Out-Null
+& 'C:/Windows/SysWOW64/cscript.exe' //NoLogo '{RUN_TEMP}\sap_run_abap_unit.vbs'
 ```
 
 ---

@@ -147,18 +147,29 @@ $r = Read-SapAbapSource -Name '{OBJECT}' -Type '{TYPE}' -OutDir '{OUT}' -WithInc
 SE24 GUI download VBS (skip if `{NOGUI}`):
 ```powershell
 $skillSe24 = '<SKILL_DIR>\..\sap-se24'
+# BAKE the resolved session path into %%SESSION_PATH%% (attach Strategy 1): this
+# generator is a SEPARATE process from the one that runs cscript, so an
+# $env:SAPDEV_SESSION_PATH exported here dies with it and the attach lib silently
+# falls through to its sole-connection default -- which is how a run pinned to one
+# SAP system downloaded ANOTHER one's source under the same name (2026-08-06).
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+$sessionPath = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 $vbs = ([System.IO.File]::ReadAllText("$skillSe24\references\sap_se24_check_and_download.vbs", [System.Text.Encoding]::UTF8)).
   Replace('%%CLASS_NAME%%','{OBJECT}').
   Replace('%%OUTPUT_FILE%%','{OUT}\source.txt').
-  Replace('%%SESSION_PATH%%','').
+  Replace('%%SESSION_PATH%%',$sessionPath).
   Replace('%%SYNTAX_CHECK_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_syntax_check_lib.vbs').
   Replace('%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs')
-. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
-$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 [System.IO.File]::WriteAllText('{RUN_TEMP}\explain_dl.vbs', $vbs, [System.Text.UnicodeEncoding]::new($false, $true))
 ```
-```bash
-"C:/Windows/SysWOW64/cscript.exe" //NoLogo "{RUN_TEMP}\explain_dl.vbs"
+Run the download with the GUI target declared in the SAME block — the RFC readers
+above and this GUI leg resolve their target through different chains, and the
+`GUI_TARGET:` line the attach lib echoes is what tells you which system the source
+actually came from:
+```powershell
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+Set-SapGuiTargetExpectation -WorkTemp '{WORK_TEMP}' | Out-Null
+& "C:/Windows/SysWOW64/cscript.exe" //NoLogo "{RUN_TEMP}\explain_dl.vbs"
 ```
 > Note: GUI download returns the pretty-printed *display* view (local `TYPES`
 > may appear at outer scope). Adequate for comprehension; flag it in the dossier.

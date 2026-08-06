@@ -215,18 +215,30 @@ Write `{RUN_TEMP}\sap_check_fix_probe_se38.ps1`:
 $content = [System.IO.File]::ReadAllText('<SKILL_DIR>\..\sap-se38\references\sap_se38_check.vbs', [System.Text.Encoding]::UTF8)
 $content = $content -replace '%%PROGRAM_NAME%%','THE_OBJECT_NAME'
 # Session-attach plumbing (mandatory — the check.vbs includes the attach lib).
-$content = $content -replace '%%SESSION_PATH%%', ''
-$content = $content -replace '%%ATTACH_LIB_VBS%%', '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
+# BAKE the resolved path into %%SESSION_PATH%% (attach Strategy 1): this generator
+# is a SEPARATE process from the one that runs cscript, so an
+# $env:SAPDEV_SESSION_PATH exported here dies with it and the attach lib silently
+# falls through to its sole-connection default (2026-08-06).
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
-$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
+$sessionPath = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
+$content = $content.Replace('%%SESSION_PATH%%', $sessionPath)
+$content = $content -replace '%%ATTACH_LIB_VBS%%', '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
 [System.IO.File]::WriteAllText('{RUN_TEMP}\sap_check_fix_probe_se38.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
-Write-Host 'Done'
+Write-Host ("Done (session_path='" + $sessionPath + "')")
 ```
 
-Then run the PS1 (writes the VBS) and execute the VBS:
+Then run the PS1 (writes the VBS):
 ```bash
 powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_check_fix_probe_se38.ps1"
-C:/Windows/SysWOW64/cscript.exe //NoLogo "{RUN_TEMP}\sap_check_fix_probe_se38.vbs"
+```
+
+Execute the VBS with the GUI target declared in the SAME block — the attach lib
+reads `SAPDEV_EXPECT_SYSTEM`/`_CLIENT` from the process environment, so a GUI
+parked on a different system than the RFC leg is refused rather than probed:
+```powershell
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+Set-SapGuiTargetExpectation -WorkTemp '{WORK_TEMP}' | Out-Null
+& 'C:/Windows/SysWOW64/cscript.exe' //NoLogo "{RUN_TEMP}\sap_check_fix_probe_se38.vbs"
 ```
 
 For probes 2–6 use the sibling template and its own token(s) (SE37 `%%FM_NAME%%`, SE24 `%%CLASS_NAME%%`, SE11 `%%OBJECT_TYPE%%` + `%%OBJECT_NAME%%`) plus the same two session-attach substitutions above, writing to `sap_check_fix_probe_<se37|se24|se11>.ps1` / `.vbs`.

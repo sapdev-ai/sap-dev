@@ -165,18 +165,31 @@ $content = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\<TEMPLATE>.vbs'
 $content = $content -replace '%%PROJECT_NAME%%','THE_PROJECT'
 # ... e.g. %%ENHANCEMENTS%% / %%SHORT_TEXT%% / %%PACKAGE%% / %%TRANSPORT%% ...
 # --- session-attach plumbing (always) ---
-$content = $content -replace '%%SESSION_PATH%%', ''
+# BAKE the resolved path into %%SESSION_PATH%% (attach Strategy 1): this generator
+# is a SEPARATE process from the one that runs cscript, so an
+# $env:SAPDEV_SESSION_PATH exported here dies with it and the attach lib silently
+# falls through to its sole-connection default (2026-08-06).
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+$sessionPath = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
+$content = $content.Replace('%%SESSION_PATH%%', $sessionPath)
 $content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
 $content = $content -replace '%%SESSION_LOCK_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_session_lock.vbs'
-. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
-$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 [System.IO.File]::WriteAllText('{RUN_TEMP}\<TEMPLATE>_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
-Write-Host 'Done'
+Write-Host ("Done (session_path='" + $sessionPath + "')")
 ```
 
 ```bash
 powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\<TEMPLATE>_run.ps1"
-C:/Windows/SysWOW64/cscript.exe //NoLogo {RUN_TEMP}\<TEMPLATE>_run.vbs
+```
+
+Declare the GUI target in the SAME block as cscript — the attach lib reads
+`SAPDEV_EXPECT_SYSTEM`/`_CLIENT` from the process environment, so a GUI parked on
+a different system than the RFC leg is refused instead of having its namesake
+project/enhancement written:
+```powershell
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+Set-SapGuiTargetExpectation -WorkTemp '{WORK_TEMP}' | Out-Null
+& 'C:/Windows/SysWOW64/cscript.exe' //NoLogo '{RUN_TEMP}\<TEMPLATE>_run.vbs'
 ```
 
 > **Encoding:** always `-Encoding Unicode` (UTF-16 LE) — what `cscript`

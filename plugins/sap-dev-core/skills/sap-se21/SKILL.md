@@ -230,14 +230,20 @@ $content = $content.Replace('%%PACKAGE%%',          'THE_PACKAGE')
 $content = $content.Replace('%%DESCRIPTION%%',      'THE_DESCRIPTION')
 $content = $content.Replace('%%TRANSPORT%%',        'THE_TRANSPORT')
 $content = $content.Replace('%%SESSION_LOCK_VBS%%', '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_session_lock.vbs')
-# Phase 3.5 session-attach plumbing.
-$sessionPath = ''
+# Phase 4.2 session-attach plumbing. BAKE the resolved session path into the VBS
+# (%%SESSION_PATH%% = attach Strategy 1) rather than exporting it as
+# $env:SAPDEV_SESSION_PATH here: this generator is a SEPARATE process from the one
+# that later launches cscript, so an env var set here dies with it and the attach
+# lib silently falls through to its sole-connection default (Strategy 3) -- which
+# is how a run pinned to one SAP system WROTE to another (2026-08-06). A baked-in
+# const survives the process boundary; an empty value still falls through exactly
+# as before.
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+$sessionPath = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 $content = $content.Replace('%%SESSION_PATH%%',   $sessionPath)
 $content = $content.Replace('%%ATTACH_LIB_VBS%%', '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs')
-. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
-$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 [System.IO.File]::WriteAllText('{RUN_TEMP}\sap_se21_filled.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
-Write-Host 'Done'
+Write-Host ("Done (session_path='" + $sessionPath + "')")
 ```
 
 The `%%SESSION_LOCK_VBS%%` token is required because `sap_se21_create.vbs`
@@ -257,9 +263,18 @@ Run:
 powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_se21_run.ps1"
 ```
 
-Execute via the 32-bit cscript host (bare `cscript` resolves to the 64-bit host; SAP GUI COM needs 32-bit — see CLAUDE.md / feedback_sap_gui_vbs_must_be_32bit):
-```bash
-C:\Windows\SysWOW64\cscript.exe //NoLogo "{RUN_TEMP}\sap_se21_filled.vbs"
+Execute via the 32-bit cscript host (bare `cscript` resolves to the 64-bit host;
+SAP GUI COM needs 32-bit — see CLAUDE.md / feedback_sap_gui_vbs_must_be_32bit),
+as ONE PowerShell block: the target expectation MUST be declared in the SAME
+process that launches cscript (the attach lib reads it from the process
+environment, and cscript is a child of THIS PowerShell, not of the generator
+block above), so a GUI parked on a different system than the RFC leg is refused
+instead of receiving this package (2026-08-06):
+
+```powershell
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+Set-SapGuiTargetExpectation -WorkTemp '{WORK_TEMP}' | Out-Null
+& 'C:\Windows\SysWOW64\cscript.exe' //NoLogo "{RUN_TEMP}\sap_se21_filled.vbs"
 ```
 
 ---
@@ -419,21 +434,38 @@ $content  = $content.Replace('%%TRANSPORT%%',       'THE_TRANSPORT')
 $content  = $content.Replace('%%PACKAGE2%%',        '')
 $content  = $content.Replace('%%ORIG_LANG%%',       '')
 $content  = $content.Replace('%%SESSION_LOCK_VBS%%', '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_session_lock.vbs')
-# Phase 3.5 session-attach plumbing.
-$sessionPath = ''
+# Phase 4.2 session-attach plumbing. BAKE the resolved session path into the VBS
+# (%%SESSION_PATH%% = attach Strategy 1) rather than exporting it as
+# $env:SAPDEV_SESSION_PATH here: this generator is a SEPARATE process from the one
+# that later launches cscript, so an env var set here dies with it and the attach
+# lib silently falls through to its sole-connection default (Strategy 3) -- which
+# is how a run pinned to one SAP system drove another one (2026-08-06). Delete is
+# irreversible, so a silent retarget here destroys the WRONG system's package.
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+$sessionPath = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 $content  = $content.Replace('%%SESSION_PATH%%',     $sessionPath)
 $content  = $content.Replace('%%ATTACH_LIB_VBS%%',   '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs')
-. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
-$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
 [System.IO.File]::WriteAllText('{RUN_TEMP}\sap_se21_delete_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
-Write-Host 'Done'
+Write-Host ("Done (session_path='" + $sessionPath + "')")
 ```
 
-Run:
+Run the generator:
 
 ```bash
 powershell -ExecutionPolicy Bypass -File "{RUN_TEMP}\sap_se21_delete_run.ps1"
-C:\Windows\SysWOW64\cscript.exe //NoLogo "{RUN_TEMP}\sap_se21_delete_run.vbs"
+```
+
+Then execute as ONE PowerShell block — the target expectation MUST be declared in
+the SAME process that launches cscript (the attach lib reads it from the process
+environment, and cscript is a child of THIS PowerShell, not of the generator
+above). Deletion is irreversible, so refusing a GUI parked on a different system
+than the RFC leg is the difference between deleting the intended package and
+destroying its namesake on another system (2026-08-06):
+
+```powershell
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+Set-SapGuiTargetExpectation -WorkTemp '{WORK_TEMP}' | Out-Null
+& 'C:\Windows\SysWOW64\cscript.exe' //NoLogo "{RUN_TEMP}\sap_se21_delete_run.vbs"
 ```
 
 ### Behaviour Notes

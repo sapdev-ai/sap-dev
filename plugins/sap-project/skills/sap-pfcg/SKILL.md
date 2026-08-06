@@ -93,26 +93,35 @@ capture the `/sap-suim fetch-role` grant-set TSV as the human-facing before-stat
   abort on RETURN E/A incl. CUA-child, verify AGR_USERS re-read).
 - **create / generate (recorded GUI writes)** -> for create, resolve a **Customizing TR** via
   `/sap-transport-request --type customizing` (single roles are usually client-local, so the driver
-  tolerates no TR popup; generate needs no TR). Substitute the attach + lock + arg tokens, set
-  `SAPDEV_SESSION_PATH`, and run the driver via **32-bit cscript**:
+  tolerates no TR popup; generate needs no TR). Substitute the attach + lock + arg tokens, **bake**
+  the resolved session path, and run the driver via **32-bit cscript**:
 
   ```powershell
   $shared = '<SAP_DEV_CORE_SHARED_DIR>\scripts'
   . "$shared\sap_connection_lib.ps1"
-  $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
+  # BAKE the path into %%SESSION_PATH%% (attach Strategy 1) rather than exporting
+  # $env:SAPDEV_SESSION_PATH here: this generator is a SEPARATE process from the one
+  # that runs cscript, so the env var would already be gone and the attach lib would
+  # silently fall through to its sole-connection default (2026-08-06).
+  $sessionPath = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'   # or the --session value
   $drv = 'sap_pfcg_create.vbs'   # or 'sap_pfcg_generate.vbs'
   $vbs = [IO.File]::ReadAllText("<SKILL_DIR>\references\$drv", [Text.Encoding]::UTF8)
   $vbs = $vbs.Replace('%%ATTACH_LIB_VBS%%',   "$shared\sap_attach_lib.vbs")
   $vbs = $vbs.Replace('%%SESSION_LOCK_VBS%%', "$shared\sap_session_lock.vbs")
-  $vbs = $vbs.Replace('%%SESSION_PATH%%',     '')            # or the --session value
+  $vbs = $vbs.Replace('%%SESSION_PATH%%',     $sessionPath)
   $vbs = $vbs.Replace('%%ROLE_NAME%%',        '<ROLE>')
   $vbs = $vbs.Replace('%%ROLE_DESC%%',        '<short description>')  # create only
   $vbs = $vbs.Replace('%%TRANSPORT%%',        '<customizing-TR>')     # create only; empty -> ABORT if PFCG prompts
   [IO.File]::WriteAllText('{RUN_TEMP}\pfcg_run.vbs', $vbs, [System.Text.UnicodeEncoding]::new($false, $true))
   ```
 
-  ```bash
-  C:\Windows\SysWOW64\cscript.exe //NoLogo "{RUN_TEMP}\pfcg_run.vbs"
+  Declare the GUI target in the SAME block as cscript — the attach lib reads
+  `SAPDEV_EXPECT_SYSTEM`/`_CLIENT` from the process environment, so a role create /
+  generate can never land on a system other than the one the RFC leg resolved:
+  ```powershell
+  . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+  Set-SapGuiTargetExpectation -WorkTemp '{WORK_TEMP}' | Out-Null
+  & 'C:\Windows\SysWOW64\cscript.exe' //NoLogo "{RUN_TEMP}\pfcg_run.vbs"
   ```
 
   Parse `SUCCESS:` / `ERROR:` plus the machine markers — `PFCG_NO_AUTH_CREATE:` (create; missing

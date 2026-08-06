@@ -204,16 +204,18 @@ $content = $content -replace '%%OUTPUT_FILE%%','{RUN_TEMP}\se16n_THE_TABLE.txt'
 #   2. SAPDEV_SESSION_PATH env var
 #   3. Sole-connection + sole-session auto-default
 #   4. Refuse with helpful error (multiple connections, no resolver)
-$sessionPath = ''   # set to the parsed --session value if supplied
-$content = $content -replace '%%SESSION_PATH%%', $sessionPath
-$content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
-# Resolve the AI-session's pinned session path and pass via env var so
-# AttachSapSession's Strategy 2 picks it up. Falls back to sole-connection
-# default for the single-conn case.
+# Resolve the AI-session's pin here and BAKE it into %%SESSION_PATH%% (Strategy 1).
+# Do NOT export it as $env:SAPDEV_SESSION_PATH instead (Strategy 2): this generator
+# is a SEPARATE process from the one that runs cscript, so the env var would
+# already be gone and the helper would silently fall through to Strategy 3 --
+# which on a machine with two SAP GUIs open reads the wrong system (2026-08-06).
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
-$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
+$sessionPath = ''   # set to the parsed --session value if supplied
+if (-not $sessionPath) { $sessionPath = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}' }
+$content = $content.Replace('%%SESSION_PATH%%', $sessionPath)
+$content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
 [System.IO.File]::WriteAllText('{RUN_TEMP}\sap_se16n_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
-Write-Host 'Done'
+Write-Host ("Done (session_path='" + $sessionPath + "')")
 ```
 Replace `THE_TABLE` with the actual table name (UPPERCASE) and `<SKILL_DIR>` /
 `{WORK_TEMP}` with their absolute paths.
@@ -236,6 +238,13 @@ system / client:
 ```powershell
 $shared = '<SAP_DEV_CORE_SHARED_DIR>\scripts'
 $out    = '{RUN_TEMP}\se16n_THE_TABLE.txt'
+# 0. Declare which SAP system the GUI leg may read. MUST happen in THIS block:
+#    the attach lib reads it from the process environment, and cscript is a child
+#    of THIS PowerShell. Table data with no provenance is exactly the 2026-08-06
+#    failure mode -- a dump labelled "THE_TABLE on <SID>" that came from another
+#    system is worse than no dump at all.
+. "$shared\sap_connection_lib.ps1"
+Set-SapGuiTargetExpectation -WorkTemp '{WORK_TEMP}' | Out-Null
 # 1. Pre-check the allow-list (read-only; informational + lets us skip the watcher).
 & "$shared\sap_gui_security_precheck.ps1" -Path $out -Access w -System 'THE_SID' -Client 'THE_CLIENT' -Transaction 'SE16N' | Out-Host
 $allowed = ($LASTEXITCODE -eq 0)
@@ -374,22 +383,27 @@ surfaces (it is always present; the flag only documents intent).
    (`AGG` rows are `FIELD<TAB>FUNC`; `FILTER` rows are `FIELD<TAB>OP<TAB>value…`
    with SE16N operators EQ/NE/GT/LT/GE/LE/BT/NB/CP/NP/IN.)
 3. **Fill + run the VBS** (same token/encoding idiom as Step 4 of the normal flow —
-   resolve `$sessionPath`, set `$env:SAPDEV_SESSION_PATH`, write UTF-16LE, run
+   resolve `$sessionPath` and BAKE it into `%%SESSION_PATH%%`, write UTF-16LE, run
    32-bit cscript):
    ```powershell
+   . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+   $sessionPath = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
    $c = [System.IO.File]::ReadAllText('<SKILL_DIR>\references\sap_se16h_agg.vbs', [System.Text.Encoding]::UTF8)
    $c = $c -replace '%%TABLE_NAME%%','<TABLE>'
    $c = $c -replace '%%PARAMS_FILE%%','{RUN_TEMP}\se16h_agg_params.txt'
    $c = $c -replace '%%OUTPUT_FILE%%','{RUN_TEMP}\se16h_agg_<TABLE>.txt'
    $c = $c -replace '%%MAX_GROUPS%%','100000'
    $c = $c -replace '%%MIN_COUNT%%',''
-   $c = $c -replace '%%SESSION_PATH%%', $sessionPath
+   $c = $c.Replace('%%SESSION_PATH%%', $sessionPath)
    $c = $c -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
-   $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
    [System.IO.File]::WriteAllText('{RUN_TEMP}\sap_se16h_agg_run.vbs', $c, [System.Text.UnicodeEncoding]::new($false,$true))
    ```
-   ```bash
-   C:/Windows/SysWOW64/cscript.exe //NoLogo '{RUN_TEMP}\sap_se16h_agg_run.vbs'
+   Declare the GUI target in the SAME block as cscript, so the aggregate is read
+   from the system the RFC leg resolved and the `GUI_TARGET:` line proves it:
+   ```powershell
+   . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+   Set-SapGuiTargetExpectation -WorkTemp '{WORK_TEMP}' | Out-Null
+   & 'C:/Windows/SysWOW64/cscript.exe' //NoLogo '{RUN_TEMP}\sap_se16h_agg_run.vbs'
    ```
 4. **Parse the last stdout lines** and report:
    - `SE16H_AGG: table=.. groups=<n> cols=<c> truncated=<0|1> group_by=[..] agg=[..]`
