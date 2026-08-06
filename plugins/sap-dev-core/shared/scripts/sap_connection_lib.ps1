@@ -1739,9 +1739,11 @@ function Get-SapCurrentSessionPath {
 function Set-SapGuiTargetExpectation {
     <#
     .SYNOPSIS
-        Declare which SAP system the GUI leg of this skill is allowed to drive,
-        by exporting SAPDEV_EXPECT_SYSTEM / SAPDEV_EXPECT_CLIENT for the VBS
-        attach helper (sap_attach_lib.vbs) to enforce.
+        Declare which SAP system this run is allowed to target, by exporting
+        SAPDEV_EXPECT_SYSTEM / SAPDEV_EXPECT_CLIENT. Enforced by BOTH
+        transports: the VBS attach helper (sap_attach_lib.vbs,
+        AssertSapGuiTarget) and the RFC connector (Connect-SapRfc in
+        sap_rfc_lib.ps1).
     .DESCRIPTION
         A skill that reads over BOTH transports resolves its SAP target twice:
         Connect-SapRfc walks pin -> GUI-active -> default -> sole-profile, while
@@ -1766,8 +1768,23 @@ function Set-SapGuiTargetExpectation {
         the pre-existing behaviour, whereas a wrong expectation would block
         legitimate work.
 
+        Second incident, same day (RFC transport): a headless child session's
+        fresh CLAUDE_CODE_SESSION_ID resolved a PINLESS AI session, so
+        Connect-SapRfc fell through to the saved DEFAULT profile and read the
+        wrong system's source while the driver's pin, syntax check and verdict
+        all pointed elsewhere. Connect-SapRfc therefore now enforces the same
+        pair: a resolution that mismatches the exported expectation is a hard
+        refusal (before logon on the profile path), and every successful
+        connect stamps `RFC_TARGET: ...` alongside the attach lib's
+        `GUI_TARGET: ...`. Because child processes inherit the environment,
+        exporting the expectation here covers every RFC call in the same
+        process tree.
+
         Call this in the skill wrapper right next to the existing
         `$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath ...` line.
+        A DELIBERATE cross-system connect (e.g. the second leg of
+        /sap-compare or /sap-transport-sequencer) must clear the pair first
+        (`-Clear`, or `$env:SAPDEV_EXPECT_SYSTEM = $null`) in its own process.
     .PARAMETER Clear
         Remove both env vars instead of setting them (disables enforcement for
         the rest of this process).
@@ -1800,13 +1817,13 @@ function Set-SapGuiTargetExpectation {
         # safety gate already treats as fail-closed). Do NOT invent one.
         $env:SAPDEV_EXPECT_SYSTEM = $null
         $env:SAPDEV_EXPECT_CLIENT = $null
-        [Console]::Error.WriteLine("WARN: no SAP connection profile resolved; the GUI leg will run UNVERIFIED (it may attach to a different system than the RFC leg). Run /sap-login to pin a connection.")
+        [Console]::Error.WriteLine("WARN: no SAP connection profile resolved; the GUI and RFC legs will run UNVERIFIED (they may target different SAP systems). Run /sap-login to pin a connection.")
         return $null
     }
 
     $env:SAPDEV_EXPECT_SYSTEM = $sid
     $env:SAPDEV_EXPECT_CLIENT = $cli
-    [Console]::Error.WriteLine("INFO: GUI target expectation = $sid/$cli (matches the RFC leg); a GUI session on any other system will be refused.")
+    [Console]::Error.WriteLine("INFO: SAP target expectation = $sid/$cli; both transports (AssertSapGuiTarget and Connect-SapRfc) will refuse any other system in this process tree.")
     return $prof
 }
 
@@ -1993,12 +2010,20 @@ function Get-SapCurrentConnectionProfile {
         Opt-in because it may shell a 32-bit cscript COM read -- Connect-SapRfc
         opts in (the write-hazard path); cheap callers (banner / release
         marker) leave it off and keep today's pin-or-default behaviour.
+    .PARAMETER ResolvedVia
+        Optional [ref] out-parameter. On a non-null return, receives which
+        resolution step won: 'pin' | 'gui-active' | 'default' |
+        'single-profile'. Untouched when nothing resolves. Connect-SapRfc
+        passes this so its RFC_TARGET stamp can name the resolution source
+        (the 2026-08-06 incident forensics hinged on exactly this: a headless
+        child resolving via 'default' when the run believed it was pinned).
     #>
     param(
         [string]$WorkTemp    = '',
         [string]$RuntimeDir  = '',
         [switch]$StrictMode,
-        [switch]$PreferGuiActive
+        [switch]$PreferGuiActive,
+        [ref]$ResolvedVia = $null
     )
 
     if ([string]::IsNullOrWhiteSpace($RuntimeDir)) {
@@ -2018,7 +2043,10 @@ function Get-SapCurrentConnectionProfile {
 
     if ($pinnedConnId) {
         $p = Find-SapConnectionById -Id $pinnedConnId
-        if ($p) { return $p }
+        if ($p) {
+            if ($ResolvedVia) { $ResolvedVia.Value = 'pin' }
+            return $p
+        }
     }
 
     # Step 2 -- GUI-active preference (opt-in; only reached with no usable pin).
@@ -2035,6 +2063,7 @@ function Get-SapCurrentConnectionProfile {
                     # target (GUI-active != default) -- that is the hazard case.
                     [Console]::Error.WriteLine("INFO: RFC target = GUI-active connection $($gui.identity.system_name)/$($gui.identity.client)/$($gui.identity.user) (via $($gui.identity.source)), overriding the saved default -- no AI-session pin is set. Run '/sap-login --switch $($gui.identity.system_name)' to pin it and silence this.")
                 }
+                if ($ResolvedVia) { $ResolvedVia.Value = 'gui-active' }
                 return $gui.profile
             }
             if ($gui -and -not $gui.matched) {
@@ -2046,7 +2075,10 @@ function Get-SapCurrentConnectionProfile {
     }
 
     $defp = Get-SapDefaultConnection
-    if ($defp) { return $defp }
+    if ($defp) {
+        if ($ResolvedVia) { $ResolvedVia.Value = 'default' }
+        return $defp
+    }
 
     if ($StrictMode) { return $null }
 
@@ -2068,6 +2100,7 @@ function Get-SapCurrentConnectionProfile {
                 # Stderr so the line surfaces above the skill's normal output
                 # without contaminating stdout that downstream JSON parsers consume.
                 [Console]::Error.WriteLine("INFO: auto-bootstrap pinned single saved profile id=$($only.id) description='$($only.description)' (no default; password present)")
+                if ($ResolvedVia) { $ResolvedVia.Value = 'single-profile' }
                 return $only
             }
         }

@@ -70,6 +70,12 @@
 ' Unset = today's behaviour (identity still echoed), so this is additive
 ' for every VBS that has not been wired up yet.
 '
+' Since 2026-08-06 (second incident, RFC transport) the RFC leg enforces
+' the SAME pair: Connect-SapRfc (sap_rfc_lib.ps1) refuses a resolution
+' that mismatches the expectation and stamps "RFC_TARGET: ..." on every
+' successful connect, the sibling of the GUI_TARGET line below -- so both
+' transports answer to one declared target.
+'
 ' Why a helper rather than every skill rolling its own
 ' ----------------------------------------------------
 ' The legacy idiom:
