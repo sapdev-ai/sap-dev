@@ -53,6 +53,36 @@
 # free. Callers that still use `$dest.Repository.CreateFunction("RFC_READ_TABLE")`
 # directly MUST invoke `Assert-RfcReadTableAllowed -QueryTable <name>` after
 # the first `SetValue("QUERY_TABLE", ...)`.
+#
+# CROSS-SYSTEM TARGET GUARD (SAPDEV_EXPECT_SYSTEM / SAPDEV_EXPECT_CLIENT)
+# -----------------------------------------------------------------------
+# Connect-SapRfc mirrors AssertSapGuiTarget (sap_attach_lib.vbs) on the RFC
+# transport. Every successful connect stamps one line:
+#
+#     RFC_TARGET: system=<SID> client=<NNN> user=<U> endpoint=<...> via=<source>
+#
+# (via = pin | gui-active | default | single-profile | explicit-params --
+# which step of the resolution chain chose the target), matching the
+# GUI_TARGET convention so transcripts carry provenance for BOTH transports.
+# When the calling wrapper exported SAPDEV_EXPECT_SYSTEM / SAPDEV_EXPECT_CLIENT
+# (Set-SapGuiTargetExpectation in sap_connection_lib.ps1 -- child processes
+# inherit them), a mismatching resolution is a HARD REFUSAL (ERROR + $null,
+# before logon when the identity is known pre-connect): continuing would
+# read/write TWO DIFFERENT SAP SYSTEMS in one run. Unset expectation = legacy
+# behaviour, still stamped.
+#
+# Identity comparison uses the resolved PROFILE's system_name/client. It must
+# NOT use RfcDestination.SystemID -- that is the configured R3NAME and is
+# EMPTY on a direct -Server/-Sysnr connection (the d7942b5 trap). For
+# caller-supplied endpoints the guard attributes the SID via an exact
+# endpoint match against the saved connection store, then falls back to the
+# live logon identity in RfcDestination.SystemAttributes (best-effort; same
+# read as _RfcDestIdentity in sap_rfc_read_source.ps1).
+#
+# A DELIBERATE cross-system connect (the second leg of /sap-compare,
+# /sap-transport-sequencer, /sap-cc-* source reads) must clear the pair in
+# its own process first (Set-SapGuiTargetExpectation -Clear) -- those skills
+# set no expectation today, so they are unaffected until one is exported.
 # =============================================================================
 
 # Module-scoped state so Disconnect-SapRfc can find what to remove.
@@ -139,6 +169,8 @@ function Connect-SapRfc {
     $explicitMessageServer = -not (_Needs $MessageServer)
     $needAny = (_Needs $Server) -and (_Needs $MessageServer)   # at least one endpoint
     if (-not $needAny) { $needAny = (_Needs $Client) -or (_Needs $User) -or (_Needs $Password) }
+    # Resolution provenance for the RFC_TARGET stamp + target guard below.
+    $prof = $null; $profVia = ''
     if ($needAny) {
         try {
             $libDir = $PSScriptRoot
@@ -148,8 +180,8 @@ function Connect-SapRfc {
                 if (Test-Path $sl) { . $sl }
                 if (Test-Path $cl) { . $cl }
             }
-            $prof = $null
-            if (Get-Command Get-SapCurrentConnectionProfile -ErrorAction SilentlyContinue) {
+            $gcpCmd = Get-Command Get-SapCurrentConnectionProfile -ErrorAction SilentlyContinue
+            if ($gcpCmd) {
                 # -PreferGuiActive: when no AI-session pin resolves, prefer the
                 # profile matching the SAP GUI session this AI session is
                 # actually driving over the saved DEFAULT profile. Without this,
@@ -157,7 +189,13 @@ function Connect-SapRfc {
                 # silently target the unrelated default system (wrong-system
                 # write hazard). Explicit-param callers never reach this block;
                 # pinned sessions resolve the pin first (GUI step is skipped).
-                $prof = Get-SapCurrentConnectionProfile -PreferGuiActive
+                if ($gcpCmd.Parameters.ContainsKey('ResolvedVia')) {
+                    $prof = Get-SapCurrentConnectionProfile -PreferGuiActive -ResolvedVia ([ref]$profVia)
+                } else {
+                    # Older sap_connection_lib.ps1 without the out-param
+                    # (mixed plugin-cache versions): resolve without provenance.
+                    $prof = Get-SapCurrentConnectionProfile -PreferGuiActive
+                }
             }
             if ($prof) {
                 # Endpoint: prefer existing input shape (direct vs load-balanced);
@@ -277,6 +315,74 @@ function Connect-SapRfc {
         return $null
     }
 
+    # ---- Cross-system target guard (RFC transport) --------------------------
+    # Mirror of AssertSapGuiTarget (sap_attach_lib.vbs). See the header block
+    # "CROSS-SYSTEM TARGET GUARD" and gotcha 5 in
+    # contributing/parallel_safe_session_attach.md. Live incident 2026-08-06
+    # (second cross-system contamination, RFC transport this time): a headless
+    # child session's fresh session id resolved a PINLESS AI session, this
+    # function fell through to the saved DEFAULT profile (S4H/400) and
+    # faithfully read the wrong system's source while the driver's pin, syntax
+    # check and verdict all pointed at S4D/100. Nothing on the RFC leg said
+    # which system it used -- the GUI leg has refused that drift since
+    # d7942b5; this closes the same hole here.
+    $expSys    = "$env:SAPDEV_EXPECT_SYSTEM".Trim()
+    $expCli    = "$env:SAPDEV_EXPECT_CLIENT".Trim()
+    $effClient = "$Client".Trim()
+
+    # Attribute the target system. The resolved profile's system_name applies
+    # only when the ENDPOINT actually came from the profile fallback -- a
+    # caller that passed -Server / -MessageServer itself chose the target
+    # (e.g. the deliberate second legs of /sap-compare or
+    # /sap-transport-sequencer), and the pinned profile's system_name says
+    # nothing about where that endpoint points. Comparison deliberately uses
+    # profile identity, NOT $dest.SystemID -- that is the configured R3NAME
+    # and is EMPTY on a direct -Server/-Sysnr connection (the d7942b5 trap).
+    $endpointFromProfile = ($null -ne $prof) -and -not ($explicitServer -or $explicitMessageServer)
+    $rfcVia = 'explicit-params'
+    if ($endpointFromProfile) { $rfcVia = if ($profVia) { $profVia } else { 'profile' } }
+    $resolvedSid = ''
+    if ($endpointFromProfile) { $resolvedSid = "$($prof.system_name)".Trim() }
+    if (-not $resolvedSid -and $useMsg) { $resolvedSid = "$SystemID".Trim() }   # R3NAME = declared SID
+    if (-not $resolvedSid -and ($expSys -or $expCli)) {
+        # Expectation declared but the caller supplied its own direct endpoint:
+        # attribute it via an exact endpoint match against the saved connection
+        # store. Covers the verify/lookup scripts that resolve the pinned
+        # profile themselves and pass -Server/-Sysnr explicitly -- their SID
+        # becomes checkable BEFORE logon. Best-effort; no match leaves the
+        # post-connect SystemAttributes leg below to decide.
+        try {
+            if (-not (Get-Command Read-SapConnectionStore -ErrorAction SilentlyContinue)) {
+                $sl2 = Join-Path $PSScriptRoot 'sap_settings_lib.ps1'
+                $cl2 = Join-Path $PSScriptRoot 'sap_connection_lib.ps1'
+                if (Test-Path $sl2) { . $sl2 }
+                if (Test-Path $cl2) { . $cl2 }
+            }
+            $epStore = $null
+            if (Get-Command Read-SapConnectionStore -ErrorAction SilentlyContinue) { $epStore = Read-SapConnectionStore }
+            if ($epStore -and $epStore.connections) {
+                $epSids = @($epStore.connections | Where-Object {
+                    ("$($_.application_server)".Trim() -eq "$Server".Trim()) -and
+                    ("$($_.system_number)".Trim()      -eq "$Sysnr".Trim())
+                } | ForEach-Object { "$($_.system_name)".Trim() } | Where-Object { $_ } | Select-Object -Unique)
+                if ($epSids.Count -eq 1) { $resolvedSid = $epSids[0] }
+            }
+        } catch { }
+    }
+
+    if ($expSys -or $expCli) {
+        $tgtBad = $false
+        if ($expSys -and $resolvedSid -and ($resolvedSid -ne $expSys)) { $tgtBad = $true }
+        if ($expCli -and $effClient -and ($effClient -ne $expCli))     { $tgtBad = $true }
+        if ($tgtBad) {
+            $shownSid = if ($resolvedSid) { $resolvedSid } else { '?' }
+            Write-Host "ERROR: SAP RFC target mismatch. Expected $expSys/$expCli but Connect-SapRfc resolved $shownSid/$effClient (via $rfcVia)."
+            Write-Host "       This run declared its SAP target via SAPDEV_EXPECT_SYSTEM/_CLIENT (Set-SapGuiTargetExpectation), so continuing would read/write TWO DIFFERENT SAP SYSTEMS in one run. Refusing before logon."
+            Write-Host "       Fix: run /sap-login --switch $expSys to re-pin this AI session (headless child sessions: hand the driver's SAPDEV_AI_SESSION_ID through), or clear SAPDEV_EXPECT_SYSTEM/_CLIENT first if connecting to another system is genuinely intended (deliberate cross-system compare)."
+            return $null
+        }
+    }
+
     if (-not (_Load-SapNco)) { return $null }
 
     # NCo writes a `dev_nco_rfc.log` trace file to the .NET process's current
@@ -339,6 +445,46 @@ function Connect-SapRfc {
             $effGroupMsg = if ([string]::IsNullOrWhiteSpace($LogonGroup)) { 'PUBLIC (default)' } else { $LogonGroup }
             Write-Host "INFO: RFC connected to $SystemID via msrv=$MessageServer group=$effGroupMsg client=$Client (NCo 3.1, load-balanced)."
         }
+
+        # ---- RFC_TARGET stamp + post-connect leg of the target guard --------
+        # Best-effort live identity from the logon handshake
+        # (RfcDestination.SystemAttributes -- same read as _RfcDestIdentity in
+        # sap_rfc_read_source.ps1; degrades to blank, never throws). Fills the
+        # stamp for caller-supplied endpoints no saved profile matched, and
+        # closes the guard for that path.
+        $liveSid = ''
+        try {
+            $sa = $dest.SystemAttributes
+            if ($sa) { $liveSid = "$($sa.SystemID)".Trim() }
+        } catch { }
+        if ($resolvedSid -and $liveSid -and ($liveSid -ne $resolvedSid)) {
+            Write-Host "WARN: Connect-SapRfc: the resolved target claims system '$resolvedSid' but the live logon reports '$liveSid' -- stale saved profile? Re-run /sap-login to refresh it."
+        }
+        $stampSid = if ($resolvedSid) { $resolvedSid } else { $liveSid }
+        if (-not $stampSid) { $stampSid = '?' }
+        $endpointDesc = if ($useDirect) { "${Server}:${Sysnr}" } else { "/M/${MessageServer}/G/${effGroup}/S/${SystemID}" }
+        Write-Host "RFC_TARGET: system=$stampSid client=$effClient user=$User endpoint=$endpointDesc via=$rfcVia"
+
+        if ($expSys -and -not $resolvedSid) {
+            # SID was not decidable before logon (caller-supplied endpoint,
+            # no store match). Enforce on the live identity; mirror
+            # AssertSapGuiTarget's unverified-target refusal when even the
+            # live read comes back blank -- an unverifiable target is exactly
+            # the case this guard exists for.
+            if (-not $liveSid) {
+                Write-Host "ERROR: SAP RFC target could not be identified (caller-supplied endpoint matches no saved profile and SystemAttributes.SystemID is blank) but SAPDEV_EXPECT_SYSTEM=$expSys was declared. Refusing to use an unverified connection."
+                try { [SAP.Middleware.Connector.RfcDestinationManager]::RemoveDestination($params) | Out-Null } catch { }
+                return $null
+            }
+            if ($liveSid -ne $expSys) {
+                Write-Host "ERROR: SAP RFC target mismatch. Expected $expSys/$expCli but the live logon landed on $liveSid/$effClient (endpoint $endpointDesc, via $rfcVia)."
+                Write-Host "       This run declared its SAP target via SAPDEV_EXPECT_SYSTEM/_CLIENT (Set-SapGuiTargetExpectation), so continuing would read/write TWO DIFFERENT SAP SYSTEMS in one run."
+                Write-Host "       Fix: run /sap-login --switch $expSys to re-pin this AI session (headless child sessions: hand the driver's SAPDEV_AI_SESSION_ID through), or clear SAPDEV_EXPECT_SYSTEM/_CLIENT first if connecting to another system is genuinely intended (deliberate cross-system compare)."
+                try { [SAP.Middleware.Connector.RfcDestinationManager]::RemoveDestination($params) | Out-Null } catch { }
+                return $null
+            }
+        }
+
         $script:_SapRfc_Params = $params
         # Also expose at caller scope so legacy `RemoveDestination($g_rfcParams)` keeps working,
         # and re-publish the credential values as $g_sap* so consumers don't need their own
