@@ -32,6 +32,7 @@ Task: $ARGUMENTS
 
 | File | Token / call | Purpose |
 |---|---|---|
+| `<SAP_DEV_CORE_SHARED_DIR>/rules/safety_policy.md` | *(rule)* | **Rule 0 (highest priority)** — environment guard; enforced at the top of Step 5 via `sap_safety_gate.ps1` (`act` only — `diagnose`/`explain` are read-only and skip it) |
 | `<SKILL_DIR>/references/sap_workflow_rfc.ps1` | `-Mode diagnose\|explain\|act` | The whole backend (all three modes) |
 | `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_rfc_lib.ps1` · `sap_connection_lib.ps1` | dot-source | RFC connect + pinned profile |
 | `<SAP_DEV_CORE_SHARED_DIR>/scripts/sap_finding_lib.ps1` · `sap_artifact_lib.ps1` | dot-source | Finding/coverage model + evidence registration |
@@ -85,6 +86,14 @@ if no active SWDSHEADER row), and triggering event linkages (`WFEVENT:` objtype/
 Render a dossier MD; when the task calls a Z class/FM, offer to chain `/sap-explain-object`.
 
 ## Step 5 — act (confirm-gated)
+
+**Rule 0 first** (`safety_policy.md`; `act` only — `diagnose`/`explain` are read-only and skip it):
+`powershell -NoProfile -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_safety_gate.ps1" -Action assert -Skill sap-workflow` —
+`SAFETY: ALLOW` (0) proceed; `TYPED_CONFIRM_REQUIRED` (3) -> the operator types the shown
+`PROD <SID>/<CLIENT>` token, re-run with `-ConfirmationText '<their verbatim answer>'`, proceed only
+on `ALLOW_CONFIRMED`; `REFUSED class=<C>` (1) / `ERROR` (2) -> **STOP**, end `FAILED` with
+`-ErrorClass <C>`, relay the remediation lines — never bypass or work around it manually. The
+CONFIRM gate below (item 2) still applies after ALLOW/ALLOW_CONFIRMED.
 
 1. Backend pre-reads the WI and applies the **refusal matrix** BEFORE any prompt: restart needs
    `WI_STAT=ERROR`; cancel refused on COMPLETED/CANCELLED; forward needs `--to` + a dialog (W)

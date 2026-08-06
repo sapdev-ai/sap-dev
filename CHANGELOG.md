@@ -4,6 +4,25 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Security
+
+- **Rule 0 coverage closed for the last three write-shaped skills: `/sap-va01`
+  and `/sap-workflow act` now run the safety gate; `/sap-refresh-verify
+  deschedule` is a documented delegation exclusion.** All three shipped after
+  Phase 2's full-coverage sweep without a `sap_safety_gate.ps1` assert — found
+  by the m365-copilot implementation plan's Sec 7.6 audit. `sap-va01` mutates
+  sales orders via GUI scripting and got the unconditional Step 0.6 gate (the
+  sap-mm01 pattern); `sap-workflow`'s `act restart|cancel|forward` writes over
+  WAPI FMs and gates at the top of Step 5, ahead of its existing chat confirm
+  (the sap-rfc-monitor pattern); `sap-refresh-verify`'s sole write leg
+  delegates every job deletion to the already-gated `/sap-job`, so it joins
+  the sap-forms/sap-golden-master exclusion category rather than
+  double-prompting the operator's typed PROD confirmation — the exclusion is
+  recorded in the checker comment and in the skill's Step 5. The two gated
+  skills are now rows in `SAFETY_GATE_SKILLS`, so the forward CI check (gate
+  present + policy referenced) and the reverse check (the list stays the
+  authoritative write-capable inventory) keep all three honest from here on.
+
 ### Fixed
 
 - **`/sap-where-used-list` reported "has usages" for an object SAP said was

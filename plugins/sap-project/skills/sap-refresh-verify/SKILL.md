@@ -105,6 +105,12 @@ powershell -ExecutionPolicy Bypass -Command ". '<SAP_DEV_CORE_SHARED_DIR>\script
 
 ## Step 5 — deschedule (gated write, the only remediation)
 
+**Rule 0 (`safety_policy.md`) is enforced inside `/sap-job`**, which runs its own environment
+gate + confirm on every delete — this skill deliberately does not duplicate the gate (a second
+assert would double-prompt the typed `PROD <SID>/<CLIENT>` confirmation; see the
+`SAFETY_GATE_SKILLS` exclusions in `scripts/check-consistency.mjs`). Never bypass the delegation
+by driving SM37 or `BAPI_XBP_JOB_*` directly from this skill.
+
 Load the flagged-jobs list (`{OUT}\jobs_flagged.tsv` from the last audit) or the explicit
 `<JOBNAME> <JOBCOUNT>`. **Confirm gate:** a single job -> `/sap-job delete` brings its own confirm.
 `--all-flagged` -> THIS skill first takes a **typed** confirmation `DESCHEDULE <n> JOBS ON

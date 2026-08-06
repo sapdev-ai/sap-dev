@@ -1054,6 +1054,12 @@ const sharedPlacementWarnings = [];
 //     repo or business mutation): sap-atc, sap-cc-analyze.
 //   * Sole write leg is delegating a report capture/export to the gated
 //     /sap-run-report: sap-forms, sap-golden-master.
+//   * Sole write leg (deschedule) delegates every job deletion to the gated
+//     /sap-job, whose own Rule 0 assert + confirm run per delete — a second
+//     gate here would double-prompt the typed PROD confirmation:
+//     sap-refresh-verify (2026-08-07, closing the m365-copilot plan's Sec 7.6
+//     coverage finding; its two direct-writing siblings sap-va01 and
+//     sap-workflow joined the list below the same day).
 //   * sap-gui-skill-scaffold -- probes run through sap-gui-probe (gated).
 const SAFETY_GATE_SKILLS = new Map([
   ['sap-dev-core', ['sap-se38', 'sap-se37', 'sap-se24', 'sap-se11', 'sap-se01',
@@ -1073,7 +1079,7 @@ const SAFETY_GATE_SKILLS = new Map([
                     'sap-mm01', 'sap-output-diagnose', 'sap-retrofit',
                     'sap-rfc-monitor', 'sap-sm35', 'sap-su01', 'sap-tcd-chain',
                     'sap-test-replay', 'sap-translate', 'sap-transport-copies',
-                    'sap-user-guide']],
+                    'sap-user-guide', 'sap-va01', 'sap-workflow']],
 ]);
 {
   const policyPath = join(repoRoot, 'plugins', 'sap-dev-core', 'shared', 'rules', 'safety_policy.md');
