@@ -4,6 +4,24 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Every safety-gate `assert` (and every other caller that omits the new
+  `ResolvedVia` out-parameter) refused with a false `no_profile` under Windows
+  PowerShell 5.1.** The RFC target-stamp work (PR #9) declared the parameter as
+  `[ref]$ResolvedVia = $null` on `Get-SapCurrentConnectionProfile`; PS 5.1
+  throws `ParameterArgumentTransformationError` binding the `$null` default for
+  every caller that does not supply the argument, while pwsh 7 accepts it — the
+  fourth instance of the works-in-pwsh-7 portability class. `Connect-SapRfc`
+  passes the argument and kept working, which is why read paths looked fine
+  while every write skill's Rule 0 gate on 32-bit PS 5.1 (the production driver
+  shape) failed closed with "no pin, no default, no single-profile bootstrap"
+  despite a valid pin. The parameter is now untyped with the assignments
+  guarded by `-is [ref]`; verified on PS 5.1 and pwsh 7 against a live pinned
+  profile (assert now returns `SAFETY: ALLOW`). Fail direction note: the bug
+  refused work it should have allowed — it never allowed work it should have
+  refused.
+
 ### Security
 
 - **Rule 0 coverage closed for the last three write-shaped skills: `/sap-va01`

@@ -2023,7 +2023,14 @@ function Get-SapCurrentConnectionProfile {
         [string]$RuntimeDir  = '',
         [switch]$StrictMode,
         [switch]$PreferGuiActive,
-        [ref]$ResolvedVia = $null
+        # Deliberately NOT typed [ref]: under Windows PowerShell 5.1 a
+        # [ref]-typed parameter with a $null default throws
+        # ParameterArgumentTransformationError for EVERY caller that omits it
+        # -- which turned every safety-gate assert into a fail-closed
+        # "no_profile" refusal while pwsh 7 ran the same code fine (4th
+        # instance of the works-in-pwsh-7 portability class). Callers still
+        # pass ([ref]$var); every assignment below guards on -is [ref].
+        $ResolvedVia = $null
     )
 
     if ([string]::IsNullOrWhiteSpace($RuntimeDir)) {
@@ -2044,7 +2051,7 @@ function Get-SapCurrentConnectionProfile {
     if ($pinnedConnId) {
         $p = Find-SapConnectionById -Id $pinnedConnId
         if ($p) {
-            if ($ResolvedVia) { $ResolvedVia.Value = 'pin' }
+            if ($ResolvedVia -is [ref]) { $ResolvedVia.Value = 'pin' }
             return $p
         }
     }
@@ -2063,7 +2070,7 @@ function Get-SapCurrentConnectionProfile {
                     # target (GUI-active != default) -- that is the hazard case.
                     [Console]::Error.WriteLine("INFO: RFC target = GUI-active connection $($gui.identity.system_name)/$($gui.identity.client)/$($gui.identity.user) (via $($gui.identity.source)), overriding the saved default -- no AI-session pin is set. Run '/sap-login --switch $($gui.identity.system_name)' to pin it and silence this.")
                 }
-                if ($ResolvedVia) { $ResolvedVia.Value = 'gui-active' }
+                if ($ResolvedVia -is [ref]) { $ResolvedVia.Value = 'gui-active' }
                 return $gui.profile
             }
             if ($gui -and -not $gui.matched) {
@@ -2076,7 +2083,7 @@ function Get-SapCurrentConnectionProfile {
 
     $defp = Get-SapDefaultConnection
     if ($defp) {
-        if ($ResolvedVia) { $ResolvedVia.Value = 'default' }
+        if ($ResolvedVia -is [ref]) { $ResolvedVia.Value = 'default' }
         return $defp
     }
 
@@ -2100,7 +2107,7 @@ function Get-SapCurrentConnectionProfile {
                 # Stderr so the line surfaces above the skill's normal output
                 # without contaminating stdout that downstream JSON parsers consume.
                 [Console]::Error.WriteLine("INFO: auto-bootstrap pinned single saved profile id=$($only.id) description='$($only.description)' (no default; password present)")
-                if ($ResolvedVia) { $ResolvedVia.Value = 'single-profile' }
+                if ($ResolvedVia -is [ref]) { $ResolvedVia.Value = 'single-profile' }
                 return $only
             }
         }
