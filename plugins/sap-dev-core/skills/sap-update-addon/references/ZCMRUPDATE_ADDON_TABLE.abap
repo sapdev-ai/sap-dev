@@ -723,11 +723,12 @@ CLASS lcl_table_util IMPLEMENTATION.
       lv_curr_e = iv_currency.
       TRY.
           lv_amt_int = lv_val.
+          " No MAX_NUMBER_OF_DIGITS here: the parameter exists only on the
+          " _TO_INTERNAL twin; passing it dumps (CALL_FUNCTION_PARM_UNKNOWN).
           CALL FUNCTION 'BAPI_CURRENCY_CONV_TO_EXTERNAL'
             EXPORTING
-              amount_internal       = lv_amt_int
-              currency              = lv_curr_e
-              max_number_of_digits  = 23
+              amount_internal = lv_amt_int
+              currency        = lv_curr_e
             IMPORTING
               amount_external = lv_amt_ext
             EXCEPTIONS
