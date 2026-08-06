@@ -185,7 +185,7 @@ On Error GoTo 0
 oSession.findById("wnd[0]/usr/tabsFUNC_TAB_STRIP/tabpSOURCE").select
 WScript.Sleep 1500
 
-' Read source via AbapEditor GetLineText (0-indexed)
+' Read source via AbapEditor GetLineText (1-indexed -- see the loop below)
 On Error Resume Next
 Dim oShell
 Set oShell = oSession.findById("wnd[0]/usr/tabsFUNC_TAB_STRIP/tabpSOURCE/ssubSCREEN_HEADER:SAPLEDITOR_START:8430/cntlEDITOR/shellcont/shell")
@@ -200,19 +200,55 @@ Set oFSO = CreateObject("Scripting.FileSystemObject")
 Dim oFile
 Set oFile = oFSO.CreateTextFile(OUTPUT_FILE, True, True)  ' Unicode = True -> UTF-16 LE
 
-Dim i
-For i = 0 To 9999
-    Dim sLine
-    sLine = oShell.GetLineText(i)
+' AbapEditor.GetLineText is 1-BASED, and an out-of-range index returns "" with
+' NO error raised. Verified live 2026-08-06 (SAP GUI 7700 / S/4HANA): index 0
+' is a phantom empty line, the source occupies 1..N, and N+1..9999 all return
+' "" silently. So the previous `For i = 0 To 9999 ... If Err.Number <> 0 Then
+' Exit For` never terminated early -- it wrote one phantom blank line, the
+' source, then thousands of blank padding lines. That inflated every downstream
+' token cost and left callers guessing where the source ended. The phantom line
+' also shifted everything by one, so SAP's 1-based syntax-check line numbers did
+' not match the file a fix loop edited.
+'
+' Read from 1, track the last non-blank line, write only up to it. The
+' blank-run stop keeps this to a few hundred COM round-trips instead of 10,000;
+' 500 consecutive BLANK lines do not occur inside real ABAP source (comment
+' lines are not blank). SOURCE_LINES makes the boundary explicit.
+Const SRC_BLANK_RUN_STOP = 500
+Const SRC_HARD_CAP       = 99999
+
+Dim aSrc()
+ReDim aSrc(1023)
+Dim iSrc, sSrcLine, nSrcLast, nSrcBlank, bSrcCapHit
+nSrcLast = 0 : nSrcBlank = 0 : bSrcCapHit = False
+For iSrc = 1 To SRC_HARD_CAP
+    Err.Clear
+    sSrcLine = oShell.GetLineText(iSrc)
     If Err.Number <> 0 Then
         Err.Clear
         Exit For
     End If
-    oFile.WriteLine sLine
+    If iSrc > UBound(aSrc) Then ReDim Preserve aSrc(UBound(aSrc) * 2 + 1)
+    aSrc(iSrc) = sSrcLine
+    If Len(Trim(sSrcLine)) = 0 Then
+        nSrcBlank = nSrcBlank + 1
+        If nSrcBlank >= SRC_BLANK_RUN_STOP Then Exit For
+    Else
+        nSrcBlank = 0
+        nSrcLast  = iSrc
+    End If
+    If iSrc = SRC_HARD_CAP Then bSrcCapHit = True
+Next
+For iSrc = 1 To nSrcLast
+    oFile.WriteLine aSrc(iSrc)
 Next
 oFile.Close
 On Error GoTo 0
 
+If bSrcCapHit Then
+    WScript.Echo "WARN: hit the " & SRC_HARD_CAP & "-line cap; downloaded source may be truncated."
+End If
+WScript.Echo "SOURCE_LINES: " & nSrcLast
 WScript.Echo "INFO: Source downloaded to: " & OUTPUT_FILE
 
 ' ------ 6. Final result marker ----------------------------------------------

@@ -13,8 +13,23 @@
 #
 # Functions exposed:
 #   Read-SapAbapSource  -> [pscustomobject] { Status; Object; Type; SourceFile;
-#                                             Lines; Includes; Truncated; Error }
+#                                             Lines; Includes; Truncated; Error;
+#                                             System; Client; Host }
 #   Get-SapIncludeTree  -> string[] (include names)
+#
+# FIDELITY (verified live 2026-08-06, S4H/400 + S4D/100, Z_EXCEPTION_1):
+#   RPY_PROGRAM_READ is AUTHORITATIVE. Byte-for-byte identical to what SE38
+#   shows a developer -- 54/54 lines matched the SE38 AbapEditor download of
+#   the same program on the same system, including inline comments and
+#   multi-byte (Chinese) text. It is not a stale rendition and it does not
+#   normalise or truncate the stored source.
+#
+#   The divergence originally reported against this reader was a CROSS-SYSTEM
+#   read, not a rendition difference: the RFC leg followed the AI-session pin
+#   (S4D/100) while the GUI leg attached to the only live SAP GUI window
+#   (S4H/400). Both systems host an independently-maintained Z_EXCEPTION_1.
+#   Hence System/Client/Host on the result + the source.meta.json sidecar:
+#   ALWAYS reconcile provenance before attributing a text delta to a reader.
 #
 # Mechanics:
 #   program / module pool / FUGR-main / include : RPY_PROGRAM_READ
@@ -60,6 +75,37 @@ function _ReadRfcTableFirstColumn($tab) {
         $lines.Add([string]$val)
     }
     return ,$lines
+}
+
+function _RfcDestIdentity($dest) {
+    # Which SAP system did this source actually come from? Read straight off
+    # the live NCo destination -- never off the caller's intent. A source file
+    # with no provenance is how the 2026-08-06 cross-system read stayed
+    # invisible: the GUI leg had downloaded S4H/400's Z_EXCEPTION_1 while this
+    # reader returned S4D/100's, and neither output named its system.
+    # Read RfcDestination.SystemAttributes -- the identity NCo got back from the
+    # live logon. NOT RfcDestination.SystemID: that is the configured R3NAME and
+    # is EMPTY for a direct -Server/-Sysnr connection (verified S4H 2026-08-06),
+    # which would silently produce a blank stamp. There is no .Attributes member
+    # on RfcDestination at all.
+    # Best-effort: an attribute read that fails degrades to blanks, never throws.
+    $id = @{ System = ''; Client = ''; User = ''; Host = '' }
+    try {
+        $a = $dest.SystemAttributes
+        if ($a) {
+            try { $id.System = "$($a.SystemID)".Trim()   } catch { }
+            try { $id.Client = "$($a.Client)".Trim()     } catch { }
+            try { $id.User   = "$($a.User)".Trim()       } catch { }
+            try { $id.Host   = "$($a.PartnerHost)".Trim() } catch { }
+        }
+    } catch { }
+    # Fall back to the destination's own config for anything still blank.
+    foreach ($pair in @(@('Client','Client'), @('User','User'), @('Host','AppServerHost'))) {
+        if ([string]::IsNullOrWhiteSpace($id[$pair[0]])) {
+            try { $id[$pair[0]] = "$($dest.($pair[1]))".Trim() } catch { }
+        }
+    }
+    return $id
 }
 
 function _RfcRowExists($dest, $table, $where, $keyField) {
@@ -157,9 +203,14 @@ function Read-SapAbapSource {
     # BOM, PS 5.1 would misread multibyte (e.g. Japanese) source as ANSI.
     $utf8NoBom = New-Object System.Text.UTF8Encoding $true
 
+    # System/Client/Host record WHICH SAP system the source came from. Callers
+    # that compare this reader against the GUI download leg (/sap-check-abap,
+    # /sap-fix-abap, /sap-git serialize) must compare provenance before they
+    # compare text -- see the sidecar written next to SourceFile below.
     $result = [pscustomobject]@{
         Status = 'ERROR'; Object = $Name.ToUpper(); Type = $Type
         SourceFile = ''; Lines = 0; Includes = @(); Truncated = $false; Error = ''
+        System = ''; Client = ''; Host = ''
     }
 
     if ($Type -in @('class','interface')) {
@@ -177,6 +228,11 @@ function Read-SapAbapSource {
 
     try {
         $obj = $result.Object
+
+        $ident = _RfcDestIdentity $dest
+        $result.System = $ident.System
+        $result.Client = $ident.Client
+        $result.Host   = $ident.Host
 
         # Existence pre-check -> clean NOT_FOUND (independent of RPY exceptions).
         if ($Type -eq 'fm') {
@@ -200,6 +256,27 @@ function Read-SapAbapSource {
         [System.IO.File]::WriteAllLines($srcFile, [string[]]$allLines, $utf8NoBom)
         $result.SourceFile = $srcFile
         $result.Lines = @($allLines).Count
+
+        # Provenance sidecar. Deliberately a SEPARATE file: a header comment
+        # inside source.txt would corrupt the very thing callers re-upload.
+        # Any consumer diffing this against a GUI download must check that the
+        # two agree on system+client BEFORE treating a text delta as a real
+        # change (2026-08-06 cross-system read).
+        try {
+            $meta = [ordered]@{
+                schema      = 'sapdev.sourceread/1'
+                reader      = 'RPY_PROGRAM_READ'
+                object      = $obj
+                type        = $Type
+                system      = $result.System
+                client      = $result.Client
+                host        = $result.Host
+                lines       = $result.Lines
+                read_at_utc = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+            }
+            $metaFile = Join-Path $OutDir 'source.meta.json'
+            [System.IO.File]::WriteAllText($metaFile, ($meta | ConvertTo-Json), (New-Object System.Text.UTF8Encoding $false))
+        } catch { }
 
         $incOut = @()
         if ($WithIncludes -and $Type -ne 'fm' -and $includes -and @($includes).Count -gt 0) {
