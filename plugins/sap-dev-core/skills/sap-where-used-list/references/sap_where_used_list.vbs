@@ -15,7 +15,10 @@
 '   5. Branch on the next state:
 '        (a) wnd[1] popup with btnSPOP-OPTION1 -> "No usages" path.
 '            Press OPTION1 to dismiss; report NOT_FOUND.
-'        (b) list rendered on wnd[0] -> "Usages found" path.
+'        (b) list rendered on wnd[0] -> "Usages found" path, but ONLY when the
+'            status bar is silent or carries an "S". Any other MessageType means
+'            SAP answered with a MESSAGE instead of a list -> INCONCLUSIVE (see
+'            step 7). A rendered screen alone is not evidence of usages.
 '            If TO_SPOOL = X:
 '              menu List > Print > Print (mbar/menu[0]/menu[7]/menu[0])
 '              set cmbPRIPAR_DYN-PRIMM2 = "" (no immediate output)
@@ -46,6 +49,10 @@
 '   FOUND_LIST: <OBJECT_TYPE> <NAME> has usages -- list shown on screen
 '                (no spool requested).
 '   SPOOL_CREATED: <SPOOL_NUM>  (use /sap-sp02 to download)
+'   INCONCLUSIVE: [<MSGTYPE>] <OBJECT_TYPE> <NAME> -- <SAP's own message>
+'                SAP answered with a message instead of a usage list. NOT a
+'                usage verdict in either direction -- never delete-safe, and
+'                never "has usages".
 '   ERROR: ...
 ' =============================================================================
 
@@ -290,17 +297,51 @@ If InStr(sActive, "wnd[1]") > 0 Then
     ElseIf Not (oOpt Is Nothing) Then
         ' A popup with OPTION1 but ALSO the scope toolbar (or another unexpected
         ' modal) is not a confirmed "no usages" -- do NOT emit a delete-safe verdict.
-        WScript.Echo "ERROR: Unexpected popup after scope selection (OPTION1 present with scope toolbar)."
-        WScript.Echo "       Cannot confirm 'no usages' safely; re-run or inspect via /sap-gui-inspect."
+        '
+        ' Known live case (S/4HANA 1909, 2026-08-06): TABLE MARA lands here. SE11
+        ' interposes one more modal for a table -- the pre-unlock sweep logged its
+        ' title as "Use of a Table" on an EN logon -- and it carries OPTION1 too.
+        ' Whether that modal is TABLE-specific (likely) or specific to a table of
+        ' MARA's size is UNCONFIRMED; probe a small Z table before deciding.
+        ' Refusing is correct either way -- pressing an unidentified button on a
+        ' modal we have not fingerprinted is how a "no usages" verdict gets
+        ' invented. Fingerprinting it needs a recording (never on OPTION1 alone --
+        ' that is the id the real "no usages" popup uses); see the SKILL.md
+        ' Troubleshooting row "SE11 TABLE where-used".
+        WScript.Echo "ERROR: Unexpected popup after scope selection for " & sType & " " & sName & _
+                     " (OPTION1 present with scope toolbar)."
+        WScript.Echo "       Cannot confirm usages either way; this is NOT a delete-safe result."
+        WScript.Echo "       Identify the dialog with /sap-gui-inspect screenshot full; on SE11 TABLE"
+        WScript.Echo "       runs it has been an extra scope modal. Until it is fingerprinted, drive"
+        WScript.Echo "       the where-used by hand in " & sTxn & "."
         ReleaseSession oSess, wasLocked
         WScript.Quit 1
     End If
 End If
 
 ' --- 7. List rendered: optionally print to spool ---------------------------
-' Gate on sbar MessageType first: an E/A here means Where-Used errored (e.g. the
-' object could not be read) rather than produced a usage list -- never report
-' "has usages" on an error.
+' Gate on the sbar MessageType CODE before claiming anything -- never on the
+' translated text (language_independence_rules.md). Reaching this point proves a
+' screen was rendered; it does NOT prove that screen is a usage list:
+'
+'   "" / "S"  -> a real list. SAP either says nothing, or reports the hit count
+'                as a success message.
+'   "E" / "A" -> Where-Used errored (object not readable / not found).
+'   any other -> SAP answered with a MESSAGE instead of a list. Verified live on
+'                S/4HANA 1909 (2026-08-06, PROGRAM ZCMRUPDATE_ADDON_TABLE): an
+'                "I" carrying "<obj> not found in selected search area" -- i.e.
+'                NO usages -- fell through to FOUND_LIST, the exact opposite
+'                verdict, from the skill whose one job is to say whether an
+'                object is still referenced before someone deletes it. Report
+'                INCONCLUSIVE and hand SAP's own message to the caller.
+'
+' "I" is deliberately NOT mapped to NOT_FOUND here. On that release it plainly
+' meant "no usages", but the CODE alone does not carry that meaning everywhere,
+' and inventing a delete-safe verdict is the more expensive way to be wrong.
+' Confirm the mapping on a second release before narrowing this branch.
+'
+' The gate sits AHEAD of the TO_SPOOL split on purpose: printing the rendered
+' screen to a spool would otherwise dress the same non-answer up as a result.
 Dim sSb2, sSt2
 On Error Resume Next
 sSb2 = oSess.findById("wnd[0]/sbar").Text
@@ -311,6 +352,22 @@ If sSt2 = "E" Or sSt2 = "A" Then
     ReleaseSession oSess, wasLocked
     WScript.Echo "ERROR: Where-Used List reported a " & sSt2 & "-message for " & sType & " " & sName & _
                  " -- cannot determine usages (object may not exist / not readable)."
+    WScript.Quit 1
+End If
+
+If sSt2 <> "" And sSt2 <> "S" Then
+    WScript.Echo "INFO: SAP status: [" & sSt2 & "] " & sSb2
+    WScript.Echo "INFO: SAP answered with a message instead of a usage list -- reporting what SAP"
+    WScript.Echo "      said rather than a usage verdict this run cannot stand behind."
+    ' Back out to leave the operator on a clean SE-initial screen.
+    On Error Resume Next
+    oSess.findById("wnd[0]/tbar[0]/okcd").Text = "/n" & sTxn
+    oSess.findById("wnd[0]").sendVKey VKEY_ENTER
+    On Error GoTo 0
+    ReleaseSession oSess, wasLocked
+    ' Trim: OBJECT_TYPE is empty for every non-SE11 transaction, so compose the
+    ' identity rather than emitting the double space the sibling markers show.
+    WScript.Echo "INCONCLUSIVE: [" & sSt2 & "] " & Trim(sType & " " & sName) & " -- " & sSb2
     WScript.Quit 1
 End If
 

@@ -187,6 +187,10 @@ Instantiate the where-used VBS (TXN by `{TYPE}`: SE38/SE37/SE24), tokens
 - `NOT_FOUND:` -> no callers
 - `FOUND_LIST:` -> list on screen (note to user)
 - `SPOOL_CREATED:<n>` -> chain `/sap-sp02 <n> {OUT}\callers.txt` to download
+- `INCONCLUSIVE: [<type>] … -- <msg>` -> callers UNKNOWN, not zero and not many.
+  SAP answered with a message instead of a list; record the message and say the
+  caller set could not be established — never render it as "has callers" or as
+  "no callers" in `dossier.md`.
 Merge results into `map.json` under `callers`.
 
 ## Step 7 — Synthesize `dossier.md`

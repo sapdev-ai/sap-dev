@@ -19,8 +19,17 @@ before refactoring or deleting an object.
    - **List rendered, `--to-spool`** → drive *List > Print > Print*,
      parse the spool number from the status bar, report
      `SPOOL_CREATED:<NUM>`.
+   - **SAP answered with a message instead of a list** (status-bar
+     MessageType other than blank / `S`) → report `INCONCLUSIVE`
+     carrying SAP's own message.
 
 Pure read-only — never modifies the SAP system.
+
+A rendered screen is not proof of usages. `FOUND_LIST` is claimed only
+when the status bar is silent or `S`; anything else is `INCONCLUSIVE`,
+which is neither "safe to delete" nor "still referenced". The reader is
+deliberately conservative in both directions — the whole point of the
+skill is to be trusted before someone deletes an object.
 
 ## Auto-Trigger Keywords
 
@@ -82,11 +91,16 @@ Neither skill auto-invokes the other. This keeps NOT_FOUND runs cheap
   `CLASS` and grep the result list for the method name.
 - **Print-params dialog field positions** verified on S/4HANA 1909;
   other releases may need a one-time recording.
+- **SE11 `TABLE` where-used** can hit one more modal after scope
+  selection (title "Use of a Table" on an EN logon, seen live with
+  `TABLE MARA`). It is not fingerprinted, so the reader refuses with an
+  `ERROR:` rather than guess which button to press — run those by hand
+  until the dialog is recorded.
 
 ## Version
 
-- Skill Version: 1.0.0
-- Last Updated: 2026-05-09
+- Skill Version: 1.1.0
+- Last Updated: 2026-08-06
 
 ## License
 

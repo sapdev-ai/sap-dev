@@ -6,9 +6,11 @@ description: |
   before deleting an object, find every program / class / FM / DDIC
   reference. Routes to the right initial screen by OBJECT_TYPE, fills
   the name, sends Ctrl+Shift+F3, ticks every scope on the popup, then
-  branches: NOT_FOUND when SAP says no usages, FOUND_LIST when the list
-  is rendered, or SPOOL_CREATED:<num> when called with TO_SPOOL=X
-  (so the operator can chain into /sap-sp02 to download the list).
+  branches: NOT_FOUND when SAP says no usages, FOUND_LIST when a list is
+  rendered and the status bar is clean, SPOOL_CREATED:<num> when called
+  with TO_SPOOL=X (so the operator can chain into /sap-sp02 to download
+  the list), or INCONCLUSIVE when SAP answers with a message instead of
+  a list — which is never reported as a usage verdict in either direction.
   Pure read-only — never modifies the SAP system.
   Prerequisites: Active SAP GUI session (use /sap-login first).
 argument-hint: "<OBJECT_TYPE> <OBJECT_NAME> [--to-spool]"
@@ -20,8 +22,15 @@ You run a Where-Used List against an ABAP repository object so the
 operator can see every reference before deleting / refactoring it. The
 skill is a thin GUI driver: it picks the right transaction by
 OBJECT_TYPE, fills the name field, sends `Ctrl+Shift+F3`, ticks "Select
-all" on the scope popup, and reports either NOT_FOUND, FOUND_LIST, or
-SPOOL_CREATED:<num>.
+all" on the scope popup, and reports NOT_FOUND, FOUND_LIST,
+SPOOL_CREATED:<num>, or INCONCLUSIVE.
+
+**A rendered screen is not evidence of usages.** Both verdicts this skill
+can get wrong are expensive: a false NOT_FOUND gets a referenced object
+deleted, a false FOUND_LIST tells a developer an object is still in use
+when it is not. So the reader only claims a usage list when the status bar
+is silent or `S`; every other MessageType is reported as INCONCLUSIVE with
+SAP's own message attached.
 
 Task: $ARGUMENTS
 
@@ -154,17 +163,28 @@ C:\Windows\SysWOW64\cscript.exe //NoLogo {RUN_TEMP}\sap_where_used_list_run.vbs
 | Last line | Meaning |
 |---|---|
 | `NOT_FOUND: <TYPE> <NAME> has no usages in the selected scope.` | SAP returned the "no occurrences" popup. Object is **safe to delete** as far as the workbench knows (cross-system / Z-table-based / RTTI usages still need a manual check). |
-| `FOUND_LIST: <TYPE> <NAME> has usages — list shown on screen (no spool requested).` | List is rendered but no spool was requested (operator passed no `--to-spool`). The operator can read it interactively. |
+| `FOUND_LIST: <TYPE> <NAME> has usages — list shown on screen (no spool requested).` | A list is rendered **and** the status bar is silent or `S`, so the object really is referenced. No spool was requested (operator passed no `--to-spool`); the operator can read the list interactively. |
 | `SPOOL_CREATED: <NUM>` | List was written to spool `<NUM>`. To download as a text file, chain into `/sap-sp02 <NUM> <PATH>`. |
+| `INCONCLUSIVE: [<MSGTYPE>] <TYPE> <NAME> — <SAP's message>` | SAP answered with a message (`I`, `W`, …) instead of a usage list. **Not a verdict in either direction** — neither delete-safe nor "has usages". Surface SAP's own message verbatim; it usually states the outcome plainly (e.g. an `I` reading "not found in selected search area" = no usages on S/4HANA 1909). |
 | `ERROR: Where-Used List did not start … the object may not exist …` | The object name was not found (SAP stayed on the initial screen, no scope popup). This is **not** a delete-safe result — verify the name / type, do **not** treat it as NOT_FOUND. |
 | `ERROR: Where-Used List reported a E/A-message …` | The list step raised an error (object not readable / not found). Cannot determine usages — surface verbatim; never a delete-safe verdict. |
 | `ERROR: Unexpected popup after scope selection …` | A modal with OPTION1 appeared that is not the confirmed "no usages" popup. Cannot confirm "no usages" safely — re-run or inspect via `/sap-gui-inspect`. |
 | `ERROR: Could not parse spool number from sbar: '...'` | Print succeeded but the sbar message did not contain a 4+ digit spool number (unusual locale / SAP version). Open SP02 manually, take the most recent spool, then run `/sap-sp02`. |
 | Other `ERROR: …` | Surface verbatim and consult Step 7. |
 
-**Delete-safety:** only `NOT_FOUND` is a (workbench-scope) delete-safe verdict. An
-`ERROR:` result is **never** delete-safe — a nonexistent object or a read error
-must never be reported as "safe to delete".
+**Delete-safety:** only `NOT_FOUND` is a (workbench-scope) delete-safe verdict.
+`ERROR:` and `INCONCLUSIVE:` are **never** delete-safe — a nonexistent object, a
+read error, or a run SAP declined to answer must never be reported as "safe to
+delete". Callers that gate a deletion on this skill (`/sap-cc-decommission`,
+`/sap-cc-usage`) treat `INCONCLUSIVE` like an unresolved reference: SKIP the
+object and tell the operator, never retire it.
+
+**`INCONCLUSIVE` is equally not a "has usages" verdict.** Don't paraphrase it as
+"the object is still referenced" — report what SAP said. On S/4HANA 1909 an `I`
+here has been observed to mean the exact opposite (no usages at all). Mapping `I`
+to NOT_FOUND is deliberately **not** hard-coded in the reader: the MessageType
+code alone does not carry that meaning on every release, and the mapping needs
+confirming on a second release first.
 
 ---
 
@@ -178,6 +198,14 @@ NOT covered by where-used and must be checked separately.
 
 For FOUND_LIST, tell the user the list is on screen and recommend
 re-running with `--to-spool` if they want a saved copy.
+
+For INCONCLUSIVE, quote SAP's own message and its type, and say plainly
+that the run produced **no** usage verdict — the object is neither
+confirmed used nor confirmed safe to delete. Read the message before
+recommending anything: it usually states the outcome directly, and on the
+observed 1909 case it meant "no usages" even though the reader refuses to
+assert that itself. Offer the manual re-check (`--to-spool`, or driving
+the where-used by hand in the mapped transaction).
 
 For SPOOL_CREATED, tell the user the spool number AND the exact
 follow-up command:
@@ -211,7 +239,11 @@ On failure:
 powershell -ExecutionPolicy Bypass -File "<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_log_helper.ps1" -Action end -StateFile "{RUN_TEMP}\sap_where_used_list_run.json" -Status FAILED -ExitCode 1 -ErrorClass <CLASS> -ErrorMsg "<short>"
 ```
 
-Suggested `<CLASS>`: `WHERE_USED_FAILED`, `WHERE_USED_PRINT_FAILED`, `GUI_TIMEOUT`.
+Suggested `<CLASS>`: `WHERE_USED_FAILED`, `WHERE_USED_PRINT_FAILED`,
+`WHERE_USED_INCONCLUSIVE`, `GUI_TIMEOUT`. An `INCONCLUSIVE:` last line logs as
+`-Status FAILED -ExitCode 1 -ErrorClass WHERE_USED_INCONCLUSIVE` — the reader
+ran fine, but the run yielded no usage verdict, and logging it as SUCCESS would
+hide exactly the case this contract exists to surface.
 
 ---
 
@@ -236,6 +268,9 @@ topmost window) before guessing.
 | Symptom | Diagnose | Fix |
 |---|---|---|
 | Scope popup never appears | The transaction may have inline scope (no popup) on this release | Surface the sbar message; the list may already be on screen |
+| `INCONCLUSIVE: [I] …` on an object you expect to be unused | SAP reported the outcome as an information message rather than the "no usages" SPOP popup. Observed on S/4HANA 1909 with `PROGRAM ZCMRUPDATE_ADDON_TABLE`: `[I] … not found in selected search area` | Read SAP's message — here it means no usages. The reader will not translate `I` into NOT_FOUND for you; if you confirm the same mapping on a second release, narrow the step-7 branch in the VBS and update this contract in the same commit |
+| `INCONCLUSIVE: [W] …` on an object that does have usages | A warning accompanied a genuinely rendered list. The gate is deliberately conservative: it trades this false INCONCLUSIVE for never emitting a false FOUND_LIST | Re-run with `--to-spool` and read the spool, or read the list on screen. Report the warning text if it recurs — a confirmed benign W could earn an explicit allow |
+| SE11 `TABLE` where-used ends in `ERROR: Unexpected popup after scope selection` | Verified live on S/4HANA 1909 with `TABLE MARA`: SE11 interposes one more modal after scope selection — the pre-unlock sweep logged its title as "Use of a Table" on an EN logon — and it carries `btnSPOP-OPTION1` too, so the reader refuses rather than press an unfingerprinted button. **Open question:** whether this is TABLE-specific (likely) or specific to a table of MARA's size — probe a small `Z` table to find out | Correct refusal — do **not** read it as a verdict in either direction. To handle it explicitly: record the dialog once with `/sap-gui-probe --record`, branch on a *discriminating* control ID (never OPTION1 alone — that's the id the real "no usages" popup uses), and add a checkpoint to `sap_where_used_list.screens.json` in the same commit. Until then, drive TABLE where-used by hand in SE11 |
 | `Could not parse spool number from sbar` | Locale-specific message text | Open SP02 manually, look for the most recent spool by date/time; pass it to `/sap-sp02` |
 | Print dialog has different field IDs | SAPLSPRI subscreen number changed | Re-record the print step on the new release; patch token positions in the VBS |
 

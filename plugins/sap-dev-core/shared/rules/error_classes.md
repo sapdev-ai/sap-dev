@@ -291,6 +291,7 @@ first three classes above are emitted by the `create`/`update`/`regen` write mod
 |---|---|
 | `WHERE_USED_FAILED` | The scope popup / where-used result list could not be driven or read. |
 | `WHERE_USED_PRINT_FAILED` | The List > Print / spool leg failed after a successful list build. |
+| `WHERE_USED_INCONCLUSIVE` | The reader ran, but SAP answered with a status message (MessageType other than blank / `S`) instead of a usage list — so the run produced **no** usage verdict. Neither delete-safe nor "has usages"; the caller surfaces SAP's own message. Distinct from `WHERE_USED_FAILED`, which means the reader itself could not drive the screens. |
 
 ## Number range objects (`/sap-snro`)
 

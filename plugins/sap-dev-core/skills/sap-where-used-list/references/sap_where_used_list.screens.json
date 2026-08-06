@@ -39,11 +39,12 @@
     },
     {
       "id": "usage_list",
-      "reach": { "note": "where-used result list on wnd[0]; List > Print > Print menu (btn[32] is the fallback print button)" },
+      "reach": { "note": "where-used result list on wnd[0]; List > Print > Print menu (btn[32] is the fallback print button). sbar is load-bearing here, not decorative: step 7 claims FOUND_LIST only when MessageType is blank or S, and reports INCONCLUSIVE otherwise (S/4HANA 1909 live, 2026-08-06: a genuine list carried [S] 'texts were not selected in full because of the number of hits', while an [I] 'not found in selected search area' meant no usages at all)" },
       "identity": { "program": "", "dynpro": "" },
       "required_ids": [
         "wnd[0]/mbar/menu[0]/menu[7]/menu[0]",
-        "wnd[0]/tbar[1]/btn[32]"
+        "wnd[0]/tbar[1]/btn[32]",
+        "wnd[0]/sbar"
       ],
       "status": "pending_live"
     },

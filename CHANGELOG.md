@@ -6,6 +6,38 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **`/sap-where-used-list` reported "has usages" for an object SAP said was
+  unused.** Step 7 of `sap_where_used_list.vbs` gated only on
+  `sSt2 = "E" Or sSt2 = "A"`, so any *other* status message fell through to the
+  `FOUND_LIST` branch — which asserts usages purely because a screen rendered.
+  Verified live on S/4HANA 1909 (2026-08-06) with `PROGRAM
+  ZCMRUPDATE_ADDON_TABLE`: SAP answered `[I] Program ZCMRUPDATE_ADDON_TABLE not
+  found in selected search area` — plainly *no* usages — and the reader still
+  emitted `FOUND_LIST`. On the one skill whose job is to answer "is this safe to
+  delete?", that is the wrong verdict in the loud direction, and it is the exact
+  failure the not-found popup branch is careful to avoid.
+  The gate now branches on the MessageType **code** (never the translated text):
+  blank or `S` = a real list, `E`/`A` = the existing `ERROR:`, anything else =
+  the new **`INCONCLUSIVE: [<type>] <TYPE> <NAME> -- <SAP's own message>`**
+  marker, exit 1. It sits *ahead* of the `TO_SPOOL` split, so the spool path
+  cannot dress the same non-answer up as a result either. `I` is deliberately
+  **not** mapped to `NOT_FOUND` — on this release it plainly meant "no usages",
+  but the code alone does not carry that meaning everywhere, and inventing a
+  delete-safe verdict is the more expensive way to be wrong; confirm on a second
+  release before narrowing it. Documented in the skill's result contract and
+  delete-safety note, in `/sap-explain-object`'s `--callers` parsing, and as the
+  new `WHERE_USED_INCONCLUSIVE` error class; `sap_where_used_list.screens.json`
+  now records `wnd[0]/sbar` as load-bearing at the `usage_list` checkpoint.
+  Re-verified live on S4D both ways: the false positive is now `INCONCLUSIVE`,
+  and a genuinely-used object (`FM POPUP_TO_CONFIRM`, sbar `[S] The texts were
+  not selected in full because of the number of hits.`) still reports
+  `FOUND_LIST`.
+  Also on the same reader: the `TABLE MARA` refusal now names the object and the
+  likely cause. SE11 interposes an extra modal for a table (the pre-unlock sweep
+  logged its title as "Use of a Table") that carries `btnSPOP-OPTION1` too, so
+  the reader still refuses rather than press an unfingerprinted button —
+  correct, but whether that modal is TABLE-specific or size-specific is
+  unconfirmed and needs a recording before it can be handled explicitly.
 - **`/sap-snro`: two driver control IDs did not exist on any tested release.**
   The screens harness flagged `sap_snro_intervals/initial` (3/5 ids) and
   `sap_snro_update/initial` (3/4) — with the **same** ids missing on S/4HANA 1909
