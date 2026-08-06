@@ -39,6 +39,37 @@
 '     On failure: emits `ERROR: <text>` to stdout and calls WScript.Quit 2.
 '     Callers do NOT need their own error-handling block around the call.
 '
+'     Whichever strategy wins, the helper then emits the SAP identity of the
+'     session it attached to:
+'
+'         GUI_TARGET: system=<SID> client=<NNN> user=<USER> path=<...>
+'
+'     and, when the caller has declared an expected target, ENFORCES it.
+'
+' Target assertion (SAPDEV_EXPECT_SYSTEM / SAPDEV_EXPECT_CLIENT)
+' --------------------------------------------------------------
+' A skill that reads over BOTH transports -- RFC (Connect-SapRfc) and GUI
+' (this helper) -- resolves its SAP target twice, through two different
+' chains. RFC follows pin -> GUI-active -> default -> sole-profile;
+' this helper follows hint -> env -> sole-connection -> refuse. Those
+' chains can disagree, and when they do the skill reads TWO DIFFERENT SAP
+' SYSTEMS while believing it read one.
+'
+' Live incident (2026-08-06, S4D/100 vs S4H/400): /sap-se38 downloaded
+' Z_EXCEPTION_1 through the GUI leg while the RFC leg read the pinned
+' profile. The AI session was pinned to S4D/100 but the only attached GUI
+' connection was S4H/400, so Strategy 3 below silently retargeted. Both
+' systems host an independently-maintained Z_EXCEPTION_1; the two reads
+' differed on 7 lines and nothing in either output said which system it
+' came from. A check-fix-upload loop on that basis reverts live edits.
+'
+' So: when the wrapper sets SAPDEV_EXPECT_SYSTEM (and optionally
+' SAPDEV_EXPECT_CLIENT) -- see Set-SapGuiTargetExpectation in
+' sap_connection_lib.ps1, which reads the SAME profile Connect-SapRfc
+' would pick -- a mismatch is a hard refusal, not a silent retarget.
+' Unset = today's behaviour (identity still echoed), so this is additive
+' for every VBS that has not been wired up yet.
+'
 ' Why a helper rather than every skill rolling its own
 ' ----------------------------------------------------
 ' The legacy idiom:
@@ -73,6 +104,75 @@
 ' used here). We build the unsubstituted-token sentinel at runtime
 ' from Chr() codes so no wrapper substitution can corrupt it.
 ' =============================================================================
+
+' -----------------------------------------------------------------------------
+' AssertSapGuiTarget(oSes, sVia)
+'
+' NOTE: no leading underscore. VBScript identifiers must start with a letter --
+' a `_`-prefixed Sub name is a compile error, and because this lib is pulled in
+' via ExecuteGlobal the failure surfaces on the CALLER's ExecuteGlobal line,
+' not here, which makes it needlessly hard to diagnose.
+'
+' Echo the SAP identity of the session we just attached to, then enforce the
+' caller's declared expectation. Called from EVERY success path of
+' AttachSapSession, so no strategy can return an unstamped session.
+'
+' Identity is read from GuiSession.Info (SystemName / Client / User) -- these
+' are IDs, never localised display text, so the check is language-independent
+' per shared/rules/language_independence_rules.md.
+'
+' Comparison is case-insensitive and trims blanks. Client is compared only
+' when SAPDEV_EXPECT_CLIENT is set, so a caller can pin "the S4D system, any
+' client" if that is genuinely what it wants.
+' -----------------------------------------------------------------------------
+Sub AssertSapGuiTarget(oSes, sVia)
+    Dim sSid, sCli, sUsr, sPath
+    sSid = "" : sCli = "" : sUsr = "" : sPath = ""
+    On Error Resume Next
+    sPath = "" & oSes.Id
+    sSid  = "" & oSes.Info.SystemName
+    sCli  = "" & oSes.Info.Client
+    sUsr  = "" & oSes.Info.User
+    On Error GoTo 0
+    sSid = Trim(sSid) : sCli = Trim(sCli) : sUsr = Trim(sUsr)
+
+    WScript.Echo "GUI_TARGET: system=" & sSid & " client=" & sCli & _
+                 " user=" & sUsr & " path=" & sPath & " via=" & sVia
+
+    Dim oEnvShell, sExpSys, sExpCli
+    Set oEnvShell = CreateObject("WScript.Shell")
+    On Error Resume Next
+    sExpSys = oEnvShell.Environment("Process")("SAPDEV_EXPECT_SYSTEM")
+    sExpCli = oEnvShell.Environment("Process")("SAPDEV_EXPECT_CLIENT")
+    On Error GoTo 0
+    sExpSys = Trim("" & sExpSys)
+    sExpCli = Trim("" & sExpCli)
+
+    ' No expectation declared -> legacy behaviour (stamped, unenforced).
+    If sExpSys = "" And sExpCli = "" Then Exit Sub
+
+    ' If the expectation is set but identity could not be read, refuse: an
+    ' unverifiable target is exactly the case this guard exists for.
+    If sSid = "" Then
+        WScript.Echo "ERROR: SAP GUI target could not be identified (Info.SystemName empty) " & _
+                     "but SAPDEV_EXPECT_SYSTEM=" & sExpSys & " was declared. Refusing to drive an unverified session."
+        WScript.Quit 2
+    End If
+
+    Dim bBad : bBad = False
+    If sExpSys <> "" And StrComp(sExpSys, sSid, 1) <> 0 Then bBad = True
+    If sExpCli <> "" And StrComp(sExpCli, sCli, 1) <> 0 Then bBad = True
+
+    If bBad Then
+        WScript.Echo "ERROR: SAP GUI target mismatch. Expected " & sExpSys & "/" & sExpCli & _
+                     " but attached session " & sPath & " is " & sSid & "/" & sCli & "/" & sUsr & "."
+        WScript.Echo "       The RFC leg of this skill targets " & sExpSys & "/" & sExpCli & _
+                     ", so continuing would read/write TWO DIFFERENT SAP SYSTEMS in one run."
+        WScript.Echo "       Fix: open a SAP GUI session on " & sExpSys & "/" & sExpCli & _
+                     ", or run /sap-login --switch " & sSid & " to re-pin this AI session to the system the GUI is on."
+        WScript.Quit 2
+    End If
+End Sub
 
 Function AttachSapSession(sHint)
     Dim oSAP, oApp
@@ -121,6 +221,7 @@ Function AttachSapSession(sHint)
         On Error GoTo 0
         If Not (oSes1 Is Nothing) Then
             WScript.Echo "INFO: attached to " & sCandidate & " (via explicit hint)"
+            AssertSapGuiTarget oSes1, "explicit-hint"
             Set AttachSapSession = oSes1
             Exit Function
         End If
@@ -146,6 +247,7 @@ Function AttachSapSession(sHint)
         On Error GoTo 0
         If Not (oSes2 Is Nothing) Then
             WScript.Echo "INFO: attached to " & sEnv & " (via SAPDEV_SESSION_PATH env var)"
+            AssertSapGuiTarget oSes2, "session-path-env"
             Set AttachSapSession = oSes2
             Exit Function
         End If
@@ -156,14 +258,21 @@ Function AttachSapSession(sHint)
     End If
 
     ' --- Strategy 3: single-connection / single-session safe default --------
-    ' Today's 99% case: exactly one SAP connection attached. With or without
-    ' a pin file, this is unambiguous and safe to auto-use.
+    ' Today's 99% case: exactly one SAP connection attached. Unambiguous about
+    ' WHICH session to drive -- but note it says nothing about whether that
+    ' session is the system the caller actually meant. "Sole" is not "right":
+    ' when the AI session is pinned to system A and the only GUI window is on
+    ' system B, this strategy hands back B. That is the 2026-08-06 cross-system
+    ' read described in the header, and it is why AssertSapGuiTarget runs
+    ' here too -- callers that declared SAPDEV_EXPECT_SYSTEM get a refusal
+    ' instead of another system's source.
     If oApp.Children.Count = 1 Then
         Dim oOnlyCon : Set oOnlyCon = oApp.Children(0)
         If oOnlyCon.Children.Count = 1 Then
             Dim oOnly : Set oOnly = Nothing
             For Each oOnly In oOnlyCon.Children : Exit For : Next
             WScript.Echo "INFO: attached to " & oOnly.Id & " (sole connection, sole session)"
+            AssertSapGuiTarget oOnly, "sole-connection"
             Set AttachSapSession = oOnly
             Exit Function
         End If

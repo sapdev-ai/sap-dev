@@ -1330,19 +1330,38 @@ oSession.findById("wnd[0]/usr/tabsFUNC_TAB_STRIP/tabpSOURCE").select
 WScript.Sleep 1500
 Dim oShell
 Set oShell = oSession.findById("wnd[0]/usr/tabsFUNC_TAB_STRIP/tabpSOURCE/ssubSCREEN_HEADER:SAPLEDITOR_START:8430/cntlEDITOR/shellcont/shell")
-' Read lines via GetLineText(n), 0-indexed, stop on error
+' GetLineText is 1-BASED and returns "" (no error) past the end of the source,
+' so "start at 0 and stop on error" writes a phantom blank first line and then
+' pads to the loop bound. Read from 1 and truncate at the last non-blank line.
 Dim oFSO : Set oFSO = CreateObject("Scripting.FileSystemObject")
 Dim oFile : Set oFile = oFSO.CreateTextFile("{RUN_TEMP}\fm_src_from_sap.txt", True, True)
 On Error Resume Next
-Dim i : For i = 0 To 500
-    Dim s : s = oShell.GetLineText(i)
+Dim aSrc() : ReDim aSrc(1023)
+Dim i, s, nLast, nBlank
+nLast = 0 : nBlank = 0
+For i = 1 To 99999
+    Err.Clear
+    s = oShell.GetLineText(i)
     If Err.Number <> 0 Then Err.Clear : Exit For
-    oFile.WriteLine s
+    If i > UBound(aSrc) Then ReDim Preserve aSrc(UBound(aSrc) * 2 + 1)
+    aSrc(i) = s
+    If Len(Trim(s)) = 0 Then
+        nBlank = nBlank + 1
+        If nBlank >= 500 Then Exit For
+    Else
+        nBlank = 0 : nLast = i
+    End If
+Next
+For i = 1 To nLast
+    oFile.WriteLine aSrc(i)
 Next
 oFile.Close
+WScript.Echo "SOURCE_LINES: " & nLast
 ```
 
 The resulting file is UTF-16 LE (because `CreateTextFile(..., True, True)` writes Unicode).
+Its line N corresponds to SAP source line N — the phantom first line is gone, so
+syntax-check line numbers index the file directly.
 
 ### Fix the source and re-upload
 
@@ -1378,15 +1397,21 @@ $workTemp = 'THE_WORK_TEMP'
 $content = [System.IO.File]::ReadAllText("$skillDir\references\sap_se37_check_and_download.vbs", [System.Text.Encoding]::UTF8)
 $content = $content -replace '%%FM_NAME%%',     $fmName
 $content = $content -replace '%%OUTPUT_FILE%%', $outFile
-# Phase 3.5 session-attach plumbing.
-$sessionPath = ''
-$content = $content -replace '%%SESSION_PATH%%',   $sessionPath
+# Phase 3.5 session-attach plumbing. BAKE the resolved session path into the
+# VBS (%%SESSION_PATH%% = attach Strategy 1) rather than exporting it as
+# $env:SAPDEV_SESSION_PATH here: this generator is a SEPARATE process from the
+# one that later launches cscript, so an env var set here dies with it and the
+# attach lib silently fell through to its sole-connection default (Strategy 3)
+# -- which is how a run pinned to one SAP system read another one's source
+# (2026-08-06). A baked-in const survives the process boundary; an empty value
+# still falls through exactly as before.
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+$sessionPath = Get-SapCurrentSessionPath -WorkTemp $workTemp
+$content = $content.Replace('%%SESSION_PATH%%',   $sessionPath)
 $content = $content -replace '%%ATTACH_LIB_VBS%%', '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
 $content = $content -replace '%%SYNTAX_CHECK_LIB_VBS%%', '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_syntax_check_lib.vbs'
-. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
-$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp $workTemp
 [System.IO.File]::WriteAllText("{RUN_TEMP}\sap_se37_check_and_download_run.vbs", $content, [System.Text.UnicodeEncoding]::new($false, $true))
-Write-Host 'Done'
+Write-Host ("Done (session_path='" + $sessionPath + "')")
 ```
 
 | Placeholder | Value |
@@ -1415,6 +1440,14 @@ system / client:
 ```powershell
 $shared = '<SAP_DEV_CORE_SHARED_DIR>\scripts'
 $out    = '{RUN_TEMP}\THE_FM_NAME_from_sap.txt'   # the path SAP GUI will write
+# 0. Declare which SAP system the GUI leg may drive. MUST happen in THIS block:
+#    the attach lib reads it from the process environment, and cscript is a
+#    child of THIS PowerShell, not of the generator block above. It resolves the
+#    same profile Connect-SapRfc uses, so if the GUI is sitting on a different
+#    system than the RFC readers target, the attach refuses loud instead of
+#    downloading another system's source under this FM's name.
+. "$shared\sap_connection_lib.ps1"
+Set-SapGuiTargetExpectation -WorkTemp '{WORK_TEMP}' | Out-Null
 # 1. Pre-check the allow-list (read-only; informational + lets us skip the watcher).
 & "$shared\sap_gui_security_precheck.ps1" -Path $out -Access w -System 'THE_SID' -Client 'THE_CLIENT' -Transaction 'SE37' | Out-Host
 $allowed = ($LASTEXITCODE -eq 0)

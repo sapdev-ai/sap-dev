@@ -1223,15 +1223,21 @@ $runTemp  = 'THE_RUN_TEMP'     # per-run scratch dir -- where the generated wrap
 $content = [System.IO.File]::ReadAllText("$skillDir\references\sap_se38_check_and_download.vbs", [System.Text.Encoding]::UTF8)
 $content = $content -replace '%%PROGRAM_NAME%%', $pgmName
 $content = $content -replace '%%OUTPUT_FILE%%',  $outFile
-# Phase 3.5 session-attach plumbing.
-$sessionPath = ''
-$content = $content -replace '%%SESSION_PATH%%',   $sessionPath
+# Phase 3.5 session-attach plumbing. BAKE the resolved session path into the
+# VBS (%%SESSION_PATH%% = attach Strategy 1) rather than exporting it as
+# $env:SAPDEV_SESSION_PATH here: this generator is a SEPARATE process from the
+# one that later launches cscript, so an env var set here dies with it and the
+# attach lib silently fell through to its sole-connection default (Strategy 3)
+# -- which is how a run pinned to one SAP system read another one's source
+# (2026-08-06). A baked-in const survives the process boundary; an empty value
+# still falls through exactly as before.
+. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+$sessionPath = Get-SapCurrentSessionPath -WorkTemp $workTemp
+$content = $content.Replace('%%SESSION_PATH%%',   $sessionPath)
 $content = $content -replace '%%ATTACH_LIB_VBS%%', '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
 $content = $content -replace '%%SYNTAX_CHECK_LIB_VBS%%', '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_syntax_check_lib.vbs'
-. '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
-$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp $workTemp
 [System.IO.File]::WriteAllText("$runTemp\sap_se38_check_and_download_run.vbs", $content, [System.Text.UnicodeEncoding]::new($false, $true))
-Write-Host 'Done'
+Write-Host ("Done (session_path='" + $sessionPath + "')")
 ```
 
 | Placeholder | Value |
@@ -1261,6 +1267,14 @@ system / client:
 ```powershell
 $shared = '<SAP_DEV_CORE_SHARED_DIR>\scripts'
 $out    = '{RUN_TEMP}\THE_PROGRAM_NAME_from_sap.txt'   # the path SAP GUI will write
+# 0. Declare which SAP system the GUI leg may drive. MUST happen in THIS block:
+#    the attach lib reads it from the process environment, and cscript is a
+#    child of THIS PowerShell, not of the generator block above. It resolves the
+#    same profile Connect-SapRfc uses, so if the GUI is sitting on a different
+#    system than the RFC readers target, the attach refuses loud instead of
+#    downloading another system's source under this program's name.
+. "$shared\sap_connection_lib.ps1"
+Set-SapGuiTargetExpectation -WorkTemp '{WORK_TEMP}' | Out-Null
 # 1. Pre-check the allow-list (read-only; informational + lets us skip the watcher).
 & "$shared\sap_gui_security_precheck.ps1" -Path $out -Access w -System 'THE_SID' -Client 'THE_CLIENT' -Transaction 'SE38' | Out-Host
 $allowed = ($LASTEXITCODE -eq 0)
@@ -1288,27 +1302,51 @@ if ($watcher) { $watcher | Wait-Process -Timeout 45 -ErrorAction SilentlyContinu
 | `RESULT: SYNTAX_ERRORS` | Errors found (shown above the RESULT line) | Proceed to Step B |
 | `ERROR:` | Fatal failure | Show full output, stop |
 
+Two lines earlier in the output are load-bearing — **read them, don't skip them**:
+
+| Line | Meaning |
+|---|---|
+| `GUI_TARGET: system=<SID> client=<NNN> user=<U> path=<...>` | **Which SAP system this download actually came from.** Quote it whenever you report the source, and re-check it before any re-upload. `ERROR: SAP GUI target mismatch` here means the GUI was on a different system than the RFC leg — stop, do not fix, do not upload. |
+| `SOURCE_LINES: <n>` | Exact number of source lines written. The file has no padding and no phantom first line, so **file line N == SAP source line N** — syntax-check line numbers index it directly. |
+
 ---
 
 ## Step B — Analyze and Fix Source
 
 The source was downloaded to `{RUN_TEMP}\<PROGRAM_NAME>_from_sap.txt` (UTF-16 LE).
 
-> **CAVEAT — `_from_sap.txt` may differ structurally from the disk source.**
-> The download uses `AbapEditor.GetLineText(i)` which reads what the editor
-> *displays*, not what is stored. SAP applies pretty-printer formatting
-> between storage and display. Verified divergence: TYPES declared inside
-> a local class PUBLIC SECTION can appear at PROGRAM scope in the
-> `_from_sap.txt` download (would break re-deploy if used as a basis).
+> **CHECK THE SYSTEM BEFORE YOU CHECK THE TEXT.**
+> `_from_sap.txt` comes from whatever SAP system the GUI session is on;
+> the RFC readers (`/sap-check-abap`, `/sap-fix-abap`, `/sap-git serialize`,
+> `Read-SapAbapSource`) come from whatever profile `Connect-SapRfc` resolves.
+> Those are two independent resolution chains and they *can* land on
+> different systems. Confirm `GUI_TARGET:` here equals the `system`/`client`
+> in the RFC read's `source.meta.json` before treating any text delta as a
+> real difference.
 >
-> **Rule:** if a disk copy of the source exists (e.g. the original
-> `<PROGRAM_NAME>.abap` from the spec/build pipeline), apply your fixes
-> there instead and re-deploy. Use `_from_sap.txt` only as a *reference*
-> for what the live system has — never as the deploy basis when a
+> Verified live 2026-08-06 (S4D/100 vs S4H/400, `Z_EXCEPTION_1`): both systems
+> hosted an independently-maintained program of that name, 7 lines apart. The
+> GUI leg read S4H's and the RFC leg read S4D's in the same run, and neither
+> output named its system. Re-uploading the "fixed" download would have
+> reverted a year of live edits on the other system. The attach lib now
+> refuses this outright when the wrapper declares an expected target — but the
+> refusal only fires if `Set-SapGuiTargetExpectation` ran in the same block as
+> `cscript` (see the Execute step above).
+>
+> **On fidelity:** once both legs are on the same system they agree
+> byte-for-byte — a 54-line diff of this download against `RPY_PROGRAM_READ`
+> on S4H/400 was 0 lines different, multi-byte comments included. There is no
+> general pretty-printer rewrite between storage and display, and
+> `RPY_PROGRAM_READ` is not a stale or lossy rendition; treat both readers as
+> authoritative *for the system they read*.
+>
+> **Known structural exception:** TYPES declared inside a local class
+> `PUBLIC SECTION` have been observed at PROGRAM scope in a `_from_sap.txt`
+> download. That one is a real editor-vs-storage divergence and would break a
+> re-deploy. So: if a disk copy of the source exists (e.g. the original
+> `<PROGRAM_NAME>.abap` from the spec/build pipeline), apply fixes there and
+> re-deploy; use `_from_sap.txt` as the deploy basis only when no
 > structurally-correct disk copy is available.
->
-> A more robust download path via RFC `RPY_PROGRAM_READ` is on the
-> roadmap; until then, prefer disk-copy editing.
 
 **1. Read the file:**
 ```powershell

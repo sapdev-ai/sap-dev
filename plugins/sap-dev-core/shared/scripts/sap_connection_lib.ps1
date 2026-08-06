@@ -1736,6 +1736,80 @@ function Get-SapCurrentSessionPath {
     return "$($entry.path)"
 }
 
+function Set-SapGuiTargetExpectation {
+    <#
+    .SYNOPSIS
+        Declare which SAP system the GUI leg of this skill is allowed to drive,
+        by exporting SAPDEV_EXPECT_SYSTEM / SAPDEV_EXPECT_CLIENT for the VBS
+        attach helper (sap_attach_lib.vbs) to enforce.
+    .DESCRIPTION
+        A skill that reads over BOTH transports resolves its SAP target twice:
+        Connect-SapRfc walks pin -> GUI-active -> default -> sole-profile, while
+        AttachSapSession walks hint -> SAPDEV_SESSION_PATH -> sole-connection ->
+        refuse. Those two chains can land on DIFFERENT SYSTEMS, and neither leg
+        says which system it read -- so the skill silently mixes two systems.
+
+        Live incident (2026-08-06): the AI session was pinned to S4D/100, the
+        only attached GUI window was S4H/400. Get-SapCurrentSessionPath
+        correctly returned '' (the pinned connection had no live block), and the
+        attach lib's sole-connection default then handed back S4H/400 anyway.
+        /sap-se38 downloaded S4H's Z_EXCEPTION_1 while the RFC readers read
+        S4D's -- 7 lines apart, same program name, no provenance in either
+        output. Re-uploading the "fixed" download would have reverted a year of
+        live edits on the other system.
+
+        This function closes that hole from the PowerShell side: it resolves the
+        profile that Connect-SapRfc WOULD use (identical call, including
+        -PreferGuiActive) and publishes it as the expectation. The attach lib
+        then refuses any session that isn't it. When no profile resolves, the
+        expectation is cleared rather than guessed -- an unenforced attach is
+        the pre-existing behaviour, whereas a wrong expectation would block
+        legitimate work.
+
+        Call this in the skill wrapper right next to the existing
+        `$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath ...` line.
+    .PARAMETER Clear
+        Remove both env vars instead of setting them (disables enforcement for
+        the rest of this process).
+    .OUTPUTS
+        The resolved profile (or $null). Also emits an INFO line to stderr so
+        the declared target is visible in the skill's log.
+    #>
+    param(
+        [string]$WorkTemp   = '',
+        [string]$RuntimeDir = '',
+        [switch]$Clear
+    )
+
+    if ($Clear) {
+        $env:SAPDEV_EXPECT_SYSTEM = $null
+        $env:SAPDEV_EXPECT_CLIENT = $null
+        return $null
+    }
+
+    $prof = $null
+    try {
+        $prof = Get-SapCurrentConnectionProfile -WorkTemp $WorkTemp -RuntimeDir $RuntimeDir -PreferGuiActive
+    } catch { $prof = $null }
+
+    $sid = ''; $cli = ''
+    if ($prof) { $sid = "$($prof.system_name)".Trim(); $cli = "$($prof.client)".Trim() }
+
+    if ([string]::IsNullOrWhiteSpace($sid)) {
+        # Nothing resolved (or a profile with a blank system_name -- which the
+        # safety gate already treats as fail-closed). Do NOT invent one.
+        $env:SAPDEV_EXPECT_SYSTEM = $null
+        $env:SAPDEV_EXPECT_CLIENT = $null
+        [Console]::Error.WriteLine("WARN: no SAP connection profile resolved; the GUI leg will run UNVERIFIED (it may attach to a different system than the RFC leg). Run /sap-login to pin a connection.")
+        return $null
+    }
+
+    $env:SAPDEV_EXPECT_SYSTEM = $sid
+    $env:SAPDEV_EXPECT_CLIENT = $cli
+    [Console]::Error.WriteLine("INFO: GUI target expectation = $sid/$cli (matches the RFC leg); a GUI session on any other system will be refused.")
+    return $prof
+}
+
 function Get-SapLiveGuiConnections {
     <#
     .SYNOPSIS

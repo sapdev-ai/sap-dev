@@ -118,11 +118,15 @@ $content = $content -replace '%%SOME_PARAM%%','THE_SOME_PARAM'
 # ... other parameter substitutions ...
 
 # Phase 4.2 session-attach plumbing.
-$sessionPath = ''   # set to the parsed --session value if supplied
-$content = $content -replace '%%SESSION_PATH%%', $sessionPath
-$content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
 . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
-$env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
+# Prefer the parsed --session value; otherwise resolve this AI session's pin.
+# BAKE it into the VBS rather than exporting $env:SAPDEV_SESSION_PATH here: this
+# generator is usually a DIFFERENT process from the one that later runs cscript,
+# so an env var set here never arrives (see gotcha 4).
+$sessionPath = $ParsedSessionArg
+if (-not $sessionPath) { $sessionPath = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}' }
+$content = $content.Replace('%%SESSION_PATH%%', $sessionPath)
+$content = $content -replace '%%ATTACH_LIB_VBS%%','<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_attach_lib.vbs'
 
 [System.IO.File]::WriteAllText('{RUN_TEMP}\sap_<skill>_<mode>_run.vbs', $content, [System.Text.UnicodeEncoding]::new($false, $true))
 ```
@@ -138,7 +142,7 @@ $env:SAPDEV_SESSION_PATH = Get-SapCurrentSessionPath -WorkTemp '{WORK_TEMP}'
   each other's `*_run.vbs` between write and `cscript` exec. See CLAUDE.md
   "Work Directory Configuration".
 
-- `$sessionPath = ''` is intentional default — the helper auto-resolves via `SAPDEV_SESSION_PATH` → sole-connection → refuse.
+- An empty `$sessionPath` is a valid outcome, not a bug — the helper then falls through to sole-connection → refuse. What is NOT acceptable is leaving it hardcoded to `''` while a pin exists: that discards the pin and hands the run to whatever GUI window happens to be open.
 - `Get-SapCurrentSessionPath` reads `session_registry.json`'s `ai_sessions[<id>].connection_id` for this AI session (parent-PID walk), finds the matching connection block, returns a usable session path on it. Empty string when nothing resolves; the attach lib's sole-connection fallback or "refuse" path then takes over.
 - If the SKILL.md is wrapping a write-class skill that also includes `%%SESSION_LOCK_VBS%%`, leave that substitution in — it's complementary, not redundant.
 
@@ -170,7 +174,14 @@ If you write a new bootstrap-style file that legitimately needs custom attach, a
 1. **Don't inline the literal `%%SESSION_PATH%%` token as a sentinel comparison.** The PowerShell wrapper's `.Replace()` is global, so any occurrence of the literal token will be rewritten. If you need to detect "unsubstituted token," build the comparison string at runtime via `Chr(37) & Chr(37) & "SESSION_PATH" & Chr(37) & Chr(37)`. See `sap_gui_object_details.vbs` for the precedent (and the bug it originally hid).
 2. **Include order matters when both attach-lib and session-lock are present.** Attach lib MUST load first because session-lock's pre-unlock popup sweep reads from `oSession`. The canonical pattern above gets this right.
 3. **The helper handles ALL error paths.** Don't wrap `AttachSapSession(SESSION_PATH)` in your own `If oSession Is Nothing Then ...` — the helper has already `WScript.Quit 2`'d on failure. Adding your own block is dead code.
-4. **`SAPDEV_SESSION_PATH` is set in PowerShell, read by cscript.** Process env vars cross the boundary, so the cscript child inherits it. Don't try to pass it as an argv arg — the helper specifically looks at the env var.
+4. **`SAPDEV_SESSION_PATH` only reaches cscript if cscript is a CHILD OF THE SAME PowerShell process.** A process env var is inherited by children — it is *not* shared between sibling processes and it dies when the process that set it exits. Most SKILL.md files set it in the **generator** block (`...-Fill the tokens`) and then launch `cscript` from a **separate, later** block, so the variable is already gone: the helper skips Strategy 2 and silently falls through to the sole-connection default. That is not hypothetical — it is what let a run pinned to S4D/100 drive a GUI window on S4H/400 and download the wrong system's source (2026-08-06). **Fix the generator by baking the resolved path into `%%SESSION_PATH%%`** (Strategy 1 — it is a `Const` in the emitted VBS, so it survives any process boundary), and only rely on the env var when the same block that exports it also runs `cscript`.
+5. **Declare the expected SAP system whenever the skill also talks RFC.** `Connect-SapRfc` and `AttachSapSession` resolve their target through two *different* chains (pin → GUI-active → default → sole-profile, vs. hint → env → sole-connection → refuse), so they can land on different systems while the skill believes it read one. Export the expectation in the block that launches `cscript`:
+   ```powershell
+   . '<SAP_DEV_CORE_SHARED_DIR>\scripts\sap_connection_lib.ps1'
+   Set-SapGuiTargetExpectation -WorkTemp '{WORK_TEMP}' | Out-Null   # sets SAPDEV_EXPECT_SYSTEM/_CLIENT
+   & 'C:/Windows/SysWOW64/cscript.exe' //NoLogo '{RUN_TEMP}\..._run.vbs'
+   ```
+   `AssertSapGuiTarget` in the attach lib then refuses (exit 2) any session that is not that system, instead of retargeting silently. Every attach — expectation or not — now also emits `GUI_TARGET: system=… client=… user=… path=… via=…`, so a skill's output always records which SAP system it actually drove. **Surface that line in the skill's report; never state a system you did not read off it.**
 
 ---
 
