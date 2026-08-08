@@ -23,7 +23,7 @@ package_maintain	S_DEVELOP	OBJTYPE	DEVC
 transport_manage	S_TRANSPRT	ACTVT	01|02	Create/change transport requests (/sap-transport-request, /sap-se01)
 transport_manage	S_TRANSPRT	TTYPE	DTRA|TASK	
 transport_release	S_TRANSPRT	ACTVT	43	Release transport requests + tasks (/sap-se01 release) - the Sec.1 "43 release" leg; kept separate from transport_manage so the create/change probe stays strict
-transport_release	S_TRANSPRT	TTYPE	DTRA|TASK
+transport_release	S_TRANSPRT	TTYPE	DTRA|TASK	Request types a release covers: the workbench request (DTRA) and its child tasks (TASK) - /sap-se01 release releases both
 stms_import	S_CTS_ADMI	CTS_ADMFCT	IMPA|IMPS	Import transports (/sap-stms import) - import-all vs import-single function codes; confirm exact set in SU21; PROD imports additionally pass the skill's typed-SID gate
 stms_import	S_TCODE	TCD	STMS	STMS transaction for the GUI import leg (/sap-stms)
 rfc_execute	S_RFC	ACTVT	16	Execute RFC FMs -- verification gates, lookups, wrapper
